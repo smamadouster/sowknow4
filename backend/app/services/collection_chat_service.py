@@ -272,10 +272,11 @@ When answering:
 4. Be concise but thorough"""
 
         # Build document context text
-        context_text = "\n\n".join([
-            f"Document: {doc['filename']}\n{chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc['chunks']])}"
-            for doc in document_context
-        ])
+        context_parts = []
+        for doc in document_context:
+            chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc['chunks']])
+            context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
+        context_text = "\n\n".join(context_parts)
 
         # Get conversation history
         history = db.query(ChatMessage).filter(

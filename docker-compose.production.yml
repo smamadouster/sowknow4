@@ -31,11 +31,6 @@
 
 version: '3.8'
 
-# Load environment variables from .secrets file
-# Create .secrets file with: POSTGRES_PASSWORD, GEMINI_API_KEY, HUNYUAN_API_KEY, HUNYUAN_SECRET_ID
-env_file:
-  - .secrets
-
 services:
   # PostgreSQL with pgvector
   postgres:
@@ -91,13 +86,8 @@ services:
     env_file:
       - ./backend/.env.production
     environment:
-      # Fixed: Removed invalid ?schema=sowknow parameter
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-sowknow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sowknow}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
-      # API Keys - Must be set in .env.production before deployment
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
-      - HUNYUAN_SECRET_ID=${HUNYUAN_SECRET_ID}
+      # DATABASE_URL and REDIS_URL are loaded from .env.production
+      # to avoid URL parsing issues with special characters in passwords
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - uploads:/app/uploads
@@ -129,15 +119,7 @@ services:
     env_file:
       - ./backend/.env.production
     environment:
-      # Fixed: Removed invalid ?schema=sowknow parameter
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-sowknow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sowknow}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
-      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
-      # API Keys - Must be set in .env.production before deployment
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
-      - HUNYUAN_SECRET_ID=${HUNYUAN_SECRET_ID}
+      # DATABASE_URL, REDIS_URL are loaded from .env.production
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - uploads:/app/uploads

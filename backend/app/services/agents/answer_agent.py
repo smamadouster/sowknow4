@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class AnswerRequest:
     """Request for answer generation"""
     query: str
-    research findings: List[Dict[str, Any]]
+    research_findings: List[Dict[str, Any]]
     verification_results: List[Dict[str, Any]]
     context: Optional[Dict[str, Any]] = None
     answer_style: str = "comprehensive"  # comprehensive, concise, conversational

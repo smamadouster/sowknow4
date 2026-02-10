@@ -23,8 +23,7 @@ from app.models.user import User, UserRole
 from app.models.chat import ChatSession, LLMProvider
 from app.schemas.collection import (
     CollectionCreate,
-    CollectionUpdate,
-    ParsedIntent
+    CollectionUpdate
 )
 from app.services.intent_parser import intent_parser_service, ParsedIntent as ParsedIntentModel
 from app.services.search_service import search_service

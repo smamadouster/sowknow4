@@ -7,7 +7,7 @@ can be saved for later reference.
 """
 import uuid
 import enum
-from sqlalchemy import Column, String, Integer, Boolean, UUID, ForeignKey, Text, JSON, Index, event
+from sqlalchemy import Column, String, Integer, Boolean, UUID, ForeignKey, Text, JSON, Index, event, Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin

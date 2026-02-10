@@ -7,7 +7,7 @@ can be saved for later reference.
 """
 import uuid
 import enum
-from sqlalchemy import Column, String, Integer, Boolean, UUID, ForeignKey, Text, JSON, Index
+from sqlalchemy import Column, String, Integer, Boolean, UUID, ForeignKey, Text, JSON, Index, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
@@ -75,6 +75,9 @@ class Collection(Base, TimestampMixin):
     # Pinned collections stay at top and get better cache treatment
     is_pinned = Column(Boolean, default=False, index=True)
     is_favorite = Column(Boolean, default=False, index=True)
+
+    # Confidential flag for RBAC
+    is_confidential = Column(Boolean, default=False, nullable=False, index=True)
 
     # Relationships
     user = relationship("User", back_populates="collections")
@@ -171,3 +174,15 @@ class CollectionChatSession(Base, TimestampMixin):
 
     def __repr__(self):
         return f"<CollectionChatSession {self.collection_id}>"
+
+# Set up defaults for test instances
+@event.listens_for(Collection, 'init', propagate=True)
+def _collection_init(target, args, kwargs):
+    """Set default values for boolean fields when creating instances"""
+    kwargs.setdefault('is_pinned', False)
+    kwargs.setdefault('is_favorite', False)
+    kwargs.setdefault('is_confidential', False)
+    kwargs.setdefault('document_count', 0)
+    kwargs.setdefault('ai_keywords', [])
+    kwargs.setdefault('ai_entities', [])
+    kwargs.setdefault('filter_criteria', {})

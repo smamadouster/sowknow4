@@ -293,7 +293,7 @@ class CollectionService:
         )
 
         # Apply bucket filter based on user role
-        if user.role == UserRole.USER:
+        if user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
             query = query.filter(Document.bucket == DocumentBucket.PUBLIC)
 
         # Apply document type filter

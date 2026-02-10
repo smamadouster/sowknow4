@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, UUID, Enum, ForeignKey, Text, Index
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, UUID, Enum, ForeignKey, Text, Index, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -131,3 +131,15 @@ class DocumentChunk(Base, TimestampMixin):
 
     def __repr__(self):
         return f"<DocumentChunk {self.document_id}/{self.chunk_index}>"
+
+# Set up defaults for test instances
+@event.listens_for(Document, 'init', propagate=True)
+def _document_init(target, args, kwargs):
+    """Set default values for fields when creating instances"""
+    kwargs.setdefault('bucket', DocumentBucket.PUBLIC)
+    kwargs.setdefault('status', DocumentStatus.PENDING)
+    kwargs.setdefault('language', DocumentLanguage.UNKNOWN)
+    kwargs.setdefault('ocr_processed', False)
+    kwargs.setdefault('embedding_generated', False)
+    kwargs.setdefault('chunk_count', 0)
+    kwargs.setdefault('document_metadata', {})

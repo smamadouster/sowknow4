@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore, canAccessConfidential } from "@/lib/store";
+import { useTranslations, useLocale } from "next-intl";
+import { useRouter as useIntlRouter } from "@/i18n/routing";
 
 // Disable static optimization for this client component
 export const dynamic = 'force-dynamic';
@@ -22,8 +23,12 @@ interface GeneratedFolder {
 }
 
 export default function SmartFoldersPage() {
-  const router = useRouter();
-  const { user } = useAuthStore();
+  const t = useTranslations('smart_folders');
+  const tCommon = useTranslations('common');
+  const tDocuments = useTranslations('documents');
+  const locale = useLocale();
+  const intlRouter = useIntlRouter();
+
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("informative");
   const [length, setLength] = useState("medium");
@@ -31,9 +36,6 @@ export default function SmartFoldersPage() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GeneratedFolder | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Check if user can access confidential documents
-  const canAccessConf = canAccessConfidential(user?.role);
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;
@@ -43,14 +45,14 @@ export default function SmartFoldersPage() {
     setResult(null);
 
     try {
-      // Use fetch with credentials for cookie-based auth
+      const token = localStorage.getItem("token");
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/generate`,
         {
           method: "POST",
-          credentials: "include",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             topic,
@@ -66,10 +68,10 @@ export default function SmartFoldersPage() {
         setResult(data);
       } else {
         const errorData = await response.json();
-        setError(errorData.detail || "Generation failed");
+        setError(errorData.detail || tDocuments('upload_error'));
       }
     } catch (err) {
-      setError("Network error. Please try again.");
+      setError(tDocuments('upload_error'));
     } finally {
       setGenerating(false);
     }
@@ -77,9 +79,22 @@ export default function SmartFoldersPage() {
 
   const viewCollection = () => {
     if (result) {
-      router.push(`/collections/${result.collection_id}`);
+      intlRouter.push(`/collections/${result.collection_id}`);
     }
   };
+
+  const styles = [
+    { value: "informative", label: t('style_informative'), desc: "Educational & clear" },
+    { value: "professional", label: t('style_professional'), desc: "Formal business tone" },
+    { value: "creative", label: t('style_creative'), desc: "Engaging & vivid" },
+    { value: "casual", label: t('style_casual'), desc: "Friendly & relaxed" },
+  ];
+
+  const lengths = [
+    { value: "short", label: t('length_short'), desc: "~300 words" },
+    { value: "medium", label: t('length_medium'), desc: "~800 words" },
+    { value: "long", label: t('length_long'), desc: "~2000 words" },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -87,10 +102,10 @@ export default function SmartFoldersPage() {
       <div className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Smart Folders
+            {t('title')}
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Generate AI-powered content from your documents
+            {t('generate')}
           </p>
         </div>
       </div>
@@ -102,12 +117,12 @@ export default function SmartFoldersPage() {
             {/* Topic Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Topic
+                {t('topic')}
               </label>
               <textarea
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="What would you like to create content about? (e.g., 'Annual financial summary 2023', 'Project milestones', 'Team performance review')"
+                placeholder={t('topic_placeholder')}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 rows={3}
               />
@@ -116,15 +131,10 @@ export default function SmartFoldersPage() {
             {/* Style Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Writing Style
+                {t('style')}
               </label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {[
-                  { value: "informative", label: "Informative", desc: "Educational & clear" },
-                  { value: "professional", label: "Professional", desc: "Formal business tone" },
-                  { value: "creative", label: "Creative", desc: "Engaging & vivid" },
-                  { value: "casual", label: "Casual", desc: "Friendly & relaxed" },
-                ].map((s) => (
+                {styles.map((s) => (
                   <button
                     key={s.value}
                     type="button"
@@ -149,14 +159,10 @@ export default function SmartFoldersPage() {
             {/* Length Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Content Length
+                {t('length')}
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: "short", label: "Short", desc: "~300 words" },
-                  { value: "medium", label: "Medium", desc: "~800 words" },
-                  { value: "long", label: "Long", desc: "~2000 words" },
-                ].map((l) => (
+                {lengths.map((l) => (
                   <button
                     key={l.value}
                     type="button"
@@ -179,22 +185,21 @@ export default function SmartFoldersPage() {
             </div>
 
             {/* Confidential Toggle */}
-            <div className={`flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg ${!canAccessConf ? 'opacity-50' : ''}`}>
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <div>
                 <div className="text-sm font-medium text-gray-900 dark:text-white">
-                  Include Confidential Documents
+                  {t('include_confidential')}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {canAccessConf ? 'Available for your account' : 'Only available for admins and superusers'}
+                  Only available for users with confidential access
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => canAccessConf && setIncludeConfidential(!includeConfidential)}
-                disabled={!canAccessConf}
+                onClick={() => setIncludeConfidential(!includeConfidential)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   includeConfidential ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"
-                } ${!canAccessConf ? 'cursor-not-allowed' : ''}`}
+                }`}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
@@ -207,10 +212,10 @@ export default function SmartFoldersPage() {
             {/* Generate Button */}
             <button
               onClick={handleGenerate}
-              disabled={generating || !topic.trim() || (includeConfidential && !canAccessConf)}
+              disabled={generating || !topic.trim()}
               className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
             >
-              {generating ? "Generating..." : "Generate Smart Folder"}
+              {generating ? t('generating') : t('generate')}
             </button>
           </div>
         </div>
@@ -233,8 +238,7 @@ export default function SmartFoldersPage() {
                     {result.topic}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    {result.word_count} words • Generated with{" "}
-                    {result.llm_used === "gemini" ? "Gemini Flash" : "Ollama"}
+                    {result.word_count} {t('word_count')} • {result.llm_used === "gemini" ? t('llm_gemini') : t('llm_ollama')}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -242,7 +246,7 @@ export default function SmartFoldersPage() {
                     onClick={viewCollection}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
                   >
-                    View Collection
+                    {t('view_collection')}
                   </button>
                 </div>
               </div>
@@ -251,7 +255,7 @@ export default function SmartFoldersPage() {
             {/* Generated Content */}
             <div className="p-6">
               <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                Generated Content
+                {t('generated_content')}
               </h3>
               <div className="prose dark:prose-invert max-w-none">
                 {result.generated_content.split("\n").map((paragraph, idx) => (
@@ -266,7 +270,7 @@ export default function SmartFoldersPage() {
             {result.sources_used.length > 0 && (
               <div className="p-6 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Sources ({result.sources_used.length})
+                  {t('sources')} ({result.sources_used.length})
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {result.sources_used.map((source) => (
@@ -280,12 +284,12 @@ export default function SmartFoldersPage() {
                           {source.filename}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(source.created_at).toLocaleDateString()}
+                          {new Date(source.created_at).toLocaleDateString(locale)}
                         </p>
                       </div>
-                      {source.bucket === "confidential" && canAccessConf && (
+                      {source.bucket === "confidential" && (
                         <span className="text-xs px-2 py-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded">
-                          Confidential
+                          {tDocuments('bucket_confidential')}
                         </span>
                       )}
                     </div>
@@ -300,7 +304,7 @@ export default function SmartFoldersPage() {
         {result === null && (
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
             <h3 className="text-sm font-medium text-blue-900 dark:text-blue-200 mb-3">
-              Example Topics to Try
+              {t('examples')}
             </h3>
             <ul className="space-y-2">
               {[

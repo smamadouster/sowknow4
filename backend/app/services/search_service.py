@@ -10,6 +10,7 @@ from sqlalchemy import text, func, or_, and_
 from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.models.user import User, UserRole
 from app.services.embedding_service import embedding_service
+from app.services.pii_detection_service import pii_detection_service
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,14 @@ class HybridSearchService:
         Returns:
             Dictionary with results and metadata
         """
+        # Check for PII in query for privacy protection
+        has_pii = pii_detection_service.detect_pii(query)
+        pii_summary = None
+
+        if has_pii:
+            pii_summary = pii_detection_service.get_pii_summary(query)
+            logger.warning(f"PII detected in search query by user {user.email if user else 'unknown'}: {pii_summary['detected_types']}")
+
         # Get both search results
         semantic_results = await self.semantic_search(
             query=query,
@@ -348,7 +357,9 @@ class HybridSearchService:
             "results": [item["result"] for item in paginated_results],
             "total": len(sorted_results),
             "offset": offset,
-            "limit": limit
+            "limit": limit,
+            "has_pii": has_pii,
+            "pii_summary": pii_summary
         }
 
 

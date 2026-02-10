@@ -23,6 +23,23 @@ def upgrade() -> None:
     # Create sowknow schema if not exists
     op.execute('CREATE SCHEMA IF NOT EXISTS sowknow')
 
+    # Create users table first (needed by chat_sessions)
+    op.create_table(
+        'users',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+        sa.Column('email', sa.String(255), nullable=False),
+        sa.Column('hashed_password', sa.String(255), nullable=False),
+        sa.Column('full_name', sa.String(255)),
+        sa.Column('role', sa.Enum('user', 'admin', 'superuser', name='userrole'), nullable=False, server_default='user'),
+        sa.Column('is_superuser', sa.Boolean(), server_default='false'),
+        sa.Column('can_access_confidential', sa.Boolean(), server_default='false'),
+        sa.Column('is_active', sa.Boolean(), server_default='true'),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), onupdate=sa.text('now()'), nullable=False),
+        schema='sowknow'
+    )
+    op.create_index('ix_users_email', 'users', ['email'], unique=True, schema='sowknow')
+
     # Create documents table
     op.create_table(
         'documents',
@@ -147,6 +164,7 @@ def downgrade() -> None:
     op.drop_table('document_chunks', schema='sowknow')
     op.drop_table('document_tags', schema='sowknow')
     op.drop_table('documents', schema='sowknow')
+    op.drop_table('users', schema='sowknow')
 
     # Drop enums
     op.execute('DROP TYPE IF EXISTS sowknow.documentbucket')
@@ -156,3 +174,4 @@ def downgrade() -> None:
     op.execute('DROP TYPE IF EXISTS sowknow.llmprovider')
     op.execute('DROP TYPE IF EXISTS sowknow.tasktype')
     op.execute('DROP TYPE IF EXISTS sowknow.taskstatus')
+    op.execute('DROP TYPE IF EXISTS sowknow.userrole')

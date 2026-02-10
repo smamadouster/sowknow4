@@ -99,7 +99,7 @@ export function EntityDetail({ entityId, onClose }: EntityDetailProps) {
     try {
       const response = await api.getEntity(entityId);
       if (response.data) {
-        setDetail(response.data);
+        setDetail(response.data as EntityDetail);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load entity details');

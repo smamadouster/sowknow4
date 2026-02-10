@@ -109,10 +109,10 @@ export function GraphVisualization({
 
     const simulation = setInterval(() => {
       setSimulatedNodes((nodes) => {
-        const newNodes = nodes.map((node) => ({
+        const newNodes = nodes.map((node): SimulationState['nodes'][0] => ({
           ...node,
-          vx: node.vx * 0.9, // Damping
-          vy: node.vy * 0.9,
+          vx: (node as any).vx * 0.9, // Damping
+          vy: (node as any).vy * 0.9,
         }));
 
         // Repulsion between nodes
@@ -195,7 +195,7 @@ export function GraphVisualization({
   const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (e.target === svgRef.current) {
       setIsDragging(true);
-      dragStartRef.current({ x: e.clientX - transform.x, y: e.clientY - transform.y, nodeX: 0, nodeY: 0 });
+      dragStartRef.current = { x: e.clientX - transform.x, y: e.clientY - transform.y, nodeX: 0, nodeY: 0 };
     }
   }, [transform]);
 
@@ -216,12 +216,12 @@ export function GraphVisualization({
   const handleNodeMouseDown = useCallback((e: React.MouseEvent, node: GraphNode & { x: number; y: number }) => {
     e.stopPropagation();
     setDraggedNode(node.id);
-    dragStartRef.current({
+    dragStartRef.current = {
       x: e.clientX - node.x * transform.k - transform.x,
       y: e.clientY - node.y * transform.k - transform.y,
       nodeX: node.x,
       nodeY: node.y,
-    });
+    };
   }, [transform]);
 
   const handleNodeMouseMove = useCallback((e: React.MouseEvent, node: GraphNode & { x: number; y: number }) => {

@@ -9,7 +9,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database import get_db, Base
+from app.database import get_db
+from app.models.base import Base
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
 

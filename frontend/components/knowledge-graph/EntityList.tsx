@@ -69,8 +69,9 @@ export function EntityList({ entityType, onSelectEntity, selectedEntityId }: Ent
     try {
       const response = await api.getEntities(entityType, page, 50, search || undefined);
       if (response.data) {
-        setEntities(response.data.entities || []);
-        setTotal(response.data.total || 0);
+        const data = response.data as any;
+        setEntities(data.entities || []);
+        setTotal(data.total || 0);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load entities');

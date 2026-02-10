@@ -1,5 +1,33 @@
 # SOWKNOW Production Docker Compose
 # Domain: sowknow.gollamtech.com
+# Total Memory Budget: 6.4GB on shared 16GB VPS
+#
+# CRITICAL - API Keys Configuration:
+# Before deployment, ensure these environment variables are set in .secrets or backend/.env.production:
+#   - GEMINI_API_KEY: Required for public document processing
+#   - HUNYUAN_API_KEY: Required for OCR services
+#   - HUNYUAN_SECRET_ID: Required for Hunyuan API authentication
+#   - POSTGRES_PASSWORD: Database password
+#   - REDIS_PASSWORD: Redis password
+#   - SECRET_KEY: JWT secret for authentication
+#   - JWT_SECRET_KEY: JWT signing key
+#
+# Memory Allocation Summary:
+#   postgres:      1GB    (Database with pgvector)
+#   redis:         256MB  (Cache & message queue)
+#   backend:       512MB  (FastAPI application)
+#   celery-worker: 1GB    (Background tasks, embeddings model)
+#   frontend:      512MB  (Next.js application)
+#   nginx:         128MB  (Reverse proxy)
+#   certbot:       128MB  (SSL certificate management)
+#   ollama:        2GB    (Confidential document processing)
+#   TOTAL:         5.5GB  (Within 6.4GB budget)
+#
+# Backup Strategy:
+#   - Daily PostgreSQL dumps: docker exec sowknow-postgres pg_dump -U sowknow sowknow > backup_$(date +%Y%m%d).sql
+#   - Weekly encrypted offsite backup to secure storage
+#   - Monthly restore test to verify backup integrity
+#   - 7-4-3 retention policy: 7 daily, 4 weekly, 3 monthly backups
 
 version: '3.8'
 
@@ -9,6 +37,7 @@ services:
     image: pgvector/pgvector:pg16
     container_name: sowknow-postgres
     restart: unless-stopped
+    mem_limit: 1g
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sowknow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -29,7 +58,8 @@ services:
     image: redis:7-alpine
     container_name: sowknow-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    mem_limit: 256m
+    command: redis-server --requirepass ${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}
     volumes:
       - redis_data:/data
     networks:
@@ -40,6 +70,32 @@ services:
       timeout: 3s
       retries: 5
 
+  # Ollama - Local LLM for confidential documents
+  # NOTE: This processes ONLY confidential documents. Public documents use Gemini Flash.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sowknow-ollama
+    restart: unless-stopped
+    mem_limit: 2g
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - sowknow-net
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # GPU is not available on this VPS - models run on CPU
+    deploy:
+      resources:
+        limits:
+          cpus: '2'  # Limit to 2 CPU cores to avoid overwhelming the VPS
+
   # Backend API
   backend:
     build:
@@ -47,11 +103,18 @@ services:
       dockerfile: Dockerfile
     container_name: sowknow-backend
     restart: unless-stopped
+    mem_limit: 512m
     env_file:
       - ./backend/.env.production
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-sowknow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sowknow}?schema=sowknow
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      # Fixed: Removed invalid ?schema=sowknow parameter
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sowknow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
+      # API Keys - Must be set in .env.production before deployment
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - HUNYUAN_SECRET_ID=${HUNYUAN_SECRET_ID}
+      - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
       - uploads:/app/uploads
       - backups:/app/backups
@@ -61,6 +124,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -75,12 +140,21 @@ services:
       dockerfile: Dockerfile
     container_name: sowknow-celery-worker
     restart: unless-stopped
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    mem_limit: 1g
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
     env_file:
       - ./backend/.env.production
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-sowknow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sowknow}?schema=sowknow
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      # Fixed: Removed invalid ?schema=sowknow parameter
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sowknow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}@redis:6379/0
+      # API Keys - Must be set in .env.production before deployment
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - HUNYUAN_SECRET_ID=${HUNYUAN_SECRET_ID}
+      - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
       - uploads:/app/uploads
     networks:
@@ -89,6 +163,12 @@ services:
       - postgres
       - redis
       - backend
+      - ollama
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
   # Frontend (Next.js)
   frontend:
@@ -100,6 +180,7 @@ services:
         - NEXT_PUBLIC_APP_URL=https://sowknow.gollamtech.com
     container_name: sowknow-frontend
     restart: unless-stopped
+    mem_limit: 512m
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=https://sowknow.gollamtech.com/api
@@ -114,6 +195,7 @@ services:
     image: nginx:alpine
     container_name: sowknow-nginx
     restart: unless-stopped
+    mem_limit: 128m
     ports:
       - "80:80"
       - "443:443"
@@ -127,11 +209,17 @@ services:
     depends_on:
       - frontend
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # Certbot for Let's Encrypt SSL
   certbot:
     image: certbot/certbot:latest
     container_name: sowknow-certbot
+    mem_limit: 128m
     volumes:
       - certbot-www:/var/www/certbot
       - certbot-conf:/etc/letsencrypt
@@ -151,6 +239,8 @@ volumes:
   certbot-www:
     driver: local
   certbot-conf:
+    driver: local
+  ollama_data:
     driver: local
 
 networks:

@@ -61,8 +61,8 @@ async def upload_document(
     - **title**: Optional title for the document
     """
     # Verify bucket permission
-    if bucket == "confidential" and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Only admins can upload to confidential bucket")
+    if bucket == "confidential" and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
+        raise HTTPException(status_code=403, detail="Only admins and superusers can upload to confidential bucket")
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(status_code=400, detail="Invalid bucket. Use 'public' or 'confidential'")
@@ -145,8 +145,8 @@ async def list_documents(
     query = db.query(Document)
 
     # Apply bucket filter based on user role
-    if current_user.role != UserRole.ADMIN:
-        # Non-admins only see public documents
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
+        # Non-admins and non-superusers only see public documents
         query = query.filter(Document.bucket == DocumentBucket.PUBLIC)
     elif bucket:
         # Admin can filter by bucket
@@ -193,7 +193,7 @@ async def get_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # Check access permission
-    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role == UserRole.USER:
+    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
         raise HTTPException(status_code=403, detail="Access denied to confidential document")
 
     return DocumentResponse.model_validate(document)
@@ -214,7 +214,7 @@ async def download_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # Check access permission
-    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role == UserRole.USER:
+    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
         raise HTTPException(status_code=403, detail="Access denied to confidential document")
 
     # Get file content
@@ -271,9 +271,9 @@ async def delete_document(
     db: Session = Depends(get_db)
 ):
     """Delete a document (admin only)"""
-    # Require admin for deletion
-    if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Only admins can delete documents")
+    # Require admin or superuser for deletion
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
+        raise HTTPException(status_code=403, detail="Only admins and superusers can delete documents")
 
     document = db.query(Document).filter(Document.id == document_id).first()
 

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useTranslations, useLocale } from "next-intl";
+import { Link as IntlLink } from "@/i18n/routing";
 
 // Disable static optimization for this client component
 export const dynamic = 'force-dynamic';
@@ -28,6 +30,9 @@ interface CollectionsResponse {
 }
 
 export default function CollectionsPage() {
+  const t = useTranslations('collections');
+  const tCommon = useTranslations('common');
+  const locale = useLocale();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -79,7 +84,6 @@ export default function CollectionsPage() {
   const togglePin = async (collectionId: string) => {
     try {
       const { api } = await import("@/lib/api");
-      // Use fetch with credentials for cookies
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${collectionId}/pin`,
         {
@@ -99,7 +103,6 @@ export default function CollectionsPage() {
   const toggleFavorite = async (collectionId: string) => {
     try {
       const { api } = await import("@/lib/api");
-      // Use fetch with credentials for cookies
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${collectionId}/favorite`,
         {
@@ -124,17 +127,17 @@ export default function CollectionsPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Collections
+                {t('title')}
               </h1>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Smart Collections - AI-powered document groups
+                {t('create_from_query')}
               </p>
             </div>
             <button
               onClick={() => setShowCreateModal(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
             >
-              + Save New Collection
+              {t('create')}
             </button>
           </div>
         </div>
@@ -146,7 +149,7 @@ export default function CollectionsPage() {
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             <p className="mt-4 text-gray-600 dark:text-gray-400">
-              Loading...
+              {tCommon('loading')}
             </p>
           </div>
         ) : collections.length === 0 ? (
@@ -165,17 +168,17 @@ export default function CollectionsPage() {
               />
             </svg>
             <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-              No collections yet
+              {t('no_collections')}
             </h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Create your first Smart Collection by describing what you want to find
+              {t('no_collections_desc')}
             </p>
             <div className="mt-6">
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
-                Create Collection
+                {t('create')}
               </button>
             </div>
           </div>
@@ -183,7 +186,7 @@ export default function CollectionsPage() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {collections.map((collection) => (
-                <Link
+                <IntlLink
                   key={collection.id}
                   href={`/collections/${collection.id}`}
                   className="block"
@@ -193,12 +196,12 @@ export default function CollectionsPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           {collection.is_pinned && (
-                            <span className="text-yellow-500" title="Pinned">
+                            <span className="text-yellow-500" title={t('pin')}>
                               📌
                             </span>
                           )}
                           {collection.is_favorite && (
-                            <span className="text-red-500" title="Favorite">
+                            <span className="text-red-500" title={t('favorite')}>
                               ❤️
                             </span>
                           )}
@@ -214,7 +217,7 @@ export default function CollectionsPage() {
 
                     <div className="mt-4 flex items-center justify-between">
                       <span className="text-sm text-gray-500 dark:text-gray-400">
-                        {collection.document_count} documents
+                        {collection.document_count} {t('documents')}
                       </span>
                       <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
                         {collection.collection_type}
@@ -222,7 +225,7 @@ export default function CollectionsPage() {
                     </div>
 
                     <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-                      {new Date(collection.created_at).toLocaleDateString()}
+                      {new Date(collection.created_at).toLocaleDateString(locale)}
                     </div>
 
                     {/* Action buttons */}
@@ -233,7 +236,7 @@ export default function CollectionsPage() {
                           togglePin(collection.id);
                         }}
                         className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                        title={collection.is_pinned ? "Unpin" : "Pin"}
+                        title={collection.is_pinned ? t('unpin') : t('pin')}
                       >
                         📌
                       </button>
@@ -243,13 +246,13 @@ export default function CollectionsPage() {
                           toggleFavorite(collection.id);
                         }}
                         className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                        title={collection.is_favorite ? "Unfavorite" : "Favorite"}
+                        title={collection.is_favorite ? t('unfavorite') : t('favorite')}
                       >
                         ❤️
                       </button>
                     </div>
                   </div>
-                </Link>
+                </IntlLink>
               ))}
             </div>
 
@@ -261,17 +264,17 @@ export default function CollectionsPage() {
                   disabled={page === 1}
                   className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg disabled:opacity-50"
                 >
-                  Previous
+                  {tCommon('previous')}
                 </button>
                 <span className="px-4 py-2 text-gray-600 dark:text-gray-400">
-                  Page {page}
+                  {tCommon('next')} {page}
                 </span>
                 <button
                   onClick={() => setPage((p) => p + 1)}
                   disabled={page * 20 >= total}
                   className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg disabled:opacity-50"
                 >
-                  Next
+                  {tCommon('next')}
                 </button>
               </div>
             )}
@@ -284,21 +287,21 @@ export default function CollectionsPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg max-w-lg w-full p-6">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-              Create Smart Collection
+              {t('new_collection')}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Describe what you want to find in natural language. Examples:
+              {t('create_from_query')}. {t('examples')}:
             </p>
             <ul className="text-sm text-gray-600 dark:text-gray-400 mb-4 list-disc list-inside">
-              <li>"Show me all financial documents from 2023"</li>
-              <li>"Photos from my vacation in France"</li>
-              <li>"All contracts with Company XYZ"</li>
+              <li>{t('example_1')}</li>
+              <li>{t('example_2')}</li>
+              <li>{t('example_3')}</li>
             </ul>
 
             <textarea
               value={newQuery}
               onChange={(e) => setNewQuery(e.target.value)}
-              placeholder="Enter your query..."
+              placeholder={t('query_placeholder')}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               rows={3}
             />
@@ -311,14 +314,14 @@ export default function CollectionsPage() {
                 }}
                 className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >
-                Cancel
+                {tCommon('cancel')}
               </button>
               <button
                 onClick={handleCreateCollection}
                 disabled={!newQuery.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create Collection
+                {t('create')}
               </button>
             </div>
           </div>

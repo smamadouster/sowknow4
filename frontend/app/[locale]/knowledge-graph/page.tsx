@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import { GraphVisualization } from '@/components/knowledge-graph/GraphVisualization';
 import { EntityList } from '@/components/knowledge-graph/EntityList';
 import { EntityDetail } from '@/components/knowledge-graph/EntityDetail';
+import { useTranslations } from 'next-intl';
 
 interface GraphData {
   nodes: Array<{
@@ -32,6 +33,9 @@ interface GraphData {
 }
 
 export default function KnowledgeGraphPage() {
+  const t = useTranslations('knowledge_graph');
+  const tCommon = useTranslations('common');
+
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +57,7 @@ export default function KnowledgeGraphPage() {
         setGraphData(response.data as GraphData);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load graph');
+      setError(err instanceof Error ? err.message : t('error_loading'));
     } finally {
       setLoading(false);
     }
@@ -68,17 +72,6 @@ export default function KnowledgeGraphPage() {
     setView('graph');
   };
 
-  const ENTITY_TYPES = [
-    { value: '', label: 'All Types' },
-    { value: 'person', label: 'People' },
-    { value: 'organization', label: 'Organizations' },
-    { value: 'location', label: 'Locations' },
-    { value: 'concept', label: 'Concepts' },
-    { value: 'event', label: 'Events' },
-    { value: 'product', label: 'Products' },
-    { value: 'project', label: 'Projects' },
-  ];
-
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -86,9 +79,9 @@ export default function KnowledgeGraphPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Knowledge Graph</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{t('title')}</h1>
               <p className="text-sm text-gray-500">
-                Explore entities, relationships, and timeline events from your documents
+                {t('subtitle')}
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -98,11 +91,14 @@ export default function KnowledgeGraphPage() {
                 onChange={(e) => setSelectedEntityType(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {ENTITY_TYPES.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
+                <option value="">{t('filter_all_types')}</option>
+                <option value="person">{t('filter_people')}</option>
+                <option value="organization">{t('filter_organizations')}</option>
+                <option value="location">{t('filter_locations')}</option>
+                <option value="concept">{t('filter_concepts')}</option>
+                <option value="event">{t('filter_events')}</option>
+                <option value="product">{t('filter_products')}</option>
+                <option value="project">{t('filter_projects')}</option>
               </select>
 
               {/* View Toggle */}
@@ -115,7 +111,7 @@ export default function KnowledgeGraphPage() {
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  Graph
+                  {t('view_graph')}
                 </button>
                 <button
                   onClick={() => setView('list')}
@@ -125,7 +121,7 @@ export default function KnowledgeGraphPage() {
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  List
+                  {t('view_list')}
                 </button>
                 <button
                   onClick={() => setView('timeline')}
@@ -135,7 +131,7 @@ export default function KnowledgeGraphPage() {
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  Timeline
+                  {t('view_timeline')}
                 </button>
               </div>
 
@@ -144,7 +140,7 @@ export default function KnowledgeGraphPage() {
                 onClick={loadGraph}
                 disabled={loading}
                 className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
-                title="Refresh"
+                title={t('refresh')}
               >
                 <svg
                   className={`w-5 h-5 text-gray-600 ${loading ? 'animate-spin' : ''}`}
@@ -195,7 +191,7 @@ export default function KnowledgeGraphPage() {
                 {loading ? (
                   <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
-                    <p className="text-gray-500">Loading knowledge graph...</p>
+                    <p className="text-gray-500">{t('loading')}</p>
                   </div>
                 ) : graphData && graphData.nodes.length > 0 ? (
                   <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -212,7 +208,7 @@ export default function KnowledgeGraphPage() {
                     <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No entities found</h3>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">{t('no_entities')}</h3>
                     <p className="text-gray-500 mb-4">
                       Extract entities from your documents to build the knowledge graph.
                     </p>
@@ -262,6 +258,9 @@ export default function KnowledgeGraphPage() {
  * Timeline View Component
  */
 function TimelineView() {
+  const t = useTranslations('knowledge_graph');
+  const tCommon = useTranslations('common');
+
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -294,7 +293,7 @@ function TimelineView() {
         setEvents((response.data as any).events || []);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load timeline');
+      setError(err instanceof Error ? err.message : t('error_loading'));
     } finally {
       setLoading(false);
     }
@@ -303,7 +302,7 @@ function TimelineView() {
   return (
     <div className="bg-white rounded-lg border border-gray-200">
       <div className="p-4 border-b border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Timeline</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('timeline')}</h3>
         <div className="flex gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
@@ -328,7 +327,7 @@ function TimelineView() {
 
       <div className="p-4 max-h-[500px] overflow-y-auto">
         {loading ? (
-          <div className="text-center text-gray-500 py-8">Loading timeline...</div>
+          <div className="text-center text-gray-500 py-8">{tCommon('loading')}</div>
         ) : error ? (
           <div className="text-center text-red-500 py-8">{error}</div>
         ) : events.length === 0 ? (

@@ -15,6 +15,7 @@ from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.models.user import User
 from app.models.document import Document, DocumentBucket
 from app.services.search_service import search_service
+from app.services.pii_detection_service import pii_detection_service
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +23,11 @@ logger = logging.getLogger(__name__)
 # Configuration
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-OLLAMA_URL = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # Model configurations
 GEMINI_MODEL = "gemini-2.0-flash-exp"
-OLLAMA_MODEL = "mistral:7b-instruct"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
 
 
 class GeminiService:
@@ -285,6 +286,12 @@ class ChatService:
         Returns:
             Tuple of (source_documents, has_confidential)
         """
+        # Check for PII in query for privacy protection
+        has_pii = pii_detection_service.detect_pii(query)
+        if has_pii:
+            pii_summary = pii_detection_service.get_pii_summary(query)
+            logger.warning(f"PII detected in chat query by user {current_user.email}: {pii_summary['detected_types']}")
+
         # Get session to check document scope
         session = db.query(ChatSession).filter(
             ChatSession.id == session_id
@@ -307,19 +314,24 @@ class ChatService:
                 if str(r.document_id) in scope_set
             ]
 
-        # Check for confidential documents
+        # Check for confidential documents OR PII in query
         has_confidential = any(
             r.document_bucket == "confidential" for r in search_result["results"]
-        )
+        ) or has_pii
 
         # Format as source documents
         sources = []
         for r in search_result["results"][:5]:  # Top 5 results
+            # Redact PII from chunk text if PII detected
+            chunk_text = r.chunk_text
+            if has_pii:
+                chunk_text, _ = pii_detection_service.redact_pii(chunk_text)
+
             sources.append({
                 "document_id": r.document_id,
                 "document_name": r.document_name,
                 "chunk_id": r.chunk_id,
-                "chunk_text": r.chunk_text,
+                "chunk_text": chunk_text,
                 "relevance_score": r.final_score
             })
 

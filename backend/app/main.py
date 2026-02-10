@@ -44,18 +44,21 @@ app = FastAPI(
 )
 
 # Security middleware
+allowed_hosts = os.getenv("ALLOWED_HOSTS", "sowknow.gollamtech.com,localhost").split(",")
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"]  # In production, set specific hosts
+    allowed_hosts=allowed_hosts  # Specific hosts only
 )
 
 # CORS middleware
+# Get allowed origins from environment or use production domain
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://sowknow.gollamtech.com").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this!
+    allow_origins=allowed_origins,  # Specific domains only
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 # Include routers

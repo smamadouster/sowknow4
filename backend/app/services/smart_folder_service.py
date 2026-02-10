@@ -60,7 +60,7 @@ class SmartFolderService:
         # Search for relevant documents
         documents = await self._search_documents_for_topic(
             topic=topic,
-            include_confidential=include_confidential and (user.role == UserRole.ADMIN or user.can_access_confidential),
+            include_confidential=include_confidential and (user.role in [UserRole.ADMIN, UserRole.SUPERUSER] or user.can_access_confidential),
             user=user,
             db=db
         )

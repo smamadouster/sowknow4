@@ -80,6 +80,63 @@ try:
 except ImportError:
     _admin_schemas = []
 
+# Collection schemas - check if they exist
+try:
+    from app.schemas.collection import (
+        ParsedIntentResponse,
+        CollectionCreate,
+        CollectionUpdate,
+        CollectionResponse,
+        CollectionDetailResponse,
+        CollectionListResponse,
+        CollectionPreviewRequest,
+        CollectionPreviewResponse,
+        CollectionItemCreate,
+        CollectionItemUpdate,
+        CollectionItemResponse,
+        CollectionChatCreate,
+        CollectionChatResponse,
+        CollectionBulkAddRequest,
+        CollectionBulkRemoveRequest,
+        CollectionRefreshRequest,
+        CollectionStatsResponse,
+        SmartFolderGenerateRequest,
+        SmartFolderResponse,
+        ReportFormat,
+        CollectionReportRequest,
+        CollectionReportResponse,
+        CollectionVisibility,
+        CollectionType,
+    )
+    _collection_schemas = [
+        "ParsedIntentResponse",
+        "CollectionCreate",
+        "CollectionUpdate",
+        "CollectionResponse",
+        "CollectionDetailResponse",
+        "CollectionListResponse",
+        "CollectionPreviewRequest",
+        "CollectionPreviewResponse",
+        "CollectionItemCreate",
+        "CollectionItemUpdate",
+        "CollectionItemResponse",
+        "CollectionChatCreate",
+        "CollectionChatResponse",
+        "CollectionBulkAddRequest",
+        "CollectionBulkRemoveRequest",
+        "CollectionRefreshRequest",
+        "CollectionStatsResponse",
+        "SmartFolderGenerateRequest",
+        "SmartFolderResponse",
+        "ReportFormat",
+        "CollectionReportRequest",
+        "CollectionReportResponse",
+        "CollectionVisibility",
+        "CollectionType",
+    ]
+except ImportError:
+    _collection_schemas = []
+
 __all__ = [
     "UserCreate",
     "UserPublic",
@@ -91,4 +148,5 @@ __all__ = [
     *_chat_schemas,
     *_search_schemas,
     *_admin_schemas,
+    *_collection_schemas,
 ]

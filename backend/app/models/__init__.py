@@ -4,6 +4,21 @@ from app.models.user import User
 from app.models.document import Document, DocumentTag, DocumentChunk
 from app.models.chat import ChatSession, ChatMessage, LLMProvider, MessageRole
 from app.models.processing import ProcessingQueue, TaskType, TaskStatus
+from app.models.collection import (
+    Collection,
+    CollectionItem,
+    CollectionChatSession,
+    CollectionVisibility,
+    CollectionType
+)
+from app.models.knowledge_graph import (
+    Entity,
+    EntityRelationship,
+    EntityMention,
+    TimelineEvent,
+    EntityType,
+    RelationType
+)
 
 __all__ = [
     "Base",
@@ -18,4 +33,15 @@ __all__ = [
     "ProcessingQueue",
     "TaskType",
     "TaskStatus",
+    "Collection",
+    "CollectionItem",
+    "CollectionChatSession",
+    "CollectionVisibility",
+    "CollectionType",
+    "Entity",
+    "EntityRelationship",
+    "EntityMention",
+    "TimelineEvent",
+    "EntityType",
+    "RelationType",
 ]

@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Boolean, UUID, Enum
+from sqlalchemy.orm import relationship
 import uuid
 from app.models.base import Base, TimestampMixin
 import enum
@@ -20,6 +21,9 @@ class User(Base, TimestampMixin):
     is_superuser = Column(Boolean, default=False)
     can_access_confidential = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+
+    # Relationships
+    collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User {self.email} ({self.role})>"

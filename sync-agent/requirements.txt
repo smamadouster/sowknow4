@@ -1,0 +1,14 @@
+# SOWKNOW Sync Agent Requirements
+# Python 3.9+
+
+# API requests
+requests>=2.31.0
+
+# File system watching
+watchdog>=3.0.0
+
+# Keyring for secure token storage
+keyring>=24.0.0
+
+# Additional utilities
+pathlib2>=2.3.7; python_version < '3.4'

@@ -1,5 +1,10 @@
 """
-Chat service for RAG-powered conversations with Gemini Flash and Ollama
+Chat service for RAG-powered conversations with Kimi 2.5, Gemini Flash, and Ollama
+
+LLM Routing Strategy:
+- Chatbot/Telegram (general chat without docs): Kimi 2.5
+- Smart Features (RAG with public docs): Gemini Flash
+- Confidential Docs (RAG with confidential docs): Ollama
 """
 import os
 import logging
@@ -16,6 +21,13 @@ from app.models.user import User
 from app.models.document import Document, DocumentBucket
 from app.services.search_service import search_service
 from app.services.pii_detection_service import pii_detection_service
+
+# Import all LLM services
+try:
+    from app.services.kimi_service import kimi_service
+except ImportError:
+    kimi_service = None
+    logger.warning("Kimi service not available")
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +261,7 @@ class ChatService:
     def __init__(self):
         self.gemini_service = GeminiService()
         self.ollama_service = OllamaService()
+        self.kimi_service = kimi_service  # For chatbot/telegram/general chat
         self.max_context_messages = 10
 
     async def get_conversation_history(
@@ -427,13 +440,35 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Build RAG context
         messages = self.build_rag_context(user_message, sources, history)
 
-        # Select LLM based on confidentiality
+        # Select LLM based on use case and confidentiality
+        # Priority:
+        # 1. Confidential docs -> Ollama (privacy)
+        # 2. RAG with public docs -> Gemini Flash (smart features)
+        # 3. General chat (no docs) -> Kimi 2.5 (chatbot/telegram)
+
         if has_confidential:
+            # Confidential: always use Ollama
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
-        else:
+            routing_reason = "confidential_docs"
+        elif sources and len(sources) > 0:
+            # RAG mode with public docs: use Gemini Flash
             llm_service = self.gemini_service
             llm_provider = LLMProvider.GEMINI
+            routing_reason = "rag_public_docs"
+        else:
+            # General chat mode: use Kimi 2.5 for chatbot/telegram
+            if self.kimi_service:
+                llm_service = self.kimi_service
+                llm_provider = LLMProvider.KIMI
+                routing_reason = "general_chat"
+            else:
+                # Fallback to Gemini if Kimi not available
+                llm_service = self.gemini_service
+                llm_provider = LLMProvider.GEMINI
+                routing_reason = "general_chat_fallback"
+
+        logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
         # Generate response
         response_text = ""
@@ -482,13 +517,35 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Build RAG context
         messages = self.build_rag_context(user_message, sources, history)
 
-        # Select LLM based on confidentiality
+        # Select LLM based on use case and confidentiality
+        # Priority:
+        # 1. Confidential docs -> Ollama (privacy)
+        # 2. RAG with public docs -> Gemini Flash (smart features)
+        # 3. General chat (no docs) -> Kimi 2.5 (chatbot/telegram)
+
         if has_confidential:
+            # Confidential: always use Ollama
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
-        else:
+            routing_reason = "confidential_docs"
+        elif sources and len(sources) > 0:
+            # RAG mode with public docs: use Gemini Flash
             llm_service = self.gemini_service
             llm_provider = LLMProvider.GEMINI
+            routing_reason = "rag_public_docs"
+        else:
+            # General chat mode: use Kimi 2.5 for chatbot/telegram
+            if self.kimi_service:
+                llm_service = self.kimi_service
+                llm_provider = LLMProvider.KIMI
+                routing_reason = "general_chat"
+            else:
+                # Fallback to Gemini if Kimi not available
+                llm_service = self.gemini_service
+                llm_provider = LLMProvider.GEMINI
+                routing_reason = "general_chat_fallback"
+
+        logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
         # Send initial event with LLM info
         yield f"event: llm_info\ndata: {json.dumps({'llm_used': llm_provider.value, 'has_confidential': has_confidential})}\n\n"

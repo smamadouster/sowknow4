@@ -9,8 +9,9 @@ from app.models.base import Base, TimestampMixin
 
 class LLMProvider(str, enum.Enum):
     """LLM providers used for chat responses"""
-    GEMINI = "gemini"       # Google AI API (Gemini Flash)
-    OLLAMA = "ollama"       # Shared local Ollama instance
+    KIMI = "kimi"           # Moonshot AI (Kimi 2.5) - for chatbot, telegram, search agentic
+    GEMINI = "gemini"       # Google AI API (Gemini Flash) - for smart folders, RAG, collections, knowledge graph
+    OLLAMA = "ollama"       # Shared local Ollama instance - for confidential documents
 
 
 class MessageRole(str, enum.Enum):

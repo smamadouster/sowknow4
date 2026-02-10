@@ -246,7 +246,7 @@ Response:
   "collection_name": "Recent Sales Reports"
 }
 
-Now parse the user's query:"
+Now parse the user's query:"""
 
     def _extract_current_year_context(self) -> str:
         """Get current year/month context for relative date parsing"""

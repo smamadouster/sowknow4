@@ -49,7 +49,7 @@ class KimiService:
     def __init__(self):
         self.api_key = os.getenv("KIMI_API_KEY", "")
         self.base_url = "https://api.moonshot.cn/v1"
-        self.model = os.getenv("KIMI_MODEL", "moonshot-v1-8k")
+        self.model = os.getenv("KIMI_MODEL", "moonshotai/kimi-k2-5")
         self.timeout = 30.0
         self.max_retries = 3
 

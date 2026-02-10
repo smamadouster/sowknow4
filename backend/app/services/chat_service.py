@@ -33,12 +33,12 @@ logger = logging.getLogger(__name__)
 
 
 # Configuration
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # Model configurations
-GEMINI_MODEL = "gemini-pro"
+GEMINI_MODEL = "gemini-2.0-flash-exp"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
 
 

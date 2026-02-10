@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-pro")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 GEMINI_MAX_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "1000000"))
 GEMINI_CACHE_TTL = int(os.getenv("GEMINI_CACHE_TTL", "3600"))
 GEMINI_DAILY_BUDGET_CAP = float(os.getenv("GEMINI_DAILY_BUDGET_CAP", "50.00"))

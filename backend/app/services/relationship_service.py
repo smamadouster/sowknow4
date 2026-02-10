@@ -18,7 +18,7 @@ from app.models.knowledge_graph import (
     EntityType,
     RelationType
 )
-from app.services.entity_extraction_service import entity_extraction_service
+from app.services.entity_extraction_service import entity_extraction_service, ExtractedEntity
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,38 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies for ML/AI
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    curl \
+    # For OCR
+    tesseract-ocr \
+    tesseract-ocr-fra \
+    tesseract-ocr-eng \
+    # For document processing
+    libpoppler-cpp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Download multilingual-e5-large model on build
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+    SentenceTransformer('intfloat/multilingual-e5-large')" || echo "Model will download on first run"
+
+# Copy application
+COPY . .
+
+# Create directories for file storage
+RUN mkdir -p /data/public /data/confidential
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Default command for Celery worker
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]

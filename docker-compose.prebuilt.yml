@@ -1,0 +1,61 @@
+services:
+  # PostgreSQL with pgvector
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sowknow4-postgres
+    environment:
+      POSTGRES_DB: sowknow
+      POSTGRES_USER: sowknow
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sowknow-postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Redis for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: sowknow4-redis
+    ports:
+      - "6379:6379"
+
+  # FastAPI Backend
+  backend:
+    image: python:3.11-slim
+    container_name: sowknow4-backend
+    environment:
+      DATABASE_URL: postgresql://sowknow:${DATABASE_PASSWORD}@postgres:5432/sowknow
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY}
+      HUNYUAN_API_KEY: ${HUNYUAN_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+    command: sh -c "pip install fastapi uvicorn sqlalchemy psycopg2-binary python-dotenv && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (static HTML)
+  frontend:
+    image: python:3.11-slim
+    container_name: sowknow4-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    working_dir: /app
+    command: python3 -m http.server 3000
+
+volumes:
+  sowknow-postgres-data:

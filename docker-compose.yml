@@ -1,0 +1,233 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sowknow4-postgres
+    environment:
+      - POSTGRES_DB=sowknow
+      - POSTGRES_USER=sowknow
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-ChangeMe123!}
+    volumes:
+      - sowknow-postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sowknow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: '1.5'
+    networks:
+      - sowknow-net
+
+  # Redis for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: sowknow4-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - sowknow-redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+      - sowknow-net
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.minimal
+    container_name: sowknow4-backend
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-key-in-production}
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
+      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - LOCAL_LLM_URL=http://host.docker.internal:11434
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: '1.0'
+    networks:
+      - sowknow-net
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: sowknow4-celery-worker
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - REDIS_URL=redis://redis:6379/0
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
+      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - LOCAL_LLM_URL=http://host.docker.internal:11434
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout 5 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: '1.5'
+    networks:
+      - sowknow-net
+
+  # Celery Beat
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: sowknow4-celery-beat
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-key-in-production}
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
+      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+    command: celery -A app.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sowknow4-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    networks:
+      - sowknow-net
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: sowknow4-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    networks:
+      - sowknow-net
+
+  # Telegram Bot
+  telegram-bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.telegram
+    container_name: sowknow4-telegram-bot
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)' || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    restart: unless-stopped
+    networks:
+      - sowknow-net
+
+networks:
+  sowknow-net:
+    driver: bridge
+
+volumes:
+  sowknow-postgres-data:
+  sowknow-redis-data:
+  sowknow-public-data:
+  sowknow-confidential-data:

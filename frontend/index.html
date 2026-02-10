@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOWKNOW4 - Legacy Knowledge System</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 50px 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        .status-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+        .status-card h2 {
+            margin-top: 0;
+            color: #fff;
+        }
+        .status-list {
+            list-style: none;
+            padding: 0;
+        }
+        .status-list li {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+        }
+        .status-list li:before {
+            content: "✅";
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .endpoint-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        .endpoint-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .endpoint-card a {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            opacity: 0.7;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 SOWKNOW4</h1>
+            <p>Multi-Generational Legacy Knowledge System</p>
+        </div>
+        
+        <div class="status-card">
+            <h2>📊 System Status</h2>
+            <ul class="status-list">
+                <li>Backend API is running on port 8000</li>
+                <li>PostgreSQL database is connected</li>
+                <li>Redis cache is running</li>
+                <li>Frontend is operational</li>
+            </ul>
+        </div>
+        
+        <div class="status-card">
+            <h2>🔗 Access Endpoints</h2>
+            <div class="endpoints">
+                <div class="endpoint-card">
+                    <h3>Backend API</h3>
+                    <a href="http://localhost:8000" target="_blank">http://localhost:8000</a>
+                </div>
+                <div class="endpoint-card">
+                    <h3>API Documentation</h3>
+                    <a href="http://localhost:8000/api/docs" target="_blank">http://localhost:8000/api/docs</a>
+                </div>
+                <div class="endpoint-card">
+                    <h3>Health Check</h3>
+                    <a href="http://localhost:8000/health" target="_blank">http://localhost:8000/health</a>
+                </div>
+                <div class="endpoint-card">
+                    <h3>API Status</h3>
+                    <a href="http://localhost:8000/api/status" target="_blank">http://localhost:8000/api/status</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>SOWKNOW4 - Phase 1: Core MVP | Development Environment</p>
+            <p>Execution Plan v1.1 | Technical Stack v1.1</p>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh status every 30 seconds
+        setTimeout(() => {
+            window.location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sowknow4-postgres
+    environment:
+      POSTGRES_DB: sowknow
+      POSTGRES_USER: sowknow
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sowknow-postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+
+  redis:
+    image: redis:7-alpine
+    container_name: sowknow4-redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: sowknow4-backend
+    environment:
+      DATABASE_URL: postgresql://sowknow:${DATABASE_PASSWORD}@postgres:5432/sowknow
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY}
+      HUNYUAN_API_KEY: ${HUNYUAN_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+
+volumes:
+  sowknow-postgres-data:

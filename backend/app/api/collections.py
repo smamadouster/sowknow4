@@ -25,6 +25,7 @@ from app.schemas.collection import (
     CollectionRefreshRequest,
     CollectionStatsResponse,
     ParsedIntentResponse,
+    CollectionChatResponse,
 )
 from app.services.collection_service import collection_service
 from app.services.collection_chat_service import collection_chat_service

@@ -20,8 +20,8 @@
 #   frontend:      512MB  (Next.js application)
 #   nginx:         128MB  (Reverse proxy)
 #   certbot:       128MB  (SSL certificate management)
-#   ollama:        2GB    (Confidential document processing)
-#   TOTAL:         5.5GB  (Within 6.4GB budget)
+#   ollama:        SHARED (Uses ghostshell-api on host, no container memory)
+#   TOTAL:         3.5GB  (Well within 6.4GB budget)
 #
 # Backup Strategy:
 #   - Daily PostgreSQL dumps: docker exec sowknow-postgres pg_dump -U sowknow sowknow > backup_$(date +%Y%m%d).sql
@@ -30,6 +30,11 @@
 #   - 7-4-3 retention policy: 7 daily, 4 weekly, 3 monthly backups
 
 version: '3.8'
+
+# Load environment variables from .secrets file
+# Create .secrets file with: POSTGRES_PASSWORD, GEMINI_API_KEY, HUNYUAN_API_KEY, HUNYUAN_SECRET_ID
+env_file:
+  - .secrets
 
 services:
   # PostgreSQL with pgvector
@@ -70,31 +75,10 @@ services:
       timeout: 3s
       retries: 5
 
-  # Ollama - Local LLM for confidential documents
-  # NOTE: This processes ONLY confidential documents. Public documents use Gemini Flash.
-  ollama:
-    image: ollama/ollama:latest
-    container_name: sowknow-ollama
-    restart: unless-stopped
-    mem_limit: 2g
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - sowknow-net
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # GPU is not available on this VPS - models run on CPU
-    deploy:
-      resources:
-        limits:
-          cpus: '2'  # Limit to 2 CPU cores to avoid overwhelming the VPS
+  # Ollama - REMOVED: Using shared Ollama instance (ghostshell-api)
+  # The shared Ollama is already running on the VPS at host's port 11434
+  # Backend connects via: OLLAMA_BASE_URL=http://host.docker.internal:11434
+  # This saves 2GB memory and avoids port conflicts
 
   # Backend API
   backend:
@@ -114,18 +98,18 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
       - HUNYUAN_SECRET_ID=${HUNYUAN_SECRET_ID}
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - uploads:/app/uploads
       - backups:/app/backups
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - sowknow-net
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -154,16 +138,17 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
       - HUNYUAN_SECRET_ID=${HUNYUAN_SECRET_ID}
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - uploads:/app/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - sowknow-net
     depends_on:
       - postgres
       - redis
       - backend
-      - ollama
     healthcheck:
       test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
       interval: 60s
@@ -239,8 +224,6 @@ volumes:
   certbot-www:
     driver: local
   certbot-conf:
-    driver: local
-  ollama_data:
     driver: local
 
 networks:

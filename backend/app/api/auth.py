@@ -18,6 +18,7 @@ from app.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS
 )
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -262,42 +263,15 @@ async def refresh_token(
     )
 
 @router.get("/me", response_model=UserPublic)
-async def get_current_user(
-    response: Response,
-    db: Session = Depends(get_db)
+async def get_me(
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get current user information using token from httpOnly cookie.
 
-    SECURITY: Token is extracted from httpOnly cookie, not from Authorization header.
+    SECURITY: Token is extracted from httpOnly cookie via get_current_user dependency.
     """
-    from fastapi import Request
-    request: Request = response.scope.get("request")
-
-    access_token = request.cookies.get(COOKIE_ACCESS_TOKEN_NAME) if request else None
-
-    if not access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
-
-    payload = decode_token(access_token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
-        )
-
-    email = payload.get("sub")
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
-    return UserPublic.from_orm(user)
+    return UserPublic.from_orm(current_user)
 
 @router.post("/logout", response_model=LoginResponse)
 async def logout(response: Response):

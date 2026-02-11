@@ -38,7 +38,7 @@ def get_auth_headers(user: User) -> dict:
 class TestAdminRouteAccess:
     """Test access to admin-only routes"""
 
-    def test_admin_can_access_admin_stats(self, client: TestClient, db: Session):
+    def test_admin_can_access_admin_stats(self, test_client: TestClient, db: Session):
         """Test that admin can access /admin/stats endpoint"""
         # Create admin user
         admin = User(
@@ -61,7 +61,7 @@ class TestAdminRouteAccess:
         # Should return 200 (or 404 if endpoint not yet implemented)
         assert response.status_code in [200, 404]
 
-    def test_user_cannot_access_admin_stats(self, client: TestClient, db: Session):
+    def test_user_cannot_access_admin_stats(self, test_client: TestClient, db: Session):
         """Test that regular user cannot access /admin/stats endpoint"""
         # Create regular user
         user = User(
@@ -84,7 +84,7 @@ class TestAdminRouteAccess:
         # Should return 403 Forbidden
         assert response.status_code == 403
 
-    def test_superuser_cannot_access_admin_stats(self, client: TestClient, db: Session):
+    def test_superuser_cannot_access_admin_stats(self, test_client: TestClient, db: Session):
         """Test that superuser cannot access /admin/stats endpoint (view-only)"""
         # Create superuser
         superuser = User(
@@ -111,7 +111,7 @@ class TestAdminRouteAccess:
 class TestDocumentUploadRBAC:
     """Test RBAC for document upload operations"""
 
-    def test_admin_can_upload_public_document(self, client: TestClient, db: Session):
+    def test_admin_can_upload_public_document(self, test_client: TestClient, db: Session):
         """Test that admin can upload to public bucket"""
         admin = User(
             email="admin@test.com",
@@ -129,7 +129,7 @@ class TestDocumentUploadRBAC:
         # If document upload endpoint exists, admin should succeed
         # Response should be 200 or 201
 
-    def test_admin_can_upload_confidential_document(self, client: TestClient, db: Session):
+    def test_admin_can_upload_confidential_document(self, test_client: TestClient, db: Session):
         """Test that admin can upload to confidential bucket"""
         admin = User(
             email="admin@test.com",
@@ -144,7 +144,7 @@ class TestDocumentUploadRBAC:
         # Admin should be able to upload confidential docs
         # Response should be 200 or 201
 
-    def test_superuser_cannot_upload_any_document(self, client: TestClient, db: Session):
+    def test_superuser_cannot_upload_any_document(self, test_client: TestClient, db: Session):
         """Test that superuser cannot upload documents (view-only)"""
         superuser = User(
             email="super@test.com",
@@ -159,7 +159,7 @@ class TestDocumentUploadRBAC:
         # Superuser should be blocked from upload
         # Response should be 403 Forbidden
 
-    def test_user_cannot_upload_any_document(self, client: TestClient, db: Session):
+    def test_user_cannot_upload_any_document(self, test_client: TestClient, db: Session):
         """Test that regular user cannot upload documents"""
         user = User(
             email="user@test.com",
@@ -178,7 +178,7 @@ class TestDocumentUploadRBAC:
 class TestDocumentDeleteRBAC:
     """Test RBAC for document deletion operations"""
 
-    def test_admin_can_delete_document(self, client: TestClient, db: Session):
+    def test_admin_can_delete_document(self, test_client: TestClient, db: Session):
         """Test that admin can delete documents"""
         # Create admin
         admin = User(
@@ -206,7 +206,7 @@ class TestDocumentDeleteRBAC:
         # Admin should be able to delete
         # Response should be 200
 
-    def test_superuser_cannot_delete_document(self, client: TestClient, db: Session):
+    def test_superuser_cannot_delete_document(self, test_client: TestClient, db: Session):
         """Test that superuser cannot delete documents (view-only)"""
         # Create superuser
         superuser = User(
@@ -234,7 +234,7 @@ class TestDocumentDeleteRBAC:
         # Superuser should be blocked from deletion
         # Response should be 403 Forbidden
 
-    def test_user_cannot_delete_document(self, client: TestClient, db: Session):
+    def test_user_cannot_delete_document(self, test_client: TestClient, db: Session):
         """Test that regular user cannot delete documents"""
         # Create user
         user = User(
@@ -266,7 +266,7 @@ class TestDocumentDeleteRBAC:
 class TestDocumentUpdateRBAC:
     """Test RBAC for document update operations"""
 
-    def test_admin_can_update_document(self, client: TestClient, db: Session):
+    def test_admin_can_update_document(self, test_client: TestClient, db: Session):
         """Test that admin can update documents"""
         admin = User(
             email="admin@test.com",
@@ -292,7 +292,7 @@ class TestDocumentUpdateRBAC:
         # Admin should be able to update
         # Response should be 200
 
-    def test_superuser_cannot_update_document(self, client: TestClient, db: Session):
+    def test_superuser_cannot_update_document(self, test_client: TestClient, db: Session):
         """Test that superuser cannot update documents (view-only)"""
         superuser = User(
             email="super@test.com",
@@ -318,7 +318,7 @@ class TestDocumentUpdateRBAC:
         # Superuser should be blocked from updates
         # Response should be 403 Forbidden
 
-    def test_user_cannot_update_document(self, client: TestClient, db: Session):
+    def test_user_cannot_update_document(self, test_client: TestClient, db: Session):
         """Test that regular user cannot update documents"""
         user = User(
             email="user@test.com",
@@ -348,7 +348,7 @@ class TestDocumentUpdateRBAC:
 class TestDocumentListRBAC:
     """Test RBAC for document list operations"""
 
-    def test_admin_sees_all_documents(self, client: TestClient, db: Session):
+    def test_admin_sees_all_documents(self, test_client: TestClient, db: Session):
         """Test that admin sees all documents (public + confidential)"""
         admin = User(
             email="admin@test.com",
@@ -385,7 +385,7 @@ class TestDocumentListRBAC:
         # Admin should see both documents
         # Response should contain both public and confidential
 
-    def test_superuser_sees_all_documents(self, client: TestClient, db: Session):
+    def test_superuser_sees_all_documents(self, test_client: TestClient, db: Session):
         """Test that superuser sees all documents (public + confidential)"""
         superuser = User(
             email="super@test.com",
@@ -422,7 +422,7 @@ class TestDocumentListRBAC:
         # Superuser should see both documents
         # Response should contain both public and confidential
 
-    def test_user_sees_only_public_documents(self, client: TestClient, db: Session):
+    def test_user_sees_only_public_documents(self, test_client: TestClient, db: Session):
         """Test that regular user only sees public documents"""
         user = User(
             email="user@test.com",
@@ -506,7 +506,7 @@ class TestRolePermissionMatrix:
 class TestRoleEscalationPrevention:
     """Test that role escalation attacks are prevented"""
 
-    def test_cannot_modify_own_role(self, client: TestClient, db: Session):
+    def test_cannot_modify_own_role(self, test_client: TestClient, db: Session):
         """Test that users cannot modify their own role"""
         user = User(
             email="user@test.com",
@@ -522,7 +522,7 @@ class TestRoleEscalationPrevention:
         # This should be blocked
         # Response should be 403
 
-    def test_cannot_modify_other_user_role_without_admin(self, client: TestClient, db: Session):
+    def test_cannot_modify_other_user_role_without_admin(self, test_client: TestClient, db: Session):
         """Test that non-admins cannot modify other users' roles"""
         user1 = User(
             email="user1@test.com",
@@ -546,7 +546,7 @@ class TestRoleEscalationPrevention:
         # This should be blocked
         # Response should be 403
 
-    def test_token_role_is_honored(self, client: TestClient, db: Session):
+    def test_token_role_is_honored(self, test_client: TestClient, db: Session):
         """Test that the role in the JWT token is enforced, not just database"""
         user = User(
             email="user@test.com",
@@ -568,3 +568,173 @@ class TestRoleEscalationPrevention:
         # Try to access admin endpoint with tampered token
         # Server should validate against database role
         # Response should be 403 or 401
+
+
+class TestAdminPasswordReset:
+    """Test admin password reset endpoint RBAC"""
+
+    def get_auth_headers(self, user: User) -> dict:
+        """Helper to create auth headers for a user"""
+        token = create_access_token(data={
+            "sub": user.email,
+            "role": user.role.value,
+            "user_id": str(user.id)
+        })
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_admin_can_reset_user_password(self, test_client: TestClient, db: Session):
+        """Test that admin can reset user password"""
+        # Create admin user
+        admin = User(
+            email="admin@test.com",
+            hashed_password=get_password_hash("admin_password"),
+            full_name="Admin User",
+            role=UserRole.ADMIN,
+            is_active=True
+        )
+        db.add(admin)
+
+        # Create target user
+        target_user = User(
+            email="target@test.com",
+            hashed_password=get_password_hash("old_password"),
+            full_name="Target User",
+            role=UserRole.USER,
+            is_active=True
+        )
+        db.add(target_user)
+        db.commit()
+        db.refresh(target_user)
+
+        # Admin resets user's password
+        response = client.post(
+            f"/api/v1/admin/users/{target_user.id}/reset-password",
+            json={"new_password": "NewSecurePassword123!"},
+            headers=self.get_auth_headers(admin)
+        )
+
+        # Should succeed
+        assert response.status_code == 200
+
+        # Verify message
+        data = response.json()
+        assert "message" in data
+        assert data["message"] == "Password reset successfully"
+
+    def test_superuser_cannot_reset_user_password(self, test_client: TestClient, db: Session):
+        """Test that SuperUser CANNOT reset user password (403 Forbidden)"""
+        # Create superuser
+        superuser = User(
+            email="super@test.com",
+            hashed_password=get_password_hash("super_password"),
+            full_name="Super User",
+            role=UserRole.SUPERUSER,
+            is_active=True
+        )
+        db.add(superuser)
+
+        # Create target user
+        target_user = User(
+            email="target2@test.com",
+            hashed_password=get_password_hash("old_password"),
+            full_name="Target User 2",
+            role=UserRole.USER,
+            is_active=True
+        )
+        db.add(target_user)
+        db.commit()
+        db.refresh(target_user)
+
+        # Superuser tries to reset user's password
+        response = client.post(
+            f"/api/v1/admin/users/{target_user.id}/reset-password",
+            json={"new_password": "NewSecurePassword123!"},
+            headers=self.get_auth_headers(superuser)
+        )
+
+        # Should return 403 Forbidden (SuperUser view-only)
+        assert response.status_code == 403
+
+    def test_regular_user_cannot_reset_user_password(self, test_client: TestClient, db: Session):
+        """Test that regular user CANNOT reset user password (403 Forbidden)"""
+        # Create regular user
+        user = User(
+            email="user3@test.com",
+            hashed_password=get_password_hash("user_password"),
+            full_name="Regular User 3",
+            role=UserRole.USER,
+            is_active=True
+        )
+        db.add(user)
+
+        # Create target user
+        target_user = User(
+            email="target3@test.com",
+            hashed_password=get_password_hash("old_password"),
+            full_name="Target User 3",
+            role=UserRole.USER,
+            is_active=True
+        )
+        db.add(target_user)
+        db.commit()
+        db.refresh(target_user)
+
+        # Regular user tries to reset another user's password
+        response = client.post(
+            f"/api/v1/admin/users/{target_user.id}/reset-password",
+            json={"new_password": "NewSecurePassword123!"},
+            headers=self.get_auth_headers(user)
+        )
+
+        # Should return 403 Forbidden
+        assert response.status_code == 403
+
+    def test_password_reset_requires_authentication(self, test_client: TestClient, db: Session):
+        """Test that password reset requires authentication"""
+        # Create target user
+        target_user = User(
+            email="target4@test.com",
+            hashed_password=get_password_hash("old_password"),
+            full_name="Target User 4",
+            role=UserRole.USER,
+            is_active=True
+        )
+        db.add(target_user)
+        db.commit()
+        db.refresh(target_user)
+
+        # Try to reset password without authentication
+        response = client.post(
+            f"/api/v1/admin/users/{target_user.id}/reset-password",
+            json={"new_password": "NewSecurePassword123!"}
+        )
+
+        # Should return 401 (no authentication)
+        assert response.status_code == 401
+
+    def test_password_reset_for_nonexistent_user_returns_404(self, test_client: TestClient, db: Session):
+        """Test that password reset for non-existent user returns 404"""
+        # Create admin user
+        admin = User(
+            email="admin2@test.com",
+            hashed_password=get_password_hash("admin_password"),
+            full_name="Admin User 2",
+            role=UserRole.ADMIN,
+            is_active=True
+        )
+        db.add(admin)
+        db.commit()
+
+        # Use a fake UUID
+        import uuid
+        fake_id = uuid.uuid4()
+
+        # Try to reset password of non-existent user
+        response = client.post(
+            f"/api/v1/admin/users/{fake_id}/reset-password",
+            json={"new_password": "NewSecurePassword123!"},
+            headers=self.get_auth_headers(admin)
+        )
+
+        # Should return 404
+        assert response.status_code == 404

@@ -211,11 +211,15 @@ services:
       - sowknow-net
 
   # Nginx Reverse Proxy
+  # NOTE: Only enable if no other reverse proxy is using ports 80/443
+  # If using existing caddy/nginx, set NGINX_ENABLED=false
   nginx:
     image: nginx:alpine
     container_name: sowknow4-nginx
     restart: unless-stopped
     logging: *default-logging
+    profiles:
+      - nginx  # Use: docker compose --profile nginx up -d
     volumes:
       - ./nginx/nginx-http-only.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro

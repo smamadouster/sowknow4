@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -8,18 +8,88 @@ import uuid
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserPublic, UserInDB
-from app.schemas.token import Token
+from app.schemas.token import Token, LoginResponse
 from app.utils.security import (
     verify_password,
     get_password_hash,
     create_access_token,
     create_refresh_token,
     decode_token,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS
 )
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+# Cookie configuration
+COOKIE_ACCESS_TOKEN_NAME = "access_token"
+COOKIE_REFRESH_TOKEN_NAME = "refresh_token"
+
+# In production, these should be set based on environment
+COOKIE_SECURE = True  # True for HTTPS
+COOKIE_SAMESITE = "strict"  # Prevents CSRF attacks
+COOKIE_DOMAIN = None  # None means current domain only
+
+def set_auth_cookies(
+    response: Response,
+    access_token: str,
+    refresh_token: str
+) -> None:
+    """
+    Set httpOnly, Secure, SameSite cookies for authentication tokens.
+
+    SECURITY CRITICAL:
+    - httpOnly: Prevents XSS from stealing tokens
+    - Secure: Ensures cookies only sent over HTTPS
+    - SameSite=strict: Prevents CSRF attacks
+    """
+    # Set access token cookie (15 minutes)
+    response.set_cookie(
+        key=COOKIE_ACCESS_TOKEN_NAME,
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Convert to seconds
+        expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+        domain=COOKIE_DOMAIN,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE
+    )
+
+    # Set refresh token cookie (7 days)
+    response.set_cookie(
+        key=COOKIE_REFRESH_TOKEN_NAME,
+        value=refresh_token,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # Convert to seconds
+        expires=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
+        domain=COOKIE_DOMAIN,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE
+    )
+
+def clear_auth_cookies(response: Response) -> None:
+    """Clear authentication cookies."""
+    response.delete_cookie(
+        key=COOKIE_ACCESS_TOKEN_NAME,
+        path="/",
+        domain=COOKIE_DOMAIN
+    )
+    response.delete_cookie(
+        key=COOKIE_REFRESH_TOKEN_NAME,
+        path="/",
+        domain=COOKIE_DOMAIN
+    )
+
+def get_token_from_cookies(request: Any) -> tuple[str | None, str | None]:
+    """
+    Extract tokens from cookies.
+    Returns (access_token, refresh_token)
+    """
+    access_token = request.cookies.get(COOKIE_ACCESS_TOKEN_NAME)
+    refresh_token = request.cookies.get(COOKIE_REFRESH_TOKEN_NAME)
+    return access_token, refresh_token
 
 def authenticate_user(db: Session, email: str, password: str):
     """Authenticate a user with email and password"""
@@ -56,12 +126,18 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     
     return UserPublic.from_orm(db_user)
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=LoginResponse)
 async def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    """Login and get access token"""
+    """
+    Login and set httpOnly cookies with tokens.
+
+    SECURITY: Tokens are set in httpOnly, Secure, SameSite cookies.
+    They are NOT returned in the response body to prevent XSS attacks.
+    """
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -69,13 +145,13 @@ async def login(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
         )
-    
+
     # Create tokens
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -86,7 +162,7 @@ async def login(
         },
         expires_delta=access_token_expires
     )
-    
+
     refresh_token = create_refresh_token(
         data={
             "sub": user.email,
@@ -94,23 +170,63 @@ async def login(
             "user_id": str(user.id)
         }
     )
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "refresh_token": refresh_token
-    }
 
-@router.post("/refresh", response_model=Token)
-async def refresh_token(refresh_token: str):
-    """Refresh access token using refresh token"""
+    # Set httpOnly cookies with tokens
+    set_auth_cookies(response, access_token, refresh_token)
+
+    # Return user info (NOT tokens in response body)
+    return LoginResponse(
+        message="Login successful",
+        user={
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role
+        }
+    )
+
+@router.post("/refresh", response_model=LoginResponse)
+async def refresh_token(
+    response: Response,
+    refresh_token: str | None = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Refresh access token using refresh token from cookie or request body.
+
+    SECURITY: New tokens are set in httpOnly cookies.
+    The refresh token can be provided via cookie or request body for compatibility.
+    """
+    # Try to get refresh token from cookies if not provided in body
+    if not refresh_token:
+        # For cookie-based refresh, we need to access the request
+        from fastapi import Request
+        request: Request = response.scope.get("request")
+        if request:
+            refresh_token = request.cookies.get(COOKIE_REFRESH_TOKEN_NAME)
+
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required"
+        )
+
     payload = decode_token(refresh_token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token"
         )
-    
+
+    # Verify user still exists and is active
+    email = payload.get("sub")
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive"
+        )
+
     # Create new access token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -121,20 +237,52 @@ async def refresh_token(refresh_token: str):
         },
         expires_delta=access_token_expires
     )
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "refresh_token": refresh_token  # Return same refresh token
-    }
+
+    # Set new access token cookie
+    response.set_cookie(
+        key=COOKIE_ACCESS_TOKEN_NAME,
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+        domain=COOKIE_DOMAIN,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE
+    )
+
+    return LoginResponse(
+        message="Token refreshed successfully",
+        user={
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role
+        }
+    )
 
 @router.get("/me", response_model=UserPublic)
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    response: Response,
     db: Session = Depends(get_db)
 ):
-    """Get current user information"""
-    payload = decode_token(token)
+    """
+    Get current user information using token from httpOnly cookie.
+
+    SECURITY: Token is extracted from httpOnly cookie, not from Authorization header.
+    """
+    from fastapi import Request
+    request: Request = response.scope.get("request")
+
+    access_token = request.cookies.get(COOKIE_ACCESS_TOKEN_NAME) if request else None
+
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+
+    payload = decode_token(access_token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -151,6 +299,20 @@ async def get_current_user(
 
     return UserPublic.from_orm(user)
 
+@router.post("/logout", response_model=LoginResponse)
+async def logout(response: Response):
+    """
+    Logout and clear authentication cookies.
+
+    SECURITY: Clears httpOnly cookies to invalidate the session.
+    """
+    clear_auth_cookies(response)
+
+    return LoginResponse(
+        message="Logout successful",
+        user=None
+    )
+
 
 # Pydantic schema for Telegram auth request
 from pydantic import BaseModel
@@ -163,14 +325,20 @@ class TelegramAuthRequest(BaseModel):
     language_code: str = "en"
 
 
-@router.post("/telegram", response_model=Token)
-async def telegram_auth(auth_data: TelegramAuthRequest, db: Session = Depends(get_db)):
+@router.post("/telegram", response_model=LoginResponse)
+async def telegram_auth(
+    response: Response,
+    auth_data: TelegramAuthRequest,
+    db: Session = Depends(get_db)
+):
     """
     Authenticate or create a user via Telegram.
 
     This endpoint is called by the Telegram bot when a user starts a conversation.
     It creates a new user if one doesn't exist, or returns an existing user.
-    Returns JWT tokens for API authentication.
+
+    SECURITY: Tokens are set in httpOnly, Secure, SameSite cookies.
+    They are NOT returned in the response body to prevent XSS attacks.
     """
     # Create email from Telegram ID
     email = f"telegram_{auth_data.telegram_user_id}@sowknow.local"
@@ -229,8 +397,16 @@ async def telegram_auth(auth_data: TelegramAuthRequest, db: Session = Depends(ge
         }
     )
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "refresh_token": refresh_token
-    }
+    # Set httpOnly cookies with tokens
+    set_auth_cookies(response, access_token, refresh_token)
+
+    # Return user info (NOT tokens in response body)
+    return LoginResponse(
+        message="Telegram authentication successful",
+        user={
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role
+        }
+    )

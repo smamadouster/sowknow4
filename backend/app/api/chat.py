@@ -11,6 +11,7 @@ import json
 from app.database import get_db
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
+from app.api.deps import get_current_user
 from app.schemas.chat import (
     ChatSessionCreate,
     ChatSessionResponse,

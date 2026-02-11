@@ -15,7 +15,7 @@ from app.models.knowledge_graph import Entity, EntityRelationship, EntityType, R
 from app.services.entity_extraction_service import entity_extraction_service
 from app.services.relationship_service import relationship_service
 from app.services.timeline_service import timeline_service
-from app.api.auth import get_current_user
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/knowledge-graph", tags=["knowledge-graph"])
 

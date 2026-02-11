@@ -30,7 +30,7 @@ from app.schemas.collection import (
 )
 from app.services.collection_service import collection_service
 from app.services.collection_chat_service import collection_chat_service
-from app.api.auth import get_current_user
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 

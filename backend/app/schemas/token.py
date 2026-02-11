@@ -11,3 +11,8 @@ class TokenPayload(BaseModel):
     exp: int  # expiration timestamp
     role: str
     user_id: str
+
+class LoginResponse(BaseModel):
+    """Response model for login/telegram auth - returns user info, tokens in httpOnly cookies"""
+    message: str
+    user: Optional[dict] = None  # User info (id, email, full_name, role)

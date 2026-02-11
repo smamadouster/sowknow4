@@ -31,19 +31,97 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Security middleware
+# ============================================================================
+# SECURITY CRITICAL: CORS and TrustedHost Configuration
+# ============================================================================
+# Production deployment MUST use environment variables for security.
+# Never use wildcard origins ["*"] with allow_credentials=True in production!
+# This is a known security vulnerability that allows credential theft.
+#
+# Environment Variables Required:
+#   - ALLOWED_ORIGINS: Comma-separated list of allowed frontend origins
+#                      Example: "https://sowknow.gollamtech.com,https://www.sowknow.gollamtech.com"
+#   - ALLOWED_HOSTS: Comma-separated list of allowed hosts
+#                    Example: "sowknow.gollamtech.com,www.sowknow.gollamtech.com"
+#
+# Development Behavior:
+#   - ALLOWED_ORIGINS defaults to ["http://localhost:3000", "http://127.0.0.1:3000"]
+#   - ALLOWED_HOSTS defaults to ["*"] (permissive for local development)
+#
+# Production Behavior:
+#   - Both variables MUST be set explicitly
+#   - Wildcards are rejected for security
+#   - Missing configuration raises an error to prevent unsafe deployment
+# ============================================================================
+
+# Parse environment configuration
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+
+# Parse ALLOWED_ORIGINS from environment
+# Format: comma-separated list of origins
+_allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
+if APP_ENV == "production":
+    if not _allowed_origins_str:
+        raise ValueError(
+            "SECURITY ERROR: ALLOWED_ORIGINS environment variable is required in production. "
+            "Example: ALLOWED_ORIGINS=https://sowknow.gollamtech.com,https://www.sowknow.gollamtech.com"
+        )
+    # Split and strip whitespace, filter empty strings
+    ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()]
+
+    # Security check: reject wildcards in production
+    if "*" in ALLOWED_ORIGINS:
+        raise ValueError(
+            "SECURITY ERROR: Wildcard origins [*] are not allowed with credentials in production. "
+            "Use specific origins instead."
+        )
+else:
+    # Development defaults
+    ALLOWED_ORIGINS = _allowed_origins_str.split(",") if _allowed_origins_str else [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",  # Common alternate port
+    ]
+
+# Parse ALLOWED_HOSTS from environment
+# Format: comma-separated list of hostnames
+_allowed_hosts_str = os.getenv("ALLOWED_HOSTS", "")
+if APP_ENV == "production":
+    if not _allowed_hosts_str:
+        raise ValueError(
+            "SECURITY ERROR: ALLOWED_HOSTS environment variable is required in production. "
+            "Example: ALLOWED_HOSTS=sowknow.gollamtech.com,www.sowknow.gollamtech.com"
+        )
+    ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts_str.split(",") if host.strip()]
+else:
+    # Development: Allow any host for local testing
+    ALLOWED_HOSTS = ["*"]
+
+# TrustedHost Middleware - Prevents Host header attacks
+# Only allows requests from configured hosts
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"]  # In production, set specific hosts
+    allowed_hosts=ALLOWED_HOSTS
 )
 
-# CORS middleware
+# CORS Middleware - Controls cross-origin requests
+# SECURITY: Never use allow_origins=["*"] with allow_credentials=True
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this!
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Requested-With",
+        "Accept",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers",
+    ],
+    expose_headers=["Content-Range", "X-Total-Count"],
+    max_age=600,  # Cache preflight responses for 10 minutes
 )
 
 # Include auth router (keep it simple for now)

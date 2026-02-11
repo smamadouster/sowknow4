@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
+import logging
 
 from app.database import get_db
 from app.models.user import User
@@ -21,7 +22,9 @@ from app.services.progressive_revelation_service import (
     progressive_revelation_service,
     RevelationLayer
 )
-from app.api.auth import get_current_user
+from app.api.deps import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/graph-rag", tags=["graph-rag"])
 

@@ -19,7 +19,7 @@ from app.schemas.document import (
     DocumentUpdate,
 )
 from app.services.storage_service import storage_service
-from app.utils.security import get_current_user, require_admin
+from app.api.deps import get_current_user, require_admin_only
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -50,19 +50,18 @@ async def upload_document(
     file: UploadFile = File(...),
     bucket: str = Form("public"),
     title: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_only),
     db: Session = Depends(get_db)
 ):
     """
     Upload a document to the specified bucket
 
     - **file**: The file to upload
-    - **bucket**: Either "public" or "confidential" (admin only for confidential)
+    - **bucket**: Either "public" or "confidential" (admin only)
     - **title**: Optional title for the document
+
+    SECURITY: Admin-only operation. SuperUsers cannot upload documents.
     """
-    # Verify bucket permission
-    if bucket == "confidential" and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
-        raise HTTPException(status_code=403, detail="Only admins and superusers can upload to confidential bucket")
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(status_code=400, detail="Invalid bucket. Use 'public' or 'confidential'")
@@ -186,15 +185,20 @@ async def get_document(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get a specific document by ID"""
+    """
+    Get a specific document by ID
+
+    SECURITY: Returns 404 (not 403) for confidential documents accessed by
+    regular users to prevent document enumeration.
+    """
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Check access permission
+    # Check access permission - return 404 for confidential docs to prevent enumeration
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
-        raise HTTPException(status_code=403, detail="Access denied to confidential document")
+        raise HTTPException(status_code=404, detail="Document not found")
 
     return DocumentResponse.model_validate(document)
 
@@ -205,7 +209,12 @@ async def download_document(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download a document file"""
+    """
+    Download a document file
+
+    SECURITY: Returns 404 (not 403) for confidential documents accessed by
+    regular users to prevent document enumeration.
+    """
     from fastapi.responses import Response
 
     document = db.query(Document).filter(Document.id == document_id).first()
@@ -213,9 +222,9 @@ async def download_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Check access permission
+    # Check access permission - return 404 for confidential docs to prevent enumeration
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
-        raise HTTPException(status_code=403, detail="Access denied to confidential document")
+        raise HTTPException(status_code=404, detail="Document not found")
 
     # Get file content
     file_content = storage_service.get_file(
@@ -239,10 +248,14 @@ async def download_document(
 async def update_document(
     document_id: uuid.UUID,
     updates: DocumentUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_only),
     db: Session = Depends(get_db)
 ):
-    """Update document metadata (admin only)"""
+    """
+    Update document metadata (admin only)
+
+    SECURITY: Admin-only operation. SuperUsers cannot modify documents.
+    """
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
@@ -252,8 +265,6 @@ async def update_document(
     if updates.filename is not None:
         document.filename = updates.filename
     if updates.bucket is not None:
-        if current_user.role != UserRole.ADMIN:
-            raise HTTPException(status_code=403, detail="Only admins can change bucket")
         document.bucket = DocumentBucket(updates.bucket)
     if updates.language is not None:
         document.language = DocumentLanguage(updates.language)
@@ -267,13 +278,14 @@ async def update_document(
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_only),
     db: Session = Depends(get_db)
 ):
-    """Delete a document (admin only)"""
-    # Require admin or superuser for deletion
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
-        raise HTTPException(status_code=403, detail="Only admins and superusers can delete documents")
+    """
+    Delete a document (admin only)
+
+    SECURITY: Admin-only operation. SuperUsers cannot delete documents.
+    """
 
     document = db.query(Document).filter(Document.id == document_id).first()
 

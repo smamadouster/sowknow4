@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
+import logging
 
 from app.database import get_db
 from app.models.user import User
@@ -32,7 +33,9 @@ from app.services.agents.answer_agent import (
     answer_agent,
     AnswerRequest
 )
-from app.api.auth import get_current_user
+from app.api.deps import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/multi-agent", tags=["multi-agent"])
 

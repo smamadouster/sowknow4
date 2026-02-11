@@ -20,7 +20,7 @@ from app.schemas.collection import (
 )
 from app.services.smart_folder_service import smart_folder_service
 from app.services.report_service import report_service, ReportFormat as ReportFormatService
-from app.api.auth import get_current_user
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/smart-folders", tags=["smart-folders"])
 
@@ -121,7 +121,9 @@ from datetime import datetime
 
 
 @router.get("/reports/templates")
-async def get_report_templates():
+async def get_report_templates(
+    current_user: User = Depends(get_current_user)
+):
     """Get available report templates and formats"""
     return {
         "formats": [

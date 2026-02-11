@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, validator
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, List
+from app.schemas.user import UserRole
 
 
 class SystemStats(BaseModel):
@@ -54,3 +55,93 @@ class DashboardResponse(BaseModel):
     queue_stats: QueueStats
     system_health: dict
     last_updated: datetime
+
+
+class UserManagementResponse(BaseModel):
+    """User management response"""
+    id: UUID
+    email: EmailStr
+    full_name: Optional[str] = None
+    role: UserRole
+    is_active: bool
+    can_access_confidential: bool
+    created_at: datetime
+    updated_at: datetime
+    last_login: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserListResponse(BaseModel):
+    """Paginated user list response"""
+    users: List[UserManagementResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class UserUpdateByAdmin(BaseModel):
+    """Admin-only user update schema"""
+    full_name: Optional[str] = None
+    role: Optional[UserRole] = None
+    can_access_confidential: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+    @validator('role')
+    def validate_role_change(cls, v, values):
+        """Prevent role changes that would leave no admin"""
+        # This will be validated in the endpoint
+        return v
+
+
+class UserCreateByAdmin(BaseModel):
+    """Admin-only user creation schema"""
+    email: EmailStr
+    full_name: Optional[str] = None
+    password: str
+    role: UserRole = UserRole.USER
+    can_access_confidential: bool = False
+
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        return v
+
+
+class AuditLogEntry(BaseModel):
+    """Audit log entry"""
+    id: UUID
+    user_id: Optional[UUID] = None
+    action: str
+    resource_type: str
+    resource_id: Optional[str] = None
+    details: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+    user_email: Optional[str] = None  # Joined from user table
+
+    class Config:
+        from_attributes = True
+
+
+class AuditLogResponse(BaseModel):
+    """Audit log response with pagination"""
+    logs: List[AuditLogEntry]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminStatsResponse(BaseModel):
+    """Enhanced admin statistics"""
+    total_users: int
+    active_users: int
+    admin_count: int
+    superuser_count: int
+    regular_user_count: int
+    confidential_access_users: int
+    total_audit_logs: int
+    recent_admin_actions: int
+    system_health: dict

@@ -3,7 +3,7 @@ Test configuration and fixtures for pytest
 """
 import pytest
 import os
-from typing import Generator
+from typing import Generator, Dict
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.base import Base
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.utils.security import create_access_token, get_password_hash
 
 
 # Test database URL
@@ -135,8 +136,98 @@ def auth_headers(client: TestClient, test_user: User) -> dict:
 
 
 @pytest.fixture
-def admin_headers(client: TestClient, admin_user: User) -> dict:
+def superuser(db: Session) -> User:
+    """Create a superuser for testing"""
+    user = User(
+        email="superuser@example.com",
+        hashed_password=get_password_hash("super_password"),
+        full_name="Super User",
+        role=UserRole.SUPERUSER,
+        is_active=True,
+        is_superuser=True,
+        can_access_confidential=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture
+def regular_user(db: Session) -> User:
+    """Create a regular user for testing"""
+    user = User(
+        email="user@example.com",
+        hashed_password=get_password_hash("user_password"),
+        full_name="Regular User",
+        role=UserRole.USER,
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture
+def public_document(db: Session) -> Document:
+    """Create a public test document"""
+    document = Document(
+        filename="public_document.pdf",
+        original_filename="public_document.pdf",
+        file_path="/data/public/public_document.pdf",
+        bucket=DocumentBucket.PUBLIC,
+        status=DocumentStatus.INDEXED,
+        size=1024,
+        mime_type="application/pdf"
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+@pytest.fixture
+def confidential_document(db: Session) -> Document:
+    """Create a confidential test document"""
+    document = Document(
+        filename="confidential_document.pdf",
+        original_filename="confidential_document.pdf",
+        file_path="/data/confidential/confidential_document.pdf",
+        bucket=DocumentBucket.CONFIDENTIAL,
+        status=DocumentStatus.INDEXED,
+        size=1024,
+        mime_type="application/pdf"
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def get_auth_headers_for_user(user: User) -> Dict[str, str]:
+    """Helper to create auth headers for a user"""
+    token = create_access_token(data={
+        "sub": user.email,
+        "role": user.role.value,
+        "user_id": str(user.id)
+    })
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def user_headers(regular_user: User) -> dict:
+    """Get authentication headers for regular user"""
+    return get_auth_headers_for_user(regular_user)
+
+
+@pytest.fixture
+def superuser_headers(superuser: User) -> dict:
+    """Get authentication headers for superuser"""
+    return get_auth_headers_for_user(superuser)
+
+
+@pytest.fixture
+def admin_headers(admin_user: User) -> dict:
     """Get authentication headers for admin user"""
-    # For testing, we'll create a mock JWT
-    # In real tests, you'd properly authenticate
-    return {"Authorization": "Bearer mock_admin_token"}
+    return get_auth_headers_for_user(admin_user)

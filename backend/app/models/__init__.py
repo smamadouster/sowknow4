@@ -19,6 +19,7 @@ from app.models.knowledge_graph import (
     EntityType,
     RelationType
 )
+from app.models.audit import AuditLog, AuditAction
 
 __all__ = [
     "Base",
@@ -44,4 +45,6 @@ __all__ = [
     "TimelineEvent",
     "EntityType",
     "RelationType",
+    "AuditLog",
+    "AuditAction",
 ]

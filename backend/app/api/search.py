@@ -4,11 +4,15 @@ Search API endpoints for hybrid semantic and keyword search
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
+import logging
 
 from app.database import get_db
 from app.models.user import User
 from app.schemas.search import SearchRequest, SearchResponse, SearchResultChunk
 from app.services.search_service import search_service
+from app.api.deps import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -29,6 +33,9 @@ async def search_documents(
 
     The LLM routing is determined based on whether confidential
     documents are in the results.
+
+    SECURITY: All searches require authentication via get_current_user.
+    Confidential searches are logged for audit trail.
     """
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
@@ -47,6 +54,14 @@ async def search_documents(
         has_confidential = any(
             r.document_bucket == "confidential" for r in result["results"]
         )
+
+        # AUDIT LOG: Log confidential searches for compliance
+        if has_confidential:
+            logger.info(
+                f"CONFIDENTIAL_SEARCH - User: {current_user.email} (ID: {current_user.id}, "
+                f"Role: {current_user.role.value}) | Query: {request.query[:100]} | "
+                f"Results: {len(result['results'])} items"
+            )
 
         # Determine which LLM would be used for follow-up
         llm_used = "ollama" if has_confidential else "kimi"
@@ -87,12 +102,14 @@ async def search_suggestions(
     """
     Get search suggestions based on partial query
 
-    Returns filename suggestions and document count
+    Returns filename suggestions and document count filtered by user role.
+
+    SECURITY: Requires authentication. Results respect bucket permissions.
     """
     try:
         from app.models.document import Document, DocumentBucket
 
-        # Build bucket filter
+        # Build bucket filter based on user role
         if current_user.role.value == "user":
             buckets = [DocumentBucket.PUBLIC]
         else:

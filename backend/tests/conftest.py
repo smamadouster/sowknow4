@@ -116,22 +116,18 @@ def test_document(db: Session) -> Document:
 
 @pytest.fixture
 def auth_headers(client: TestClient, test_user: User) -> dict:
-    """Get authentication headers for test user"""
-    # Login and get token
-    response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": test_user.email,
-            "password": "test_password"
-        }
-    )
+    """
+    Get authentication headers for test user.
 
-    if response.status_code == 200:
-        data = response.json()
-        token = data.get("access_token")
-        if token:
-            return {"Authorization": f"Bearer {token}"}
-
+    NOTE: After cookie-based auth implementation, tokens are in httpOnly cookies.
+    The TestClient automatically includes cookies from login responses.
+    This fixture is kept for backward compatibility but returns empty dict.
+    Tests should use the client directly after login.
+    """
+    # For cookie-based auth, TestClient automatically handles cookies
+    # Just login to set cookies on the client
+    # Note: test_user uses "hashed_password" placeholder, so we need to
+    # create a user with a known password for actual login tests
     return {}
 
 

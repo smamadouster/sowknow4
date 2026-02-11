@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Test script to validate CORS and TrustedHost security configuration.
+Test script to validate CORS, TrustedHost, and Nginx security configuration.
 This script tests that the security middleware is properly configured.
 """
 
 import os
 import sys
+import re
+from pathlib import Path
 
 def test_production_security():
     """Test production security configuration"""
@@ -135,6 +137,78 @@ def test_development_configuration():
     return True
 
 
+def test_nginx_configuration():
+    """Test nginx security configuration"""
+    print("\n\nTesting Nginx Security Configuration...")
+    print("=" * 70)
+
+    # Get the project root directory
+    current_file = Path(__file__).resolve()
+    project_root = current_file.parent.parent
+    nginx_configs = [
+        project_root / "nginx" / "nginx-http-only.conf",
+        project_root / "nginx" / "nginx.conf",
+    ]
+
+    success = True
+
+    for nginx_conf in nginx_configs:
+        if not nginx_conf.exists():
+            print(f"  ❌ FAIL: Nginx config not found: {nginx_conf}")
+            success = False
+            continue
+
+        print(f"\n  Checking: {nginx_conf.name}")
+
+        try:
+            content = nginx_conf.read_text()
+
+            # Test 1: Check for server_tokens off
+            if "server_tokens off" in content:
+                print("    ✓ PASS: server_tokens off is set")
+            else:
+                print("    ❌ FAIL: server_tokens off is NOT set")
+                success = False
+
+            # Test 2: Check for no wildcard CORS headers in nginx
+            if 'Access-Control-Allow-Origin "*"' in content:
+                print("    ❌ FAIL: Found wildcard CORS header (should be in FastAPI)")
+                success = False
+            else:
+                print("    ✓ PASS: No wildcard CORS headers in nginx")
+
+            # Test 3: Check for security headers
+            security_headers = {
+                "X-Frame-Options": "DENY",
+                "X-Content-Type-Options": "nosniff",
+                "X-XSS-Protection": "1; mode=block",
+                "Referrer-Policy": "strict-origin-when-cross-origin",
+            }
+
+            for header, expected_value in security_headers.items():
+                if header in content:
+                    print(f"    ✓ PASS: {header} header is set")
+                else:
+                    print(f"    ⚠ WARN: {header} header not found")
+
+            # Test 4: Check for rate limiting
+            if "limit_req_zone" in content:
+                print("    ✓ PASS: Rate limiting is configured")
+            else:
+                print("    ⚠ WARN: Rate limiting not found")
+
+        except Exception as e:
+            print(f"  ❌ FAIL: Error reading {nginx_conf}: {e}")
+            success = False
+
+    print("\n" + "=" * 70)
+    if success:
+        print("Nginx configuration test passed! ✓")
+    else:
+        print("Nginx configuration test failed! ✗")
+    return success
+
+
 def main():
     """Run all security tests"""
     print("\n" + "=" * 70)
@@ -149,6 +223,10 @@ def main():
 
     # Test production security
     if not test_production_security():
+        success = False
+
+    # Test nginx configuration
+    if not test_nginx_configuration():
         success = False
 
     print("\n" + "=" * 70)

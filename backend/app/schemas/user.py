@@ -1,8 +1,9 @@
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
+from pydantic import BaseModel, EmailStr, field_validator, field_serializer
+from typing import Optional, Any
 from datetime import datetime
 import enum
 import re
+import uuid
 
 
 class UserRole(str, enum.Enum):
@@ -79,6 +80,14 @@ class UserInDB(UserBase):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator('id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, v: Any) -> str:
+        """Convert UUID to string for API responses"""
+        if isinstance(v, uuid.UUID):
+            return str(v)
+        return v
+
     class Config:
         from_attributes = True
 
@@ -86,6 +95,14 @@ class UserInDB(UserBase):
 class UserPublic(UserBase):
     id: str
     role: UserRole
+
+    @field_validator('id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, v: Any) -> str:
+        """Convert UUID to string for API responses"""
+        if isinstance(v, uuid.UUID):
+            return str(v)
+        return v
 
     class Config:
         from_attributes = True

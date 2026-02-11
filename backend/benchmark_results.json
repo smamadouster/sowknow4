@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-02-11T15:56:30.039737",
+  "api_base_url": "http://localhost:8000",
+  "results": [
+    {
+      "name": "API Root Response Time",
+      "target": "p50 < 2s",
+      "status": "PASS",
+      "value": 1.7898082733154297,
+      "unit": "ms",
+      "p50": 1.7898082733154297,
+      "p95": 2.929866313934331,
+      "p99": 8.009755611419669,
+      "details": "p50: 2ms, p95: 3ms, p99: 8ms",
+      "target_met": true
+    },
+    {
+      "name": "Health Check Response Time",
+      "target": "< 500ms",
+      "status": "PASS",
+      "value": 3.3951044082641606,
+      "unit": "ms",
+      "p50": 2.149820327758789,
+      "p95": 3.3951044082641606,
+      "p99": 0,
+      "details": "p50: 2ms, p95: 3ms",
+      "target_met": true
+    },
+    {
+      "name": "Search Response Time",
+      "target": "p95 < 3s",
+      "status": "SKIP",
+      "value": 0.0,
+      "unit": "ms",
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "details": "Auth token not provided",
+      "target_met": false
+    },
+    {
+      "name": "Concurrent Users",
+      "target": "5 users < 2x single time",
+      "status": "SKIP",
+      "value": 0.0,
+      "unit": "ms",
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "details": "Auth token not provided",
+      "target_met": false
+    },
+    {
+      "name": "API Status Endpoints",
+      "target": "All return 200",
+      "status": "PASS",
+      "value": 4,
+      "unit": "count",
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "details": "4/4 endpoints OK: {'/': 200, '/health': 200, '/api/docs': 200, '/api/v1/status': 200}",
+      "target_met": true
+    },
+    {
+      "name": "Error Handling",
+      "target": "No 500 errors",
+      "status": "PASS",
+      "value": 2,
+      "unit": "count",
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "details": "2/2 handled gracefully",
+      "target_met": true
+    }
+  ]
+}

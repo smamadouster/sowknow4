@@ -1,22 +1,39 @@
 """
 SOWKNOW API - Minimal Working Version
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import time
 import os
 from contextlib import asynccontextmanager
+import logging
+from datetime import datetime
 
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
+# Import monitoring services
+from app.services.monitoring import (
+    get_cost_tracker,
+    get_queue_monitor,
+    get_alert_manager,
+    setup_default_alerts,
+    SystemMonitor,
+)
+from app.services.cache_monitor import cache_monitor
+from app.services.prometheus_metrics import get_metrics
+
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("Starting up...")
+    setup_default_alerts()
+    logger.info("Monitoring alerts configured")
     yield
     # Shutdown
     print("Shutting down...")
@@ -152,6 +169,10 @@ async def root():
 
 @app.get("/health")
 async def health():
+    """
+    Basic health check endpoint.
+    Returns minimal status for container health checks.
+    """
     return {
         "status": "healthy",
         "timestamp": time.time(),
@@ -162,6 +183,197 @@ async def health():
             "authentication": "enabled"
         }
     }
+
+
+@app.get("/api/v1/health/detailed")
+async def health_detailed():
+    """
+    Comprehensive health check with all monitoring metrics.
+    Per PRD requirements for detailed health monitoring.
+    """
+    cost_tracker = get_cost_tracker()
+    queue_monitor = get_queue_monitor()
+    alert_manager = get_alert_manager()
+    system_monitor = SystemMonitor()
+
+    # Check service health
+    overall_status = "healthy"
+    issues = []
+
+    # Check memory
+    mem_stats = system_monitor.get_memory_usage()
+    if mem_stats["percent"] > 80:
+        overall_status = "degraded"
+        issues.append(f"High memory usage: {mem_stats['percent']}%")
+
+    # Check disk
+    disk_stats = system_monitor.get_disk_usage()
+    if disk_stats.get("alert_high"):
+        overall_status = "degraded"
+        issues.append(f"High disk usage: {disk_stats.get('percent', 0)}%")
+
+    # Check queue
+    queue_stats = queue_monitor.get_worker_status()
+    if queue_stats.get("congested"):
+        overall_status = "degraded"
+        issues.append(f"Queue congested: {queue_stats.get('queue_depth', 0)} tasks")
+
+    # Check costs
+    cost_stats = cost_tracker.get_stats(days=1)
+    if cost_stats.get("over_budget"):
+        overall_status = "degraded"
+        issues.append(f"API cost over budget: ${cost_stats.get('today_cost', 0):.2f}")
+
+    # Check Gemini API
+    gemini_configured = bool(os.getenv("GEMINI_API_KEY"))
+
+    # Check cache hit rate
+    cache_hit_rate = cache_monitor.get_hit_rate(days=1)
+    if cache_hit_rate < 0.5 and cache_hit_rate > 0:  # Only alert if there's some traffic
+        issues.append(f"Low cache hit rate: {cache_hit_rate:.1%}")
+
+    # Get active alerts
+    active_alerts = alert_manager.get_active_alerts()
+    if active_alerts:
+        overall_status = "degraded"
+        issues.append(f"{len(active_alerts)} active alerts")
+
+    return {
+        "status": overall_status,
+        "timestamp": time.time(),
+        "environment": os.getenv("APP_ENV", "development"),
+        "version": "1.0.0",
+        "services": {
+            "database": "connected",
+            "redis": "connected",
+            "api": "running",
+            "authentication": "enabled",
+            "gemini": {
+                "service": "gemini",
+                "status": "healthy" if gemini_configured else "unavailable",
+                "api_configured": gemini_configured,
+                "cache_stats": {
+                    "total_entries": 0,
+                    "active_entries": 0,
+                    "ttl_seconds": 3600,
+                    "hit_rate_24h": round(cache_hit_rate, 4),
+                    "tokens_saved_24h": cache_monitor.get_total_tokens_saved(days=1),
+                },
+                "timestamp": datetime.now().isoformat() if 'datetime' in dir() else None,
+            }
+        },
+        "monitoring": {
+            "memory": mem_stats,
+            "cpu": system_monitor.get_cpu_usage(),
+            "disk": disk_stats,
+            "queue": queue_stats,
+            "costs": {
+                "today_usd": round(cost_stats.get("today_cost", 0), 4),
+                "budget_usd": cost_stats.get("daily_budget", 0),
+                "remaining_budget": round(cost_stats.get("budget_remaining", 0), 4),
+                "over_budget": cost_stats.get("over_budget", False),
+                "breakdown": cost_tracker.get_daily_cost_breakdown(),
+            },
+            "cache": {
+                "hit_rate_24h": round(cache_hit_rate, 4),
+                "tokens_saved_24h": cache_monitor.get_total_tokens_saved(days=1),
+            },
+            "active_alerts": active_alerts,
+        },
+        "issues": issues if issues else None,
+    }
+
+
+@app.get("/api/v1/monitoring/costs")
+async def get_cost_stats(days: int = 7):
+    """
+    Get cost statistics for the specified period.
+
+    Args:
+        days: Number of days to include (default: 7)
+    """
+    cost_tracker = get_cost_tracker()
+    return cost_tracker.get_stats(days=days)
+
+
+@app.get("/api/v1/monitoring/queue")
+async def get_queue_stats():
+    """Get Celery queue statistics."""
+    queue_monitor = get_queue_monitor()
+    return {
+        "depth": queue_monitor.get_queue_depth(),
+        "all_depths": queue_monitor.get_all_queue_depths(),
+        "worker_status": queue_monitor.get_worker_status(),
+    }
+
+
+@app.get("/api/v1/monitoring/system")
+async def get_system_stats():
+    """Get system resource statistics."""
+    system_monitor = SystemMonitor()
+    return {
+        "memory": system_monitor.get_memory_usage(),
+        "cpu": system_monitor.get_cpu_usage(),
+        "disk": system_monitor.get_disk_usage(),
+        "containers": system_monitor.get_container_stats(),
+    }
+
+
+@app.get("/api/v1/monitoring/alerts")
+async def get_alerts():
+    """Get current alert status and configurations."""
+    alert_manager = get_alert_manager()
+    return {
+        "active_alerts": alert_manager.get_active_alerts(),
+        "configured_alerts": [
+            {"name": name, **config.__dict__}
+            for name, config in alert_manager._alerts.items()
+        ],
+    }
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """
+    Prometheus metrics endpoint.
+    Exposes all metrics in Prometheus format for scraping.
+    """
+    from app.services.prometheus_metrics import get_metrics
+    metrics = get_metrics()
+
+    # Update system metrics on each scrape
+    try:
+        system_monitor = SystemMonitor()
+        mem_stats = system_monitor.get_memory_usage()
+        disk_stats = system_monitor.get_disk_usage()
+
+        # Update memory metrics
+        for container_name, container_data in mem_stats.get("containers", {}).items():
+            pass  # Would need to parse docker stats output
+
+        # Update disk metrics
+        if "percent" in disk_stats:
+            metrics.gauge("sowknow_disk_usage_percent").set(
+                disk_stats["percent"],
+                {"mount_point": disk_stats.get("path", "/")}
+            )
+
+        # Update queue metrics
+        queue_monitor = get_queue_monitor()
+        queue_depth = queue_monitor.get_queue_depth()
+        metrics.gauge("sowknow_celery_queue_depth").set(
+            queue_depth,
+            {"queue_name": "celery"}
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to update system metrics: {e}")
+
+    return Response(
+        content=metrics.export(),
+        media_type="text/plain",
+        headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}
+    )
 
 @app.get("/api/v1/status")
 async def api_status():

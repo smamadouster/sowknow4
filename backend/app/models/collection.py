@@ -81,7 +81,7 @@ class Collection(Base, TimestampMixin):
 
     # Relationships
     user = relationship("User", back_populates="collections")
-    chat_session = relationship("ChatSession", back_populates="collection")
+    chat_session = relationship("ChatSession")  # No back_populates - ChatSession doesn't reference Collection directly
     items = relationship("CollectionItem", back_populates="collection", cascade="all, delete-orphan")
 
     # Indexes

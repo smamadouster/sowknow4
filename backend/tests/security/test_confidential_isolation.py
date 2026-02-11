@@ -35,7 +35,7 @@ def get_auth_headers(user: User) -> dict:
 class TestSearchIsolation:
     """Test that search properly filters by bucket based on user role"""
 
-    def test_user_search_returns_only_public_documents(self, client: TestClient, db: Session):
+    def test_user_search_returns_only_public_documents(self, test_client: TestClient, db: Session):
         """Test that regular user search only returns public documents"""
         # Create regular user
         user = User(
@@ -85,7 +85,7 @@ class TestSearchIsolation:
                 assert result.get("document_bucket") != "confidential"
                 assert result.get("document_bucket") in ["public", DocumentBucket.PUBLIC.value]
 
-    def test_superuser_search_returns_all_documents(self, client: TestClient, db: Session):
+    def test_superuser_search_returns_all_documents(self, test_client: TestClient, db: Session):
         """Test that superuser search returns both public and confidential documents"""
         # Create superuser
         superuser = User(
@@ -134,7 +134,7 @@ class TestSearchIsolation:
             # Just verify search works for superuser
             assert "results" in data
 
-    def test_admin_search_returns_all_documents(self, client: TestClient, db: Session):
+    def test_admin_search_returns_all_documents(self, test_client: TestClient, db: Session):
         """Test that admin search returns both public and confidential documents"""
         # Create admin
         admin = User(
@@ -187,7 +187,7 @@ class TestSearchIsolation:
 class TestDocumentAccessIsolation:
     """Test direct document access by ID is properly isolated"""
 
-    def test_user_accessing_confidential_document_by_id_returns_404(self, client: TestClient, db: Session):
+    def test_user_accessing_confidential_document_by_id_returns_404(self, test_client: TestClient, db: Session):
         """Test that user gets 404 (not 403) when accessing confidential doc by ID
 
         This is important for security: returning 403 confirms the document exists,
@@ -228,7 +228,7 @@ class TestDocumentAccessIsolation:
         # 404 doesn't reveal that the document exists
         assert response.status_code == 404
 
-    def test_superuser_accessing_confidential_document_by_id_returns_200(self, client: TestClient, db: Session):
+    def test_superuser_accessing_confidential_document_by_id_returns_200(self, test_client: TestClient, db: Session):
         """Test that superuser can access confidential documents"""
         # Create superuser
         superuser = User(
@@ -269,7 +269,7 @@ class TestDocumentAccessIsolation:
         assert data["id"] == str(confidential_doc.id)
         assert data["bucket"] == "confidential"
 
-    def test_admin_accessing_confidential_document_by_id_returns_200(self, client: TestClient, db: Session):
+    def test_admin_accessing_confidential_document_by_id_returns_200(self, test_client: TestClient, db: Session):
         """Test that admin can access confidential documents"""
         # Create admin
         admin = User(
@@ -310,7 +310,7 @@ class TestDocumentAccessIsolation:
         assert data["id"] == str(confidential_doc.id)
         assert data["bucket"] == "confidential"
 
-    def test_user_accessing_public_document_returns_200(self, client: TestClient, db: Session):
+    def test_user_accessing_public_document_returns_200(self, test_client: TestClient, db: Session):
         """Test that user can access public documents"""
         # Create regular user
         user = User(
@@ -350,7 +350,7 @@ class TestDocumentAccessIsolation:
 class TestDocumentListIsolation:
     """Test that document list endpoints filter by bucket"""
 
-    def test_user_document_list_shows_only_public(self, client: TestClient, db: Session):
+    def test_user_document_list_shows_only_public(self, test_client: TestClient, db: Session):
         """Test that user's document list only shows public documents"""
         user = User(
             email="user@test.com",
@@ -399,7 +399,7 @@ class TestDocumentListIsolation:
                 assert doc.get("bucket") != "confidential"
                 assert doc.get("bucket") in ["public", DocumentBucket.PUBLIC.value]
 
-    def test_superuser_document_list_shows_all(self, client: TestClient, db: Session):
+    def test_superuser_document_list_shows_all(self, test_client: TestClient, db: Session):
         """Test that superuser's document list shows all documents"""
         superuser = User(
             email="super@test.com",
@@ -449,7 +449,7 @@ class TestDocumentListIsolation:
 class TestSearchSuggestionsIsolation:
     """Test that autocomplete/suggestions don't leak confidential info"""
 
-    def test_user_search_suggestions_exclude_confidential(self, client: TestClient, db: Session):
+    def test_user_search_suggestions_exclude_confidential(self, test_client: TestClient, db: Session):
         """Test that user's search suggestions don't include confidential documents"""
         user = User(
             email="user@test.com",
@@ -497,7 +497,7 @@ class TestSearchSuggestionsIsolation:
             assert "secret" not in str(suggestions).lower()
             assert "confidential" not in str(suggestions).lower()
 
-    def test_superuser_search_suggestions_include_all(self, client: TestClient, db: Session):
+    def test_superuser_search_suggestions_include_all(self, test_client: TestClient, db: Session):
         """Test that superuser's search suggestions include all documents"""
         superuser = User(
             email="super@test.com",
@@ -547,7 +547,7 @@ class TestSearchSuggestionsIsolation:
 class TestDocumentDownloadIsolation:
     """Test that document download is properly isolated"""
 
-    def test_user_cannot_download_confidential_document(self, client: TestClient, db: Session):
+    def test_user_cannot_download_confidential_document(self, test_client: TestClient, db: Session):
         """Test that user cannot download confidential documents"""
         user = User(
             email="user@test.com",
@@ -582,7 +582,7 @@ class TestDocumentDownloadIsolation:
         # Should return 404 or 403
         assert response.status_code in [403, 404]
 
-    def test_superuser_can_download_confidential_document(self, client: TestClient, db: Session):
+    def test_superuser_can_download_confidential_document(self, test_client: TestClient, db: Session):
         """Test that superuser can download confidential documents"""
         superuser = User(
             email="super@test.com",
@@ -622,7 +622,7 @@ class TestDocumentDownloadIsolation:
 class TestBucketEnumerationPrevention:
     """Test that users cannot enumerate confidential documents"""
 
-    def test_user_cannot_enumerate_confidential_documents_by_id(self, client: TestClient, db: Session):
+    def test_user_cannot_enumerate_confidential_documents_by_id(self, test_client: TestClient, db: Session):
         """Test that user cannot find confidential documents by trying different IDs
 
         This tests against ID enumeration attacks where a user might
@@ -674,7 +674,7 @@ class TestBucketEnumerationPrevention:
         # Error message should not reveal document exists
         assert "not found" in response.json()["detail"].lower() or "404" in str(response.status_code)
 
-    def test_response_times_do_not_leak_confidential_document_existence(self, client: TestClient, db: Session):
+    def test_response_times_do_not_leak_confidential_document_existence(self, test_client: TestClient, db: Session):
         """Test that response times don't leak whether confidential documents exist
 
         This is a timing attack prevention test - responses for existing
@@ -735,7 +735,7 @@ class TestBucketEnumerationPrevention:
 class TestCrossBucketAccess:
     """Test that documents cannot be accessed across buckets"""
 
-    def test_public_document_access_by_all_roles(self, client: TestClient, db: Session):
+    def test_public_document_access_by_all_roles(self, test_client: TestClient, db: Session):
         """Test that public documents can be accessed by all roles"""
         # Create users of all roles
         admin = User(

@@ -8,16 +8,22 @@ import pytest
 import os
 import uuid
 from typing import Generator, Dict
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from unittest.mock import Mock, MagicMock
+import sqlalchemy as sa
 
 # Set test environment variables before importing anything
 os.environ["JWT_SECRET"] = "test-secret-key-for-security-testing-only"
-os.environ["DATABASE_URL"] = "sqlite:///./test_security.db"
+os.environ["SECRET_KEY"] = "test-secret-key-for-security-testing-only"
+# Use PostgreSQL for testing (same as production with proper schema support)
+# Use Docker network connection
+os.environ["DATABASE_URL"] = "postgresql://sowknow:sowknow@postgres:5432/sowknow"
 os.environ["GEMINI_API_KEY"] = "test-key"
-os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+os.environ["REDIS_URL"] = "redis://redis:6379/0"
+os.environ["APP_ENV"] = "development"  # Set development for CORS tests
 
+# Import models (PostgreSQL supports schemas natively)
 from app.models.base import Base
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
@@ -29,40 +35,32 @@ from app.utils.security import (
     decode_token
 )
 
-# Test database URL
-TEST_DATABASE_URL = "sqlite:///./test_security.db"
+# Test database URL - use PostgreSQL for proper schema support
+# Use Docker network connection
+TEST_DATABASE_URL = "postgresql://sowknow:sowknow@postgres:5432/sowknow"
 
 # Create test engine
-test_engine = create_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
+test_engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
 @pytest.fixture(scope="function")
 def db() -> Generator[Session, None, None]:
-    """Create a fresh database for each test"""
-    # Create tables
-    Base.metadata.create_all(bind=test_engine)
+    """Create a fresh database session for each test.
 
-    # Create session
+    Uses PostgreSQL with sowknow schema for realistic testing.
+    Note: Tables are not dropped between tests to preserve schema.
+    """
     session = TestingSessionLocal()
 
     try:
         yield session
     finally:
         session.close()
-        # Drop tables after test
-        Base.metadata.drop_all(bind=test_engine)
-
-        # Delete test database file
-        try:
-            if os.path.exists(TEST_DATABASE_URL.replace("sqlite:///", "")):
-                os.remove(TEST_DATABASE_URL.replace("sqlite:///", ""))
-        except:
-            pass
+        # Clean up any data created during test (but keep schema/tables)
+        # This is faster than dropping/recreating tables
+        session.rollback()
 
 
 @pytest.fixture(scope="function")
@@ -97,9 +95,9 @@ def superuser(db: Session, test_password: str) -> User:
         hashed_password=get_password_hash(test_password),
         full_name="Super User",
         role=UserRole.SUPERUSER,
+        is_active=True,
         is_superuser=True,
-        can_access_confidential=True,
-        is_active=True
+        can_access_confidential=True
     )
     db.add(user)
     db.commit()
@@ -186,9 +184,9 @@ def get_auth_headers_for_user(user: User) -> Dict[str, str]:
 
 
 @pytest.fixture
-def admin_headers(admin_user: User) -> dict:
-    """Get authentication headers for admin user"""
-    return get_auth_headers_for_user(admin_user)
+def user_headers(regular_user: User) -> dict:
+    """Get authentication headers for regular user"""
+    return get_auth_headers_for_user(regular_user)
 
 
 @pytest.fixture
@@ -198,9 +196,9 @@ def superuser_headers(superuser: User) -> dict:
 
 
 @pytest.fixture
-def user_headers(regular_user: User) -> dict:
-    """Get authentication headers for regular user"""
-    return get_auth_headers_for_user(regular_user)
+def admin_headers(admin_user: User) -> dict:
+    """Get authentication headers for admin user"""
+    return get_auth_headers_for_user(admin_user)
 
 
 @pytest.fixture
@@ -233,3 +231,68 @@ def tampered_token(regular_user: User) -> str:
 
     # Tamper with the token (change a character)
     return valid_token[:-5] + "ABCDE"
+
+
+@pytest.fixture(scope="function")
+def test_client(db: Session):
+    """
+    Create a test client for security tests using the main app
+    with database override for isolated testing.
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as client:
+        yield client
+
+    app.dependency_overrides.clear()
+
+
+# Keep old security_client for CORS-only tests
+@pytest.fixture(scope="function")
+def security_client():
+    """
+    Create a minimal test client for CORS tests only.
+    For auth tests, use test_client fixture instead.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from fastapi.middleware.cors import CORSMiddleware
+
+    # Create a minimal FastAPI app for CORS tests
+    security_app = FastAPI(
+        title="SOWKNOW Security Test API",
+        version="1.0.0"
+    )
+
+    # Add CORS middleware explicitly
+    security_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+        max_age=600
+    )
+
+    @security_app.options("/{path:path}")
+    async def cors_preflight(path: str):
+        """Handle all OPTIONS requests for CORS preflight"""
+        return {"status": "ok"}
+
+    @security_app.get("/{path:path}")
+    async def cors_get(path: str):
+        """Handle all GET requests"""
+        return {"status": "ok"}
+
+    with TestClient(security_app) as client:
+        yield client

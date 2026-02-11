@@ -1,6 +1,6 @@
 #!/bin/bash
-# SOWKNOW4 Production Deployment Script
-# This script automates the production deployment process
+# SOWKNOW4 Production Deployment Script (Simplified)
+# Run this script on the production server via SSH
 
 set -e
 
@@ -8,21 +8,22 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-echo -e "${GREEN}=========================================${NC}"
-echo -e "${GREEN}SOWKNOW4 Production Deployment${NC}"
-echo -e "${GREEN}=========================================${NC}"
+NC='\033[0m'
 
 # Configuration
 PRODUCTION_SERVER="${1:-72.62.17.136}"
 PRODUCTION_PATH="${2:-/var/docker/sowknow4}"
-GIT_REPO="${3:-smamadouster/sowknow4.git}"
+GIT_REPO="${3:-root@72.62.17.136:/var/docker/sowknow4.git}"
 ENV_FILE=".env.production"
 
-echo -e "${YELLOW}Production Server:${NC} $PRODUCTION_SERVER"
-echo -e "${YELLOW}Production Path:${NC} $PRODUCTION_PATH"
-echo -e "${YELLOW}Git Repository:${NC} $GIT_REPO"
+echo -e "${GREEN}========================================"
+echo -e "${GREEN}SOWKNOW4 PRODUCTION DEPLOYMENT"
+echo -e "${GREEN}========================================"
+echo ""
+
+echo -e "Server:     ${YELLOW}$PRODUCTION_SERVER${NC}"
+echo -e "Path:       ${YELLOW}$PRODUCTION_PATH${NC}"
+echo -e "Repository: ${YELLOW}$GIT_REPO${NC}"
 echo ""
 
 # Function to print colored status
@@ -32,43 +33,183 @@ print_status() {
     if [ "$1" == "0" ]; then
         echo -e "${GREEN}[✓]${NC} $2"
     elif [ "$1" == "1" ]; then
-        echo -e "${YELLOW}[⚠]${NC} $2"
+        echo -e "${YELLOW}[!]${NC} $2"
     elif [ "$1" == "2" ]; then
         echo -e "${RED}[✗]${NC} $2"
     fi
 }
 
-# Step 1: Check current directory
-echo -e "\n${GREEN}Step 1: Check Current Directory${NC}"
-CURRENT_DIR=$(pwd)
-if [ "$CURRENT_DIR" != "$PRODUCTION_PATH" ]; then
-    print_status 2 "Wrong directory. Navigating to: $PRODUCTION_PATH"
-    cd "$PRODUCTION_PATH" || exit 1
+# Step 1: Navigate to project
+echo -e "${GREEN}Step 1:${NC} Navigate to Project Directory"
+print_status 0 "cd $PRODUCTION_PATH"
+cd "$PRODUCTION_PATH" || exit 1
+
+# Step 2: Check if Docker Compose exists
+echo ""
+echo -e "${GREEN}Step 2:${NC} Check for Docker Compose File${NC}"
+if [ ! -f "docker-compose.yml" ] && [ ! -f "docker-compose.production.yml" ]; then
+    echo -e "${YELLOW}[!]${NC} No docker-compose file found!"
+    echo -e "${YELLOW}    Creating docker-compose.yml from template...${NC}"
+
+    cat > docker-compose.yml << 'EOF'
+version: "3.8"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sowknow4-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=sowknow
+      - POSTGRES_USER=sowknow
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-ChangeMe123!}
+    volumes:
+      - sowknow-postgres-data:/var/lib/postgresql/data
+    networks:
+      - sowknow-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: sowknow4-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - sowknow-redis-data:/data
+    networks:
+      - sowknow-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.minimal
+    container_name: sowknow4-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-key-in-production}
+      - APP_ENV=${APP_ENV:-production}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
+      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
+      - GEMINI_DAILY_BUDGET_USD=${GEMINI_DAILY_BUDGET_USD:-5.00}
+      - LOCAL_LLM_URL=http://host.docker.internal:11434
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+      - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: sowknow4-celery-worker
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
+      - GEMINI_DAILY_BUDGET_USD=${GEMINI_DAILY_BUDGET_USD:-5.00}
+      - LOCAL_LLM_URL=http://host.docker.internal:11434
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+      - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: sowknow4-celery-beat
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
+      - GEMINI_DAILY_BUDGET_USD=${GEMINI_DAILY_BUDGET_USD:-5.00}
+      - LOCAL_LLM_URL=http://host.docker.internal:11434
+    volumes:
+      - ./backend:/app
+    networks:
+      - sowknow-net
+    command: celery -A app.celery_app beat --loglevel=info
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sowknow4-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - APP_ENV=${APP_ENV:-production}
+    ports:
+      - "127.0.0.1:3000"
+    networks:
+      - sowknow-net
+    depends_on:
+      - backend
+
+  telegram-bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.telegram
+    container_name: sowknow4-telegram-bot
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - BACKEND_URL=http://backend:8000
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - APP_ENV=${APP_ENV:-production}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - backend
+    networks:
+      - sowknow-net
+
+networks:
+  sowknow-net:
+    driver: bridge
+
+volumes:
+  sowknow-postgres-data:
+  sowknow-redis-data:
+  sowknow-public-data:
+  sowknow-confidential-data:
+EOF
+
+    print_status 0 "docker-compose.yml created"
 else
-    print_status 0 "Already in correct directory: $PRODUCTION_PATH"
+    print_status 0 "docker-compose.yml already exists"
 fi
 
-# Step 2: Pull latest code
-echo -e "\n${GREEN}Step 2: Pull Latest Code${NC}"
-if [ -d ".git" ]; then
-    print_status 1 "Cloning repository..."
-    git clone "$GIT_REPO" temp_sowknow4 || exit 1
-    cd temp_sowknow4 || exit 1
-    git remote set-url origin "$GIT_REPO"
-    cd .. || exit 1
-    rm -rf temp_sowknow4
+# Step 3: Create environment file from template
+echo ""
+echo -e "${GREEN}Step 3:${NC} Create Environment File${NC}"
+
+# Check if env file exists
+if [ -f "$ENV_FILE" ]; then
+    print_status 1 "Environment file exists, editing..."
 else
-    print_status 1 "Pulling latest changes..."
-    git fetch origin || print_status 2 "Failed to fetch from origin"
-    git pull origin master || print_status 2 "Failed to pull from origin"
+    print_status 0 "Creating $ENV_FILE from template..."
 fi
 
-# Step 3: Create production environment file
-echo -e "\n${GREEN}Step 3: Create Production Environment${NC}"
-
-if [ ! -f "$ENV_FILE" ]; then
-    print_status 2 "Creating $ENV_FILE..."
-    cat > "$ENV_FILE" << 'ENVEOF'
+# Create/update env file with production values
+cat > "$ENV_FILE" << 'EOF'
 # ===================================================
 # SOWKNOW4 PRODUCTION ENVIRONMENT
 # ===================================================
@@ -76,150 +217,130 @@ if [ ! -f "$ENV_FILE" ]; then
 # Database Configuration
 DATABASE_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD
 
-# Security
+# Security (CRITICAL)
 JWT_SECRET=CHANGE_ME_TO_64_CHAR_SECRET
 APP_ENV=production
 ALLOWED_ORIGINS=https://sowknow.gollamtech.com,https://www.sowknow.gollamtech.com
 ALLOWED_HOSTS=sowknow.gollamtech.com,www.sowknow.gollamtech.com
 
-# AI Services
+# AI Services Configuration
 # Primary AI Service (Gemini 2.0 Flash)
-GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
+GEMINI_API_KEY=${GEMINI_API_KEY}
 
-# Secondary AI Service (Kimi 2.5 - Fallback)
-KIMI_API_KEY=YOUR_KIMI_API_KEY_HERE
+# Secondary AI Service (Kimmi 2.5 - Fallback)
+KIMI_API_KEY=${KIMI_API_KEY}
 
-# Tertiary AI Service (Ollama for confidential docs)
+# Tertiary AI Service (Ollama for confidential)
 LOCAL_LLM_URL=http://host.docker.internal:11434
 
-# Monitoring
+# Monitoring Configuration
 GEMINI_DAILY_BUDGET_USD=5.00
 
 # Optional Services
-TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN_HERE
-ENVEOF
+TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+EOF
 
-    print_status 0 "Created $ENV_FILE"
-else
-    print_status 0 "Environment file already exists. Edit values with:"
-    echo "nano $ENV_FILE"
-fi
+chmod 600 "$ENV_FILE"
+print_status 0 "$ENV_FILE created/updated"
 
-# Step 4: Stop existing containers (if running)
-echo -e "\n${GREEN}Step 4: Stop Existing Containers${NC}"
+# Step 4: Pull latest code
+echo ""
+echo -e "${GREEN}Step 4:${NC} Pull Latest Code${NC}"
+print_status 0 "Fetching from origin..."
+git fetch origin || print_status 2 "Failed to fetch from origin"
+print_status 0 "Pulling from origin..."
+git pull origin master || print_status 2 "Failed to pull from origin"
+print_status 0 "Code updated"
 
-# Check if Docker Compose is running
+# Step 5: Stop existing Docker containers
+echo ""
+echo -e "${GREEN}Step 5:${NC} Stop Existing Containers${NC}"
+
+# Try to stop containers if they exist
 if docker compose ps &>/dev/null; then
-    print_status 1 "Stopping Docker Compose..."
+    print_status 0 "Stopping containers..."
     docker compose down
     sleep 5
     print_status 0 "Containers stopped"
 else
-    print_status 0 "No Docker Compose running"
+    print_status 1 "No containers running"
 fi
 
-# Step 5: Rebuild images with non-root user
-echo -e "\n${GREEN}Step 5: Rebuild Images (Non-Root User)${NC}"
-
-print_status 1 "Rebuilding backend, celery-worker, telegram-bot..."
-docker compose build backend celery-worker telegram-bot || print_status 2 "Build failed"
-
-print_status 1 "Verifying non-root user in images..."
-docker images --format "{{.Repository}}" | grep sowknow4 | grep -vE "(builder|latest)" | grep appuser || print_status 0 "Non-root user confirmed"
-
-# Step 6: Start production services
-echo -e "\n${GREEN}Step 6: Start Production Services${NC}"
-
+# Step 6: Start services
 echo ""
-print_status 1 "Starting services with Caddy reverse proxy..."
-docker compose --env-file "$ENV_FILE" -f Caddyfile.production up -d || print_status 2 "Failed to start services"
+echo -e "${GREEN}Step 6:${NC} Start Services${NC}"
 
-# Wait for services to be healthy
+# Check if docker compose is available
+if ! command -v docker compose &>/dev/null; then
+    print_status 2 "Docker Compose not found!"
+    echo -e "${YELLOW}Please install Docker Compose on production server${NC}"
+    exit 1
+fi
+
+print_status 0 "Starting Docker Compose services..."
+docker compose up -d || print_status 2 "Failed to start services"
+
+# Wait for services to be ready
 echo ""
 print_status 0 "Waiting for services to start..."
 sleep 30
 
 # Step 7: Verify deployment
-echo -e "\n${GREEN}Step 7: Verify Deployment${NC}"
-
 echo ""
-print_status 1 "Checking container status..."
+echo -e "${GREEN}Step 7:${NC} Verify Deployment${NC}"
+echo ""
+
+# Check container status
 RUNNING=$(docker compose ps | grep -c "Up" | wc -l)
-if [ "$RUNNING" -ge 6 ]; then
-    print_status 0 "All containers running ($RUNNING/6)"
-else
-    print_status 2 "Some containers not running!"
-fi
+TOTAL=$(docker compose ps | grep -c "sowknow4" | wc -l)
 
-echo ""
-print_status 1 "Checking health endpoint..."
+echo -e "Containers running: ${GREEN}$RUNNING${NC} / $TOTAL total"
+
+# Check health endpoint
 HEALTH=$(curl -s http://localhost:8000/health 2>/dev/null || echo "failed")
 if echo "$HEALTH" | grep -q "healthy"; then
-    print_status 0 "Health check passed"
+    print_status 0 "Health check: ${GREEN}PASSED${NC}"
 else
-    print_status 2 "Health check returned: $HEALTH"
+    print_status 2 "Health check: ${RED}FAILED${NC}"
+    echo "$HEALTH"
 fi
 
-echo ""
-print_status 1 "Checking non-root user..."
+# Check non-root user
 NONROOT=$(docker compose exec backend whoami 2>/dev/null)
 if [ "$NONROOT" = "appuser" ]; then
-    print_status 0 "Non-root user confirmed: appuser"
+    print_status 0 "Non-root user: ${GREEN}CONFIRMED${NC} (appuser)"
 else
-    print_status 2 "Security issue: Running as $NONROOT"
+    print_status 2 "Security issue: ${RED}RUNNING AS ROOT: $NONROOT${NC}"
 fi
 
-# Summary
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Deployment Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${GREEN}Next Steps:${NC}"
-echo "1. Verify all monitoring endpoints:"
-echo "   curl http://localhost:8000/api/v1/health/detailed | jq ."
-echo "   curl http://localhost:8000/api/v1/monitoring/costs | jq ."
-echo "   curl http://localhost:8000/metrics | head -20"
-echo ""
-echo "2. Set your production environment:"
+echo "1. Set your production environment:"
 echo "   nano $ENV_FILE"
-echo "   Update DATABASE_PASSWORD, JWT_SECRET"
-echo "   Add GEMINI_API_KEY and/or KIMI_API_KEY"
+echo "   Update DATABASE_PASSWORD with secure password"
+echo "   Update GEMINI_API_KEY with your API key"
+echo "   Update other API keys as needed"
 echo ""
-echo "3. Enable nginx (if needed):"
-echo "   docker compose --profile nginx up -d"
+echo "2. Monitor your deployment:"
+echo "   docker compose ps -a"
+echo "   docker compose logs -f --tail=100 backend"
 echo ""
-echo -e "${YELLOW}Note: Caddy is handling reverse proxy on ports 80/443${NC}"
-echo -e "${YELLOW}SOWKNOW will be available at:${NC}"
-echo -e "  - https://sowknow.gollamtech.com (main)"
-echo -e "  - https://www.sowknow.gollamtech.com (WWW redirect)"
+echo "3. For SSL setup:"
+echo "   See DEPLOYMENT-PRODUCTION.md guide"
+echo "   Run: bash scripts/setup-ssl-auto.sh"
 echo ""
-
-# Rollback instructions
-echo "If deployment fails:"
-echo "1. Revert to previous state:"
-echo "   cd /var/docker/sowknow4"
-echo "   git checkout HEAD~1"
-echo "   docker compose --env-file $ENV_FILE.backup up -d"
+echo -e "${YELLOW}IMPORTANT: Change default passwords!${NC}"
+echo -e "DATABASE_PASSWORD and JWT_SECRET must be changed!"
 echo ""
-echo "2. Check logs:"
-echo "   docker compose logs -f --tail=100"
+echo -e "${GREEN}Documentation:${NC}"
+echo "  - Full deployment guide: DEPLOYMENT-PRODUCTION.md"
+echo "  - Monitoring guide: MONITORING.md"
+echo "  - AI services: AI-SERVICES-CONFIGURATION.md"
+echo "  - Database: DATABASE-PASSWORD-GUIDE.md"
 echo ""
-echo "3. Get support:"
-echo "   Check MONITORING.md for troubleshooting"
-echo "   Review logs for error messages"
-echo ""
-echo -e "${RED}IMPORTANT: Change all default passwords!${NC}"
-echo -e "${RED}DATABASE_PASSWORD=CHANGE_ME_TO_SECURE_PASSWORD${NC}"
-echo -e "${RED}JWT_SECRET=CHANGE_ME_TO_64_CHAR_SECRET${NC}"
-echo -e "${RED}GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE${NC}"
-echo ""
-echo -e "${GREEN}Deployment script complete!${NC}"
-echo "Run this script on production server: ${NC}"
-echo ""
-echo "Commands:"
-echo "  scp deploy-production.sh root@$PRODUCTION_SERVER:/var/docker/sowknow4/"
-echo "  ssh root@$PRODUCTION_SERVER"
-echo "  cd /var/docker/sowknow4"
-echo "  bash deploy-production.sh"
+echo -e "${GREEN}Production URL:${NC} https://sowknow.gollamtech.com"
 echo ""

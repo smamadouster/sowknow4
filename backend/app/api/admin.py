@@ -16,6 +16,7 @@ from app.models.chat import ChatSession
 from app.models.processing import ProcessingQueue, TaskStatus, TaskType
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.admin import (
+    PasswordReset,
     SystemStats,
     QueueStats,
     AnomalyDocument,
@@ -370,6 +371,50 @@ async def delete_user(
 
     return {"message": "User deleted successfully"}
 
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: uuid.UUID,
+    password_data: PasswordReset,
+    current_user: User = Depends(require_admin_only),
+    db: Session = Depends(get_db),
+    request: Request = None
+):
+    """
+    Reset a user's password (Admin only)
+
+    - SuperUser will receive 403 Forbidden
+    - Password must be at least 8 characters
+    - Action is logged in audit trail
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # Hash the new password
+    hashed_password = get_password_hash(password_data.new_password)
+
+    # Update user's password
+    user.hashed_password = hashed_password
+    db.commit()
+
+    # Log the admin action
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action=AuditAction.USER_UPDATED,
+        resource_type="user",
+        resource_id=str(user_id),
+        details={"action": "password_reset"},
+        request=request
+    )
+
+    return {"message": "Password reset successfully"}
 
 # ============================================================================
 # AUDIT LOG ENDPOINTS (Admin Only)

@@ -126,7 +126,9 @@ app.add_middleware(
 
 # Include auth router (keep it simple for now)
 from app.api import auth
+from app.api import admin
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():

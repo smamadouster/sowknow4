@@ -145,3 +145,14 @@ class AdminStatsResponse(BaseModel):
     total_audit_logs: int
     recent_admin_actions: int
     system_health: dict
+
+
+class PasswordReset(BaseModel):
+    """Admin password reset schema"""
+    new_password: str
+
+    @validator('new_password')
+    def validate_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        return v

@@ -28,6 +28,7 @@ from app.schemas.collection import (
 from app.services.intent_parser import intent_parser_service, ParsedIntent as ParsedIntentModel
 from app.services.search_service import search_service
 from app.services.gemini_service import gemini_service
+from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class CollectionService:
         self.intent_parser = intent_parser_service
         self.search_service = search_service
         self.gemini_service = gemini_service
+        self.ollama_service = ollama_service
 
     def _get_user_visibility_filter(self, user: User) -> List[CollectionVisibility]:
         """Get allowed collection visibility levels for user"""
@@ -378,7 +380,7 @@ class CollectionService:
         parsed_intent: ParsedIntentModel
     ) -> str:
         """
-        Generate AI summary for collection
+        Generate AI summary for collection with privacy-preserving LLM routing
 
         Args:
             collection_name: Name of the collection
@@ -388,41 +390,77 @@ class CollectionService:
 
         Returns:
             Generated summary text
+
+        SECURITY: Routes to Ollama for confidential documents, Gemini for public only
         """
-        # Build document list for AI
+        # Check for confidential documents - PRIVACY FIRST
+        has_confidential = any(
+            doc.bucket == DocumentBucket.CONFIDENTIAL
+            for doc in documents
+        )
+
+        # Build document list for AI (filenames only for privacy)
         doc_list = "\n".join([
             f"- {doc.filename} (created: {doc.created_at.strftime('%Y-%m-%d')})"
             for doc in documents
         ])
 
-        prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
+        entities_str = ', '.join([e['name'] for e in parsed_intent.entities]) if parsed_intent.entities else 'None'
+
+        try:
+            if has_confidential:
+                # Use Ollama for confidential collections - keeps data local
+                logger.info(f"Collection summary using Ollama (confidential documents detected) for: {collection_name}")
+
+                prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
 
 Query: "{query}"
 
 Documents in collection:
 {doc_list}
 
-Entities found: {', '.join([e['name'] for e in parsed_intent.entities]) if parsed_intent.entities else 'None'}
+Entities found: {entities_str}
 
 Generate a concise summary describing what this collection contains and its key themes."""
 
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant that summarizes document collections concisely."},
-            {"role": "user", "content": prompt}
-        ]
+                response = await self.ollama_service.generate(
+                    prompt=prompt,
+                    system="You are a helpful assistant that summarizes document collections concisely.",
+                    temperature=0.5
+                )
+                return response.strip()
+            else:
+                # Use Gemini Flash for public collections - cost optimized with caching
+                logger.info(f"Collection summary using Gemini (public documents only) for: {collection_name}")
 
-        try:
-            response_parts = []
-            async for chunk in self.gemini_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.5,
-                max_tokens=500
-            ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                    response_parts.append(chunk)
+                prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
 
-            return "".join(response_parts).strip()
+Query: "{query}"
+
+Documents in collection:
+{doc_list}
+
+Entities found: {entities_str}
+
+Generate a concise summary describing what this collection contains and its key themes."""
+
+                messages = [
+                    {"role": "system", "content": "You are a helpful assistant that summarizes document collections concisely."},
+                    {"role": "user", "content": prompt}
+                ]
+
+                response_parts = []
+                async for chunk in self.gemini_service.chat_completion(
+                    messages=messages,
+                    stream=False,
+                    temperature=0.5,
+                    max_tokens=500
+                ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                        response_parts.append(chunk)
+
+                return "".join(response_parts).strip()
+
         except Exception as e:
             logger.error(f"Failed to generate collection summary: {e}")
             return f"Collection of {len(documents)} documents related to: {query}"

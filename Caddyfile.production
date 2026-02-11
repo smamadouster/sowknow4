@@ -1,0 +1,45 @@
+# Caddyfile for SOWKNOW production deployment
+# Use this instead of nginx when Caddy is already running on ports 80/443
+
+# Global options
+{
+    # Email for Let's Encrypt
+    email ops@example.com
+}
+
+# Production domain
+sowknow.gollamtech.com,
+
+# Reverse proxy to SOWKNOW backend
+reverse_proxy sowknow-backend:8000 {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {proto}
+    header_up X-Forwarded-Host {host}
+}
+
+# Health endpoint bypass
+sowknow.gollamtech.com/health {
+    reverse_proxy sowknow-backend:8000
+}
+
+# API routes
+sowknow.gollamtech.com/api/* {
+    reverse_proxy sowknow-backend:8000
+}
+
+# Frontend routes
+sowknow.gollamtech.com {
+    # Try serving frontend directly if Caddy supports it
+    # Otherwise reverse_proxy to frontend:3000
+    reverse_proxy sowknow-backend:8000
+}
+
+# Log format
+{
+    output file {
+        format console
+    format json
+    output stdout
+    }
+}

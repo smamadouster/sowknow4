@@ -16,23 +16,30 @@ RUN apt-get update && apt-get install -y \
     libpoppler-cpp-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
+
 # Copy requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Download multilingual-e5-large model on build
+# Download multilingual-e5-large model on build (as root for model cache)
 RUN python -c "from sentence_transformers import SentenceTransformer; \
     SentenceTransformer('intfloat/multilingual-e5-large')" || echo "Model will download on first run"
 
 # Copy application
 COPY . .
 
-# Create directories for file storage
-RUN mkdir -p /data/public /data/confidential
+# Create directories for file storage with proper permissions
+RUN mkdir -p /data/public /data/confidential && \
+    chown -R appuser:appuser /app /data
 
 # Set Python path
 ENV PYTHONPATH=/app
+
+# Switch to non-root user
+USER appuser
 
 # Default command for Celery worker
 CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]

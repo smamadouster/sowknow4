@@ -1,10 +1,22 @@
 version: '3.8'
 
+# Global logging configuration for all services
+# Enables centralized log collection and structured JSON logging
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    labels: "service,environment"
+    tag: "{{.Name}}/{{.ID}}"
+
 services:
   # PostgreSQL with pgvector
   postgres:
     image: pgvector/pgvector:pg16
     container_name: sowknow4-postgres
+    restart: unless-stopped
+    logging: *default-logging
     environment:
       - POSTGRES_DB=sowknow
       - POSTGRES_USER=sowknow
@@ -31,6 +43,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: sowknow4-redis
+    restart: unless-stopped
+    logging: *default-logging
     command: redis-server --appendonly yes
     volumes:
       - sowknow-redis-data:/data
@@ -55,6 +69,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile.minimal
     container_name: sowknow4-backend
+    restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
       - REDIS_URL=redis://redis:6379/0
@@ -63,6 +79,7 @@ services:
       - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
       - LOCAL_LLM_URL=http://host.docker.internal:11434
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -96,12 +113,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile.worker
     container_name: sowknow4-celery-worker
+    restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
       - REDIS_URL=redis://redis:6379/0
       - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
       - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
       - LOCAL_LLM_URL=http://host.docker.internal:11434
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -133,18 +153,27 @@ services:
       context: ./backend
       dockerfile: Dockerfile.worker
     container_name: sowknow4-celery-beat
+    restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET:-change-this-secret-key-in-production}
       - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
       - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     command: celery -A app.celery_app beat --loglevel=info
     volumes:
       - ./backend:/app
     depends_on:
       - postgres
       - redis
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f celery.beat || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -159,12 +188,20 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: sowknow4-frontend
+    restart: unless-stopped
+    logging: *default-logging
     environment:
       - NEXT_PUBLIC_API_URL=/api
     ports:
       - "3000:3000"
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -177,15 +214,25 @@ services:
   nginx:
     image: nginx:alpine
     container_name: sowknow4-nginx
+    restart: unless-stopped
+    logging: *default-logging
     volumes:
       - ./nginx/nginx-http-only.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/ssl:/etc/nginx/ssl:ro
     ports:
       - "80:80"
       - "443:443"
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -200,6 +247,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile.telegram
     container_name: sowknow4-telegram-bot
+    restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -208,7 +257,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)' || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f telegram_bot || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -218,7 +267,6 @@ services:
         limits:
           memory: 256M
           cpus: '0.5'
-    restart: unless-stopped
     networks:
       - sowknow-net
 

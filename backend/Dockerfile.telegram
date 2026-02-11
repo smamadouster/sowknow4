@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
+
 # Copy requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -18,8 +21,14 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application
 COPY . .
 
+# Set ownership and permissions
+RUN chown -R appuser:appuser /app
+
 # Set Python path
 ENV PYTHONPATH=/app
+
+# Switch to non-root user
+USER appuser
 
 # Default command for Telegram bot
 CMD ["python", "-m", "telegram_bot.bot"]

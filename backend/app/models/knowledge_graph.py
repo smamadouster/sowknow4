@@ -79,8 +79,8 @@ class Entity(Base, TimestampMixin):
     color = Column(String(7))  # Hex color for visualization
 
     # Relationships
-    source_relationships = relationship("EntityRelationship", foreign_keys=[("source_id",)], back_populates="source_entity")
-    target_relationships = relationship("EntityRelationship", foreign_keys=[("target_id",)], back_populates="target_entity")
+    source_relationships = relationship("EntityRelationship", foreign_keys="EntityRelationship.source_id", back_populates="source_entity")
+    target_relationships = relationship("EntityRelationship", foreign_keys="EntityRelationship.target_id", back_populates="target_entity")
     mentions = relationship("EntityMention", back_populates="entity")
 
     # Indexes
@@ -121,8 +121,8 @@ class EntityRelationship(Base, TimestampMixin):
     last_seen_at = Column(Date)
 
     # Relationships
-    source_entity = relationship("Entity", foreign_keys=[("source_id",)], back_populates="source_relationships")
-    target_entity = relationship("Entity", foreign_keys=[("target_id",)], back_populates="target_relationships")
+    source_entity = relationship("Entity", foreign_keys=[source_id], back_populates="source_relationships")
+    target_entity = relationship("Entity", foreign_keys=[target_id], back_populates="target_relationships")
 
     # Indexes
     __table_args__ = (

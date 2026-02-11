@@ -58,19 +58,40 @@ class HybridSearchService:
 
     def _get_user_bucket_filter(self, user: User) -> List[str]:
         """
-        Get allowed buckets for user based on role
-
+        Get allowed buckets for user based on role.
+        
+        Role-Based Access Control (RBAC) - VIEW-ONLY access for search:
+        
+        ┌──────────────────────────────────────────────────────────────────────────────┐
+        │ SEARCH ACCESS LEVELS (VIEW-ONLY - no upload/delete/modify permissions)       │
+        ├──────────────────────────────────────────────────────────────────────────────┤
+        │ ADMIN (full_access):              PUBLIC + CONFIDENTIAL buckets               │
+        │ SUPERUSER (read_only_trusted):    PUBLIC + CONFIDENTIAL buckets               │
+        │                                   ⚠️  VIEW-ONLY for confidential documents    │
+        │                                   ⚠️  Can SEE but NOT upload/delete/modify    │
+        │ USER (public_only):               PUBLIC bucket only                          │
+        └──────────────────────────────────────────────────────────────────────────────┘
+        
+        IMPORTANT: SuperUser role has VIEW-ONLY access to confidential documents.
+        - SuperUsers can SEARCH and READ confidential documents
+        - SuperUsers CANNOT upload to confidential bucket
+        - SuperUsers CANNOT delete or modify confidential documents
+        - This is a search-specific permission; actual document operations are
+          enforced separately in document_service.py
+        
         Args:
-            user: Current user
+            user: Current user requesting bucket filter
 
         Returns:
-            List of allowed bucket values
+            List of allowed bucket values for search operations:
+            - [DocumentBucket.PUBLIC.value, DocumentBucket.CONFIDENTIAL.value] for Admin/SuperUser
+            - [DocumentBucket.PUBLIC.value] for regular Users
         """
         if user.role == UserRole.ADMIN:
             # Admins see all documents
             return [DocumentBucket.PUBLIC.value, DocumentBucket.CONFIDENTIAL.value]
         elif user.role == UserRole.SUPERUSER:
-            # Super users see all documents
+            # Super users see all documents (VIEW-ONLY for confidential)
             return [DocumentBucket.PUBLIC.value, DocumentBucket.CONFIDENTIAL.value]
         else:
             # Regular users only see public documents

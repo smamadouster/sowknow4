@@ -1,6 +1,6 @@
 # SOWKNOW Security and Privacy Fixes - Implementation Report
 
-**Date**: 2026-02-10
+**Date**: 2026-02-10 (Updated: 2026-02-11)
 **Task**: Fix all CRITICAL security and privacy issues identified in audit
 
 ## Executive Summary
@@ -219,6 +219,93 @@ ollama:
 
 **Security Impact**: Confidential documents and PII-containing queries are now processed locally by Ollama, ensuring zero data leaves the infrastructure.
 
+## 7. JWT Token Validation Enhancement
+
+**Date**: 2026-02-11
+**File**: `/root/development/src/active/sowknow4/backend/app/utils/security.py`
+
+### Problem Identified
+The original `decode_token()` function silently returned an empty dict `{}` on any JWT error (expired, tampered, malformed), making it impossible for callers to distinguish between "no token" and "bad token" scenarios.
+
+### Custom Exceptions Added
+```python
+class TokenExpiredError(Exception):
+    """Raised when a JWT token has expired"""
+    def __init__(self, message: str = "Token has expired"):
+        self.message = message
+        super().__init__(self.message)
+
+
+class TokenInvalidError(Exception):
+    """Raised when a JWT token is invalid (tampered, malformed, bad signature, etc.)"""
+    def __init__(self, message: str = "Token is invalid"):
+        self.message = message
+        super().__init__(self.message)
+```
+
+### Changes Made
+
+#### 1. `decode_token()` Refactored
+- Return type changed from `Dict[str, Any]` to `Optional[Dict[str, Any]]`
+- Now raises `TokenExpiredError` on `ExpiredSignatureError`
+- Now raises `TokenInvalidError` on any other `JWTError`
+- Validates `"sub"` claim exists (raises `TokenInvalidError` if missing)
+- Added `expected_type` parameter to validate `"type"` claim (defaults to `"access"`)
+- **Never returns empty dict** - either returns payload or raises exception
+
+#### 2. Token Type Validation
+```python
+def decode_token(token: str, expected_type: Optional[str] = "access") -> Optional[Dict[str, Any]]:
+    # ... decoding logic ...
+
+    # Validate that the token contains a 'sub' claim
+    if "sub" not in payload:
+        raise TokenInvalidError("Token missing 'sub' claim")
+
+    # Validate token type if expected_type is specified
+    if expected_type is not None:
+        token_type = payload.get("type")
+        if token_type != expected_type:
+            raise TokenInvalidError(f"Expected token type '{expected_type}', got '{token_type}'")
+
+    return payload
+```
+
+#### 3. `create_access_token()` Enhanced
+- Now sets `"type": "access"` claim in payload
+- Reads `ACCESS_TOKEN_EXPIRE_MINUTES` from env var (defaults to 15 minutes)
+- Always sets `"exp"` claim
+
+#### 4. `create_refresh_token()` Completed
+- Sets `"type": "refresh"` claim in payload
+- 7-day expiration (`REFRESH_TOKEN_EXPIRE_DAYS`)
+- Cannot be confused with access tokens due to type claim
+
+#### 5. `get_current_user()` Updated
+- Now uses try/except to catch custom exceptions
+- Calls `decode_token(token, expected_type="access")`
+- Converts custom exceptions to FastAPI `HTTPException`
+
+### Nginx Configuration Fix
+**Files**: `/root/development/src/active/sowknow4/nginx/nginx.conf` and `nginx-http-only.conf`
+
+The `/health` endpoint location block was missing the `Host` header proxy setting, causing `TrustedHostMiddleware` to reject requests with 400 Bad Request.
+
+**Fix Applied**:
+```nginx
+# Health check (no auth required)
+location /health {
+    access_log off;
+    proxy_pass http://backend/health;
+    proxy_set_header Host $host;              # Added
+    proxy_set_header X-Real-IP $remote_addr;   # Added
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;  # Added
+    proxy_set_header X-Forwarded-Proto $scheme;  # Added
+}
+```
+
+**Security Impact**: JWT token errors are now properly distinguishable, enabling better error handling and security monitoring. Token type validation prevents access token misuse as refresh tokens and vice versa.
+
 ## Files Changed Summary
 
 ### New Files Created:
@@ -232,11 +319,13 @@ ollama:
 4. `/root/development/src/active/sowknow4/backend/app/services/chat_service.py` - PII detection
 5. `/root/development/src/active/sowknow4/backend/app/services/collection_service.py` - RBAC fix
 6. `/root/development/src/active/sowknow4/backend/app/services/smart_folder_service.py` - RBAC fix
-7. `/root/development/src/active/sowknow4/frontend/app/collections/page.tsx` - localStorage removal
-8. `/root/development/src/active/sowknow4/frontend/app/smart-folders/page.tsx` - localStorage + RBAC
-9. `/root/development/src/active/sowknow4/frontend/lib/store.ts` - RBAC helpers
-10. `/root/development/src/active/sowknow4/nginx/nginx.conf` - CORS fix
-11. `/root/development/src/active/sowknow4/docker-compose.production.yml` - Ollama added
+7. `/root/development/src/active/sowknow4/backend/app/utils/security.py` - JWT validation, custom exceptions, token types
+8. `/root/development/src/active/sowknow4/frontend/app/collections/page.tsx` - localStorage removal
+9. `/root/development/src/active/sowknow4/frontend/app/smart-folders/page.tsx` - localStorage + RBAC
+10. `/root/development/src/active/sowknow4/frontend/lib/store.ts` - RBAC helpers
+11. `/root/development/src/active/sowknow4/nginx/nginx.conf` - CORS fix + health endpoint Host header
+12. `/root/development/src/active/sowknow4/nginx/nginx-http-only.conf` - health endpoint Host header
+13. `/root/development/src/active/sowknow4/docker-compose.production.yml` - Ollama added
 
 ## Security Improvements Matrix
 
@@ -245,6 +334,8 @@ ollama:
 | PII sent to cloud APIs | CRITICAL | PII detection service + auto-routing to Ollama | ✅ FIXED |
 | localStorage authentication | HIGH | Cookie-based authentication | ✅ FIXED |
 | CORS wildcard (*) | HIGH | Specific domain whitelisting | ✅ FIXED |
+| JWT silent failure on errors | MEDIUM | Custom exceptions + proper error propagation | ✅ FIXED |
+| Missing token type validation | MEDIUM | Token type claims + validation in decode_token | ✅ FIXED |
 | Missing SUPERUSER in RBAC | MEDIUM | All endpoints now check SUPERUSER | ✅ FIXED |
 | No Ollama container | MEDIUM | Container added with proper config | ✅ FIXED |
 | Client-side RBAC missing | MEDIUM | Helper functions + UI updates | ✅ FIXED |
@@ -307,6 +398,9 @@ Before deploying to production:
 - [ ] Verify SUPERUSER role can access confidential documents
 - [ ] Monitor Ollama memory usage (2GB limit)
 - [ ] Test failover when Ollama is unavailable
+- [ ] Test JWT token expiration and error handling
+- [ ] Verify refresh token flow works correctly
+- [ ] Test token type validation (access vs refresh)
 
 ## Limitations and Future Work
 
@@ -340,6 +434,6 @@ The implementation follows the SOWKNOW project's core principle: **Zero PII to c
 
 ---
 
-**Report Generated**: 2026-02-10
+**Report Generated**: 2026-02-10 (Updated: 2026-02-11)
 **Implementation Status**: ✅ COMPLETE
 **Next Steps**: Testing and deployment verification

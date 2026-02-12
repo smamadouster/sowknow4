@@ -10,7 +10,7 @@ from app.models.base import Base, TimestampMixin
 class LLMProvider(str, enum.Enum):
     """LLM providers used for chat responses"""
     KIMI = "kimi"           # Moonshot AI (Kimi 2.5) - for chatbot, telegram, search agentic
-    GEMINI = "gemini"       # Google AI API (Gemini Flash) - for smart folders, RAG, collections, knowledge graph
+    OPENROUTER = "openrouter"  # OpenRouter (MiniMax, etc.) - for smart folders, RAG, collections, knowledge graph
     OLLAMA = "ollama"       # Shared local Ollama instance - for confidential documents
 
 

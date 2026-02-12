@@ -13,7 +13,7 @@ from app.api import collections, smart_folders, knowledge_graph, graph_rag, mult
 from app.database import engine, init_pgvector
 from app.models.base import Base
 from app.models.user import User
-from app.services.gemini_service import gemini_service
+from app.services.openrouter_service import openrouter_service
 # TODO: Import other models once database is set up
 # from app.models.document import Document, DocumentTag, DocumentChunk
 # from app.models.chat import ChatSession, ChatMessage
@@ -178,20 +178,20 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Enhanced health check endpoint including Gemini API status and cache stats"""
-    # Check Gemini service health
-    gemini_health = {"status": "unknown"}
+    """Enhanced health check endpoint including OpenRouter API status"""
+    # Check OpenRouter service health
+    openrouter_health = {"status": "unknown"}
     try:
-        gemini_health = await gemini_service.health_check()
+        openrouter_health = await openrouter_service.health_check()
     except Exception as e:
-        gemini_health = {
-            "service": "gemini",
+        openrouter_health = {
+            "service": "openrouter",
             "status": "error",
             "error": f"Health check failed: {str(e)}"
         }
 
     return {
-        "status": "healthy" if gemini_health.get("status") in ["healthy", "degraded"] else "degraded",
+        "status": "healthy" if openrouter_health.get("status") in ["healthy", "degraded"] else "degraded",
         "timestamp": time.time(),
         "environment": os.getenv("APP_ENV", "development"),
         "version": "1.0.0",
@@ -200,32 +200,31 @@ async def health():
             "redis": "connected",
             "api": "running",
             "authentication": "enabled",
-            "gemini": gemini_health
+            "openrouter": openrouter_health
         }
     }
 
 @app.get("/api/v1/status")
 async def api_status():
-    """API status endpoint with Gemini integration"""
-    # Get cache statistics
-    cache_stats = {"status": "unknown"}
+    """API status endpoint with OpenRouter integration"""
+    # Get OpenRouter statistics
+    llm_stats = {"status": "unknown"}
     try:
-        usage_stats = await gemini_service.get_usage_stats()
-        cache_stats = usage_stats.get("cache_stats", {})
+        llm_stats = await openrouter_service.get_usage_stats()
     except Exception as e:
-        cache_stats = {"error": f"Could not retrieve cache stats: {str(e)}"}
+        llm_stats = {"error": f"Could not retrieve LLM stats: {str(e)}"}
 
     return {
         "phase": "3 - Knowledge Graph + Graph-RAG + Multi-Agent Search",
         "sprint": "10 - Multi-Agent Search (COMPLETE)",
         "status": "Phase 3 Complete - All Sprints Implemented",
         "version": "3.0.0",
-        "llm_provider": "Gemini Flash (Google)",
+        "llm_provider": "OpenRouter (MiniMax)",
         "features": [
             {"name": "Infrastructure", "status": "✅", "description": "Docker containers, PostgreSQL, Redis"},
             {"name": "Authentication", "status": "✅", "description": "JWT login/register system"},
             {"name": "Database Models", "status": "✅", "description": "SQLAlchemy models with pgvector"},
-            {"name": "Gemini Flash Integration", "status": "✅", "description": "Google Gemini 2.0 Flash with caching"},
+            {"name": "OpenRouter Integration", "status": "✅", "description": "OpenRouter API with MiniMax"},
             {"name": "Document Upload", "status": "✅", "description": "File upload and processing"},
             {"name": "OCR Processing", "status": "✅", "description": "Hunyuan OCR text extraction"},
             {"name": "RAG Search", "status": "✅", "description": "Hybrid vector + keyword search"},
@@ -238,7 +237,7 @@ async def api_status():
             {"name": "Deduplication", "status": "✅", "description": "Hash-based duplicate detection"},
             {"name": "Performance Tuning", "status": "✅", "description": "Batch optimization & caching"},
             {"name": "E2E Tests", "status": "✅", "description": "Phase 2 test coverage"},
-            {"name": "Entity Extraction", "status": "✅", "description": "Gemini-powered entity extraction"},
+            {"name": "Entity Extraction", "status": "✅", "description": "LLM-powered entity extraction"},
             {"name": "Knowledge Graph", "status": "✅", "description": "Entity + relationship storage"},
             {"name": "Relationship Mapping", "status": "✅", "description": "Graph relationship inference"},
             {"name": "Timeline Construction", "status": "✅", "description": "Event timeline + insights"},

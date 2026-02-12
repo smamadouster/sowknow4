@@ -1,9 +1,9 @@
 """
-Chat service for RAG-powered conversations with Kimi 2.5, Gemini Flash, and Ollama
+Chat service for RAG-powered conversations with Kimi 2.5, OpenRouter (MiniMax), and Ollama
 
 LLM Routing Strategy:
 - Chatbot/Telegram (general chat without docs): Kimi 2.5
-- Smart Features (RAG with public docs): Gemini Flash
+- Smart Features (RAG with public docs): OpenRouter (MiniMax)
 - Confidential Docs (RAG with confidential docs): Ollama
 """
 import os
@@ -27,145 +27,22 @@ try:
     from app.services.kimi_service import kimi_service
 except ImportError:
     kimi_service = None
-    logger.warning("Kimi service not available")
+    logging.warning("Kimi service not available")
+
+try:
+    from app.services.openrouter_service import openrouter_service
+except ImportError:
+    openrouter_service = None
+    logging.warning("OpenRouter service not available")
 
 logger = logging.getLogger(__name__)
 
 
 # Configuration
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # Model configurations
-GEMINI_MODEL = "gemini-2.0-flash-exp"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
-
-
-class GeminiService:
-    """Service for interacting with Gemini Flash (Google AI API)"""
-
-    def __init__(self):
-        self.api_key = GEMINI_API_KEY
-        self.base_url = GEMINI_API_URL
-        self.model = GEMINI_MODEL
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
-    async def chat_completion(
-        self,
-        messages: List[Dict[str, str]],
-        stream: bool = False,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        cache_key: Optional[str] = None
-    ) -> AsyncGenerator[str, None]:
-        """
-        Generate chat completion using Gemini Flash
-
-        Args:
-            messages: List of message dicts with role and content
-            stream: Whether to stream the response
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            cache_key: Optional cache key for prompt caching
-
-        Yields:
-            Response text chunks if streaming
-        """
-        if not self.api_key:
-            logger.error("GEMINI_API_KEY not configured")
-            yield "Error: Gemini API key not configured"
-            return
-
-        # Convert messages to Gemini format
-        gemini_messages = []
-        system_prompt = None
-
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-
-            if role == "system":
-                system_prompt = content
-            else:
-                gemini_role = "user" if role == "user" else "model"
-                gemini_messages.append({
-                    "role": gemini_role,
-                    "parts": [{"text": content}]
-                })
-
-        # Build request payload
-        payload = {
-            "contents": gemini_messages,
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens,
-            }
-        }
-
-        # Add system instruction if present
-        if system_prompt:
-            payload["systemInstruction"] = {
-                "parts": [{"text": system_prompt}]
-            }
-
-        # Add caching if cache_key provided
-        if cache_key:
-            payload["contents"][0]["role"] = "user"
-            payload["contents"][0]["parts"] = [{
-                "text": f"[CACHE_KEY: {cache_key}]\n" + gemini_messages[0]["parts"][0]["text"]
-            }]
-
-        try:
-            url = f"{self.base_url}?key={self.api_key}"
-
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                if stream:
-                    async with client.stream(
-                        "POST",
-                        url,
-                        json=payload
-                    ) as response:
-                        response.raise_for_status()
-
-                        async for line in response.aiter_lines():
-                            if line.strip():
-                                try:
-                                    data = json.loads(line)
-                                    if "candidates" in data:
-                                        candidate = data["candidates"][0]
-                                        if "content" in candidate:
-                                            content = candidate["content"]["parts"][0].get("text", "")
-                                            if content:
-                                                yield content
-                                except json.JSONDecodeError:
-                                    continue
-                else:
-                    response = await client.post(
-                        url,
-                        json=payload
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-
-                    if "candidates" in result and len(result["candidates"]) > 0:
-                        content = result["candidates"][0]["content"]["parts"][0].get("text", "")
-                        usage_metadata = result.get("usageMetadata", {})
-
-                        yield content
-                        # Return usage as last chunk
-                        if usage_metadata:
-                            yield f"\n__USAGE__: {json.dumps(usage_metadata)}"
-                    else:
-                        logger.error(f"Unexpected Gemini response: {result}")
-                        yield "Error: Unexpected response from Gemini API"
-
-        except httpx.HTTPError as e:
-            logger.error(f"Gemini API error: {str(e)}")
-            yield f"Error: {str(e)}"
 
 
 class OllamaService:
@@ -259,7 +136,7 @@ class ChatService:
     """Service for managing chat sessions with RAG"""
 
     def __init__(self):
-        self.gemini_service = GeminiService()
+        self.openrouter_service = openrouter_service  # For RAG with public docs
         self.ollama_service = OllamaService()
         self.kimi_service = kimi_service  # For chatbot/telegram/general chat
         self.max_context_messages = 10
@@ -443,7 +320,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Select LLM based on use case and confidentiality
         # Priority:
         # 1. Confidential docs -> Ollama (privacy)
-        # 2. RAG with public docs -> Gemini Flash (smart features)
+        # 2. RAG with public docs -> OpenRouter (MiniMax)
         # 3. General chat (no docs) -> Kimi 2.5 (chatbot/telegram)
 
         if has_confidential:
@@ -452,21 +329,32 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
         elif sources and len(sources) > 0:
-            # RAG mode with public docs: use Gemini Flash
-            llm_service = self.gemini_service
-            llm_provider = LLMProvider.GEMINI
-            routing_reason = "rag_public_docs"
+            # RAG mode with public docs: use OpenRouter
+            if self.openrouter_service:
+                llm_service = self.openrouter_service
+                llm_provider = LLMProvider.OPENROUTER
+                routing_reason = "rag_public_docs"
+            else:
+                # Fallback to Ollama if OpenRouter not available
+                llm_service = self.ollama_service
+                llm_provider = LLMProvider.OLLAMA
+                routing_reason = "rag_public_docs_fallback"
         else:
             # General chat mode: use Kimi 2.5 for chatbot/telegram
             if self.kimi_service:
                 llm_service = self.kimi_service
                 llm_provider = LLMProvider.KIMI
                 routing_reason = "general_chat"
-            else:
-                # Fallback to Gemini if Kimi not available
-                llm_service = self.gemini_service
-                llm_provider = LLMProvider.GEMINI
+            elif self.openrouter_service:
+                # Fallback to OpenRouter if Kimi not available
+                llm_service = self.openrouter_service
+                llm_provider = LLMProvider.OPENROUTER
                 routing_reason = "general_chat_fallback"
+            else:
+                # Final fallback to Ollama
+                llm_service = self.ollama_service
+                llm_provider = LLMProvider.OLLAMA
+                routing_reason = "general_chat_final_fallback"
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
@@ -520,7 +408,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Select LLM based on use case and confidentiality
         # Priority:
         # 1. Confidential docs -> Ollama (privacy)
-        # 2. RAG with public docs -> Gemini Flash (smart features)
+        # 2. RAG with public docs -> OpenRouter (MiniMax)
         # 3. General chat (no docs) -> Kimi 2.5 (chatbot/telegram)
 
         if has_confidential:
@@ -529,21 +417,32 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
         elif sources and len(sources) > 0:
-            # RAG mode with public docs: use Gemini Flash
-            llm_service = self.gemini_service
-            llm_provider = LLMProvider.GEMINI
-            routing_reason = "rag_public_docs"
+            # RAG mode with public docs: use OpenRouter
+            if self.openrouter_service:
+                llm_service = self.openrouter_service
+                llm_provider = LLMProvider.OPENROUTER
+                routing_reason = "rag_public_docs"
+            else:
+                # Fallback to Ollama if OpenRouter not available
+                llm_service = self.ollama_service
+                llm_provider = LLMProvider.OLLAMA
+                routing_reason = "rag_public_docs_fallback"
         else:
             # General chat mode: use Kimi 2.5 for chatbot/telegram
             if self.kimi_service:
                 llm_service = self.kimi_service
                 llm_provider = LLMProvider.KIMI
                 routing_reason = "general_chat"
-            else:
-                # Fallback to Gemini if Kimi not available
-                llm_service = self.gemini_service
-                llm_provider = LLMProvider.GEMINI
+            elif self.openrouter_service:
+                # Fallback to OpenRouter if Kimi not available
+                llm_service = self.openrouter_service
+                llm_provider = LLMProvider.OPENROUTER
                 routing_reason = "general_chat_fallback"
+            else:
+                # Final fallback to Ollama
+                llm_service = self.ollama_service
+                llm_provider = LLMProvider.OLLAMA
+                routing_reason = "general_chat_final_fallback"
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 

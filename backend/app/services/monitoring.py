@@ -53,16 +53,22 @@ class CostTracker:
     """Track API costs with daily caps and budgeting."""
 
     # Pricing (as of 2025)
-    GEMINI_PRICING = {
-        "gemini-2.0-flash-exp": {
-            "input": 0.00001,  # per 1K tokens
-            "output": 0.00005,  # per 1K tokens
-            "cache_read": 0.000001,  # per 1K cached tokens
+    OPENROUTER_PRICING = {
+        "minimax/minimax-01": {
+            "input": 0.00055,  # per 1K tokens
+            "output": 0.0022,  # per 1K tokens
         },
-        "gemini-1.5-flash": {
-            "input": 0.000075,
-            "output": 0.00015,
-            "cache_read": 0.000015,
+        "openai/gpt-4o": {
+            "input": 0.0025,
+            "output": 0.01,
+        },
+        "openai/gpt-4o-mini": {
+            "input": 0.00015,
+            "output": 0.0006,
+        },
+        "anthropic/claude-3.5-sonnet": {
+            "input": 0.003,
+            "output": 0.015,
         },
     }
 
@@ -103,12 +109,11 @@ class CostTracker:
         """
         cost = 0.0
 
-        if service == "gemini":
-            pricing = self.GEMINI_PRICING.get(model, self.GEMINI_PRICING["gemini-2.0-flash-exp"])
+        if service == "openrouter":
+            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING["minimax/minimax-01"])
             cost = (
                 (input_tokens / 1000) * pricing["input"] +
-                (output_tokens / 1000) * pricing["output"] +
-                (cached_tokens / 1000) * pricing.get("cache_read", 0)
+                (output_tokens / 1000) * pricing["output"]
             )
         elif service == "hunyuan":
             # Hunyuan OCR pricing (example - update with actual)
@@ -479,7 +484,7 @@ def get_cost_tracker() -> CostTracker:
     """Get or create global cost tracker instance."""
     global _cost_tracker
     if _cost_tracker is None:
-        daily_budget = float(os.getenv("GEMINI_DAILY_BUDGET_USD", "5.0"))
+        daily_budget = float(os.getenv("OPENROUTER_DAILY_BUDGET_USD", "5.0"))
         _cost_tracker = CostTracker(daily_budget_usd=daily_budget)
     return _cost_tracker
 

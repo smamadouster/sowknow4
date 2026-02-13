@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuthStore, canAccessConfidential } from "@/lib/store";
 
 // Disable static optimization for this client component
@@ -86,12 +87,25 @@ export default function SmartFoldersPage() {
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Smart Folders
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Generate AI-powered content from your documents
-          </p>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+              title="Home"
+            >
+              <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+            </Link>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                Smart Folders
+              </h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Generate AI-powered content from your documents
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -169,7 +169,7 @@ export default function KnowledgeGraphPage() {
             <EntityList
               entityType={selectedEntityType || undefined}
               onSelectEntity={handleEntitySelect}
-              selectedEntityId={selectedNodeId}
+              selectedEntityId={selectedNodeId || undefined}
             />
           </div>
 
@@ -231,7 +231,7 @@ export default function KnowledgeGraphPage() {
                 <EntityList
                   entityType={selectedEntityType || undefined}
                   onSelectEntity={handleEntitySelect}
-                  selectedEntityId={selectedNodeId}
+                  selectedEntityId={selectedNodeId || undefined}
                 />
                 {selectedNodeId && (
                   <div className="mt-6">

@@ -1,9 +1,9 @@
-from sqlalchemy import Column, String, UUID, ForeignKey, Text, Enum, Integer, DateTime
+from sqlalchemy import Column, String, ForeignKey, Text, Enum, Integer, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 import enum
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TimestampMixin, GUIDType
 
 
 class TaskType(str, enum.Enum):
@@ -31,8 +31,8 @@ class ProcessingQueue(Base, TimestampMixin):
     __tablename__ = "processing_queue"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
 
     # Task information
     task_type = Column(Enum(TaskType), nullable=False)

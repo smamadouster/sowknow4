@@ -1,10 +1,10 @@
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, UUID, Enum, ForeignKey, Text, Index, event
+from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Enum, ForeignKey, Text, Index, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 import enum
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TimestampMixin, GUIDType
 
 
 class DocumentBucket(str, enum.Enum):
@@ -37,7 +37,7 @@ class Document(Base, TimestampMixin):
     __tablename__ = "documents"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
     filename = Column(String(512), nullable=False)
     original_filename = Column(String(512), nullable=False)
     file_path = Column(String(1024), nullable=False)
@@ -82,8 +82,8 @@ class DocumentTag(Base, TimestampMixin):
     __tablename__ = "document_tags"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
     tag_name = Column(String(256), nullable=False, index=True)
     tag_type = Column(String(100))  # topic, entity, project, importance, etc.
     auto_generated = Column(Boolean, default=False)
@@ -110,8 +110,8 @@ class DocumentChunk(Base, TimestampMixin):
     __tablename__ = "document_chunks"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
     chunk_index = Column(Integer, nullable=False)
     chunk_text = Column(Text, nullable=False)
 

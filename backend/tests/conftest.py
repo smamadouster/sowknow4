@@ -3,27 +3,50 @@ Test configuration and fixtures for pytest
 """
 import pytest
 import os
+os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+
 from typing import Generator, Dict
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
+import uuid
 
-from app.main import app
-from app.database import get_db
 from app.models.base import Base
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.utils.security import create_access_token, get_password_hash
+from app.main import app
+from app.database import get_db
 
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite:///./test.db"
 
-# Create test engine
+# Create test engine with proper UUID handling
 test_engine = create_engine(
     TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool
 )
+
+# Remove schema from all tables for SQLite compatibility
+# and replace PostgreSQL-specific types
+@event.listens_for(Base.metadata, "before_create")
+def remove_schema(metadata, connection, **kw):
+    from sqlalchemy import JSON, String, Text
+    from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+    
+    for table in metadata.tables.values():
+        table.schema = None
+        for column in table.columns:
+            col_type = type(column.type).__name__
+            if col_type == 'JSONB':
+                column.type = JSON()
+            elif col_type == 'Vector':
+                column.type = Text()
+            elif col_type == 'ARRAY':
+                column.type = Text()
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 

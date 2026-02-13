@@ -52,7 +52,7 @@ ssh root@72.62.17.136
 
 # Or via TailScale SSH
 # Navigate to project directory
-cd /root/sowknow4  # or your deployment path
+cd /var/docker/sowknow4  # or your deployment path
 ```
 
 ### Step 3: Create Production Environment File

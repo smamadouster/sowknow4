@@ -125,13 +125,24 @@ export default function CollectionsPage() {
       <div className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {t('title')}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {t('create_from_query')}
-              </p>
+            <div className="flex items-center gap-4">
+              <IntlLink
+                href="/"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                title={tCommon('home')}
+              >
+                <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </IntlLink>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                  {t('title')}
+                </h1>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {t('create_from_query')}
+                </p>
+              </div>
             </div>
             <button
               onClick={() => setShowCreateModal(true)}

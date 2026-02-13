@@ -8,6 +8,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import api from '@/lib/api';
 import { GraphVisualization } from '@/components/knowledge-graph/GraphVisualization';
 import { EntityList } from '@/components/knowledge-graph/EntityList';
@@ -85,11 +86,22 @@ export default function KnowledgeGraphPage() {
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Knowledge Graph</h1>
-              <p className="text-sm text-gray-500">
-                Explore entities, relationships, and timeline events from your documents
-              </p>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/"
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
+                title="Home"
+              >
+                <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </Link>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Knowledge Graph</h1>
+                <p className="text-sm text-gray-500">
+                  Explore entities, relationships, and timeline events from your documents
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-4">
               {/* Entity Type Filter */}
@@ -173,7 +185,7 @@ export default function KnowledgeGraphPage() {
             <EntityList
               entityType={selectedEntityType || undefined}
               onSelectEntity={handleEntitySelect}
-              selectedEntityId={selectedNodeId}
+              selectedEntityId={selectedNodeId || undefined}
             />
           </div>
 
@@ -235,7 +247,7 @@ export default function KnowledgeGraphPage() {
                 <EntityList
                   entityType={selectedEntityType || undefined}
                   onSelectEntity={handleEntitySelect}
-                  selectedEntityId={selectedNodeId}
+                  selectedEntityId={selectedNodeId || undefined}
                 />
                 {selectedNodeId && (
                   <div className="mt-6">

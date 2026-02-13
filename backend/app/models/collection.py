@@ -7,10 +7,10 @@ can be saved for later reference.
 """
 import uuid
 import enum
-from sqlalchemy import Column, String, Integer, Boolean, UUID, ForeignKey, Text, JSON, Index, event, Enum
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Text, JSON, Index, event, Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TimestampMixin, GUIDType
 
 
 class CollectionVisibility(str, enum.Enum):
@@ -37,10 +37,10 @@ class Collection(Base, TimestampMixin):
     __tablename__ = "collections"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # Owner
-    user_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Basic info
     name = Column(String(512), nullable=False, index=True)
@@ -67,7 +67,7 @@ class Collection(Base, TimestampMixin):
     last_refreshed_at = Column(String)  # ISO timestamp of last document refresh
 
     # Follow-up chat context
-    chat_session_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.chat_sessions.id", ondelete="SET NULL"))
+    chat_session_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.chat_sessions.id", ondelete="SET NULL"))
 
     # Cache key for Gemini context caching (for cost optimization)
     cache_key = Column(String(256))
@@ -107,9 +107,9 @@ class CollectionItem(Base, TimestampMixin):
     __tablename__ = "collection_items"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    collection_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    collection_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Relevance and ordering
     relevance_score = Column(Integer, default=50)  # 0-100 relevance score
@@ -149,9 +149,9 @@ class CollectionChatSession(Base, TimestampMixin):
     __tablename__ = "collection_chat_sessions"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    collection_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    collection_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Session metadata
     session_name = Column(String(512))  # Optional name for the Q&A session

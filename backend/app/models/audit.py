@@ -1,9 +1,9 @@
 """
 Audit log model for tracking admin actions and confidential access
 """
-from sqlalchemy import Column, String, UUID, DateTime, Text, ForeignKey, Enum as SQLEnum, func
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Enum as SQLEnum, func
 from sqlalchemy.orm import relationship
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TimestampMixin, GUIDType
 from app.models.user import User, UserRole
 import enum
 import uuid
@@ -31,8 +31,8 @@ class AuditLog(Base, TimestampMixin):
     __tablename__ = "audit_logs"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.users.id"), nullable=True, index=True)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    user_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.users.id"), nullable=True, index=True)
     action = Column(SQLEnum(AuditAction), nullable=False, index=True)
     resource_type = Column(String(100), nullable=False, index=True)  # e.g., "user", "document", "system"
     resource_id = Column(String(255), nullable=True, index=True)  # ID of affected resource

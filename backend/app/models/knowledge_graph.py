@@ -6,10 +6,10 @@ for graph-augmented retrieval and knowledge visualization.
 """
 import uuid
 import enum
-from sqlalchemy import Column, String, Integer, Boolean, UUID, ForeignKey, Text, JSON, Index, Float, Date, Enum
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Text, JSON, Index, Float, Date, Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TimestampMixin, GUIDType
 
 
 class EntityType(str, enum.Enum):
@@ -55,7 +55,7 @@ class Entity(Base, TimestampMixin):
     __tablename__ = "entities"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # Entity identity
     name = Column(String(512), nullable=False, index=True)
@@ -104,11 +104,11 @@ class EntityRelationship(Base, TimestampMixin):
     __tablename__ = "entity_relationships"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # Connected entities
-    source_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
-    target_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Relationship type and properties
     relation_type = Column(Enum(RelationType), nullable=False, index=True)
@@ -145,12 +145,12 @@ class EntityMention(Base, TimestampMixin):
     __tablename__ = "entity_mentions"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # References
-    entity_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True)
-    chunk_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.document_chunks.id", ondelete="SET NULL"))
+    entity_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    chunk_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.document_chunks.id", ondelete="SET NULL"))
 
     # Mention details
     context_text = Column(Text)  # Surrounding text where entity was found
@@ -184,7 +184,7 @@ class TimelineEvent(Base, TimestampMixin):
     __tablename__ = "timeline_events"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # Event identity
     title = Column(String(512), nullable=False)
@@ -196,7 +196,7 @@ class TimelineEvent(Base, TimestampMixin):
     entity_ids = Column(JSONB, default=list)  # List of entity IDs involved
 
     # Source document
-    document_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="SET NULL"), index=True)
+    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="SET NULL"), index=True)
 
     # Classification
     event_type = Column(String(100))  # "founding", "merger", "appointment", "milestone", etc.

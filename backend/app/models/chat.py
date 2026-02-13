@@ -1,10 +1,10 @@
-from sqlalchemy import Column, String, Integer, UUID, ForeignKey, Text, Enum
+from sqlalchemy import Column, String, Integer, ForeignKey, Text, Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 import enum
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TimestampMixin, GUIDType
 
 
 class LLMProvider(str, enum.Enum):
@@ -28,8 +28,8 @@ class ChatSession(Base, TimestampMixin):
     __tablename__ = "chat_sessions"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    user_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(512), nullable=False)
 
     # Document scope for this session (optional list of document IDs)
@@ -52,8 +52,8 @@ class ChatMessage(Base, TimestampMixin):
     __tablename__ = "chat_messages"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sowknow.chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    session_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.chat_sessions.id", ondelete="CASCADE"), nullable=False)
 
     # Message content
     role = Column(Enum(MessageRole), nullable=False)

@@ -6,7 +6,7 @@ Routes confidential documents to local Ollama when PII is detected.
 """
 import re
 import logging
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,15 @@ class PIIDetectionService:
     # Patterns that might indicate PII (lower confidence)
     SUSPICIOUS_PATTERNS = {
         'address_indicator': re.compile(
-            r'\b(?:\d+\s+)?(?:street|avenue|boulevard|road|lane|rue|av|bd)\s+[A-Z][a-z]+',
+            r'\b(?:\d+\s+)?(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\s+[A-Z][a-z]+',
+            re.IGNORECASE
+        ),
+        'full_address': re.compile(
+            r'\b\d{1,5}\s+(?:rue|avenue|boulevard|road|lane|chemin|place|allée|circuit|impasse|square|street|avenue|blvd|dr|circle|court)[\s,]+[A-Z][a-z]+[\s,]+\d{5}?\b',
+            re.IGNORECASE
+        ),
+        'french_postal_code': re.compile(
+            r'\b\d{5}\b(?:\s+(?:Paris|Lyon|Marseille|Bordeaux|Toulouse|Nice|Nantes|Strasbourg|Montpellier|Lille|Rennes|Reims|Le\s+Havre|Grenoble|Dijon|Angers|Nîmes|Villeurbanne|Le\s+Mans|Clermont-Ferrand|Aix-en-Provence|Brest|Limoges|Tours|Orléans|Caen|Mulhouse|Poitiers|Pau|Souel|Quimper|Créteil|Versailles))?',
             re.IGNORECASE
         ),
         'name_indicator': re.compile(
@@ -74,6 +82,14 @@ class PIIDetectionService:
         ),
         'passport': re.compile(
             r'\b(?:passport|passeport)\s*(?:card|document)?[:\s]?\s*[A-Z0-9]{6,12}',
+            re.IGNORECASE
+        ),
+        'passport_number': re.compile(
+            r'\b[A-Z]{1,2}\d{6,9}\b',  # US/UK passport format
+            re.IGNORECASE
+        ),
+        'french_national_id': re.compile(
+            r'\b\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}\s?[A-Z]{2}\b',  # French CNI
             re.IGNORECASE
         ),
         'license': re.compile(
@@ -185,7 +201,7 @@ class PIIDetectionService:
 
         return redacted_text, stats
 
-    def get_pii_summary(self, text: str) -> Dict[str, any]:
+    def get_pii_summary(self, text: str) -> Dict[str, Any]:
         """
         Get summary of PII detection in text.
 

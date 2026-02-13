@@ -71,8 +71,9 @@ class TestAuthenticationEndpoints:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
+        # With cookie-based auth, tokens are in cookies, not response body
+        assert "user" in data
+        assert data["user"]["email"] == "telegram_123456789@sowknow.local"
 
 
 class TestDocumentEndpoints:

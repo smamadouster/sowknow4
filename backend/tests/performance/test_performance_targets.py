@@ -43,9 +43,9 @@ from app.models.user import User, UserRole
 from app.models.document import Document, DocumentChunk, DocumentBucket, DocumentStatus, DocumentLanguage
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.services.search_service import search_service, HybridSearchService
-from app.services.chat_service import chat_service, GeminiService, OllamaService
-from app.services.gemini_service import gemini_service
-from app.services.ollama_service import ollama_service
+from app.services.chat_service import chat_service
+from app.services.gemini_service import gemini_service, GeminiService
+from app.services.ollama_service import ollama_service, OllamaService
 from app.services.embedding_service import embedding_service
 
 

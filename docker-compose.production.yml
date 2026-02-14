@@ -13,15 +13,17 @@
 #   - JWT_SECRET_KEY: JWT signing key
 #
 # Memory Allocation Summary:
-#   postgres:      1GB    (Database with pgvector)
-#   redis:         256MB  (Cache & message queue)
-#   backend:       512MB  (FastAPI application)
-#   celery-worker: 1GB    (Background tasks, embeddings model)
-#   frontend:      512MB  (Next.js application)
-#   nginx:         128MB  (Reverse proxy)
-#   certbot:       128MB  (SSL certificate management)
-#   ollama:        SHARED (Uses ghostshell-api on host, no container memory)
-#   TOTAL:         3.5GB  (Well within 6.4GB budget)
+#   postgres:        1GB    (Database with pgvector)
+#   redis:           256MB  (Cache & message queue)
+#   backend:         512MB  (FastAPI application)
+#   celery-worker:   1GB    (Background tasks, embeddings model)
+#   celery-beat:     256MB  (Scheduled tasks, anomaly reports)
+#   telegram-bot:    256MB  (Mobile interface)
+#   frontend:        512MB  (Next.js application)
+#   nginx:           128MB  (Reverse proxy)
+#   certbot:         128MB  (SSL certificate management)
+#   ollama:          SHARED (Uses ghostshell-api on host, no container memory)
+#   TOTAL:           4.0GB  (Well within 6.4GB budget)
 #
 # Backup Strategy:
 #   - Daily PostgreSQL dumps: docker exec sowknow-postgres pg_dump -U sowknow sowknow > backup_$(date +%Y%m%d).sql
@@ -102,7 +104,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "curl -f -H 'Host: sowknow.gollamtech.com' http://localhost:8000/health || curl -f http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -136,6 +138,28 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+
+  # Celery Beat - Scheduled Tasks
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-celery-beat
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.25
+    command: celery -A app.celery_app beat --loglevel=info
+    env_file:
+      - ./backend/.env.production
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+    depends_on:
+      - postgres
+      - redis
 
   # Frontend (Next.js)
   frontend:
@@ -176,11 +200,6 @@ services:
     depends_on:
       - frontend
       - backend
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
   # Certbot for Let's Encrypt SSL
   certbot:
@@ -193,6 +212,24 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     networks:
       - sowknow-net
+
+  # Telegram Bot - Mobile Interface
+  telegram-bot:
+    image: sowknow4-telegram-bot:latest
+    container_name: sowknow-telegram-bot
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    env_file:
+      - ./backend/.env.production
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN required}
+      - BACKEND_URL=http://backend:8000
+    networks:
+      - sowknow-net
+    depends_on:
+      - backend
+      - postgres
 
 volumes:
   postgres_data:

@@ -15,6 +15,11 @@ if [ -z "$JWT_SECRET" ]; then
     echo "Generated JWT_SECRET: $JWT_SECRET"
 fi
 
+if [ -z "$ADMIN_PASSWORD" ]; then
+    ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '/+=\n')
+    echo "Generated ADMIN_PASSWORD: $ADMIN_PASSWORD"
+fi
+
 # Create .env file
 cat > .env << ENVFILE
 # Database
@@ -32,7 +37,7 @@ TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-REPLACE_WITH_YOUR_TELEGRAM_BOT_TOKEN}
 
 # Admin
 ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sowknow.local}
-ADMIN_PASSWORD=${ADMIN_PASSWORD:-ChangeMe123!}
+ADMIN_PASSWORD=${ADMIN_PASSWORD}
 ADMIN_NAME=${ADMIN_NAME:-System Administrator}
 
 # Local LLM

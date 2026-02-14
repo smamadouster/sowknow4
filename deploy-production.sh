@@ -54,21 +54,28 @@ if [ ! -f "docker-compose.yml" ] && [ ! -f "docker-compose.production.yml" ]; th
     cat > docker-compose.yml << 'EOF'
 version: "3.8"
 
+# Require .env file to be present for all services
+x-common-env: &common-env
+  env_file:
+    - .env
+
 services:
   postgres:
+    <<: *common-env
     image: pgvector/pgvector:pg16
     container_name: sowknow4-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=sowknow
-      - POSTGRES_USER=sowknow
-      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-ChangeMe123!}
+      - POSTGRES_DB=${DATABASE_NAME:-sowknow}
+      - POSTGRES_USER=${DATABASE_USER:-sowknow}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}
     volumes:
       - sowknow-postgres-data:/var/lib/postgresql/data
     networks:
       - sowknow-net
 
   redis:
+    <<: *common-env
     image: redis:7-alpine
     container_name: sowknow4-redis
     restart: unless-stopped
@@ -79,15 +86,16 @@ services:
       - sowknow-net
 
   backend:
+    <<: *common-env
     build:
       context: ./backend
       dockerfile: Dockerfile.minimal
     container_name: sowknow4-backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-key-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - APP_ENV=${APP_ENV:-production}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
@@ -106,13 +114,14 @@ services:
       - sowknow-net
 
   celery-worker:
+    <<: *common-env
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
     container_name: sowknow4-celery-worker
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
@@ -129,13 +138,14 @@ services:
       - sowknow-net
 
   celery-beat:
+    <<: *common-env
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
     container_name: sowknow4-celery-beat
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - KIMI_API_KEY=${KIMI_API_KEY}
@@ -148,6 +158,7 @@ services:
     command: celery -A app.celery_app beat --loglevel=info
 
   frontend:
+    <<: *common-env
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -164,13 +175,14 @@ services:
       - backend
 
   telegram-bot:
+    <<: *common-env
     build:
       context: ./backend
       dockerfile: Dockerfile.telegram
     container_name: sowknow4-telegram-bot
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://sowknow:${DATABASE_PASSWORD:-ChangeMe123!}@postgres:5432/sowknow
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - BACKEND_URL=http://backend:8000
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - APP_ENV=${APP_ENV:-production}

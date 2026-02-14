@@ -52,10 +52,11 @@ services:
     networks:
       - sowknow-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sowknow}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sowknow} -d ${POSTGRES_DB:-sowknow}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Redis
   redis:
@@ -70,10 +71,11 @@ services:
     networks:
       - sowknow-net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Ollama - REMOVED: Using shared Ollama instance (ghostshell-api)
   # The shared Ollama is already running on the VPS at host's port 11434
@@ -112,6 +114,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
   # Celery Worker
   celery-worker:
@@ -139,10 +142,11 @@ services:
       - redis
       - backend
     healthcheck:
-      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$HOSTNAME"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
+      start_period: 90s
 
   # Celery Beat - Scheduled Tasks
   celery-beat:
@@ -165,6 +169,12 @@ services:
     depends_on:
       - postgres
       - redis
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat'"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Frontend (Next.js)
   frontend:
@@ -186,6 +196,12 @@ services:
       - sowknow-net
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || curl -f http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Nginx Reverse Proxy
   nginx:
@@ -207,6 +223,12 @@ services:
     depends_on:
       - frontend
       - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/health || wget -q --spider http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # Certbot for Let's Encrypt SSL
   certbot:
@@ -238,6 +260,12 @@ services:
     depends_on:
       - backend
       - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python.*bot.py'"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:

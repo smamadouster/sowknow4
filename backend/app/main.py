@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import time
 import os
+from collections import defaultdict
+from threading import Lock
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
@@ -21,6 +24,58 @@ from app.services.openrouter_service import openrouter_service
 
 # Load environment variables
 load_dotenv()
+
+
+class ErrorRateTracker:
+    """Track 5xx error rates for alerting per PRD requirements."""
+
+    def __init__(self, window_seconds: int = 300):
+        self._window_seconds = window_seconds
+        self._requests: list = []
+        self._lock = Lock()
+
+    def record_request(self, status_code: int, is_server_error: bool):
+        """Record a request for error rate calculation."""
+        with self._lock:
+            now = time.time()
+            self._requests.append({
+                "timestamp": now,
+                "status": status_code,
+                "is_server_error": is_server_error,
+            })
+            cutoff = now - self._window_seconds
+            self._requests = [r for r in self._requests if r["timestamp"] > cutoff]
+
+    def get_error_rate(self) -> float:
+        """Get current 5xx error rate percentage over window."""
+        with self._lock:
+            if not self._requests:
+                return 0.0
+            server_errors = sum(1 for r in self._requests if r["is_server_error"])
+            return (server_errors / len(self._requests)) * 100
+
+    def get_request_count(self) -> int:
+        """Get total requests in window."""
+        with self._lock:
+            return len(self._requests)
+
+
+_error_rate_tracker = ErrorRateTracker(window_seconds=300)
+
+
+class ErrorRateMiddleware(BaseHTTPMiddleware):
+    """Middleware to track 5xx error rates."""
+
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        duration = time.time() - start_time
+
+        is_5xx = 500 <= response.status_code < 600
+        _error_rate_tracker.record_request(response.status_code, is_5xx)
+
+        return response
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -136,6 +191,9 @@ app.add_middleware(
     max_age=600,  # Cache preflight responses for 10 minutes
 )
 
+# Error Rate Tracking Middleware - Tracks 5xx errors per PRD
+app.add_middleware(ErrorRateMiddleware)
+
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
@@ -179,7 +237,40 @@ async def root():
 @app.get("/health")
 async def health():
     """Enhanced health check endpoint including OpenRouter API status"""
-    # Check OpenRouter service health
+    from sqlalchemy import text
+    import redis
+    import httpx
+
+    db_status = "disconnected"
+    redis_status = "disconnected"
+    ollama_status = "disconnected"
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        r = redis.from_url(redis_url)
+        r.ping()
+        redis_status = "connected"
+    except Exception as e:
+        redis_status = f"error: {str(e)}"
+
+    try:
+        ollama_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
+            if response.status_code == 200:
+                ollama_status = "connected"
+            else:
+                ollama_status = f"error: {response.status_code}"
+    except Exception as e:
+        ollama_status = f"unavailable: {str(e)}"
+
     openrouter_health = {"status": "unknown"}
     try:
         openrouter_health = await openrouter_service.health_check()
@@ -190,14 +281,21 @@ async def health():
             "error": f"Health check failed: {str(e)}"
         }
 
+    overall_status = "healthy"
+    if db_status != "connected" or redis_status != "connected":
+        overall_status = "degraded"
+    elif openrouter_health.get("status") not in ["healthy", "degraded"]:
+        overall_status = "degraded"
+
     return {
-        "status": "healthy" if openrouter_health.get("status") in ["healthy", "degraded"] else "degraded",
+        "status": overall_status,
         "timestamp": time.time(),
         "environment": os.getenv("APP_ENV", "development"),
         "version": "1.0.0",
         "services": {
-            "database": "connected",
-            "redis": "connected",
+            "database": db_status,
+            "redis": redis_status,
+            "ollama": ollama_status,
             "api": "running",
             "authentication": "enabled",
             "openrouter": openrouter_health

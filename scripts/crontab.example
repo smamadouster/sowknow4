@@ -1,0 +1,17 @@
+# SOWKNOW Cron Configuration
+# Add these entries to crontab (crontab -e)
+
+# Monitor alerts every 5 minutes (PRD: alerts trigger after 5 min sustained)
+*/5 * * * * /root/development/src/active/sowknow4/scripts/monitor-alerts.sh >> /var/log/sowknow-cron.log 2>&1
+
+# Daily health check at 9 AM (PRD: daily anomaly reports at 09:00)
+0 9 * * * /root/development/src/active/sowknow4/scripts/monitor.sh >> /var/log/sowknow-health.log 2>&1
+
+# Daily PostgreSQL backup at 2 AM
+0 2 * * * docker exec sowknow4-postgres pg_dump -U sowknow sowknow > /backups/sowknow_$(date +\%Y\%m\%d).sql 2>&1
+
+# Weekly encrypted backup (Sunday at 3 AM)
+0 3 * * 0 tar -czf /backups/sowknow_weekly_$(date +\%Y\%m\%d).tar.gz -C / var/lib/docker/volumes/sowknow4_* 2>&1
+
+# Log rotation (daily)
+0 0 * * * /root/development/src/active/sowknow4/scripts/rotate-logs.sh

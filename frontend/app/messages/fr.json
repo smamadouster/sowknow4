@@ -17,6 +17,8 @@
     "submit": "Soumettre"
   },
   "nav": {
+    "all_users": "Tous les utilisateurs",
+    "admin_only": "Admin uniquement",
     "dashboard": "Tableau de bord",
     "search": "Recherche",
     "documents": "Documents",

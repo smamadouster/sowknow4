@@ -84,7 +84,7 @@ fi
 # Check Redis
 echo ""
 echo "--- Redis Health ---"
-if docker exec sowknow-redis redis-cli ping > /dev/null 2>&1; then
+if docker exec sowknow4-redis redis-cli ping > /dev/null 2>&1; then
     echo "Redis: Healthy"
 else
     echo "Redis: Unreachable!"
@@ -93,7 +93,7 @@ fi
 # Check PostgreSQL
 echo ""
 echo "--- PostgreSQL Health ---"
-if docker exec sowknow-postgres pg_isready -U sowknow > /dev/null 2>&1; then
+if docker exec sowknow4-postgres pg_isready -U sowknow > /dev/null 2>&1; then
     echo "PostgreSQL: Healthy"
 else
     echo "PostgreSQL: Unreachable!"

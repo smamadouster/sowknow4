@@ -4,8 +4,11 @@ SOWKNOW API - Minimal Working Version
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import time
 import os
+from collections import defaultdict
+from threading import Lock
 from contextlib import asynccontextmanager
 import logging
 from datetime import datetime
@@ -173,12 +176,54 @@ async def health():
     Basic health check endpoint.
     Returns minimal status for container health checks.
     """
+    from sqlalchemy import text
+    import redis
+    import httpx
+    from app.database import engine
+
+    db_status = "disconnected"
+    redis_status = "disconnected"
+    ollama_status = "disconnected"
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        r = redis.from_url(redis_url)
+        r.ping()
+        redis_status = "connected"
+    except Exception as e:
+        redis_status = f"error: {str(e)}"
+
+    try:
+        ollama_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
+            if response.status_code == 200:
+                ollama_status = "connected"
+            else:
+                ollama_status = f"error: {response.status_code}"
+    except Exception as e:
+        ollama_status = f"unavailable: {str(e)}"
+
+    overall_status = "healthy"
+    if db_status != "connected" or redis_status != "connected":
+        overall_status = "degraded"
+
     return {
-        "status": "healthy",
+        "status": overall_status,
         "timestamp": time.time(),
         "environment": os.getenv("APP_ENV", "development"),
         "version": "1.0.0",
         "services": {
+            "database": db_status,
+            "redis": redis_status,
+            "ollama": ollama_status,
             "api": "running",
             "authentication": "enabled"
         }

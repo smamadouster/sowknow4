@@ -43,6 +43,7 @@
 - **Knowledge Persistence**: Daily backups, encrypted cold storage, 7-4-3 retention policy
 
 ## DEPLOYMENT & CI/CD
+- **Production Directory**: /var/docker/sowknow4
 - **Container Strategy**: 8 Docker containers with strict memory limits, sowknow-net internal network
 - **Build Process**: Docker Compose for all SOWKNOW services (Ollama excluded - shared instance)
 - **Health Checks**: Mandatory /health endpoints, 30-60s intervals with alerting

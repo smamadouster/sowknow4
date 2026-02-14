@@ -23,6 +23,7 @@ services:
       - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-ChangeMe123!}
     volumes:
       - sowknow-postgres-data:/var/lib/postgresql/data
+      - sowknow-backups:/backups
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
@@ -83,6 +84,7 @@ services:
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
+      - sowknow-backups:/app/backups
       - ./backend:/app
     ports:
       - "8000:8000"
@@ -94,7 +96,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -283,3 +285,4 @@ volumes:
   sowknow-redis-data:
   sowknow-public-data:
   sowknow-confidential-data:
+  sowknow-backups:

@@ -1,6 +1,12 @@
 # SOWKNOW Cron Configuration
 # Add these entries to crontab (crontab -e)
 
+# Resource monitoring every 5 minutes (PRD: alerts trigger after 5 min sustained)
+# - SOWKNOW memory >6GB: WARNING
+# - VPS memory >80%: CRITICAL  
+# - 5xx error rate >5%: CRITICAL
+*/5 * * * * /root/development/src/active/sowknow4/scripts/monitor_resources.sh >> /var/log/sowknow-monitor.log 2>&1
+
 # Monitor alerts every 5 minutes (PRD: alerts trigger after 5 min sustained)
 */5 * * * * /root/development/src/active/sowknow4/scripts/monitor-alerts.sh >> /var/log/sowknow-cron.log 2>&1
 

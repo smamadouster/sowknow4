@@ -19,6 +19,9 @@ services:
   # PostgreSQL with pgvector
   postgres:
     <<: *common-env
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     image: pgvector/pgvector:pg16
     container_name: sowknow4-postgres
     restart: unless-stopped
@@ -94,7 +97,7 @@ services:
       - sowknow-backups:/app/backups
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,7 +184,7 @@ services:
       - postgres
       - redis
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f celery.beat || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://backend:8000/health || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -244,11 +247,11 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -270,7 +273,7 @@ services:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set}
       - BOT_API_KEY=${BOT_API_KEY:-}
-      - BACKEND_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8001
     depends_on:
       backend:
         condition: service_healthy

@@ -349,7 +349,6 @@ async def api_status():
             {"name": "Family Context", "status": "✅", "description": "Family narrative generation"},
             {"name": "Multi-Agent Search", "status": "⏳", "description": "Agentic search architecture"}
         ],
-        "gemini_cache": cache_stats,
         "next_steps": [
             "Final system QA and end-to-end testing",
             "Performance optimization and tuning",

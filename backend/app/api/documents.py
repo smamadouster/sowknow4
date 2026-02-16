@@ -1,12 +1,16 @@
 """
 Document API endpoints for upload, list, get, update, and delete operations
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+import os
+import logging
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Header
 from sqlalchemy.orm import Session
 from typing import Optional, List
 import uuid
 import mimetypes
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -22,6 +26,8 @@ from app.services.storage_service import storage_service
 from app.api.deps import get_current_user, require_admin_only
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 
 # Allowed file types and size limits
 ALLOWED_EXTENSIONS = {
@@ -50,7 +56,8 @@ async def upload_document(
     file: UploadFile = File(...),
     bucket: str = Form("public"),
     title: Optional[str] = Form(None),
-    current_user: User = Depends(require_admin_only),
+    x_bot_api_key: Optional[str] = Header(None, alias="X-Bot-Api-Key"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -60,11 +67,22 @@ async def upload_document(
     - **bucket**: Either "public" or "confidential" (admin only)
     - **title**: Optional title for the document
 
-    SECURITY: Admin-only operation. SuperUsers cannot upload documents.
+    SECURITY: Admin-only OR bot API key required.
     """
+    # Check if bot API key is valid
+    if x_bot_api_key and x_bot_api_key == BOT_API_KEY:
+        is_bot = True
+    elif current_user.role == "admin":
+        is_bot = False
+    else:
+        raise HTTPException(status_code=403, detail="Admin access or bot API key required")
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(status_code=400, detail="Invalid bucket. Use 'public' or 'confidential'")
+
+    # Only admin or bot can upload to confidential
+    if bucket == "confidential" and not is_bot and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required for confidential bucket")
 
     # Validate file
     if not file.filename:
@@ -113,9 +131,12 @@ async def upload_document(
     db.commit()
     db.refresh(document)
 
-    # Trigger async processing (will be implemented with Celery)
-    # from app.tasks.document_tasks import process_document
-    # process_document.delay(str(document.id))
+    # Trigger async processing
+    try:
+        from app.tasks.document_tasks import process_document
+        process_document.delay(str(document.id))
+    except Exception as e:
+        logger.warning(f"Failed to queue document for processing: {e}")
 
     return DocumentUploadResponse(
         document_id=document.id,

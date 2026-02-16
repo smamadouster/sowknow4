@@ -154,6 +154,7 @@ services:
         limits:
           memory: 1536M
           cpus: '1.5'
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
     networks:
       - sowknow-net
 
@@ -188,7 +189,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
           cpus: '0.25'
     networks:
       - sowknow-net
@@ -267,13 +268,14 @@ services:
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set}
+      - BOT_API_KEY=${BOT_API_KEY:-}
       - BACKEND_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f telegram_bot || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'python.*telegram_bot' || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3

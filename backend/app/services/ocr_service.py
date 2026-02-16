@@ -25,7 +25,7 @@ class OCRService:
 
     def __init__(self):
         self.api_key = os.getenv("HUNYUAN_API_KEY")
-        self.endpoint = "https://hunyuan.tencentcloudapi.com"
+        self.endpoint = "https://ocr.tencentcloudapi.com"
         self.region = "ap-guangzhou"
 
         if not self.api_key:
@@ -103,16 +103,14 @@ class OCRService:
             base64_image = self._encode_image(image_bytes)
 
             payload = {
-                "ImageBase64": base64_image,
-                "Language": language,
-                "Mode": ocr_mode
+                "ImageBase64": base64_image
             }
 
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}",
-                "X-TC-Action": "TextRecognition",
-                "X-TC-Version": "2023-06-01",
+                "X-TC-Action": "GeneralBasicOCR",
+                "X-TC-Version": "2020-11-03",
                 "X-TC-Region": self.region
             }
 

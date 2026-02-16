@@ -4,8 +4,11 @@ Provides mobile-first interface for document upload and knowledge queries
 """
 import os
 import logging
-import httpx
+import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
+
+from network_utils import ResilientAsyncClient, CircuitBreakerOpenError
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.ext import CallbackQueryHandler, ConversationHandler
@@ -26,34 +29,47 @@ logger = logging.getLogger(__name__)
 class TelegramBotClient:
     def __init__(self):
         self.base_url = BACKEND_URL
+        self._client = ResilientAsyncClient(
+            base_url=BACKEND_URL,
+            max_attempts=3,
+            min_wait=1,
+            max_wait=10,
+            timeout=60.0,
+            enable_circuit_breaker=True,
+        )
+
+    async def close(self) -> None:
+        await self._client.close()
 
     async def login(self, telegram_user_id: int) -> dict:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/api/v1/auth/telegram",
-                    json={"telegram_user_id": telegram_user_id},
-                    timeout=10.0
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.post(
+                "/api/v1/auth/telegram",
+                json={"telegram_user_id": telegram_user_id},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable. Please try again later."}
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
             return {"error": str(e)}
 
     async def check_duplicate(self, filename: str, access_token: str) -> dict:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/api/v1/documents?search={filename}",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=10.0
-                )
-                if response.status_code == 404:
-                    return {"exists": False, "documents": []}
-                response.raise_for_status()
-                data = response.json()
-                return {"exists": len(data.get("documents", [])) > 0, "documents": data.get("documents", [])}
+            response = await self._client.get(
+                f"/api/v1/documents?search={filename}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if response.status_code == 404:
+                return {"exists": False, "documents": []}
+            response.raise_for_status()
+            data = response.json()
+            return {"exists": len(data.get("documents", [])) > 0, "documents": data.get("documents", [])}
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable", "exists": False}
         except Exception as e:
             logger.error(f"Check duplicate error: {str(e)}")
             return {"error": str(e), "exists": False}
@@ -65,49 +81,55 @@ class TelegramBotClient:
             headers = {"Authorization": f"Bearer {access_token}"}
             if BOT_API_KEY:
                 headers["X-Bot-Api-Key"] = BOT_API_KEY
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/api/v1/documents/upload",
-                    files=files,
-                    data=data,
-                    headers=headers,
-                    timeout=60.0
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.post(
+                "/api/v1/documents/upload",
+                files=files,
+                data=data,
+                headers=headers,
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable. Please try again later."}
         except Exception as e:
             logger.error(f"Upload error: {str(e)}")
             return {"error": str(e)}
 
     async def search(self, query: str, access_token: str) -> dict:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/api/v1/search",
-                    json={"query": query, "limit": 5},
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.post(
+                "/api/v1/search",
+                json={"query": query, "limit": 5},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable. Please try again later."}
         except Exception as e:
             logger.error(f"Search error: {str(e)}")
             return {"error": str(e)}
 
     async def send_chat_message(self, session_id: str, content: str, access_token: str) -> dict:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/api/v1/chat/sessions/{session_id}/message",
-                    json={"content": content},
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=60.0
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.post(
+                f"/api/v1/chat/sessions/{session_id}/message",
+                json={"content": content},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable. Please try again later."}
         except Exception as e:
             logger.error(f"Chat error: {str(e)}")
             return {"error": str(e)}
+
+    def get_circuit_breaker_status(self) -> dict:
+        return self._client.get_circuit_breaker_status() or {}
 
 
 bot_client = TelegramBotClient()

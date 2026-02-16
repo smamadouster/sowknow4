@@ -9,10 +9,11 @@ from threading import Lock
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
-from app.api import auth, admin
+from app.api import auth, admin, search, documents
 # TODO: Import other routers once their dependencies are set up
-# from app.api import documents, search, chat
+# from app.api import documents
 from app.api import collections, smart_folders, knowledge_graph, graph_rag, multi_agent
+from app.api import chat
 from app.database import engine, init_pgvector
 from app.models.base import Base
 from app.models.user import User
@@ -197,6 +198,7 @@ app.add_middleware(ErrorRateMiddleware)
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(documents.router, prefix="/api/v1")
 app.include_router(collections.router, prefix="/api/v1")
 app.include_router(smart_folders.router, prefix="/api/v1")
 app.include_router(knowledge_graph.router, prefix="/api/v1")
@@ -204,8 +206,8 @@ app.include_router(graph_rag.router, prefix="/api/v1")
 app.include_router(multi_agent.router, prefix="/api/v1")
 # TODO: Include other routers once dependencies are set up
 # app.include_router(documents.router, prefix="/api/v1")
-# app.include_router(search.router, prefix="/api/v1")
-# app.include_router(chat.router, prefix="/api/v1")
+app.include_router(search.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():

@@ -17,7 +17,7 @@
 #   redis:           512MB  cpus: 0.5  (Cache & message queue)
 #   backend:         1GB    cpus: 1.0  (FastAPI application)
 #   celery-worker:   1.5GB  cpus: 1.5  (Background tasks, embeddings model)
-#   celery-beat:     256MB  cpus: 0.25 (Scheduled tasks, anomaly reports)
+#   celery-beat:     512MB  cpus: 0.25 (Scheduled tasks, anomaly reports)
 #   telegram-bot:    256MB  cpus: 0.5  (Mobile interface)
 #   frontend:        512MB  cpus: 1.0  (Next.js application)
 #   nginx:           256MB  cpus: 0.5  (Reverse proxy)
@@ -65,13 +65,13 @@ services:
     restart: unless-stopped
     mem_limit: 512m
     cpus: 0.5
-    command: redis-server --requirepass ${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
       - sowknow-net
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-r3d1s_s3cur3_p@ssw0rd_2025}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -102,6 +102,8 @@ services:
       - backups:/app/backups
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     networks:
       - sowknow-net
     depends_on:
@@ -125,7 +127,7 @@ services:
     restart: unless-stopped
     mem_limit: 1536m
     cpus: 1.5
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
     env_file:
       - ./backend/.env.production
     environment:
@@ -155,7 +157,7 @@ services:
       dockerfile: Dockerfile
     container_name: sowknow-celery-beat
     restart: unless-stopped
-    mem_limit: 256m
+    mem_limit: 512m
     cpus: 0.25
     command: celery -A app.celery_app beat --loglevel=info
     env_file:
@@ -246,7 +248,7 @@ services:
   # Telegram Bot - Mobile Interface
   telegram-bot:
     image: sowknow4-telegram-bot:latest
-    container_name: sowknow-telegram-bot
+    container_name: sowknow4-telegram-bot
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.5
@@ -254,6 +256,7 @@ services:
       - ./backend/.env.production
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN required}
+      - BOT_API_KEY=${BOT_API_KEY:-}
       - BACKEND_URL=http://backend:8000
     networks:
       - sowknow-net
@@ -261,7 +264,7 @@ services:
       - backend
       - postgres
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'python.*bot.py'"]
+      test: ["CMD-SHELL", "pgrep -f 'python.*telegram_bot' || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3

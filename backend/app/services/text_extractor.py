@@ -187,7 +187,8 @@ class TextExtractor:
 
                 for row in sheet.iter_rows(values_only=True):
                     row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
-                    if row_text.strip() and row_text != " | ".join([""] * len(row))):
+                    empty_row = " | " * (len(row) - 1)
+                    if row_text.strip() and row_text != empty_row:
                         sheet_text_parts.append(row_text)
 
                 if len(sheet_text_parts) > 1:

@@ -675,7 +675,7 @@ async def telegram_auth(
 
     logger.info(f"Telegram auth successful: {email}")
 
-    # Return user info (NOT tokens in response body)
+    # Return user info AND access_token (for bot use - can't use httpOnly cookies)
     return LoginResponse(
         message="Telegram authentication successful",
         user={
@@ -683,5 +683,6 @@ async def telegram_auth(
             "email": user.email,
             "full_name": user.full_name,
             "role": user.role.value
-        }
+        },
+        access_token=access_token
     )

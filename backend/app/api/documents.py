@@ -2,8 +2,9 @@
 Document API endpoints for upload, list, get, update, and delete operations
 """
 import os
+import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Header, Request
 from sqlalchemy.orm import Session
 from typing import Optional, List
 import uuid
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus, DocumentLanguage
+from app.models.audit import AuditLog, AuditAction
 from app.schemas.document import (
     DocumentCreate,
     DocumentResponse,
@@ -28,6 +30,34 @@ from app.api.deps import get_current_user, require_admin_only
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
+
+
+def create_audit_log(
+    db: Session,
+    user_id: uuid.UUID,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None
+):
+    """Helper function to create audit log entries for document access"""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps(details) if details else None,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Audit logging failed: {str(e)}")
 
 # Allowed file types and size limits
 ALLOWED_EXTENSIONS = {
@@ -64,25 +94,49 @@ async def upload_document(
     Upload a document to the specified bucket
 
     - **file**: The file to upload
-    - **bucket**: Either "public" or "confidential" (admin only)
+    - **bucket**: Either "public" or "confidential" (admin/superuser only)
     - **title**: Optional title for the document
 
-    SECURITY: Admin-only OR bot API key required.
+    SECURITY: Role-based access control enforced for confidential uploads.
+    - Public bucket: Any authenticated user can upload (with or without bot API key)
+    - Confidential bucket: Only Admin and Super User roles can upload
+    - Bot API key validation is performed but does NOT bypass role checks
+    - Returns 403 Forbidden for unauthorized confidential upload attempts
     """
-    # Check if bot API key is valid
-    if x_bot_api_key and x_bot_api_key == BOT_API_KEY:
+    # PRIORITY: Check user role FIRST (admin/superuser have full access)
+    logger.info(f"Upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}")
+    logger.info(f"x_bot_api_key present: {bool(x_bot_api_key)}, BOT_API_KEY configured: {bool(BOT_API_KEY)}")
+
+    # Validate bot API key if provided (used in conjunction with role checks)
+    is_bot = False
+    if x_bot_api_key:
+        if not BOT_API_KEY:
+            raise HTTPException(status_code=401, detail="Bot API key not configured")
+        if x_bot_api_key != BOT_API_KEY:
+            logger.warning(f"Invalid Bot API Key. Received length: {len(x_bot_api_key)}, Expected length: {len(BOT_API_KEY)}")
+            raise HTTPException(status_code=401, detail="Invalid Bot API Key")
         is_bot = True
-    elif current_user.role == "admin":
-        is_bot = False
+        logger.info(f"Valid bot API key provided for user: {current_user.email}")
+
+    # CRITICAL SECURITY CHECK: Validate role-based access for confidential bucket
+    if bucket == "confidential":
+        # Only Admin and Super User roles can upload to confidential bucket
+        if current_user.role.value not in ["admin", "superuser"]:
+            logger.warning(
+                f"SECURITY: Blocked confidential upload attempt by user {current_user.email} "
+                f"(role: {current_user.role.value}). Admin or Super User role required."
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Admin or Super User role required for confidential bucket uploads"
+            )
+        logger.info(f"Confidential upload authorized for {current_user.role.value}: {current_user.email}")
     else:
-        raise HTTPException(status_code=403, detail="Admin access or bot API key required")
+        # Public bucket: any valid user can upload (with or without bot API key)
+        logger.info(f"Public upload authorized for {current_user.role.value}: {current_user.email}")
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(status_code=400, detail="Invalid bucket. Use 'public' or 'confidential'")
-
-    # Only admin or bot can upload to confidential
-    if bucket == "confidential" and not is_bot and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required for confidential bucket")
 
     # Validate file
     if not file.filename:
@@ -130,6 +184,17 @@ async def upload_document(
     db.add(document)
     db.commit()
     db.refresh(document)
+
+    # Log confidential document upload
+    if bucket == "confidential":
+        create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_UPLOADED,
+            resource_type="document",
+            resource_id=str(document.id),
+            details={"filename": document.filename, "original_filename": file.filename}
+        )
 
     # Trigger async processing
     try:
@@ -221,6 +286,17 @@ async def get_document(
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    # Log confidential document access
+    if document.bucket == DocumentBucket.CONFIDENTIAL:
+        create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_ACCESSED,
+            resource_type="document",
+            resource_id=str(document.id),
+            details={"filename": document.filename, "action": "view"}
+        )
+
     return DocumentResponse.model_validate(document)
 
 
@@ -246,6 +322,17 @@ async def download_document(
     # Check access permission - return 404 for confidential docs to prevent enumeration
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    # Log confidential document access
+    if document.bucket == DocumentBucket.CONFIDENTIAL:
+        create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_ACCESSED,
+            resource_type="document",
+            resource_id=str(document.id),
+            details={"filename": document.filename, "action": "download"}
+        )
 
     # Get file content
     file_content = storage_service.get_file(

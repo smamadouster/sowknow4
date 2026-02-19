@@ -47,8 +47,8 @@ class Collection(Base, TimestampMixin):
     description = Column(Text)  # Optional description
 
     # Collection type and visibility
-    collection_type = Column(Enum(CollectionType), default=CollectionType.SMART, nullable=False)
-    visibility = Column(Enum(CollectionVisibility), default=CollectionVisibility.PRIVATE, nullable=False, index=True)
+    collection_type = Column(Enum(CollectionType, values_callable=lambda obj: [e.value for e in obj]), default=CollectionType.SMART, nullable=False)
+    visibility = Column(Enum(CollectionVisibility, values_callable=lambda obj: [e.value for e in obj]), default=CollectionVisibility.PRIVATE, nullable=False, index=True)
 
     # Query that generated this collection
     query = Column(Text, nullable=False)  # Original natural language query

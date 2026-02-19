@@ -41,13 +41,13 @@ class Document(Base, TimestampMixin):
     filename = Column(String(512), nullable=False)
     original_filename = Column(String(512), nullable=False)
     file_path = Column(String(1024), nullable=False)
-    bucket = Column(Enum(DocumentBucket), default=DocumentBucket.PUBLIC, nullable=False, index=True)
-    status = Column(Enum(DocumentStatus), default=DocumentStatus.PENDING, nullable=False, index=True)
+    bucket = Column(Enum(DocumentBucket, values_callable=lambda obj: [e.value for e in obj]), default=DocumentBucket.PUBLIC, nullable=False, index=True)
+    status = Column(Enum(DocumentStatus, values_callable=lambda obj: [e.value for e in obj]), default=DocumentStatus.PENDING, nullable=False, index=True)
 
     # File metadata
     size = Column(BigInteger, nullable=False)  # Size in bytes
     mime_type = Column(String(256), nullable=False)
-    language = Column(Enum(DocumentLanguage), default=DocumentLanguage.UNKNOWN)
+    language = Column(Enum(DocumentLanguage, values_callable=lambda obj: [e.value for e in obj]), default=DocumentLanguage.UNKNOWN)
     page_count = Column(Integer)  # For PDFs, PPTX, etc.
 
     # Processing metadata

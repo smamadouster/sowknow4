@@ -20,7 +20,7 @@ import logging
 
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.utils.security import decode_token
+from app.utils.security import decode_token, TokenInvalidError, TokenExpiredError
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +90,23 @@ async def get_current_user(
         logger.warning("Authentication failed: No token found in cookie or header")
         raise credentials_exception
 
-    # Decode token
-    payload = decode_token(token)
+    # Decode token with proper exception handling
+    try:
+        payload = decode_token(token)
+    except TokenExpiredError:
+        logger.warning(f"Authentication failed: Token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except TokenInvalidError as e:
+        logger.warning(f"Authentication failed: Invalid token - {str(e)}")
+        raise credentials_exception
+    except Exception as e:
+        logger.warning(f"Authentication failed: Token decode error - {str(e)}")
+        raise credentials_exception
+    
     if not payload:
         logger.warning(f"Authentication failed: Invalid token")
         raise credentials_exception

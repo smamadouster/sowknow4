@@ -20,14 +20,18 @@ echo "[1/7] Checking secrets..."
 
 if [ ! -f .secrets ]; then
     echo "Generating new secrets..."
+    # NOTE: TELEGRAM_BOT_TOKEN must be manually added after generation
+    # Get your token from @BotFather on Telegram
     cat > .secrets <<EOF
 # Generated on $(date)
+# IMPORTANT: Add TELEGRAM_BOT_TOKEN manually after generation
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
 REDIS_PASSWORD=$(openssl rand -base64 32)
 SECRET_KEY=$(openssl rand -hex 32)
 JWT_SECRET_KEY=$(openssl rand -hex 32)
 EOF
     echo "Secrets generated in .secrets file"
+    echo "WARNING: Add TELEGRAM_BOT_TOKEN to .secrets before deploying!"
 fi
 
 source .secrets

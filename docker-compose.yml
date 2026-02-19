@@ -76,6 +76,9 @@ services:
   # FastAPI Backend
   backend:
     <<: *common-env
+    env_file:
+      - .env
+      - .secrets
     build:
       context: ./backend
       dockerfile: Dockerfile.minimal
@@ -263,6 +266,9 @@ services:
   # Telegram Bot
   telegram-bot:
     <<: *common-env
+    env_file:
+      - .env
+      - .secrets
     build:
       context: ./backend
       dockerfile: Dockerfile.telegram
@@ -272,8 +278,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set}
-      - BOT_API_KEY=${BOT_API_KEY:-}
-      - BACKEND_URL=http://backend:8001
+      - BACKEND_URL=http://backend:8000
     depends_on:
       backend:
         condition: service_healthy

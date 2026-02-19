@@ -4,6 +4,7 @@ Graph-RAG API endpoints for Phase 3
 Provides endpoints for graph-augmented retrieval, synthesis,
 temporal reasoning, and progressive revelation.
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -12,6 +13,8 @@ import logging
 
 from app.database import get_db
 from app.models.user import User
+from app.models.document import DocumentBucket
+from app.models.audit import AuditLog, AuditAction
 from app.services.graph_rag_service import graph_rag_service
 from app.services.synthesis_service import (
     synthesis_service,
@@ -27,6 +30,30 @@ from app.api.deps import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/graph-rag", tags=["graph-rag"])
+
+
+def create_audit_log(
+    db: Session,
+    user_id: UUID,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None
+):
+    """Helper function to create audit log entries for confidential access"""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps(details) if details else None
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Audit logging failed: {str(e)}")
 
 
 @router.post("/search", response_model=dict)
@@ -183,6 +210,33 @@ async def synthesize_documents(
     Uses Map-Reduce pattern with Gemini Flash to create
     comprehensive summaries from multiple sources.
     """
+    from app.models.document import Document
+
+    # Check for confidential documents in the requested IDs
+    documents = db.query(Document).filter(Document.id.in_(document_ids)).all()
+    confidential_docs = [
+        {"id": str(doc.id), "filename": doc.filename}
+        for doc in documents
+        if doc.bucket == DocumentBucket.CONFIDENTIAL
+    ]
+
+    # AUDIT LOG: Log confidential document access in synthesis
+    if confidential_docs:
+        create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_ACCESSED,
+            resource_type="synthesis",
+            resource_id=None,
+            details={
+                "topic": topic,
+                "confidential_document_count": len(confidential_docs),
+                "confidential_documents": confidential_docs,
+                "action": "synthesize_documents"
+            }
+        )
+        logger.info(f"CONFIDENTIAL_ACCESSED: User {current_user.email} accessed confidential documents in synthesis")
+
     request = SynthesisRequest(
         topic=topic,
         document_ids=document_ids,

@@ -56,11 +56,11 @@ class ChatMessage(Base, TimestampMixin):
     session_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.chat_sessions.id", ondelete="CASCADE"), nullable=False)
 
     # Message content
-    role = Column(Enum(MessageRole), nullable=False)
+    role = Column(Enum(MessageRole, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
     content = Column(Text, nullable=False)
 
     # AI response metadata
-    llm_used = Column(Enum(LLMProvider))  # Which LLM generated this response
+    llm_used = Column(Enum(LLMProvider, values_callable=lambda obj: [e.value for e in obj]))  # Which LLM generated this response
     sources = Column(JSONB)  # List of source documents with chunks
 
     # Quality metrics

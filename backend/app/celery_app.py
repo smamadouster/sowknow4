@@ -2,6 +2,7 @@
 Celery application configuration for SOWKNOW async tasks
 """
 from celery import Celery
+from celery.schedules import crontab
 import os
 from dotenv import load_dotenv
 
@@ -55,7 +56,7 @@ celery_app.conf.update(
     beat_schedule={
         "daily-anomaly-report": {
             "task": "app.tasks.anomaly_tasks.daily_anomaly_report",
-            "schedule": 86400.0,  # Daily (24 hours)
+            "schedule": crontab(hour=9, minute=0),  # 09:00 AM daily
             "args": (),
         },
     },

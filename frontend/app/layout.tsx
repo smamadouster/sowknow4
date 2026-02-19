@@ -50,7 +50,7 @@ export default async function RootLayout({
           </nav>
           <main>{children}</main>
           <footer style={{ marginTop: '50px', padding: '20px', background: '#f5f5f5', textAlign: 'center' }}>
-            <p>SOWKNOW4 - Phase 1: Core MVP | Development Environment</p>
+            <p>SOWKNOW4 - Phase 3: Multi-Agent Search | Production</p>
           </footer>
         </NextIntlClientProvider>
       </body>

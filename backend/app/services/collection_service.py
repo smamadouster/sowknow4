@@ -70,10 +70,14 @@ class CollectionService:
         Returns:
             Created Collection object
         """
+        # Determine if user has access to confidential documents (for LLM routing)
+        use_ollama = hasattr(user, 'role') and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+        
         # Parse intent from natural language query
         parsed_intent = await self.intent_parser.parse_intent(
             query=collection_data.query,
-            user_language="en"  # TODO: Get from user profile
+            user_language="en",  # TODO: Get from user profile
+            use_ollama=use_ollama
         )
 
         # Gather documents based on parsed intent
@@ -156,8 +160,14 @@ class CollectionService:
         Returns:
             Preview data with intent and documents
         """
+        # Determine if user has access to confidential documents (for LLM routing)
+        use_ollama = hasattr(user, 'role') and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+        
         # Parse intent
-        parsed_intent = await self.intent_parser.parse_intent(query=query)
+        parsed_intent = await self.intent_parser.parse_intent(
+            query=query,
+            use_ollama=use_ollama
+        )
 
         # Gather documents
         documents = await self._gather_documents_for_intent(
@@ -182,7 +192,6 @@ class CollectionService:
                 {
                     "id": str(doc.id),
                     "filename": doc.filename,
-                    "bucket": doc.bucket.value,
                     "created_at": doc.created_at.isoformat()
                 }
                 for doc in documents[:20]
@@ -221,8 +230,14 @@ class CollectionService:
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
+        # Determine if user has access to confidential documents (for LLM routing)
+        use_ollama = hasattr(user, 'role') and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+        
         # Re-parse intent from stored query
-        parsed_intent = await self.intent_parser.parse_intent(query=collection.query)
+        parsed_intent = await self.intent_parser.parse_intent(
+            query=collection.query,
+            use_ollama=use_ollama
+        )
 
         # Gather documents
         documents = await self._gather_documents_for_intent(
@@ -430,8 +445,8 @@ Generate a concise summary describing what this collection contains and its key 
                 )
                 return response.strip()
             else:
-                # Use Gemini Flash for public collections - cost optimized with caching
-                logger.info(f"Collection summary using Gemini (public documents only) for: {collection_name}")
+                # Use OpenRouter (MiniMax) for public collections - cost optimized
+                logger.info(f"Collection summary using OpenRouter (public documents only) for: {collection_name}")
 
                 prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
 
@@ -450,7 +465,9 @@ Generate a concise summary describing what this collection contains and its key 
                 ]
 
                 response_parts = []
-                async for chunk in self.gemini_service.chat_completion(
+                # Use OpenRouter for public documents instead of direct Gemini
+                from app.services.openrouter_service import openrouter_service
+                async for chunk in openrouter_service.chat_completion(
                     messages=messages,
                     stream=False,
                     temperature=0.5,

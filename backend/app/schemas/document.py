@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from uuid import UUID
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any
 from enum import Enum
 
 
@@ -56,7 +56,6 @@ class DocumentResponse(BaseModel):
     ocr_processed: bool = False
     embedding_generated: bool = False
     chunk_count: int = 0
-    metadata: dict = {}
     created_at: datetime
     updated_at: datetime
 

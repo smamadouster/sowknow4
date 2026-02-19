@@ -45,6 +45,9 @@ openpyxl==3.1.2
 
 # OCR
 pytesseract==0.3.10
+paddleocr==2.7.3
+paddlepaddle==2.6.2
+opencv-python-headless==4.8.1.78
 
 # Utilities
 pydantic==2.5.0

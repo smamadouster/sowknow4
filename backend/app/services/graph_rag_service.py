@@ -18,7 +18,7 @@ from app.models.knowledge_graph import (
     EntityType,
     RelationType
 )
-from app.models.document import Document, DocumentChunk
+from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,37 @@ class GraphRAGService:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self._ollama_service = None
+        self._openrouter_service = None
+    
+    def _get_ollama_service(self):
+        if self._ollama_service is None:
+            from app.services.ollama_service import ollama_service
+            self._ollama_service = ollama_service
+        return self._ollama_service
+    
+    def _get_openrouter_service(self):
+        if self._openrouter_service is None:
+            from app.services.openrouter_service import openrouter_service
+            self._openrouter_service = openrouter_service
+        return self._openrouter_service
+
+    def _extract_bucket_from_results(
+        self,
+        results: List[Dict[str, Any]],
+        db: Session
+    ) -> DocumentBucket:
+        """Extract document bucket from search results"""
+        try:
+            for result in results[:5]:
+                doc_id = result.get("document_id")
+                if doc_id:
+                    doc = db.query(Document).filter(Document.id == doc_id).first()
+                    if doc and doc.bucket == DocumentBucket.CONFIDENTIAL:
+                        return DocumentBucket.CONFIDENTIAL
+        except Exception as e:
+            logger.warning(f"Error extracting bucket from results: {e}")
+        return DocumentBucket.PUBLIC
 
     async def enhance_search_with_graph(
         self,
@@ -331,7 +362,8 @@ class GraphRAGService:
         query: str,
         enhanced_results: Dict[str, Any],
         db: Session,
-        stream: bool = True
+        stream: bool = True,
+        bucket: Optional[DocumentBucket] = None
     ) -> Any:
         """
         Generate an answer using graph-aware context
@@ -341,11 +373,20 @@ class GraphRAGService:
             enhanced_results: Results from enhance_search_with_graph
             db: Database session
             stream: Whether to stream the response
+            bucket: Document bucket for routing (auto-detected if not provided)
 
         Returns:
             Generated answer with graph citations
         """
         try:
+            # Auto-detect bucket from results if not provided
+            if bucket is None:
+                results = enhanced_results.get("results", [])
+                bucket = self._extract_bucket_from_results(results, db)
+            
+            # Determine LLM routing based on bucket
+            use_ollama = bucket == DocumentBucket.CONFIDENTIAL
+            
             # Build context from graph
             graph_context = enhanced_results.get("graph_context", {})
             related_entities = enhanced_results.get("related_entities", [])
@@ -408,8 +449,11 @@ Key Principles:
                 {"role": "user", "content": user_prompt}
             ]
 
+            # Get appropriate LLM service based on bucket
+            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+
             if stream:
-                return self.gemini_service.chat_completion(
+                return llm_service.chat_completion(
                     messages=messages,
                     stream=True,
                     temperature=0.7,
@@ -417,7 +461,7 @@ Key Principles:
                 )
             else:
                 response = []
-                async for chunk in self.gemini_service.chat_completion(
+                async for chunk in llm_service.chat_completion(
                     messages=messages,
                     stream=False,
                     temperature=0.7,

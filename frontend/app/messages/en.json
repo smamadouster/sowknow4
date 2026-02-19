@@ -17,6 +17,7 @@
     "submit": "Submit"
   },
   "nav": {
+    "title": "SOWKNOW",
     "all_users": "All Users",
     "admin_only": "Admin Only",
     "dashboard": "Dashboard",

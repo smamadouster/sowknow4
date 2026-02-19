@@ -26,6 +26,8 @@ APP_ENV=production
 
 # AI Services
 GEMINI_API_KEY=your_gemini_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_MODEL=minimax/minimax-01
 MOONSHOT_API_KEY=your_moonshot_api_key_here
 HUNYUAN_API_KEY=your_hunyuan_api_key_here
 LOCAL_LLM_URL=http://host.docker.internal:11434

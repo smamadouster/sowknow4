@@ -16,3 +16,4 @@ class LoginResponse(BaseModel):
     """Response model for login/telegram auth - returns user info, tokens in httpOnly cookies"""
     message: str
     user: Optional[dict] = None  # User info (id, email, full_name, role)
+    access_token: Optional[str] = None  # For telegram bot (can't use httpOnly cookies)

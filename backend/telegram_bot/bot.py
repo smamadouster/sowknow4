@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 
 (SELECTING_BUCKET, CHECKING_DUPLICATE) = range(2)
 
+# Track document processing status updates
+# Format: {document_id: {"chat_id": int, "message_id": int, "status": str, "check_count": int}}
+document_tracking = {}
+MAX_STATUS_CHECKS = 60  # Maximum number of checks (5 seconds * 60 = 5 minutes max)
+
 
 class TelegramBotClient:
     def __init__(self):
@@ -46,6 +51,7 @@ class TelegramBotClient:
             response = await self._client.post(
                 "/api/v1/auth/telegram",
                 json={"telegram_user_id": telegram_user_id},
+                headers={"X-Bot-Api-Key": BOT_API_KEY},
             )
             response.raise_for_status()
             return response.json()
@@ -81,12 +87,22 @@ class TelegramBotClient:
             headers = {"Authorization": f"Bearer {access_token}"}
             if BOT_API_KEY:
                 headers["X-Bot-Api-Key"] = BOT_API_KEY
+                logger.info(f"X-Bot-Api-Key header added (length: {len(BOT_API_KEY)})")
+            else:
+                logger.error("BOT_API_KEY is empty! Cannot authenticate upload.")
+
+            logger.info(f"Uploading document: {filename} ({len(file_bytes)} bytes) to bucket: {bucket}")
+            logger.info(f"Backend URL: {self.base_url}/api/v1/documents/upload")
+            logger.info(f"Headers: {headers}")
+            logger.info(f"BOT_API_KEY present: {bool(BOT_API_KEY)}")
+
             response = await self._client.post(
                 "/api/v1/documents/upload",
                 files=files,
                 data=data,
                 headers=headers,
             )
+            logger.info(f"Upload response status: {response.status_code}")
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
@@ -94,6 +110,22 @@ class TelegramBotClient:
             return {"error": "Service temporarily unavailable. Please try again later."}
         except Exception as e:
             logger.error(f"Upload error: {str(e)}")
+            return {"error": str(e)}
+
+    async def get_document_status(self, document_id: str, access_token: str) -> dict:
+        """Get the current status of a document"""
+        try:
+            response = await self._client.get(
+                f"/api/v1/documents/{document_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable"}
+        except Exception as e:
+            logger.error(f"Get document status error: {str(e)}")
             return {"error": str(e)}
 
     async def search(self, query: str, access_token: str) -> dict:
@@ -165,7 +197,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 • Just ask me anything
 
 💬 <b>Chat</b>
-• Conversational AI powered by Kimi 2.5
+• Conversational AI powered by Gemini Flash
 
 📌 Commands:
 /start - Show this message
@@ -314,13 +346,32 @@ async def bucket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if "error" in result:
         await query.edit_message_text(f"❌ Upload failed: {result['error']}")
     else:
-        await query.edit_message_text(
+        document_id = result.get('document_id', 'N/A')
+        # Store message info for status updates
+        message = await query.edit_message_text(
             f"✅ <b>Document uploaded!</b>\n\n"
             f"📁 {bucket_emoji} {pending['filename']}\n"
-            f"🆔 ID: {result.get('document_id', 'N/A')}\n"
-            f"📊 Status: {result.get('status', 'processing')}\n\n"
+            f"🆔 ID: {document_id}\n"
+            f"📊 Status: processing\n\n"
             f"🔄 Processing in progress...",
             parse_mode="HTML"
+        )
+        # Track document for status updates
+        document_tracking[document_id] = {
+            "chat_id": query.message.chat_id,
+            "message_id": message.message_id if message else query.message.message_id,
+            "filename": pending['filename'],
+            "bucket_emoji": bucket_emoji,
+            "access_token": session["access_token"],
+            "last_status": "processing",
+            "check_count": 0
+        }
+        # Schedule status check
+        context.job_queue.run_once(
+            check_document_status,
+            when=5,  # Check after 5 seconds
+            data=document_id,
+            name=f"status_check_{document_id}"
         )
 
 
@@ -337,28 +388,54 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     session = user_context[user.id]
 
+    # Handle text-based bucket selection (fallback for button clicks)
     if text.lower() in ["public", "confidential", "yes", "no"]:
         pending = user_context[user.id].get("pending_file")
         if pending:
-            bucket = "public" if text.lower() == "public" or text.lower() == "yes" else "confidential"
+            bucket = "public" if text.lower() in ["public", "yes"] else "confidential"
             bucket_emoji = "📄" if bucket == "public" else "🔒"
-            
-            await update.message.reply_text(f"⏳ Uploading to {bucket}...")
-            
+
+            status_message = await update.message.reply_text(
+                f"⏳ Uploading {bucket_emoji} {pending['filename']}..."
+            )
+
             result = await bot_client.upload_document(
                 file_bytes=pending["file"],
                 filename=pending["filename"],
                 bucket=bucket,
                 access_token=session["access_token"]
             )
-            
+
             user_context[user.id]["pending_file"] = None
-            
+
             if "error" in result:
-                await update.message.reply_text(f"❌ Upload failed: {result['error']}")
+                await status_message.edit_text(f"❌ Upload failed: {result['error']}")
             else:
-                await update.message.reply_text(
-                    f"✅ <b>Uploaded!</b>\n{result.get('document_id', 'N/A')}"
+                document_id = result.get('document_id', 'N/A')
+                await status_message.edit_text(
+                    f"✅ <b>Document uploaded!</b>\n\n"
+                    f"📁 {bucket_emoji} {pending['filename']}\n"
+                    f"🆔 ID: {document_id}\n"
+                    f"📊 Status: processing\n\n"
+                    f"🔄 Processing in progress...",
+                    parse_mode="HTML"
+                )
+                # Track document for status updates
+                document_tracking[document_id] = {
+                    "chat_id": update.message.chat_id,
+                    "message_id": status_message.message_id,
+                    "filename": pending['filename'],
+                    "bucket_emoji": bucket_emoji,
+                    "access_token": session["access_token"],
+                    "last_status": "processing",
+                    "check_count": 0
+                }
+                # Schedule status check
+                context.job_queue.run_once(
+                    check_document_status,
+                    when=5,  # Check after 5 seconds
+                    data=document_id,
+                    name=f"status_check_{document_id}"
                 )
             return
 
@@ -381,7 +458,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             doc_name = r.get("document_name", "Unknown")
             score = r.get("relevance_score", 0)
             response += f"{i}. <b>{doc_name}</b> ({score:.0%})\n{snippet}...\n\n"
-        response += f"🤖 {result.get('llm_used', 'kimi').capitalize()}"
+        response += f"🤖 {result.get('llm_used', 'gemini').capitalize()}"
         await update.message.reply_html(response, disable_web_page_preview=True)
 
 
@@ -411,12 +488,151 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await query.edit_message_text("💬 <b>Chat Mode</b>\n\nJust type your question!", parse_mode="HTML")
 
 
+async def check_document_status(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Check document processing status and update user"""
+    document_id = context.job.data
+    
+    if document_id not in document_tracking:
+        logger.warning(f"Document {document_id} not found in tracking")
+        return
+    
+    tracking_info = document_tracking[document_id]
+    chat_id = tracking_info["chat_id"]
+    message_id = tracking_info["message_id"]
+    filename = tracking_info["filename"]
+    bucket_emoji = tracking_info["bucket_emoji"]
+    access_token = tracking_info["access_token"]
+    last_status = tracking_info["last_status"]
+    check_count = tracking_info["check_count"]
+    
+    # Increment check count
+    document_tracking[document_id]["check_count"] = check_count + 1
+    
+    # Check if we've exceeded maximum checks (timeout)
+    if check_count >= MAX_STATUS_CHECKS:
+        status_text = (
+            f"⏱️ <b>Processing timeout</b>\n\n"
+            f"📁 {bucket_emoji} {filename}\n"
+            f"🆔 ID: {document_id}\n"
+            f"📊 Status: still processing\n\n"
+            f"⏳ Processing is taking longer than expected. "
+            f"Your document will be available for search once complete."
+        )
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=status_text,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Failed to update timeout message for document {document_id}: {e}")
+        del document_tracking[document_id]
+        return
+    
+    # Get current document status
+    result = await bot_client.get_document_status(document_id, access_token)
+    
+    if "error" in result:
+        logger.error(f"Failed to get status for document {document_id}: {result['error']}")
+        # Retry after 10 seconds if there was an error
+        context.job_queue.run_once(
+            check_document_status,
+            when=10,
+            data=document_id,
+            name=f"status_check_{document_id}_retry"
+        )
+        return
+    
+    current_status = result.get("status", "unknown")
+    
+    # Only update if status changed
+    if current_status == last_status:
+        # Schedule next check
+        if current_status in ["processing", "pending", "uploading"]:
+            context.job_queue.run_once(
+                check_document_status,
+                when=5,  # Check every 5 seconds
+                data=document_id,
+                name=f"status_check_{document_id}"
+            )
+        return
+    
+    # Update tracking
+    document_tracking[document_id]["last_status"] = current_status
+    
+    # Format status message based on status
+    if current_status == "indexed":
+        status_text = (
+            f"✅ <b>Document ready!</b>\n\n"
+            f"📁 {bucket_emoji} {filename}\n"
+            f"🆔 ID: {document_id}\n"
+            f"📊 Status: {current_status}\n\n"
+            f"✨ Your document has been processed and is ready for search!"
+        )
+        # Remove from tracking - we're done
+        del document_tracking[document_id]
+    elif current_status == "error":
+        status_text = (
+            f"❌ <b>Processing failed</b>\n\n"
+            f"📁 {bucket_emoji} {filename}\n"
+            f"🆔 ID: {document_id}\n"
+            f"📊 Status: {current_status}\n\n"
+            f"⚠️ There was an error processing your document. Please try again."
+        )
+        del document_tracking[document_id]
+    elif current_status in ["processing", "pending", "uploading"]:
+        status_text = (
+            f"✅ <b>Document uploaded!</b>\n\n"
+            f"📁 {bucket_emoji} {filename}\n"
+            f"🆔 ID: {document_id}\n"
+            f"📊 Status: {current_status}\n\n"
+            f"🔄 Processing in progress..."
+        )
+        # Schedule next check
+        context.job_queue.run_once(
+            check_document_status,
+            when=5,  # Check every 5 seconds
+            data=document_id,
+            name=f"status_check_{document_id}"
+        )
+    else:
+        # Unknown status
+        status_text = (
+            f"✅ <b>Document uploaded!</b>\n\n"
+            f"📁 {bucket_emoji} {filename}\n"
+            f"🆔 ID: {document_id}\n"
+            f"📊 Status: {current_status}"
+        )
+        del document_tracking[document_id]
+    
+    try:
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=status_text,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Failed to update message for document {document_id}: {e}")
+
+
 def main() -> None:
     if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN not set!")
+        logger.error("TELEGRAM_BOT_TOKEN not set! Bot cannot start.")
+        print("ERROR: TELEGRAM_BOT_TOKEN environment variable is not set!")
+        print("Please set TELEGRAM_BOT_TOKEN and restart the bot.")
         return
 
-    application = Application.builder().token(BOT_TOKEN).build()
+    logger.info(f"Initializing Telegram bot with token prefix: {BOT_TOKEN[:10]}...")
+
+    try:
+        application = Application.builder().token(BOT_TOKEN).build()
+        logger.info(f"Job queue enabled: {application.job_queue is not None}")
+    except Exception as e:
+        logger.error(f"Failed to build application: {e}")
+        print(f"ERROR: Failed to initialize bot: {e}")
+        return
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
@@ -430,8 +646,21 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_document_upload))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-    logger.info("SOWKNOW Telegram Bot started")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("SOWKNOW Telegram Bot handlers registered")
+
+    # Add error handlers for polling
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        logger.error(f"Exception while handling an update: {context.error}")
+
+    application.add_error_handler(error_handler)
+
+    # Start polling with error handling
+    try:
+        logger.info("Starting SOWKNOW Telegram Bot polling...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logger.error(f"Polling error: {e}")
+        print(f"ERROR: Bot polling failed: {e}")
 
 
 if __name__ == "__main__":

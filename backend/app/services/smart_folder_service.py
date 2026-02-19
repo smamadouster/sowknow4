@@ -146,7 +146,6 @@ class SmartFolderService:
                 {
                     "id": str(doc.id),
                     "filename": doc.filename,
-                    "bucket": doc.bucket.value,
                     "created_at": doc.created_at.isoformat()
                 }
                 for doc in documents[:10]
@@ -277,7 +276,9 @@ Generate the article now:"""
         ]
 
         response_parts = []
-        async for chunk in self.gemini_service.chat_completion(
+        # Use OpenRouter (MiniMax) for public documents instead of direct Gemini
+        from app.services.openrouter_service import openrouter_service
+        async for chunk in openrouter_service.chat_completion(
             messages=messages,
             stream=False,
             temperature=0.7,

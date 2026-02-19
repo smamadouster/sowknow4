@@ -4,6 +4,7 @@ Multi-Agent Search API endpoints for Phase 3
 Provides endpoints for the orchestrated multi-agent search system
 with clarification, research, verification, and answer generation.
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -12,6 +13,8 @@ import logging
 
 from app.database import get_db
 from app.models.user import User
+from app.models.document import Document, DocumentBucket
+from app.models.audit import AuditLog, AuditAction
 from app.services.agents.agent_orchestrator import (
     agent_orchestrator,
     OrchestratorRequest,
@@ -38,6 +41,30 @@ from app.api.deps import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/multi-agent", tags=["multi-agent"])
+
+
+def create_audit_log(
+    db: Session,
+    user_id: UUID,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None
+):
+    """Helper function to create audit log entries for confidential access"""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps(details) if details else None
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Audit logging failed: {str(e)}")
 
 
 @router.post("/search", response_model=dict)
@@ -68,10 +95,33 @@ async def multi_agent_search(
 
     result = await agent_orchestrator.orchestrate(request)
 
+    # AUDIT LOG: Log confidential document access in multi-agent search
+    if result.llm_used == "ollama" and result.research and result.research.sources:
+        confidential_sources = [
+            {"source": s} for s in result.research.sources
+            if isinstance(s, dict) and s.get("bucket") == "confidential"
+        ]
+        if confidential_sources:
+            create_audit_log(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.CONFIDENTIAL_ACCESSED,
+                resource_type="multi_agent",
+                resource_id=None,
+                details={
+                    "query": query,
+                    "llm_used": result.llm_used,
+                    "confidential_source_count": len(confidential_sources),
+                    "action": "multi_agent_search"
+                }
+            )
+            logger.info(f"CONFIDENTIAL_ACCESSED: User {current_user.email} accessed confidential documents via multi-agent search")
+
     return {
         "query": result.query,
         "answer": result.answer,
         "state": result.state.value,
+        "llm_used": result.llm_used,
         "clarification": {
             "is_clear": result.clarification.is_clear if result.clarification else True,
             "questions": result.clarification.questions if result.clarification else [],
@@ -343,6 +393,7 @@ async def detect_inconsistencies(
     from app.models.document import Document
 
     sources = []
+    confidential_docs = []
     for doc_id in document_ids:
         doc = db.query(Document).get(doc_id)
         if doc:
@@ -350,6 +401,28 @@ async def detect_inconsistencies(
                 "document_id": str(doc.id),
                 "filename": doc.filename
             })
+            # Track confidential documents for audit
+            if doc.bucket == DocumentBucket.CONFIDENTIAL:
+                confidential_docs.append({
+                    "id": str(doc.id),
+                    "filename": doc.filename
+                })
+
+    # AUDIT LOG: Log confidential document access in inconsistency detection
+    if confidential_docs:
+        create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_ACCESSED,
+            resource_type="multi_agent",
+            resource_id=None,
+            details={
+                "confidential_document_count": len(confidential_docs),
+                "confidential_documents": confidential_docs,
+                "action": "detect_inconsistencies"
+            }
+        )
+        logger.info(f"CONFIDENTIAL_ACCESSED: User {current_user.email} accessed confidential documents in inconsistency detection")
 
     inconsistencies = await verification_agent.detect_inconsistencies(sources)
 

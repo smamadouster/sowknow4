@@ -35,8 +35,8 @@ class ProcessingQueue(Base, TimestampMixin):
     document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
 
     # Task information
-    task_type = Column(Enum(TaskType), nullable=False)
-    status = Column(Enum(TaskStatus), default=TaskStatus.PENDING, nullable=False, index=True)
+    task_type = Column(Enum(TaskType, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
+    status = Column(Enum(TaskStatus, values_callable=lambda obj: [e.value for e in obj]), default=TaskStatus.PENDING, nullable=False, index=True)
 
     # Celery task tracking
     celery_task_id = Column(String(255), index=True)

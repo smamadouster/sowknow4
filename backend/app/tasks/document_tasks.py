@@ -31,6 +31,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
     from app.models.processing import ProcessingQueue, TaskType, TaskStatus
 
     db = SessionLocal()
+    processing_task = None  # Initialize to prevent UnboundLocalError
     try:
         # Get document
         document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()

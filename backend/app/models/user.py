@@ -17,7 +17,7 @@ class User(Base, TimestampMixin):
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255))
-    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
+    role = Column(Enum(UserRole, native_enum=False, values_callable=lambda x: [e.value for e in UserRole]), default=UserRole.USER, nullable=False)
     is_superuser = Column(Boolean, nullable=False, default=False)
     can_access_confidential = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)

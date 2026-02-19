@@ -59,7 +59,7 @@ class Entity(Base, TimestampMixin):
 
     # Entity identity
     name = Column(String(512), nullable=False, index=True)
-    entity_type = Column(Enum(EntityType), nullable=False, index=True)
+    entity_type = Column(Enum(EntityType, values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True)
     canonical_id = Column(String(256), index=True)  # External ID (Wikidata, etc.)
 
     # Additional metadata
@@ -111,7 +111,7 @@ class EntityRelationship(Base, TimestampMixin):
     target_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Relationship type and properties
-    relation_type = Column(Enum(RelationType), nullable=False, index=True)
+    relation_type = Column(Enum(RelationType, values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True)
     confidence_score = Column(Integer, default=50)  # 0-100
     attributes = Column(JSONB, default=dict)  # Additional properties (start_date, role, etc.)
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter as useIntlRouter, Link as IntlLink } from "@/i18n/routing";
+import { getTokenFromCookie } from "@/lib/api";
 
 // Disable static optimization for this client component
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,7 @@ export default function SmartFoldersPage() {
     setResult(null);
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/generate`,
         {

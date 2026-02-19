@@ -156,6 +156,24 @@ class IntentParserService:
     def __init__(self):
         self.gemini_service = gemini_service
         self._intent_prompt_template = self._get_intent_prompt_template()
+        
+        # Lazy imports for routing
+        self._ollama_service = None
+        self._openrouter_service = None
+    
+    def _get_ollama_service(self):
+        """Lazy load Ollama service"""
+        if self._ollama_service is None:
+            from app.services.ollama_service import ollama_service
+            self._ollama_service = ollama_service
+        return self._ollama_service
+    
+    def _get_openrouter_service(self):
+        """Lazy load OpenRouter service"""
+        if self._openrouter_service is None:
+            from app.services.openrouter_service import openrouter_service
+            self._openrouter_service = openrouter_service
+        return self._openrouter_service
 
     def _get_intent_prompt_template(self) -> str:
         """Get the system prompt for intent parsing"""
@@ -346,7 +364,8 @@ Now parse the user's query:"""
     async def parse_intent(
         self,
         query: str,
-        user_language: str = "en"
+        user_language: str = "en",
+        use_ollama: bool = False
     ) -> ParsedIntent:
         """
         Parse natural language query into structured intent
@@ -354,6 +373,7 @@ Now parse the user's query:"""
         Args:
             query: Natural language query from user
             user_language: User's preferred language (en/fr)
+            use_ollama: Whether to use Ollama (for confidential queries)
 
         Returns:
             ParsedIntent object with structured information
@@ -376,16 +396,28 @@ Now parse the user's query:"""
                 {"role": "user", "content": prompt}
             ]
 
-            # Call Gemini API
+            # Route to appropriate LLM based on confidentiality
             response_parts = []
-            async for chunk in self.gemini_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,  # Lower temperature for consistent parsing
-                max_tokens=1024
-            ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                    response_parts.append(chunk)
+            if use_ollama:
+                llm_service = self._get_ollama_service()
+                async for chunk in llm_service.chat_completion(
+                    messages=messages,
+                    stream=False,
+                    temperature=0.3,
+                    num_predict=1024
+                ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                        response_parts.append(chunk)
+            else:
+                llm_service = self._get_openrouter_service()
+                async for chunk in llm_service.chat_completion(
+                    messages=messages,
+                    stream=False,
+                    temperature=0.3,
+                    max_tokens=1024
+                ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                        response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
 
@@ -395,7 +427,7 @@ Now parse the user's query:"""
             if json_text:
                 intent_data = json.loads(json_text)
 
-                # Build ParsedIntent from Gemini response
+                # Build ParsedIntent from LLM response
                 return ParsedIntent(
                     query=query,
                     keywords=intent_data.get("keywords", []),
@@ -403,11 +435,11 @@ Now parse the user's query:"""
                     entities=intent_data.get("entities", []),
                     document_types=intent_data.get("document_types", ["all"]),
                     collection_name=intent_data.get("collection_name", self._generate_fallback_name(query)),
-                    confidence=0.9,  # High confidence for Gemini-parsed intent
+                    confidence=0.9,  # High confidence for LLM-parsed intent
                     raw_response=json_text
                 )
             else:
-                logger.warning(f"Failed to extract JSON from Gemini response: {response_text}")
+                logger.warning(f"Failed to extract JSON from LLM response: {response_text}")
                 return self._fallback_parse(query)
 
         except json.JSONDecodeError as e:

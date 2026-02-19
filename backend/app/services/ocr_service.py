@@ -1,5 +1,5 @@
 """
-OCR Service for text extraction using Hunyuan-OCR API
+OCR Service for text extraction using PaddleOCR (primary) with Hunyuan API and Tesseract fallbacks
 """
 import os
 import base64
@@ -13,62 +13,41 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class HunyuanOCRMode:
-    """Hunyuan-OCR processing modes"""
-    BASE = "Base"         # 1024x1024 - Standard documents
-    LARGE = "Large"       # 1280x1280 - Complex layouts, tables
-    GUNDAM = "Gundam"     # Variable - Handwriting, detailed illustrations
-
-
 class OCRService:
-    """Service for OCR text extraction using Hunyuan API"""
+    """Service for OCR text extraction with PaddleOCR as primary"""
 
     def __init__(self):
-        self.api_key = os.getenv("HUNYUAN_API_KEY")
-        self.endpoint = "https://ocr.tencentcloudapi.com"
-        self.region = "ap-guangzhou"
+        self.hunyuan_api_key = os.getenv("HUNYUAN_API_KEY")
+        self.hunyuan_endpoint = "https://ocr.tencentcloudapi.com"
+        self.hunyuan_region = "ap-guangzhou"
+        self._paddle_model = None
 
-        if not self.api_key:
-            logger.warning("HUNYUAN_API_KEY not set, OCR will use fallback")
+        if not self.hunyuan_api_key:
+            logger.info("HUNYUAN_API_KEY not set, using PaddleOCR")
+
+    def _get_paddle_model(self):
+        """Lazy load PaddleOCR model"""
+        if self._paddle_model is None:
+            try:
+                from paddleocr import PaddleOCR
+                # Use multilingual model with English and French support
+                self._paddle_model = PaddleOCR(
+                    use_angle_cls=True,
+                    lang='en',  # English base, supports multilingual
+                    use_gpu=False,  # CPU mode for container
+                    show_log=False,
+                    det_db_thresh=0.3,
+                    rec_batch_num=6
+                )
+                logger.info("PaddleOCR initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize PaddleOCR: {str(e)}")
+                raise
+        return self._paddle_model
 
     def _encode_image(self, image_bytes: bytes) -> str:
         """Encode image bytes to base64"""
         return base64.b64encode(image_bytes).decode("utf-8")
-
-    def _get_image_dimensions(self, image_bytes: bytes) -> tuple:
-        """Get image dimensions (width, height)"""
-        try:
-            img = Image.open(io.BytesIO(image_bytes))
-            return img.size
-        except Exception as e:
-            logger.error(f"Error getting image dimensions: {str(e)}")
-            return (0, 0)
-
-    def _select_ocr_mode(self, image_bytes: bytes, force_mode: Optional[str] = None) -> str:
-        """
-        Select appropriate OCR mode based on image characteristics
-
-        Args:
-            image_bytes: Image data as bytes
-            force_mode: Force specific mode if provided
-
-        Returns:
-            OCR mode to use
-        """
-        if force_mode:
-            return force_mode
-
-        width, height = self._get_image_dimensions(image_bytes)
-
-        # Determine mode based on image size and complexity
-        max_dimension = max(width, height)
-
-        if max_dimension > 1280:
-            return HunyuanOCRMode.GUNDAM
-        elif max_dimension > 1024:
-            return HunyuanOCRMode.LARGE
-        else:
-            return HunyuanOCRMode.BASE
 
     @retry(
         stop=stop_after_attempt(3),
@@ -81,25 +60,130 @@ class OCRService:
         mode: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Extract text from image using Hunyuan-OCR API
+        Extract text from image using PaddleOCR (primary) with fallbacks
 
         Args:
             image_bytes: Image data as bytes
             language: Language code ("auto", "zh", "en", "fr", etc.)
-            mode: OCR mode to use (None for auto-detection)
+            mode: Force specific OCR mode if provided ("paddle", "hunyuan", "tesseract")
 
         Returns:
             dict with extracted text and metadata
         """
-        if not self.api_key:
-            # Fallback to Tesseract
+        # Force specific mode if requested
+        if mode == "hunyuan" and self.hunyuan_api_key:
+            return await self._extract_text_hunyuan(image_bytes, language)
+        elif mode == "tesseract":
             return await self._extract_text_tesseract(image_bytes, language)
 
+        # Try PaddleOCR first (primary)
         try:
-            # Select OCR mode
-            ocr_mode = self._select_ocr_mode(image_bytes, mode)
+            result = await self._extract_text_paddle(image_bytes, language)
+            if result.get("text", "").strip():
+                return result
+        except Exception as e:
+            logger.warning(f"PaddleOCR failed: {str(e)}, trying Hunyuan...")
 
-            # Prepare request
+        # Try Hunyuan as second option
+        if self.hunyuan_api_key:
+            try:
+                result = await self._extract_text_hunyuan(image_bytes, language)
+                if result.get("text", "").strip():
+                    return result
+            except Exception as e:
+                logger.warning(f"Hunyuan OCR failed: {str(e)}, trying Tesseract...")
+
+        # Final fallback to Tesseract
+        return await self._extract_text_tesseract(image_bytes, language)
+
+    async def _extract_text_paddle(
+        self,
+        image_bytes: bytes,
+        language: str = "auto"
+    ) -> Dict[str, Any]:
+        """
+        Extract text using PaddleOCR
+
+        Args:
+            image_bytes: Image data as bytes
+            language: Language code
+
+        Returns:
+            dict with extracted text and metadata
+        """
+        try:
+            import cv2
+            import numpy as np
+
+            # Convert bytes to numpy array
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if img is None:
+                raise ValueError("Could not decode image")
+
+            # Run OCR
+            ocr = self._get_paddle_model()
+            result = ocr.ocr(img, cls=True)
+
+            if not result or not result[0]:
+                return {
+                    "text": "",
+                    "confidence": 0,
+                    "mode": "paddle",
+                    "blocks": 0,
+                    "source": "paddle"
+                }
+
+            # Extract text and confidence
+            text_lines = []
+            confidences = []
+            
+            for line in result[0]:
+                if line:
+                    box = line[0]
+                    text = line[1][0]
+                    conf = line[1][1]
+                    text_lines.append(text)
+                    confidences.append(conf)
+
+            extracted_text = "\n".join(text_lines)
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+
+            return {
+                "text": extracted_text,
+                "confidence": avg_confidence,
+                "mode": "paddle",
+                "blocks": len(text_lines),
+                "source": "paddle"
+            }
+
+        except ImportError as e:
+            logger.error(f"PaddleOCR not available: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Error in PaddleOCR: {str(e)}")
+            raise
+
+    async def _extract_text_hunyuan(
+        self,
+        image_bytes: bytes,
+        language: str = "auto"
+    ) -> Dict[str, Any]:
+        """
+        Extract text using Hunyuan-OCR API (cloud)
+
+        Args:
+            image_bytes: Image data as bytes
+            language: Language code
+
+        Returns:
+            dict with extracted text and metadata
+        """
+        if not self.hunyuan_api_key:
+            raise ValueError("HUNYUAN_API_KEY not configured")
+
+        try:
             base64_image = self._encode_image(image_bytes)
 
             payload = {
@@ -108,15 +192,15 @@ class OCRService:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {self.hunyuan_api_key}",
                 "X-TC-Action": "GeneralBasicOCR",
                 "X-TC-Version": "2020-11-03",
-                "X-TC-Region": self.region
+                "X-TC-Region": self.hunyuan_region
             }
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
-                    self.endpoint,
+                    self.hunyuan_endpoint,
                     json=payload,
                     headers=headers
                 )
@@ -124,12 +208,10 @@ class OCRService:
 
                 result = response.json()
 
-                # Parse response
                 if result.get("Response", {}).get("Error"):
                     error_msg = result["Response"]["Error"].get("Message", "Unknown error")
                     logger.error(f"Hunyuan OCR error: {error_msg}")
-                    # Fallback to Tesseract
-                    return await self._extract_text_tesseract(image_bytes, language)
+                    raise Exception(error_msg)
 
                 text_blocks = result.get("Response", {}).get("TextDetections", [])
                 extracted_text = "\n".join([block.get("DetectedText", "") for block in text_blocks])
@@ -137,19 +219,14 @@ class OCRService:
                 return {
                     "text": extracted_text,
                     "confidence": result.get("Response", {}).get("Confidence", 0),
-                    "mode": ocr_mode,
+                    "mode": "hunyuan",
                     "blocks": len(text_blocks),
                     "source": "hunyuan"
                 }
 
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error calling Hunyuan OCR: {str(e)}")
-            # Fallback to Tesseract
-            return await self._extract_text_tesseract(image_bytes, language)
         except Exception as e:
             logger.error(f"Error in Hunyuan OCR: {str(e)}")
-            # Fallback to Tesseract
-            return await self._extract_text_tesseract(image_bytes, language)
+            raise
 
     async def _extract_text_tesseract(
         self,
@@ -170,7 +247,6 @@ class OCRService:
             import pytesseract
             from PIL import Image
 
-            # Map language codes
             lang_map = {
                 "auto": "eng+fra",
                 "en": "eng",
@@ -179,13 +255,12 @@ class OCRService:
             }
             tess_lang = lang_map.get(language, "eng+fra")
 
-            # Open image and extract text
             img = Image.open(io.BytesIO(image_bytes))
             text = pytesseract.image_to_string(img, lang=tess_lang)
 
             return {
                 "text": text.strip(),
-                "confidence": 0.85,  # Tesseract doesn't provide confidence
+                "confidence": 0.85,
                 "mode": "tesseract",
                 "blocks": len(text.split("\n")),
                 "source": "tesseract"
@@ -217,16 +292,7 @@ class OCRService:
         pdf_path: str,
         page_number: int = 0
     ) -> Dict[str, Any]:
-        """
-        Extract text from a specific PDF page
-
-        Args:
-            pdf_path: Path to PDF file
-            page_number: Page number (0-indexed)
-
-        Returns:
-            dict with extracted text and metadata
-        """
+        """Extract text from a specific PDF page"""
         try:
             import PyPDF2
 
@@ -258,5 +324,4 @@ class OCRService:
             }
 
 
-# Global OCR service instance
 ocr_service = OCRService()

@@ -92,14 +92,17 @@ services:
     mem_limit: 1g
     cpus: 1.0
     env_file:
-      - ./backend/.env.production
+      - .env
     environment:
-      # DATABASE_URL and REDIS_URL are loaded from .env.production
+      # DATABASE_URL and REDIS_URL are loaded from .env
       # to avoid URL parsing issues with special characters in passwords
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
     volumes:
-      - uploads:/app/uploads
-      - backups:/app/backups
+      - /var/docker/sowknow4/uploads/public:/data/public
+      - /var/docker/sowknow4/uploads/confidential:/data/confidential
+      - /var/docker/sowknow4/backups:/app/backups
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
@@ -129,12 +132,15 @@ services:
     cpus: 1.5
     command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
     env_file:
-      - ./backend/.env.production
+      - .env
     environment:
-      # DATABASE_URL, REDIS_URL are loaded from .env.production
+      # DATABASE_URL, REDIS_URL are loaded from .env
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
     volumes:
-      - uploads:/app/uploads
+      - /var/docker/sowknow4/uploads/public:/data/public
+      - /var/docker/sowknow4/uploads/confidential:/data/confidential
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -148,7 +154,7 @@ services:
       interval: 60s
       timeout: 30s
       retries: 3
-      start_period: 90s
+      start_period: 180s
 
   # Celery Beat - Scheduled Tasks
   celery-beat:
@@ -161,9 +167,11 @@ services:
     cpus: 0.25
     command: celery -A app.celery_app beat --loglevel=info
     env_file:
-      - ./backend/.env.production
+      - .env
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -253,10 +261,9 @@ services:
     mem_limit: 256m
     cpus: 0.5
     env_file:
-      - ./backend/.env.production
+      - .env
+      - .secrets
     environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN required}
-      - BOT_API_KEY=${BOT_API_KEY:-}
       - BACKEND_URL=http://backend:8000
     networks:
       - sowknow-net
@@ -274,10 +281,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
-    driver: local
-  uploads:
-    driver: local
-  backups:
     driver: local
   certbot-www:
     driver: local

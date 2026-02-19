@@ -166,7 +166,6 @@ class ReportService:
 
             doc_info = {
                 "filename": item.document.filename,
-                "bucket": item.document.bucket.value,
                 "created_at": item.document.created_at.isoformat(),
                 "relevance": item.relevance_score,
                 "chunks": [
@@ -252,7 +251,9 @@ Generate the complete report now:"""
         ]
 
         response_parts = []
-        async for chunk in self.gemini_service.chat_completion(
+        # Use OpenRouter (MiniMax) for public documents instead of direct Gemini
+        from app.services.openrouter_service import openrouter_service
+        async for chunk in openrouter_service.chat_completion(
             messages=messages,
             stream=False,
             temperature=0.5,

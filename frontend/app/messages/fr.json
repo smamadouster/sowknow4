@@ -17,6 +17,7 @@
     "submit": "Soumettre"
   },
   "nav": {
+    "title": "SOWKNOW",
     "all_users": "Tous les utilisateurs",
     "admin_only": "Admin uniquement",
     "dashboard": "Tableau de bord",

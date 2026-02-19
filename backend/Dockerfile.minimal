@@ -31,6 +31,10 @@ RUN chown -R appuser:appuser /app && \
 # Switch to non-root user
 USER appuser
 
+# Configure DNS fallback (8.8.8.8 for environments without proper DNS)
+RUN echo "nameserver 8.8.8.8" >> /etc/resolv.conf || true
+
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use exec to run as current user (appuser)
+CMD ["sh", "-c", "chmod 777 /app/backups 2>/dev/null || true; exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

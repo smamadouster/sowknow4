@@ -1,10 +1,10 @@
 """
-Chat service for RAG-powered conversations with Kimi 2.5, OpenRouter (MiniMax), and Ollama
+Chat service for RAG-powered conversations with Kimi, MiniMax, OpenRouter, and Ollama
 
 LLM Routing Strategy:
-- Chatbot/Telegram (general chat without docs): Kimi 2.5
-- Smart Features (RAG with public docs): OpenRouter (MiniMax)
-- Confidential Docs (RAG with confidential docs): Ollama
+- Confidential Docs: Ollama (privacy)
+- RAG with public docs: MiniMax (direct API) -> OpenRouter -> Ollama
+- General chat: Kimi (direct API) -> MiniMax -> OpenRouter -> Ollama
 """
 import os
 import logging
@@ -34,6 +34,12 @@ try:
 except ImportError:
     openrouter_service = None
     logging.warning("OpenRouter service not available")
+
+try:
+    from app.services.minimax_service import minimax_service
+except ImportError:
+    minimax_service = None
+    logging.warning("MiniMax service not available")
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +142,10 @@ class ChatService:
     """Service for managing chat sessions with RAG"""
 
     def __init__(self):
-        self.openrouter_service = openrouter_service  # For RAG with public docs
+        self.openrouter_service = openrouter_service  # Fallback LLM
         self.ollama_service = OllamaService()
         self.kimi_service = kimi_service  # For chatbot/telegram/general chat
+        self.minimax_service = minimax_service  # Default LLM for RAG (direct API)
         self.max_context_messages = 10
 
     async def get_conversation_history(
@@ -320,8 +327,9 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Select LLM based on use case and confidentiality
         # Priority:
         # 1. Confidential docs -> Ollama (privacy)
-        # 2. RAG with public docs -> OpenRouter (MiniMax)
-        # 3. General chat (no docs) -> Kimi 2.5 (chatbot/telegram)
+        # 2. RAG with public docs -> MiniMax (direct API)
+        # 3. General chat (no docs) -> Kimi 2.5 (direct API)
+        # 4. Fallbacks -> OpenRouter -> Ollama
 
         if has_confidential:
             # Confidential: always use Ollama
@@ -329,27 +337,37 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
         elif sources and len(sources) > 0:
-            # RAG mode with public docs: use OpenRouter
-            if self.openrouter_service:
+            # RAG mode with public docs: use MiniMax (direct API)
+            if self.minimax_service:
+                llm_service = self.minimax_service
+                llm_provider = LLMProvider.OPENROUTER  # Reuse enum for now
+                routing_reason = "rag_public_docs_minimax"
+            elif self.openrouter_service:
+                # Fallback to OpenRouter if MiniMax not available
                 llm_service = self.openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "rag_public_docs"
+                routing_reason = "rag_public_docs_openrouter"
             else:
-                # Fallback to Ollama if OpenRouter not available
+                # Final fallback to Ollama
                 llm_service = self.ollama_service
                 llm_provider = LLMProvider.OLLAMA
                 routing_reason = "rag_public_docs_fallback"
         else:
-            # General chat mode: use Kimi 2.5 for chatbot/telegram
+            # General chat mode: use Kimi 2.5 (direct API)
             if self.kimi_service:
                 llm_service = self.kimi_service
                 llm_provider = LLMProvider.KIMI
-                routing_reason = "general_chat"
+                routing_reason = "general_chat_kimi"
+            elif self.minimax_service:
+                # Fallback to MiniMax if Kimi not available
+                llm_service = self.minimax_service
+                llm_provider = LLMProvider.OPENROUTER
+                routing_reason = "general_chat_minimax"
             elif self.openrouter_service:
-                # Fallback to OpenRouter if Kimi not available
+                # Fallback to OpenRouter if neither available
                 llm_service = self.openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "general_chat_fallback"
+                routing_reason = "general_chat_openrouter"
             else:
                 # Final fallback to Ollama
                 llm_service = self.ollama_service
@@ -408,8 +426,9 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Select LLM based on use case and confidentiality
         # Priority:
         # 1. Confidential docs -> Ollama (privacy)
-        # 2. RAG with public docs -> OpenRouter (MiniMax)
-        # 3. General chat (no docs) -> Kimi 2.5 (chatbot/telegram)
+        # 2. RAG with public docs -> MiniMax (direct API)
+        # 3. General chat (no docs) -> Kimi 2.5 (direct API)
+        # 4. Fallbacks -> OpenRouter -> Ollama
 
         if has_confidential:
             # Confidential: always use Ollama
@@ -417,27 +436,37 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
         elif sources and len(sources) > 0:
-            # RAG mode with public docs: use OpenRouter
-            if self.openrouter_service:
+            # RAG mode with public docs: use MiniMax (direct API)
+            if self.minimax_service:
+                llm_service = self.minimax_service
+                llm_provider = LLMProvider.OPENROUTER
+                routing_reason = "rag_public_docs_minimax"
+            elif self.openrouter_service:
+                # Fallback to OpenRouter if MiniMax not available
                 llm_service = self.openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "rag_public_docs"
+                routing_reason = "rag_public_docs_openrouter"
             else:
-                # Fallback to Ollama if OpenRouter not available
+                # Final fallback to Ollama
                 llm_service = self.ollama_service
                 llm_provider = LLMProvider.OLLAMA
                 routing_reason = "rag_public_docs_fallback"
         else:
-            # General chat mode: use Kimi 2.5 for chatbot/telegram
+            # General chat mode: use Kimi 2.5 (direct API)
             if self.kimi_service:
                 llm_service = self.kimi_service
                 llm_provider = LLMProvider.KIMI
-                routing_reason = "general_chat"
+                routing_reason = "general_chat_kimi"
+            elif self.minimax_service:
+                # Fallback to MiniMax if Kimi not available
+                llm_service = self.minimax_service
+                llm_provider = LLMProvider.OPENROUTER
+                routing_reason = "general_chat_minimax"
             elif self.openrouter_service:
-                # Fallback to OpenRouter if Kimi not available
+                # Fallback to OpenRouter if neither available
                 llm_service = self.openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "general_chat_fallback"
+                routing_reason = "general_chat_openrouter"
             else:
                 # Final fallback to Ollama
                 llm_service = self.ollama_service

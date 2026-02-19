@@ -52,6 +52,7 @@ def daily_anomaly_report():
     warning_count = 0
 
     # 1. Check for stuck documents (if database models exist)
+    # Per PRD: Documents stuck in 'processing' status for more than 24 hours
     try:
         from app.models.document import Document, DocumentStatus
         from app.models.processing import ProcessingQueue, TaskStatus
@@ -60,21 +61,24 @@ def daily_anomaly_report():
         try:
             cutoff_time = report_time - timedelta(hours=24)
 
-            stuck_documents = db.query(Document).join(
-                ProcessingQueue,
-                Document.id == ProcessingQueue.document_id
-            ).filter(
-                Document.status == DocumentStatus.PROCESSING,
-                ProcessingQueue.created_at < cutoff_time,
-                ProcessingQueue.status.in_([TaskStatus.IN_PROGRESS, TaskStatus.PENDING])
+            # Query documents with status='processing' and updated_at > 24 hours ago
+            # Use .value to ensure proper enum string comparison
+            stuck_documents = db.query(Document).filter(
+                Document.status == DocumentStatus.PROCESSING.value,
+                Document.updated_at < cutoff_time
             ).all()
 
             for doc in stuck_documents:
-                processing_task = db.query(ProcessingQueue).filter(
-                    ProcessingQueue.document_id == doc.id
-                ).first()
+                # Get additional processing info if available
+                try:
+                    processing_task = db.query(ProcessingQueue).filter(
+                        ProcessingQueue.document_id == doc.id
+                    ).first()
+                except Exception:
+                    processing_task = None
 
-                duration_hours = (report_time - doc.created_at).total_seconds() / 3600
+                # Calculate duration based on when document was last updated
+                duration_hours = (report_time - doc.updated_at).total_seconds() / 3600
 
                 anomaly = {
                     "type": "stuck_document",
@@ -83,19 +87,25 @@ def daily_anomaly_report():
                     "filename": doc.filename,
                     "bucket": doc.bucket.value if hasattr(doc, "bucket") else "unknown",
                     "status": doc.status.value,
-                    "created_at": doc.created_at.isoformat(),
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                    "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
                     "stuck_duration_hours": round(duration_hours, 2),
-                    "last_task_type": processing_task.task_type.value if processing_task else None,
-                    "error_message": processing_task.error_message if processing_task else None
+                    "last_task_type": processing_task.task_type.value if processing_task and hasattr(processing_task, 'task_type') else None,
+                    "error_message": processing_task.error_message if processing_task and hasattr(processing_task, 'error_message') else None
                 }
                 report["anomalies"].append(anomaly)
                 critical_count += 1
 
+            if stuck_documents:
+                logger.warning(f"Found {len(stuck_documents)} documents stuck in processing for >24 hours")
+
         finally:
             db.close()
 
-    except ImportError:
-        logger.debug("Document models not available, skipping stuck document check")
+    except ImportError as e:
+        logger.debug(f"Document models not available, skipping stuck document check: {e}")
+    except Exception as e:
+        logger.error(f"Error checking stuck documents: {e}")
 
     # 2. Check cache effectiveness
     try:

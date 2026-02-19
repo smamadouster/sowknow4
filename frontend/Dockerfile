@@ -41,6 +41,9 @@ RUN addgroup -g 1001 -S nodejs && \
     chown -R nextjs:nodejs /app
 USER nextjs
 
+# Configure DNS fallback (8.8.8.8 for environments without proper DNS)
+RUN echo "nameserver 8.8.8.8" >> /etc/resolv.conf || true
+
 EXPOSE 3000
 
 CMD ["npm", "start"]

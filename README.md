@@ -1,5 +1,7 @@
 # SOWKNOW Phase 3 - Complete System Summary
 
+[![Docker Compliance](https://github.com/anomalyco/sowknow4/actions/workflows/docker-compliance.yml/badge.svg)](https://github.com/anomalyco/sowknow4/actions/workflows/docker-compliance.yml)
+
 ## 🎉 Project Status: PRODUCTION READY
 
 **SOWKNOW Multi-Generational Legacy Knowledge System**

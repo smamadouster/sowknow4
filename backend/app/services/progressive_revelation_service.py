@@ -13,6 +13,7 @@ from collections import defaultdict
 
 from app.models.user import User
 from app.models.knowledge_graph import Entity, EntityRelationship, TimelineEvent
+from app.models.document import DocumentBucket
 from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,20 @@ class ProgressiveRevelationService:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self._ollama_service = None
+        self._openrouter_service = None
+    
+    def _get_ollama_service(self):
+        if self._ollama_service is None:
+            from app.services.ollama_service import ollama_service
+            self._ollama_service = ollama_service
+        return self._ollama_service
+    
+    def _get_openrouter_service(self):
+        if self._openrouter_service is None:
+            from app.services.openrouter_service import openrouter_service
+            self._openrouter_service = openrouter_service
+        return self._openrouter_service
 
     async def reveal_entity_info(
         self,
@@ -184,7 +199,8 @@ class ProgressiveRevelationService:
         focus_person: str,
         db: Session,
         depth: int = 2,
-        include_timeline: bool = True
+        include_timeline: bool = True,
+        bucket: DocumentBucket = DocumentBucket.PUBLIC
     ) -> FamilyContext:
         """
         Generate family context and narrative
@@ -194,6 +210,7 @@ class ProgressiveRevelationService:
             db: Database session
             depth: How many relationship levels to explore
             include_timeline: Whether to include family timeline
+            bucket: Document bucket for routing decisions
 
         Returns:
             FamilyContext with members, relationships, events, and narrative
@@ -328,7 +345,8 @@ class ProgressiveRevelationService:
                 focus_person,
                 family_members,
                 relationships,
-                key_events
+                key_events,
+                bucket
             )
 
             return FamilyContext(
@@ -352,10 +370,14 @@ class ProgressiveRevelationService:
         focus_person: str,
         members: List[Dict[str, Any]],
         relationships: List[Dict[str, Any]],
-        events: List[Dict[str, Any]]
+        events: List[Dict[str, Any]],
+        bucket: DocumentBucket = DocumentBucket.PUBLIC
     ) -> str:
         """Generate a narrative description of the family context"""
-
+        
+        # Determine LLM routing based on bucket
+        use_ollama = bucket == DocumentBucket.CONFIDENTIAL
+        
         system_prompt = """You are SOWKNOW's family historian. Create a warm, engaging narrative
 that describes family relationships, connections, and key events based on the provided information.
 
@@ -401,8 +423,11 @@ Please write a family narrative that weaves together these relationships and eve
         ]
 
         try:
+            # Get appropriate LLM service based on bucket
+            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.8,

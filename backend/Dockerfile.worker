@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y \
     g++ \
     libpq-dev \
     curl \
-    # For OCR
+    # For OCR - PaddleOCR
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    # For OCR - Tesseract
     tesseract-ocr \
     tesseract-ocr-fra \
     tesseract-ocr-eng \
@@ -38,8 +41,11 @@ RUN mkdir -p /data/public /data/confidential && \
 # Set Python path
 ENV PYTHONPATH=/app
 
+# Configure DNS fallback (8.8.8.8 for environments without proper DNS)
+RUN echo "nameserver 8.8.8.8" >> /etc/resolv.conf || true
+
 # Switch to non-root user
 USER appuser
 
 # Default command for Celery worker
-CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "celery,document_processing,scheduled"]

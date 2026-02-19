@@ -6,6 +6,7 @@ context caching for cost optimization on recurring queries.
 """
 import logging
 import uuid
+import json
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -15,10 +16,35 @@ from app.models.collection import Collection, CollectionChatSession
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.models.user import User
 from app.models.document import Document
+from app.models.audit import AuditLog, AuditAction
 from app.services.gemini_service import gemini_service
 from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
+
+
+def create_audit_log(
+    db: Session,
+    user_id: uuid.UUID,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None
+):
+    """Helper function to create audit log entries for confidential access"""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps(details) if details else None
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Audit logging failed: {str(e)}")
 
 
 class CollectionChatService:
@@ -147,6 +173,28 @@ class CollectionChatService:
             if item.document
         )
 
+        # AUDIT LOG: Log confidential document access in collection chat
+        if has_confidential:
+            confidential_docs = [
+                {"id": str(item.document.id), "filename": item.document.filename}
+                for item in collection_items
+                if item.document and item.document.bucket.value == "confidential"
+            ]
+            create_audit_log(
+                db=db,
+                user_id=user.id,
+                action=AuditAction.CONFIDENTIAL_ACCESSED,
+                resource_type="collection_chat",
+                resource_id=str(collection_id),
+                details={
+                    "collection_name": collection.name,
+                    "confidential_document_count": len(confidential_docs),
+                    "confidential_documents": confidential_docs,
+                    "action": "chat_with_collection"
+                }
+            )
+            logger.info(f"CONFIDENTIAL_ACCESSED: User {user.email} accessed confidential documents in collection chat {collection_id}")
+
         # Store user message
         user_msg = ChatMessage(
             session_id=session.id,
@@ -232,7 +280,6 @@ class CollectionChatService:
             doc_info = {
                 "id": str(item.document.id),
                 "filename": item.document.filename,
-                "bucket": item.document.bucket.value,
                 "created_at": item.document.created_at.isoformat(),
                 "relevance": item.relevance_score,
                 "chunks": [
@@ -298,17 +345,17 @@ When answering:
             "content": f"Documents context:\n{context_text}\n\nUser question: {message}"
         })
 
-        # Generate response with caching
+        # Generate response with OpenRouter (MiniMax) for public collections
         response_parts = []
-        cache_hit = False
         usage_metadata = {}
 
-        async for chunk in self.gemini_service.chat_completion(
+        # Use OpenRouter for public documents instead of direct Gemini
+        from app.services.openrouter_service import openrouter_service
+        async for chunk in openrouter_service.chat_completion(
             messages=messages,
             stream=False,
             temperature=0.7,
-            max_tokens=2048,
-            cache_key=f"collection_{collection.id}"  # Cache per collection
+            max_tokens=2048
         ):
             if chunk and not chunk.startswith("Error:"):
                 if chunk.startswith("__USAGE__"):
@@ -316,7 +363,6 @@ When answering:
                     try:
                         usage_json = chunk.replace("__USAGE__: ", "")
                         usage_metadata = json.loads(usage_json)
-                        cache_hit = usage_metadata.get("cache_hit", False)
                     except:
                         pass
                 else:
@@ -337,8 +383,7 @@ When answering:
         return {
             "response": response_text,
             "sources": sources,
-            "llm_used": "gemini",
-            "cache_hit": cache_hit,
+            "llm_used": "openrouter",
             "prompt_tokens": usage_metadata.get("prompt_tokens"),
             "completion_tokens": usage_metadata.get("completion_tokens"),
             "total_tokens": usage_metadata.get("total_tokens")

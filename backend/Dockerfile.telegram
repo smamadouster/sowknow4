@@ -19,6 +19,9 @@ RUN chown -R appuser:appuser /app
 
 ENV PYTHONPATH=/app
 
+# Configure DNS fallback (8.8.8.8 for environments without proper DNS)
+RUN echo "nameserver 8.8.8.8" >> /etc/resolv.conf || true
+
 USER appuser
 
 CMD ["python", "-m", "telegram_bot.bot"]

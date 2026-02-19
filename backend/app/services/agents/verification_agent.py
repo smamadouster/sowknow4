@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 from app.services.gemini_service import gemini_service
+from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class VerificationResult:
     source_count: int
     reliability_score: float
     notes: List[str]
+    llm_used: str = "unknown"
 
     def __post_init__(self):
         if self.supporting_evidence is None:
@@ -57,6 +59,16 @@ class VerificationAgent:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self.ollama_service = ollama_service
+
+    def _has_confidential_documents(self, sources: List[Dict[str, Any]]) -> bool:
+        """Check if any sources contain confidential documents"""
+        if not sources:
+            return False
+        return any(
+            source.get("document_bucket") == "confidential"
+            for source in sources
+        )
 
     async def verify(
         self,
@@ -71,6 +83,12 @@ class VerificationAgent:
         Returns:
             Verification result with evidence and confidence
         """
+        # Determine which LLM to use based on document confidentiality
+        self._use_ollama = self._has_confidential_documents(request.sources)
+        if self._use_ollama:
+            logger.info("VerificationAgent: Using Ollama for confidential documents")
+        self._llm_service = self.ollama_service if self._use_ollama else self.gemini_service
+
         try:
             # Step 1: Analyze the claim
             claim_analysis = await self._analyze_claim(request.claim)
@@ -124,6 +142,9 @@ class VerificationAgent:
                 reliability
             )
 
+            # Determine which LLM was used
+            llm_used = "ollama" if self._use_ollama else "gemini"
+
             return VerificationResult(
                 claim=request.claim,
                 is_verified=is_verified,
@@ -132,7 +153,8 @@ class VerificationAgent:
                 contradicting_evidence=contradicting,
                 source_count=total_sources,
                 reliability_score=reliability,
-                notes=notes
+                notes=notes,
+                llm_used=llm_used
             )
 
         except Exception as e:
@@ -145,7 +167,8 @@ class VerificationAgent:
                 contradicting_evidence=[],
                 source_count=0,
                 reliability_score=0.0,
-                notes=[f"Verification error: {str(e)}"]
+                notes=[f"Verification error: {str(e)}"],
+                llm_used="error"
             )
 
     async def verify_batch(
@@ -186,7 +209,7 @@ Return JSON:
 
         try:
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in self._llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,
@@ -246,7 +269,7 @@ Return JSON:
 
         try:
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in self._llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,
@@ -364,7 +387,7 @@ Return JSON array of conflicts:
 
         try:
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in self._llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,

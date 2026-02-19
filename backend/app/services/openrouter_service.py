@@ -21,6 +21,10 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "minimax/minimax-01")
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamtech.com")
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
+# Context window limits (in tokens)
+MINIMAX_CONTEXT_WINDOW = 128000  # MiniMax 2.5 supports 128K
+MAX_INPUT_TOKENS = 120000  # Leave buffer for response
+
 
 class OpenRouterService:
     """Service for interacting with OpenRouter API (OpenAI-compatible)"""
@@ -36,6 +40,36 @@ class OpenRouterService:
             logger.info(f"OpenRouter service initialized with model: {self.model}")
         else:
             logger.warning("OPENROUTER_API_KEY not configured")
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count using simple character-based approximation"""
+        if not text:
+            return 0
+        return len(text) // 4
+
+    def _truncate_messages(self, messages: List[Dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS) -> List[Dict[str, str]]:
+        """Truncate messages to fit within context window"""
+        total_tokens = 0
+        truncated_messages = []
+        
+        for msg in messages:
+            content = msg.get("content", "")
+            msg_tokens = self._estimate_tokens(content)
+            
+            if total_tokens + msg_tokens > max_tokens:
+                available = max_tokens - total_tokens
+                if available > 100:
+                    truncated_content = content[:available * 4]
+                    truncated_messages.append({
+                        "role": msg.get("role", "user"),
+                        "content": truncated_content + "... [truncated]"
+                    })
+                break
+            
+            truncated_messages.append(msg)
+            total_tokens += msg_tokens
+        
+        return truncated_messages
 
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for OpenRouter API requests"""
@@ -79,9 +113,19 @@ class OpenRouterService:
             yield "Error: OpenRouter API key not configured"
             return
 
+        # Enforce context window limit
+        truncated_messages = self._truncate_messages(messages)
+        
+        # Check if truncation occurred
+        original_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in messages)
+        truncated_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
+        
+        if original_tokens > truncated_tokens:
+            logger.warning(f"Input truncated from ~{original_tokens} to ~{truncated_tokens} tokens to fit context window")
+
         payload = {
             "model": self.model,
-            "messages": messages,
+            "messages": truncated_messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": stream
@@ -141,6 +185,13 @@ class OpenRouterService:
                 error_body = e.response.text
             except:
                 pass
+            
+            # Handle rate limit (429) errors with specific retry trigger
+            if e.response.status_code == 429:
+                logger.warning(f"OpenRouter rate limit hit (429), will retry with backoff")
+                # Re-raise to trigger tenacity retry with exponential backoff
+                raise
+            
             logger.error(f"OpenRouter API error: {e} - {error_body}")
             yield f"Error: API error - {e.response.status_code if e.response else 'unknown'}"
         except httpx.HTTPError as e:

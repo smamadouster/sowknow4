@@ -4,6 +4,8 @@ Smart Folders and Reports API endpoints
 Provides endpoints for generating AI content from documents and
 creating professional PDF reports from collections.
 """
+import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -11,6 +13,7 @@ from uuid import UUID
 
 from app.database import get_db
 from app.models.user import User
+from app.models.audit import AuditLog, AuditAction
 from app.schemas.collection import (
     SmartFolderGenerateRequest,
     SmartFolderResponse,
@@ -23,6 +26,31 @@ from app.services.report_service import report_service, ReportFormat as ReportFo
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/smart-folders", tags=["smart-folders"])
+logger = logging.getLogger(__name__)
+
+
+def create_audit_log(
+    db: Session,
+    user_id: UUID,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None
+):
+    """Helper function to create audit log entries for confidential access"""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps(details) if details else None
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Audit logging failed: {str(e)}")
 
 
 @router.post("/generate", response_model=SmartFolderResponse)
@@ -58,6 +86,30 @@ async def generate_smart_folder(
             user=current_user,
             db=db
         )
+
+        # AUDIT LOG: Log confidential document access in smart folder generation
+        if request.include_confidential and result.get("documents"):
+            confidential_docs = [
+                {"id": doc.get("id"), "filename": doc.get("filename")}
+                for doc in result["documents"]
+                if doc.get("bucket") == "confidential"
+            ]
+            if confidential_docs:
+                create_audit_log(
+                    db=db,
+                    user_id=current_user.id,
+                    action=AuditAction.CONFIDENTIAL_ACCESSED,
+                    resource_type="smart_folder",
+                    resource_id=str(result.get("collection_id", "unknown")),
+                    details={
+                        "topic": request.topic,
+                        "confidential_document_count": len(confidential_docs),
+                        "confidential_documents": confidential_docs,
+                        "action": "generate_smart_folder"
+                    }
+                )
+                logger.info(f"CONFIDENTIAL_ACCESSED: User {current_user.email} accessed confidential documents in smart folder generation")
+
         return SmartFolderResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -100,6 +152,23 @@ async def generate_collection_report(
             user=current_user,
             db=db
         )
+
+        # AUDIT LOG: Log confidential document access in report generation
+        if result.get("has_confidential"):
+            create_audit_log(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.CONFIDENTIAL_ACCESSED,
+                resource_type="report",
+                resource_id=str(request.collection_id),
+                details={
+                    "format": request.format.value,
+                    "language": request.language,
+                    "action": "generate_report",
+                    "has_confidential": True
+                }
+            )
+            logger.info(f"CONFIDENTIAL_ACCESSED: User {current_user.email} generated report with confidential documents")
 
         return CollectionReportResponse(
             report_id=UUID(result["report_id"]),

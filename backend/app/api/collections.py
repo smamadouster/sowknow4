@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
 
+import json
 from app.database import get_db
 from app.models.user import User
 from app.models.collection import Collection, CollectionItem, CollectionVisibility, CollectionType
+from app.models.audit import AuditLog, AuditAction
 from app.schemas.collection import (
     CollectionCreate,
     CollectionUpdate,
@@ -33,6 +35,32 @@ from app.services.collection_chat_service import collection_chat_service
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/collections", tags=["collections"])
+
+
+def create_audit_log(
+    db: Session,
+    user_id: UUID,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None
+):
+    """Helper function to create audit log entries for confidential access"""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps(details) if details else None
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Audit logging failed: {str(e)}")
 
 
 @router.post("", response_model=CollectionResponse, status_code=201)
@@ -206,16 +234,36 @@ async def get_collection(
         CollectionItem.collection_id == collection_id
     ).order_by(CollectionItem.order_index).all()
 
+    # Check for confidential documents and log access
+    confidential_items = [item for item in items if item.document and item.document.bucket.value == "confidential"]
+    if confidential_items:
+        confidential_docs = [
+            {"id": str(item.document.id), "filename": item.document.filename}
+            for item in confidential_items
+        ]
+        create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_ACCESSED,
+            resource_type="collection",
+            resource_id=str(collection_id),
+            details={
+                "collection_name": collection.name,
+                "confidential_document_count": len(confidential_docs),
+                "confidential_documents": confidential_docs,
+                "action": "view_collection"
+            }
+        )
+
     # Enrich items with document info
     enriched_items = []
     for item in items:
         item_dict = CollectionItemResponse.model_validate(item).model_dump()
-        # Add basic document info
+        # Add basic document info (bucket intentionally excluded for privacy)
         if item.document:
             item_dict["document"] = {
                 "id": str(item.document.id),
                 "filename": item.document.filename,
-                "bucket": item.document.bucket.value,
                 "created_at": item.document.created_at.isoformat()
             }
         enriched_items.append(item_dict)

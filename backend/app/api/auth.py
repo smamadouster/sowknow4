@@ -70,6 +70,42 @@ SECURE_FLAG = ENVIRONMENT == "production"
 # "strict" would break navigation from external links
 SAMESITE_VALUE = "lax"
 
+# =============================================================================
+# TELEGRAM AUTH CONFIGURATION
+# =============================================================================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BOT_API_KEY = os.getenv("BOT_API_KEY", "")
+
+
+async def verify_telegram_user(telegram_user_id: int, bot_token: str) -> bool:
+    """
+    Verify that a Telegram user ID is valid by checking against Telegram API.
+    
+    This prevents attackers from impersonating Telegram users.
+    
+    Args:
+        telegram_user_id: The Telegram user ID to verify
+        bot_token: The bot token to use for verification
+        
+    Returns:
+        True if the user exists and is valid, False otherwise
+    """
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://api.telegram.org/bot{bot_token}/getChat",
+                params={"chat_id": telegram_user_id},
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("ok", False)
+            return False
+    except Exception as e:
+        logger.error(f"Telegram verification failed: {e}")
+        return False
+
 
 # =============================================================================
 # TOKEN BLACKLIST (Redis)
@@ -591,6 +627,7 @@ class TelegramAuthRequest(BaseModel):
 # RATE_LIMIT: 20/minute (prevent bot abuse)
 async def telegram_auth(
     response: Response,
+    request: Request,
     auth_data: TelegramAuthRequest,
     db: Session = Depends(get_db)
 ):
@@ -600,19 +637,48 @@ async def telegram_auth(
     This endpoint is called by the Telegram bot when a user starts a conversation.
     It creates a new user if one doesn't exist, or returns an existing user.
 
-    SECURITY: Tokens are set in httpOnly, Secure, SameSite=lax cookies.
-    They are NOT returned in the response body to prevent XSS attacks.
+    SECURITY: 
+    - Requires X-Bot-Api-Key header for authentication
+    - Verifies Telegram user ID against Telegram API
+    - Tokens are set in httpOnly, Secure, SameSite=lax cookies
+    - They are NOT returned in the response body to prevent XSS attacks
 
     Args:
         response: FastAPI Response object (for cookie setting)
+        request: FastAPI Request object (for header validation)
         auth_data: Telegram user data
         db: Database session
 
     Returns:
         LoginResponse: {message, user: {id, email, full_name, role}}
     """
-    # Create email from Telegram ID
-    email = f"telegram_{auth_data.telegram_user_id}@sowknow.local"
+    # SECURITY: Validate Bot API Key header
+    incoming_api_key = request.headers.get("X-Bot-Api-Key")
+    if not incoming_api_key or incoming_api_key != BOT_API_KEY:
+        logger.warning(f"Telegram auth failed: invalid or missing API key from {request.client.host if request.client else 'unknown'}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key"
+        )
+    
+    # SECURITY: Verify Telegram user ID against Telegram API
+    if TELEGRAM_BOT_TOKEN:
+        is_valid_telegram_user = await verify_telegram_user(
+            auth_data.telegram_user_id, 
+            TELEGRAM_BOT_TOKEN
+        )
+        if not is_valid_telegram_user:
+            logger.warning(f"Telegram auth failed: invalid telegram_user_id {auth_data.telegram_user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Telegram credentials"
+            )
+    
+    # Create deterministic but non-enumerable email
+    # Use UUID-based hash to prevent enumeration
+    import hashlib
+    telegram_id_hash = hashlib.sha256(str(auth_data.telegram_user_id).encode()).hexdigest()[:16]
+    email = f"telegram_{telegram_id_hash}@sowknow.local"
 
     # Check if user exists
     user = db.query(User).filter(User.email == email).first()
@@ -621,7 +687,7 @@ async def telegram_auth(
         # Create new user from Telegram data
         full_name = " ".join(filter(None, [auth_data.first_name, auth_data.last_name]))
         if not full_name:
-            full_name = auth_data.username or f"Telegram User {auth_data.telegram_user_id}"
+            full_name = auth_data.username or f"Telegram User {telegram_id_hash}"
 
         # Generate a random password for Telegram users
         import secrets

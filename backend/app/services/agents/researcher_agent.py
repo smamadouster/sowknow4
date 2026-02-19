@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 from app.services.gemini_service import gemini_service
+from app.services.ollama_service import ollama_service
 from app.services.search_service import search_service
 from app.services.graph_rag_service import graph_rag_service
 
@@ -39,6 +40,7 @@ class ResearchResult:
     confidence: float
     gaps: List[str]
     next_queries: List[str]
+    llm_used: str = "unknown"
 
     def __post_init__(self):
         if self.findings is None:
@@ -67,8 +69,23 @@ class ResearcherAgent:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self.ollama_service = ollama_service
         self.search_service = search_service
         self.graph_rag_service = graph_rag_service
+
+    def _has_confidential_documents(self, findings: List[Dict[str, Any]]) -> bool:
+        """Check if any findings contain confidential documents"""
+        return any(
+            finding.get("document_bucket") == "confidential"
+            for finding in findings
+        )
+
+    def _get_llm_service(self, findings: List[Dict[str, Any]]):
+        """Get appropriate LLM service based on document confidentiality"""
+        if self._has_confidential_documents(findings):
+            logger.info("Researcher: Using Ollama for confidential documents")
+            return self.ollama_service, "ollama"
+        return self.gemini_service, "gemini"
 
     async def research(
         self,
@@ -136,6 +153,9 @@ class ResearcherAgent:
                 db
             )
 
+            # Determine which LLM was used based on document confidentiality
+            llm_used = "ollama" if self._has_confidential_documents(findings) else "gemini"
+
             # Step 4: Identify gaps
             gaps = await self._identify_information_gaps(
                 search_query,
@@ -169,11 +189,13 @@ class ResearcherAgent:
                 sources=sources,
                 confidence=confidence,
                 gaps=gaps,
-                next_queries=next_queries[:5]
+                next_queries=next_queries[:5],
+                llm_used=llm_used
             )
 
         except Exception as e:
-            logger.error(f"Research error: {e}")
+            logger.error("Research error: " + str(e))
+            error_msg = "Research error: " + str(e)
             return ResearchResult(
                 query=request.query,
                 findings=[],
@@ -182,8 +204,9 @@ class ResearcherAgent:
                 context={},
                 sources=[],
                 confidence=0.0,
-                gaps=[f"Research error: {str(e)}"],
-                next_queries=[]
+                gaps=[error_msg],
+                next_queries=[],
+                llm_used="error"
             )
 
     async def _gather_context(
@@ -252,8 +275,9 @@ Extract the key themes:"""
         ]
 
         try:
+            llm_service, _ = self._get_llm_service(findings)
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.5,
@@ -349,8 +373,9 @@ Suggest follow-up queries to deepen the research:"""
         ]
 
         try:
+            llm_service, _ = self._get_llm_service(findings)
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.7,

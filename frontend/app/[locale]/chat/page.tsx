@@ -10,6 +10,7 @@ interface Message {
   content: string;
   sources?: { id: string; filename: string; relevance: number }[];
   llm_used?: string;
+  cache_hit?: boolean;
   created_at?: string;
 }
 
@@ -34,6 +35,7 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streamingLlm, setStreamingLlm] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -165,6 +167,7 @@ export default function ChatPage() {
       content: '',
     };
     setMessages(prev => [...prev, assistantMessage]);
+    setStreamingLlm(null);
 
     try {
       const token = getToken();
@@ -226,10 +229,11 @@ export default function ChatPage() {
                 setMessages(prev =>
                   prev.map(m =>
                     m.id === assistantMessage.id
-                      ? { ...m, llm_used: parsed.model }
+                      ? { ...m, llm_used: parsed.model, cache_hit: parsed.cache_hit }
                       : m
                   )
                 );
+                setStreamingLlm(parsed.model);
               } else if (parsed.type === 'error') {
                 setError(parsed.error || 'Unknown error');
               }
@@ -356,8 +360,17 @@ export default function ChatPage() {
                   )}
                   
                   {message.llm_used && (
-                    <div className={`mt-2 text-xs opacity-75`}>
-                      {t('model_used')}: {message.llm_used}
+                    <div className={`mt-2 text-xs opacity-75 flex items-center gap-2`}>
+                      <span>{t('model_used')}: {message.llm_used}</span>
+                      {message.cache_hit && (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          message.role === 'user' 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-green-200 text-green-800'
+                        }`}>
+                          ⚡ Cache
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -369,7 +382,11 @@ export default function ChatPage() {
             <div className="flex justify-start">
               <div className="bg-gray-100 rounded-lg p-4">
                 <div className="flex items-center gap-2 text-gray-500">
-                  <div className="animate-pulse">{t('thinking')}</div>
+                  <div className="animate-pulse">
+                    {streamingLlm?.toLowerCase().includes('ollama')
+                      ? '🛡️ Local LLM is thinking... (confidential mode)'
+                      : t('thinking')}
+                  </div>
                 </div>
               </div>
             </div>

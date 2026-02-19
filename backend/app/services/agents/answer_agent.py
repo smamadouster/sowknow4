@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
 from app.services.gemini_service import gemini_service
+from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class AnswerResult:
     confidence: float
     caveats: List[str]
     followup_suggestions: List[str]
+    llm_used: str = "unknown"
 
     def __post_init__(self):
         if self.key_points is None:
@@ -58,6 +60,23 @@ class AnswerAgent:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self.ollama_service = ollama_service
+
+    def _has_confidential_documents(self, findings: List[Dict[str, Any]]) -> bool:
+        """Check if any findings contain confidential documents"""
+        if not findings:
+            return False
+        return any(
+            finding.get("document_bucket") == "confidential"
+            for finding in findings
+        )
+
+    def _get_llm_service(self, findings: List[Dict[str, Any]]):
+        """Get appropriate LLM service based on document confidentiality"""
+        if self._has_confidential_documents(findings):
+            logger.info("Answer: Using Ollama for confidential documents")
+            return self.ollama_service
+        return self.gemini_service
 
     async def generate_answer(
         self,
@@ -72,6 +91,13 @@ class AnswerAgent:
         Returns:
             Structured answer with sources and confidence
         """
+        # Determine which LLM to use based on document confidentiality
+        all_findings = request.research_findings + request.verification_results
+        self._use_ollama = self._has_confidential_documents(all_findings)
+        if self._use_ollama:
+            logger.info("AnswerAgent: Using Ollama for confidential documents")
+        self._llm_service = self.ollama_service if self._use_ollama else self.gemini_service
+
         try:
             # Step 1: Analyze what type of answer is needed
             answer_type = await self._determine_answer_type(request.query)
@@ -116,6 +142,9 @@ class AnswerAgent:
                 generation_context
             )
 
+            # Determine which LLM was used
+            llm_used = "ollama" if self._use_ollama else "gemini"
+
             return AnswerResult(
                 query=request.query,
                 answer=answer,
@@ -123,7 +152,8 @@ class AnswerAgent:
                 sources=sources,
                 confidence=confidence,
                 caveats=caveats,
-                followup_suggestions=followup
+                followup_suggestions=followup,
+                llm_used=llm_used
             )
 
         except Exception as e:
@@ -135,7 +165,8 @@ class AnswerAgent:
                 sources=[],
                 confidence=0.0,
                 caveats=["An error occurred during answer generation"],
-                followup_suggestions=[]
+                followup_suggestions=[],
+                llm_used="error"
             )
 
     async def _determine_answer_type(self, query: str) -> str:
@@ -158,7 +189,7 @@ Return just the type name."""
 
         try:
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in self._llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,
@@ -286,7 +317,7 @@ Please provide a comprehensive answer:"""
 
         try:
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in self._llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.7,
@@ -313,7 +344,7 @@ Return as a JSON array of strings."""
 
         try:
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in self._llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.5,
@@ -401,7 +432,7 @@ Suggest follow-up questions:"""
 
         try:
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in self._llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.7,

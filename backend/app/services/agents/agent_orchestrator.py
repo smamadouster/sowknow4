@@ -30,6 +30,7 @@ from app.services.agents.answer_agent import (
     AnswerRequest,
     AnswerResult
 )
+from app.services.pii_detection_service import pii_detection_service
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ class OrchestratorResult:
     total_duration_ms: int = 0
     state: OrchestratorState = OrchestratorState.COMPLETE
     metadata: Dict[str, Any] = field(default_factory=dict)
+    llm_used: str = "unknown"
 
     def __post_init__(self):
         if self.metadata is None:
@@ -111,6 +113,36 @@ class AgentOrchestrator:
         self.verification_agent = verification_agent
         self.answer_agent = answer_agent
 
+    def _should_use_ollama_for_clarification(self, query: str) -> bool:
+        """Determine if Ollama should be used for clarification based on query content.
+
+        CRITICAL: This method checks the QUERY CONTENT for PII/sensitive data,
+        NOT the user's role. User role-based routing is INCORRECT because:
+        - A user with confidential access might ask about public documents
+        - A user without confidential access might have PII in their query
+        - Only the actual document content determines confidentiality
+
+        The ResearcherAgent, AnswerAgent, and VerificationAgent properly check
+        document_bucket after documents are retrieved. This method only handles
+        the clarification phase where no documents have been accessed yet.
+
+        Args:
+            query: The user's query text
+
+        Returns:
+            True if Ollama should be used (PII detected in query), False otherwise
+        """
+        if not query:
+            return False
+
+        # Check for PII in the query - if found, use Ollama for privacy protection
+        has_pii = pii_detection_service.detect_pii(query)
+        if has_pii:
+            logger.info("Clarification: PII detected in query, using Ollama for privacy protection")
+            return True
+
+        return False
+
     async def orchestrate(
         self,
         request: OrchestratorRequest
@@ -136,7 +168,14 @@ class AgentOrchestrator:
                 step_start = time.time()
 
                 try:
-                    clarification = await self._run_clarification(request)
+                    # Determine if Ollama should be used for clarification
+                    # Use Ollama only if PII is detected in the query itself
+                    # Document-based routing is handled by ResearcherAgent after retrieval
+                    use_ollama_for_clarification = self._should_use_ollama_for_clarification(request.query)
+                    clarification = await self._run_clarification(
+                        request,
+                        use_ollama=use_ollama_for_clarification
+                    )
                     agent_results.append(AgentResult(
                         agent_name="clarification",
                         state="complete",
@@ -244,6 +283,11 @@ class AgentOrchestrator:
                 )
 
             # Compile final result
+            # Determine which LLM was used based on research findings
+            llm_used = "unknown"
+            if research and research.llm_used:
+                llm_used = research.llm_used
+            
             return OrchestratorResult(
                 query=request.query,
                 answer=answer.answer if answer else "",
@@ -258,7 +302,8 @@ class AgentOrchestrator:
                     "successful_agents": sum(1 for ar in agent_results if ar.state == "complete"),
                     "answer_confidence": answer.confidence if answer else 0.0,
                     "source_count": len(answer.sources) if answer else 0
-                }
+                },
+                llm_used=llm_used
             )
 
         except Exception as e:
@@ -274,16 +319,38 @@ class AgentOrchestrator:
 
     async def _run_clarification(
         self,
-        request: OrchestratorRequest
+        request: OrchestratorRequest,
+        use_ollama: bool = False
     ) -> ClarificationResult:
-        """Run the clarification agent"""
+        """Run the clarification agent
+
+        Args:
+            request: Orchestrator request
+            use_ollama: Whether to use Ollama (local LLM) instead of Gemini.
+                       Should be True ONLY if PII is detected in the query itself.
+                       Document-based routing is handled by ResearcherAgent after
+                       document retrieval based on actual document_bucket values.
+
+        SECURITY NOTE: The clarification phase happens BEFORE document retrieval,
+        so we cannot determine document confidentiality at this stage. The only
+        valid reason to use Ollama here is if the query contains PII. Actual
+        document confidentiality routing is handled by:
+        - ResearcherAgent._has_confidential_documents() (checks document_bucket)
+        - AnswerAgent._has_confidential_documents() (checks document_bucket)
+        - VerificationAgent._has_confidential_documents() (checks document_bucket)
+        """
+        # Clarification agent processes queries only, not document content.
+        # By default, use Gemini (use_ollama=False) since no confidential
+        # documents are processed at this stage.
+        # Only use Ollama if PII is detected in the query itself.
+
         clarification_request = ClarificationRequest(
             query=request.query,
             context=request.context,
             conversation_history=request.conversation_history,
             user_preferences=request.user_preferences
         )
-        return await self.clarification_agent.clarify(clarification_request)
+        return await self.clarification_agent.clarify(clarification_request, use_ollama=use_ollama)
 
     async def _run_research(
         self,
@@ -387,7 +454,13 @@ class AgentOrchestrator:
             "timestamp": datetime.now().isoformat()
         }
 
-        clarification = await self._run_clarification(request)
+        # Use Ollama for clarification only if PII detected in query
+        # Document-based routing is handled by ResearcherAgent after retrieval
+        use_ollama_for_clarification = self._should_use_ollama_for_clarification(request.query)
+        clarification = await self._run_clarification(
+            request,
+            use_ollama=use_ollama_for_clarification
+        )
 
         if not clarification.is_clear and clarification.questions:
             yield {
@@ -444,6 +517,13 @@ class AgentOrchestrator:
 
         answer = await self._run_answer_generation(request, research, verification)
 
+        # Determine which LLM was used based on research findings
+        llm_used = "unknown"
+        if research and research.llm_used:
+            llm_used = research.llm_used
+        elif answer and answer.llm_used:
+            llm_used = answer.llm_used
+
         # Final result
         yield {
             "type": "complete",
@@ -453,6 +533,7 @@ class AgentOrchestrator:
             "confidence": answer.confidence,
             "caveats": answer.caveats,
             "followup": answer.followup_suggestions,
+            "llm_used": llm_used,
             "duration_ms": int((time.time() - start_time) * 1000),
             "timestamp": datetime.now().isoformat()
         }

@@ -1,13 +1,16 @@
 """
 Search API endpoints for hybrid semantic and keyword search
 """
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 import logging
+import uuid
 
 from app.database import get_db
 from app.models.user import User
+from app.models.audit import AuditLog, AuditAction
 from app.schemas.search import SearchRequest, SearchResponse, SearchResultChunk
 from app.services.search_service import search_service
 from app.api.deps import get_current_user
@@ -15,6 +18,34 @@ from app.api.deps import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+
+def create_audit_log(
+    db: Session,
+    user_id: uuid.UUID,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None
+):
+    """Helper function to create audit log entries for search"""
+    try:
+        audit_entry = AuditLog(
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps(details) if details else None,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        db.add(audit_entry)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Audit logging failed: {str(e)}")
 
 
 @router.post("", response_model=SearchResponse)
@@ -61,6 +92,19 @@ async def search_documents(
                 f"CONFIDENTIAL_SEARCH - User: {current_user.email} (ID: {current_user.id}, "
                 f"Role: {current_user.role.value}) | Query: {request.query[:100]} | "
                 f"Results: {len(result['results'])} items"
+            )
+            # Create audit log entry
+            create_audit_log(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.CONFIDENTIAL_ACCESSED,
+                resource_type="search",
+                resource_id=None,
+                details={
+                    "query": request.query[:200],
+                    "result_count": len(result["results"]),
+                    "action": "confidential_search"
+                }
             )
 
         # Determine which LLM would be used for follow-up

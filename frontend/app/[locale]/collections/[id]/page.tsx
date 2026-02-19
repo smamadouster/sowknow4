@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { getTokenFromCookie } from "@/lib/api";
 
 interface CollectionItem {
   id: string;
@@ -49,7 +50,7 @@ export default function CollectionDetailPage() {
 
   const fetchCollection = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}`,
         {
@@ -78,7 +79,7 @@ export default function CollectionDetailPage() {
     if (!collection) return;
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}/refresh`,
         {
@@ -106,7 +107,7 @@ export default function CollectionDetailPage() {
     setChatLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}/chat`,
         {

@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from collections import defaultdict
 
-from app.models.document import Document, DocumentChunk
+from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.models.knowledge_graph import Entity, TimelineEvent
 from app.services.gemini_service import gemini_service
 
@@ -71,6 +71,20 @@ class SynthesisPipelineService:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self._ollama_service = None
+        self._openrouter_service = None
+    
+    def _get_ollama_service(self):
+        if self._ollama_service is None:
+            from app.services.ollama_service import ollama_service
+            self._ollama_service = ollama_service
+        return self._ollama_service
+    
+    def _get_openrouter_service(self):
+        if self._openrouter_service is None:
+            from app.services.openrouter_service import openrouter_service
+            self._openrouter_service = openrouter_service
+        return self._openrouter_service
 
     async def synthesize(
         self,
@@ -134,14 +148,15 @@ class SynthesisPipelineService:
                 timeline,
                 request.style,
                 request.language,
-                request.max_length
+                request.max_length,
+                documents
             )
 
             # Step 6: Extract key points
             if on_progress:
                 on_progress("Extracting key points...", 0.9)
 
-            key_points = await self._extract_key_points(synthesis, request.topic)
+            key_points = await self._extract_key_points(synthesis, request.topic, documents)
 
             # Step 7: Prepare source citations
             sources = self._prepare_sources(documents, mapped_results)
@@ -259,8 +274,12 @@ Extract all relevant information about "{topic}" from this document:"""
         ]
 
         try:
+            # Determine LLM routing based on document bucket
+            use_ollama = doc.bucket == DocumentBucket.CONFIDENTIAL
+            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,
@@ -282,6 +301,7 @@ Extract all relevant information about "{topic}" from this document:"""
             return {
                 "document_id": str(doc.id),
                 "filename": doc.filename,
+                "bucket": doc.bucket,
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "extracted": extracted,
                 "content_length": len(content)
@@ -292,6 +312,7 @@ Extract all relevant information about "{topic}" from this document:"""
             return {
                 "document_id": str(doc.id),
                 "filename": doc.filename,
+                "bucket": doc.bucket,
                 "error": str(e)
             }
 
@@ -377,7 +398,8 @@ Extract all relevant information about "{topic}" from this document:"""
         timeline: List[Dict[str, Any]],
         style: str,
         language: str,
-        max_length: int
+        max_length: int,
+        documents: List[Document]
     ) -> str:
         """
         Reduce phase: Synthesize all mapped information into a coherent summary
@@ -388,6 +410,11 @@ Extract all relevant information about "{topic}" from this document:"""
         if not successful:
             return "Unable to synthesize information from the provided documents."
 
+        # Determine bucket-based routing - use most restrictive (confidential if any)
+        use_ollama = any(
+            r.get("bucket") == DocumentBucket.CONFIDENTIAL for r in successful
+        )
+        
         # Build context
         context_parts = []
 
@@ -461,8 +488,11 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
         ]
 
         try:
+            # Determine LLM routing based on document bucket
+            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.7,
@@ -480,9 +510,13 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
     async def _extract_key_points(
         self,
         synthesis: str,
-        topic: str
+        topic: str,
+        documents: List[Document]
     ) -> List[str]:
         """Extract key points from the synthesis"""
+        # Determine bucket-based routing
+        use_ollama = any(doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents)
+        
         system_prompt = """Extract the 3-7 most important key points from the text.
 Return as a JSON array of strings, each being a key point."""
 
@@ -499,8 +533,10 @@ Extract the key points:"""
         ]
 
         try:
+            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            
             response = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,

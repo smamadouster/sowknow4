@@ -20,7 +20,7 @@ from app.models.knowledge_graph import (
     EntityType,
     RelationType
 )
-from app.models.document import Document, DocumentChunk, DocumentStatus
+from app.models.document import Document, DocumentChunk, DocumentStatus, DocumentBucket
 from app.models.user import User
 from app.services.gemini_service import gemini_service
 
@@ -70,6 +70,20 @@ class EntityExtractionService:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self._ollama_service = None
+        self._openrouter_service = None
+    
+    def _get_ollama_service(self):
+        if self._ollama_service is None:
+            from app.services.ollama_service import ollama_service
+            self._ollama_service = ollama_service
+        return self._ollama_service
+    
+    def _get_openrouter_service(self):
+        if self._openrouter_service is None:
+            from app.services.openrouter_service import openrouter_service
+            self._openrouter_service = openrouter_service
+        return self._openrouter_service
 
     async def extract_entities_from_document(
         self,
@@ -78,7 +92,7 @@ class EntityExtractionService:
         db: Session
     ) -> Dict[str, Any]:
         """
-        Extract entities from a document using Gemini Flash
+        Extract entities from a document using Gemini Flash or Ollama
 
         Args:
             document: Document to extract from
@@ -89,17 +103,21 @@ class EntityExtractionService:
             Dictionary with extraction results
         """
         try:
+            # Determine LLM routing based on document bucket
+            use_ollama = document.bucket == DocumentBucket.CONFIDENTIAL
+            
             # Prepare text for analysis
             document_text = self._prepare_document_text(chunks)
 
-            # Extract entities using Gemini
-            extracted = await self._extract_with_gemini(
-                filename=document.filename,
+            # Extract entities using appropriate LLM
+            extracted = await self._extract_with_llm(
+                filename=str(document.filename),
                 text=document_text,
                 metadata={
                     "created_at": document.created_at.isoformat(),
                     "mime_type": document.mime_type
-                }
+                },
+                use_ollama=use_ollama
             )
 
             if not extracted:
@@ -161,13 +179,14 @@ class EntityExtractionService:
 
         return "\n\n".join(text_parts)
 
-    async def _extract_with_gemini(
+    async def _extract_with_llm(
         self,
         filename: str,
         text: str,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
+        use_ollama: bool = False
     ) -> Optional[Dict[str, Any]]:
-        """Extract entities using Gemini Flash"""
+        """Extract entities using Gemini Flash or Ollama based on document confidentiality"""
 
         system_prompt = """You are an expert entity extractor for SOWKNOW, a knowledge management system. Extract structured information from documents.
 
@@ -239,14 +258,28 @@ Extract all entities, relationships, and dated events now:"""
 
         try:
             response_parts = []
-            async for chunk in self.gemini_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=2048
-            ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                    response_parts.append(chunk)
+            
+            # Route to appropriate LLM based on document confidentiality
+            if use_ollama:
+                llm_service = self._get_ollama_service()
+                async for chunk in llm_service.chat_completion(
+                    messages=messages,
+                    stream=False,
+                    temperature=0.3,
+                    num_predict=2048
+                ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                        response_parts.append(chunk)
+            else:
+                llm_service = self._get_openrouter_service()
+                async for chunk in llm_service.chat_completion(
+                    messages=messages,
+                    stream=False,
+                    temperature=0.3,
+                    max_tokens=2048
+                ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                        response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
 
@@ -256,7 +289,7 @@ Extract all entities, relationships, and dated events now:"""
                 return json.loads(json_text)
 
         except Exception as e:
-            logger.error(f"Gemini extraction error: {e}")
+            logger.error(f"Entity extraction error: {e}")
 
         return None
 

@@ -8,7 +8,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from app.models.document import Document, DocumentTag, DocumentLanguage
+from app.models.document import Document, DocumentTag, DocumentLanguage, DocumentBucket
 from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,20 @@ class AutoTaggingService:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self._ollama_service = None
+        self._openrouter_service = None
+    
+    def _get_ollama_service(self):
+        if self._ollama_service is None:
+            from app.services.ollama_service import ollama_service
+            self._ollama_service = ollama_service
+        return self._ollama_service
+    
+    def _get_openrouter_service(self):
+        if self._openrouter_service is None:
+            from app.services.openrouter_service import openrouter_service
+            self._openrouter_service = openrouter_service
+        return self._openrouter_service
 
     async def tag_document(
         self,
@@ -38,11 +52,17 @@ class AutoTaggingService:
             List of created DocumentTag objects
         """
         try:
+            # Determine LLM routing based on document bucket
+            use_ollama = document.bucket == DocumentBucket.CONFIDENTIAL
+            
             # Prepare the text for analysis (truncate if too long)
             analysis_text = self._prepare_text_for_analysis(extracted_text, document.filename)
 
-            # Call Gemini to extract tags
-            tags_data = await self._extract_tags_with_gemini(analysis_text, document)
+            # Call appropriate LLM to extract tags
+            if use_ollama:
+                tags_data = await self._extract_tags_with_ollama(analysis_text, document)
+            else:
+                tags_data = await self._extract_tags_with_gemini(analysis_text, document)
 
             if not tags_data:
                 logger.warning(f"No tags extracted for document {document.id}")
@@ -120,7 +140,7 @@ class AutoTaggingService:
         text: str,
         document: Document
     ) -> Optional[Dict[str, Any]]:
-        """Extract tags using Gemini Flash"""
+        """Extract tags using OpenRouter (MiniMax) for public documents"""
 
         system_prompt = """You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:
 
@@ -157,7 +177,9 @@ Extract the tags now:"""
 
         try:
             response_parts = []
-            async for chunk in self.gemini_service.chat_completion(
+            # Use OpenRouter (MiniMax) for public documents instead of direct Gemini
+            llm_service = self._get_openrouter_service()
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,
@@ -176,7 +198,72 @@ Extract the tags now:"""
                 return json.loads(json_text)
 
         except Exception as e:
-            logger.error(f"Gemini tagging error: {e}")
+            logger.error(f"OpenRouter tagging error: {e}")
+
+        return None
+
+    async def _extract_tags_with_ollama(
+        self,
+        text: str,
+        document: Document
+    ) -> Optional[Dict[str, Any]]:
+        """Extract tags using Ollama"""
+
+        system_prompt = """You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:
+
+1. **topics**: 3-5 main topics/themes (single words or short phrases)
+2. **entities**: Named entities (people, organizations, locations) with their types
+3. **importance**: Overall importance level (critical, high, medium, low)
+4. **language**: Document language (en, fr, multi, unknown)
+
+Respond ONLY with valid JSON in this exact format:
+```json
+{
+  "topics": ["topic1", "topic2", "topic3"],
+  "entities": [
+    {"name": "Entity Name", "type": "person|organization|location|other", "confidence": 85}
+  ],
+  "importance": "high",
+  "language": "en"
+}
+```"""
+
+        user_prompt = f"""Analyze this document and extract tags:
+
+Filename: {document.filename}
+File Type: {document.mime_type}
+
+{text}
+
+Extract the tags now:"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        try:
+            llm_service = self._get_ollama_service()
+            response_parts = []
+            async for chunk in llm_service.chat_completion(
+                messages=messages,
+                stream=False,
+                temperature=0.3,
+                max_tokens=1000
+            ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    response_parts.append(chunk)
+
+            response_text = "".join(response_parts).strip()
+
+            import json
+            json_text = self._extract_json(response_text)
+
+            if json_text:
+                return json.loads(json_text)
+
+        except Exception as e:
+            logger.error(f"Ollama tagging error: {e}")
 
         return None
 

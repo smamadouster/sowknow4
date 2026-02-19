@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel
 
 from app.services.gemini_service import gemini_service
+from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,71 +55,58 @@ class ClarificationAgent:
 
     def __init__(self):
         self.gemini_service = gemini_service
+        self.ollama_service = ollama_service
+
+    def _get_llm_service(self, use_ollama: bool = False):
+        """Get appropriate LLM service based on confidentiality flag"""
+        if use_ollama:
+            logger.info("ClarificationAgent: Using Ollama for confidential context")
+            return self.ollama_service
+        return self.gemini_service
 
     async def clarify(
         self,
-        request: ClarificationRequest
+        request: ClarificationRequest,
+        use_ollama: bool = False
     ) -> ClarificationResult:
         """
         Analyze and potentially clarify a user query
 
         Args:
             request: Clarification request with query and context
+            use_ollama: Set to True if confidential documents are involved
 
         Returns:
             Clarification result with questions and assumptions
         """
-        try:
-            # Build system prompt
-            system_prompt = """You are the Clarification Agent for SOWKNOW, a knowledge management system.
+        llm_service = self._get_llm_service(use_ollama)
 
-Your job is to analyze user queries and determine if they are clear enough to answer effectively.
+        # Build the messages for the LLM
+        system_prompt = """You are the Clarification Agent for SOWKNOW. Analyze user queries to determine if they are clear enough to proceed.
 
-Analyze the query for:
-1. **Clarity**: Is the main intent clear?
-2. **Specificity**: Are the scope/parameters defined?
-3. **Ambiguity**: Are there terms with multiple meanings?
-4. **Context**: Is missing context that would improve results?
-
-Respond with a JSON object:
+Return a JSON object with:
 {
   "is_clear": true/false,
   "confidence": 0.0-1.0,
-  "clarified_query": "restated query with assumptions",
-  "questions": ["question1", "question2"],  // if not clear
+  "clarified_query": "improved version of query if needed",
+  "questions": ["question1", "question2"],
   "assumptions": ["assumption1", "assumption2"],
-  "suggested_filters": {
-    "date_range": "if applicable",
-    "entity_types": ["person", "organization"],
-    "document_types": ["pdf", "email"]
-  },
+  "suggested_filters": {"key": "value"},
   "reasoning": "explanation of your analysis"
-}
+}"""
 
-If the query is clear (is_clear: true), still provide assumptions and suggested filters.
-If unclear (is_clear: false), provide questions to ask the user."""
+        user_prompt = f"Query: {request.query}"
+        if request.context:
+            user_prompt += f"\nContext: {request.context}"
 
-            # Build user prompt
-            user_prompt = f"Query: {request.query}\n"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
 
-            if request.context:
-                user_prompt += f"Context: {request.context}\n"
-
-            if request.conversation_history:
-                user_prompt += f"Recent conversation:\n"
-                for turn in request.conversation_history[-3:]:
-                    user_prompt += f"  {turn.get('role', '')}: {turn.get('content', '')[:100]}...\n"
-
-            user_prompt += "\nAnalyze this query for clarity and provide clarification recommendations."
-
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-
-            # Get response from Gemini
+        try:
             response_parts = []
-            async for chunk in self.gemini_service.chat_completion(
+            async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,

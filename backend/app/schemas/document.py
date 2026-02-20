@@ -49,7 +49,7 @@ class DocumentResponse(BaseModel):
     file_path: str
     bucket: DocumentBucket
     status: DocumentStatus
-    size: int
+    size: int = Field(..., alias="file_size")
     mime_type: str
     language: Optional[DocumentLanguage] = None
     page_count: Optional[int] = None
@@ -61,6 +61,7 @@ class DocumentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class DocumentListResponse(BaseModel):

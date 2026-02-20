@@ -180,46 +180,30 @@ TELEGRAM_BOT_TOKEN=your_telegram_token
 LOCAL_LLM_URL=http://host.docker.internal:11434
 ```
 
-## SSL Certificate Setup
+## SSL Certificate Setup (Caddy)
 
-### Option 1: Use Existing Caddy
+**Production uses Caddy reverse proxy** (not nginx) to handle SSL termination and reverse proxying. Caddy automatically manages Let's Encrypt certificates.
 
-If Caddy reverse proxy is already handling ports 80/443:
+### How It Works
 
-```bash
-# Caddyfile at /etc/caddy/Caddyfile
-sowknow.gollamtech.com {
-    reverse_proxy localhost:8000
-    reverse_proxy localhost:3000
-}
-
-# No need to start nginx - it conflicts with Caddy
-```
-
-### Option 2: Setup Nginx with SSL
-
-If you want to use Nginx as reverse proxy with SSL:
+The shared Caddy instance (`ghostshell-caddy`) handles SSL and reverse proxying for SOWKNOW:
 
 ```bash
-# 1. Run SSL setup
-./scripts/setup-ssl-auto.sh
+# View Caddy routes for SOWKNOW
+docker exec ghostshell-caddy wget -qO- http://localhost:2019/config/ 2>/dev/null | grep -A10 sowknow
 
-# 2. Enable nginx profile in docker-compose
-docker compose --profile nginx up -d
-
-# 3. Configure Caddy to pass through to nginx
-# Or point DNS directly to nginx:80
+# Traffic routing:
+# - sowknow.gollamtech.com/api/* → sowknow4-backend:8000
+# - sowknow.gollamtech.com/* → sowknow4-frontend:3000
 ```
 
-### Certificate Renewal
+**Important:** Do NOT start the nginx container in production - it conflicts with Caddy on ports 80/443.
 
-```bash
-# Add to crontab for auto-renewal
-0 0,12 * * * /root/sowknow4/scripts/renew-ssl.sh >> /var/log/ssl-renew.log 2>&1
+### Certificate Management
 
-# Check certificate expiry daily
-0 9 * * * /root/sowknow4/scripts/check-ssl-expiry.sh
-```
+Caddy automatically handles certificate renewal. No manual action required.
+
+To verify certificate status:
 
 ## Rollback Procedure
 
@@ -299,15 +283,17 @@ docker inspect backend | jq '.[0].HostConfig.Memory'
 ### SSL Issues
 
 ```bash
-# Check certificate expiry
-./scripts/check-ssl-expiry.sh
+# Check certificate status (via Caddy)
+./scripts/ssl-auto-renewal.sh status
 
-# View nginx SSL configuration
-docker compose exec nginx cat /etc/nginx/nginx.conf | grep ssl
+# View Caddy configuration
+docker exec ghostshell-caddy wget -qO- http://localhost:2019/config/ 2>/dev/null | grep -A5 sowknow
 
 # Test SSL manually
 openssl s_client -connect sowknow.gollamtech.com:443 -servername sowknow.gollamtech.com
 ```
+
+**Note:** SSL is handled by Caddy, not nginx. Do not start the nginx container.
 
 ### Database Issues
 

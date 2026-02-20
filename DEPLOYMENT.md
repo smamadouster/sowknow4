@@ -97,8 +97,10 @@ export EMAIL="admin@yourdomain.com"
 
 This will:
 1. Obtain Let's Encrypt certificates
-2. Configure nginx for HTTPS
+2. Configure reverse proxy (Caddy or nginx) for HTTPS
 3. Set up auto-renewal
+
+**Note:** Production uses Caddy reverse proxy (port 80/443). Nginx container is not started in production to avoid port conflicts.
 
 ### Option 2: Manual Setup
 
@@ -233,7 +235,7 @@ docker compose down
 ### Restart Specific Service
 ```bash
 docker compose restart backend
-docker compose restart nginx
+# Note: nginx not used in production - Caddy handles reverse proxy
 ```
 
 ### View Logs
@@ -289,9 +291,6 @@ docker compose ps
 ```bash
 # Check certificate expiry
 ./scripts/scripts/check-ssl-expiry.sh
-
-# View nginx SSL config
-docker exec sowknow4-nginx cat /etc/nginx/nginx.conf | grep ssl
 
 # Test SSL manually
 openssl s_client -connect yourdomain.com:443 -servername yourdomain.com

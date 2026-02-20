@@ -5,7 +5,6 @@
 # CRITICAL - API Keys Configuration:
 # Before deployment, ensure these environment variables are set in .secrets or backend/.env.production:
 #   - GEMINI_API_KEY: Required for public document processing
-#   - HUNYUAN_API_KEY: Required for OCR services
 #   - HUNYUAN_SECRET_ID: Required for Hunyuan API authentication
 #   - POSTGRES_PASSWORD: Database password
 #   - REDIS_PASSWORD: Redis password
@@ -214,7 +213,11 @@ services:
       start_period: 30s
 
   # Nginx Reverse Proxy
+  # NOTE: In production, Caddy (ghostshell-caddy) handles reverse proxy and SSL.
+  # Do NOT start this nginx container - it will conflict with Caddy on ports 80/443.
+  # This configuration is kept for reference and development environments only.
   nginx:
+    profiles: ["nginx"]  # Only start with: docker-compose --profile nginx up -d
     image: nginx:alpine
     container_name: sowknow-nginx
     restart: unless-stopped

@@ -82,6 +82,8 @@
     "status_processing": "En cours",
     "status_indexed": "Indexé",
     "status_error": "Erreur",
+    "all_buckets": "Tous",
+    "upload": "Télécharger",
     "no_documents": "Aucun document trouvé",
     "delete_confirm": "Êtes-vous sûr de vouloir supprimer ce document?",
     "delete_success": "Document supprimé"

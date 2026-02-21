@@ -1,6 +1,7 @@
 """
 SOWKNOW API - Minimal Working Version
 """
+
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -31,6 +32,7 @@ from app.services.prometheus_metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -41,6 +43,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("Shutting down...")
 
+
 app = FastAPI(
     title="SOWKNOW API",
     description="Multi-Generational Legacy Knowledge System",
@@ -48,7 +51,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # ============================================================================
@@ -87,7 +90,9 @@ if APP_ENV == "production":
             "Example: ALLOWED_ORIGINS=https://sowknow.gollamtech.com,https://www.sowknow.gollamtech.com"
         )
     # Split and strip whitespace, filter empty strings
-    ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()]
+    ALLOWED_ORIGINS = [
+        origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()
+    ]
 
     # Security check: reject wildcards in production
     if "*" in ALLOWED_ORIGINS:
@@ -97,11 +102,15 @@ if APP_ENV == "production":
         )
 else:
     # Development defaults
-    ALLOWED_ORIGINS = _allowed_origins_str.split(",") if _allowed_origins_str else [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",  # Common alternate port
-    ]
+    ALLOWED_ORIGINS = (
+        _allowed_origins_str.split(",")
+        if _allowed_origins_str
+        else [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",  # Common alternate port
+        ]
+    )
 
 # Parse ALLOWED_HOSTS from environment
 # Format: comma-separated list of hostnames
@@ -112,17 +121,16 @@ if APP_ENV == "production":
             "SECURITY ERROR: ALLOWED_HOSTS environment variable is required in production. "
             "Example: ALLOWED_HOSTS=sowknow.gollamtech.com,www.sowknow.gollamtech.com"
         )
-    ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts_str.split(",") if host.strip()]
+    ALLOWED_HOSTS = [
+        host.strip() for host in _allowed_hosts_str.split(",") if host.strip()
+    ]
 else:
     # Development: Allow any host for local testing
     ALLOWED_HOSTS = ["*"]
 
 # TrustedHost Middleware - Prevents Host header attacks
 # Only allows requests from configured hosts
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=ALLOWED_HOSTS
-)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 # CORS Middleware - Controls cross-origin requests
 # SECURITY: Never use allow_origins=["*"] with allow_credentials=True
@@ -147,8 +155,20 @@ app.add_middleware(
 # Include auth router (keep it simple for now)
 from app.api import auth
 from app.api import admin
+from app.api import search, documents, collections, smart_folders
+from app.api import knowledge_graph, graph_rag, multi_agent, chat
+
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(search.router, prefix="/api/v1")
+app.include_router(documents.router, prefix="/api/v1")
+app.include_router(collections.router, prefix="/api/v1")
+app.include_router(smart_folders.router, prefix="/api/v1")
+app.include_router(knowledge_graph.router, prefix="/api/v1")
+app.include_router(graph_rag.router, prefix="/api/v1")
+app.include_router(multi_agent.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1")
+
 
 @app.get("/")
 async def root():
@@ -165,10 +185,11 @@ async def root():
                 "login": "/api/v1/auth/login",
                 "register": "/api/v1/auth/register",
                 "me": "/api/v1/auth/me",
-                "refresh": "/api/v1/auth/refresh"
-            }
-        }
+                "refresh": "/api/v1/auth/refresh",
+            },
+        },
     }
+
 
 @app.get("/health")
 async def health():
@@ -225,8 +246,8 @@ async def health():
             "redis": redis_status,
             "ollama": ollama_status,
             "api": "running",
-            "authentication": "enabled"
-        }
+            "authentication": "enabled",
+        },
     }
 
 
@@ -269,12 +290,14 @@ async def health_detailed():
         overall_status = "degraded"
         issues.append(f"API cost over budget: ${cost_stats.get('today_cost', 0):.2f}")
 
-    # Check Gemini API
-    gemini_configured = bool(os.getenv("GEMINI_API_KEY"))
+    # Check MiniMax API
+    minimax_configured = bool(os.getenv("MINIMAX_API_KEY"))
 
     # Check cache hit rate
     cache_hit_rate = cache_monitor.get_hit_rate(days=1)
-    if cache_hit_rate < 0.5 and cache_hit_rate > 0:  # Only alert if there's some traffic
+    if (
+        cache_hit_rate < 0.5 and cache_hit_rate > 0
+    ):  # Only alert if there's some traffic
         issues.append(f"Low cache hit rate: {cache_hit_rate:.1%}")
 
     # Get active alerts
@@ -293,10 +316,10 @@ async def health_detailed():
             "redis": "connected",
             "api": "running",
             "authentication": "enabled",
-            "gemini": {
-                "service": "gemini",
-                "status": "healthy" if gemini_configured else "unavailable",
-                "api_configured": gemini_configured,
+            "minimax": {
+                "service": "minimax",
+                "status": "healthy" if minimax_configured else "unavailable",
+                "api_configured": minimax_configured,
                 "cache_stats": {
                     "total_entries": 0,
                     "active_entries": 0,
@@ -304,8 +327,10 @@ async def health_detailed():
                     "hit_rate_24h": round(cache_hit_rate, 4),
                     "tokens_saved_24h": cache_monitor.get_total_tokens_saved(days=1),
                 },
-                "timestamp": datetime.now().isoformat() if 'datetime' in dir() else None,
-            }
+                "timestamp": datetime.now().isoformat()
+                if "datetime" in dir()
+                else None,
+            },
         },
         "monitoring": {
             "memory": mem_stats,
@@ -384,6 +409,7 @@ async def prometheus_metrics():
     Exposes all metrics in Prometheus format for scraping.
     """
     from app.services.prometheus_metrics import get_metrics
+
     metrics = get_metrics()
 
     # Update system metrics on each scrape
@@ -399,16 +425,14 @@ async def prometheus_metrics():
         # Update disk metrics
         if "percent" in disk_stats:
             metrics.gauge("sowknow_disk_usage_percent").set(
-                disk_stats["percent"],
-                {"mount_point": disk_stats.get("path", "/")}
+                disk_stats["percent"], {"mount_point": disk_stats.get("path", "/")}
             )
 
         # Update queue metrics
         queue_monitor = get_queue_monitor()
         queue_depth = queue_monitor.get_queue_depth()
         metrics.gauge("sowknow_celery_queue_depth").set(
-            queue_depth,
-            {"queue_name": "celery"}
+            queue_depth, {"queue_name": "celery"}
         )
 
     except Exception as e:
@@ -417,8 +441,9 @@ async def prometheus_metrics():
     return Response(
         content=metrics.export(),
         media_type="text/plain",
-        headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}
+        headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
     )
+
 
 @app.get("/api/v1/status")
 async def api_status():
@@ -428,23 +453,53 @@ async def api_status():
         "status": "development",
         "version": "1.0.0",
         "features": [
-            {"name": "Infrastructure", "status": "✅", "description": "Docker containers, PostgreSQL, Redis"},
-            {"name": "Authentication", "status": "✅", "description": "JWT login/register system"},
-            {"name": "Database Models", "status": "⏳", "description": "SQLAlchemy models with pgvector"},
-            {"name": "Document Upload", "status": "⏳", "description": "File upload and processing"},
-            {"name": "OCR Processing", "status": "⏳", "description": "Text extraction from documents"},
-            {"name": "RAG Search", "status": "⏳", "description": "Vector search with embeddings"},
-            {"name": "Telegram Bot", "status": "⏳", "description": "Telegram integration"}
+            {
+                "name": "Infrastructure",
+                "status": "✅",
+                "description": "Docker containers, PostgreSQL, Redis",
+            },
+            {
+                "name": "Authentication",
+                "status": "✅",
+                "description": "JWT login/register system",
+            },
+            {
+                "name": "Database Models",
+                "status": "⏳",
+                "description": "SQLAlchemy models with pgvector",
+            },
+            {
+                "name": "Document Upload",
+                "status": "⏳",
+                "description": "File upload and processing",
+            },
+            {
+                "name": "OCR Processing",
+                "status": "⏳",
+                "description": "Text extraction from documents",
+            },
+            {
+                "name": "RAG Search",
+                "status": "⏳",
+                "description": "Vector search with embeddings",
+            },
+            {
+                "name": "Telegram Bot",
+                "status": "⏳",
+                "description": "Telegram integration",
+            },
         ],
         "next_steps": [
             "Implement document models",
             "Create document upload API",
             "Set up file storage buckets",
             "Integrate Hunyuan OCR API",
-            "Implement vector embeddings"
-        ]
+            "Implement vector embeddings",
+        ],
     }
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

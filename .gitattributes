@@ -1,0 +1,17 @@
+# Git configuration to help prevent credential leaks
+# ============================================================================
+# Ensure .env files are not accidentally tracked
+# ============================================================================
+
+# Prevent .env files from being committed (they should be in .gitignore)
+.env linguist-generated
+.env.local linguist-generated
+.env.*.local linguist-generated
+
+# Mark .env.example as generated (sanitized version)
+.env.example linguist-generated
+
+# Detect secrets configuration (for reference)
+# Install: pip install detect-secrets
+# Usage: detect-secrets scan > .secrets.baseline
+# To enable: detect-secrets hook --install

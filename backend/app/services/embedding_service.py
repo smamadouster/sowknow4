@@ -7,6 +7,11 @@ import logging
 from typing import List, Optional, Dict, Any
 import numpy as np
 
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,14 +53,19 @@ class EmbeddingService:
 
     def _load_model(self):
         try:
-            from sentence_transformers import SentenceTransformer
-            import torch
+            if SentenceTransformer is None:
+                raise ImportError("sentence_transformers is not installed")
 
-            if torch.cuda.is_available():
-                self._device = "cuda"
-                logger.info("Using CUDA for embeddings")
-            else:
-                logger.info("Using CPU for embeddings")
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    self._device = "cuda"
+                    logger.info("Using CUDA for embeddings")
+                else:
+                    logger.info("Using CPU for embeddings")
+            except ImportError:
+                self._device = "cpu"
+                logger.info("torch not available, using CPU for embeddings")
 
             logger.info(f"Loading embedding model: {self.model_name}")
             self._model = SentenceTransformer(self.model_name, device=self._device)
@@ -131,6 +141,10 @@ class EmbeddingService:
         """
         if not texts:
             return []
+
+        # Trigger lazy model loading if not yet attempted
+        if self._model is None and self._load_error is None:
+            self._load_model()
 
         # Graceful degradation: model not available in backend container
         if not self.can_embed:

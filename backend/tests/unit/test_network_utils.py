@@ -72,13 +72,13 @@ class TestCircuitBreaker:
     def test_half_open_success_closes_circuit(self):
         """Test HALF_OPEN closes after success threshold."""
         cb = CircuitBreaker(failure_threshold=1, recovery_timeout=0, half_open_success_threshold=2)
-        
-        cb._record_failure()
-        cb._record_failure()
-        
+
+        cb._record_failure()  # threshold=1 → OPEN
+        cb._can_execute()     # recovery_timeout=0 → OPEN → HALF_OPEN
+
         cb._record_success()
         cb._record_success()
-        
+
         assert cb.state == "CLOSED"
 
     def test_half_open_failure_reopens_circuit(self):
@@ -226,13 +226,14 @@ class TestResilientAsyncClient:
             enable_circuit_breaker=True,
             max_attempts=1,
         )
-        
-        client._circuit_breaker._record_failure()
-        client._circuit_breaker._record_failure()
-        
+
+        # Default failure_threshold is 5; record enough failures to open the circuit
+        for _ in range(5):
+            client._circuit_breaker._record_failure()
+
         with pytest.raises(CircuitBreakerOpenError):
             await client.get("/test")
-        
+
         status = client.get_circuit_breaker_status()
         assert status["state"] == "OPEN"
 

@@ -23,31 +23,29 @@ class TestIntentParserRouting:
     def intent_parser(self):
         return IntentParserService()
 
-    def test_intent_parser_uses_gemini_directly(self, intent_parser):
-        """Test that IntentParser currently uses gemini_service directly"""
-        # This test identifies the issue: intent_parser uses gemini_service
+    def test_intent_parser_uses_minimax_directly(self, intent_parser):
+        """Test that IntentParser currently uses minimax_service directly"""
+        # This test identifies the issue: intent_parser uses minimax_service
         # without checking for confidential content
-        assert intent_parser.gemini_service is not None
+        assert intent_parser.minimax_service is not None
 
     @pytest.mark.asyncio
     async def test_intent_parser_no_confidential_check(self, intent_parser):
-        """Test that IntentParser doesn't check for confidential content"""
-        # The current implementation doesn't accept user or document info
-        # to determine if confidential content is involved
-        
+        """Test that IntentParser uses OpenRouter for non-confidential queries"""
+        # parse_intent() calls _get_openrouter_service() by default (use_ollama=False)
+
         query = "Show me financial documents from 2023"
-        
-        # Current implementation just calls Gemini without routing check
-        # This test documents the expected behavior after fix
-        with patch.object(intent_parser, 'gemini_service') as mock_gemini:
-            mock_gemini.chat_completion = AsyncMock(
-                return_value=iter(['{"keywords": ["financial"]}'])
-            )
-            
+
+        mock_service = MagicMock()
+        mock_service.chat_completion = AsyncMock(
+            return_value=iter(['{"keywords": ["financial"], "date_range": {"type": "custom", "custom": {"start": "2023-01-01", "end": "2023-12-31"}}, "entities": [], "document_types": ["all"], "collection_name": "Financial Docs"}'])
+        )
+
+        with patch.object(intent_parser, '_get_openrouter_service', return_value=mock_service):
             result = await intent_parser.parse_intent(query)
-            
-            # Verify it uses Gemini (issue to be fixed)
-            assert mock_gemini.chat_completion.called
+
+            # Verify it calls the OpenRouter service
+            assert mock_service.chat_completion.called
 
 
 class TestEntityExtractionRouting:
@@ -57,9 +55,9 @@ class TestEntityExtractionRouting:
     def entity_extraction(self):
         return EntityExtractionService()
 
-    def test_entity_extraction_uses_gemini_directly(self, entity_extraction):
-        """Test that EntityExtraction currently uses gemini_service directly"""
-        assert entity_extraction.gemini_service is not None
+    def test_entity_extraction_uses_minimax_directly(self, entity_extraction):
+        """Test that EntityExtraction currently uses minimax_service directly"""
+        assert entity_extraction.minimax_service is not None
 
     def test_entity_extraction_document_parameter(self, entity_extraction):
         """Test that EntityExtraction receives document but doesn't check bucket"""
@@ -83,7 +81,7 @@ class TestEntityExtractionRouting:
             mime_type="application/pdf"
         )
         
-        # Both should work, but currently both use Gemini
+        # Both should work, but currently both use MiniMax
         assert public_doc.bucket == DocumentBucket.PUBLIC
         assert confidential_doc.bucket == DocumentBucket.CONFIDENTIAL
 
@@ -95,9 +93,9 @@ class TestAutoTaggingRouting:
     def auto_tagging(self):
         return AutoTaggingService()
 
-    def test_auto_tagging_uses_gemini_directly(self, auto_tagging):
-        """Test that AutoTagging currently uses gemini_service directly"""
-        assert auto_tagging.gemini_service is not None
+    def test_auto_tagging_uses_minimax_directly(self, auto_tagging):
+        """Test that AutoTagging currently uses minimax_service directly"""
+        assert auto_tagging.minimax_service is not None
 
 
 class TestOptionalServicesRouting:
@@ -109,9 +107,9 @@ class TestOptionalServicesRouting:
             from app.services.synthesis_service import synthesis_service
             # If imported, check for routing capability
             service = synthesis_service
-            has_gemini = hasattr(service, 'gemini_service')
+            has_minimax = hasattr(service, 'minimax_service')
             has_ollama = hasattr(service, 'ollama_service') or hasattr(service, 'routing_enabled')
-            print(f"SynthesisService: gemini={has_gemini}, routing={has_ollama}")
+            print(f"SynthesisService: minimax={has_minimax}, routing={has_ollama}")
         except ImportError:
             pytest.skip("SynthesisService module not available")
 
@@ -120,8 +118,8 @@ class TestOptionalServicesRouting:
         try:
             from app.services.graph_rag_service import graph_rag_service
             service = graph_rag_service
-            has_gemini = hasattr(service, 'gemini_service')
-            print(f"GraphRAGService: gemini={has_gemini}")
+            has_minimax = hasattr(service, 'minimax_service')
+            print(f"GraphRAGService: minimax={has_minimax}")
         except ImportError:
             pytest.skip("GraphRAGService module not available")
 
@@ -130,8 +128,8 @@ class TestOptionalServicesRouting:
         try:
             from app.services.progressive_revelation_service import progressive_revelation_service
             service = progressive_revelation_service
-            has_gemini = hasattr(service, 'gemini_service')
-            print(f"ProgressiveRevelationService: gemini={has_gemini}")
+            has_minimax = hasattr(service, 'minimax_service')
+            print(f"ProgressiveRevelationService: minimax={has_minimax}")
         except ImportError:
             pytest.skip("ProgressiveRevelationService module not available")
 
@@ -139,8 +137,8 @@ class TestOptionalServicesRouting:
 class TestRoutingGapAnalysis:
     """Analysis of services that need routing fixes"""
 
-    def test_services_using_gemini_directly(self):
-        """List all services using Gemini without routing check"""
+    def test_services_using_minimax_directly(self):
+        """List all services using MiniMax without routing check"""
         services_to_check = [
             ('IntentParser', IntentParserService),
             ('EntityExtraction', EntityExtractionService),
@@ -150,14 +148,14 @@ class TestRoutingGapAnalysis:
         # This test documents which services need routing fixes
         for name, ServiceClass in services_to_check:
             service = ServiceClass()
-            has_gemini = hasattr(service, 'gemini_service')
+            has_minimax = hasattr(service, 'minimax_service')
             has_ollama = hasattr(service, 'ollama_service')
-            
+
             # Document the gap
-            print(f"{name}: gemini={has_gemini}, ollama={has_ollama}")
-            
+            print(f"{name}: minimax={has_minimax}, ollama={has_ollama}")
+
             # After fix, services should have both or routing logic
-            assert has_gemini is not None
+            assert has_minimax is not None
 
 
 class TestRequiredRoutingFunctionality:

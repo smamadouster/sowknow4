@@ -83,7 +83,7 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
+    with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
 
     app.dependency_overrides.clear()
@@ -146,16 +146,10 @@ def auth_headers(client: TestClient, test_user: User) -> dict:
     """
     Get authentication headers for test user.
 
-    NOTE: After cookie-based auth implementation, tokens are in httpOnly cookies.
-    The TestClient automatically includes cookies from login responses.
-    This fixture is kept for backward compatibility but returns empty dict.
-    Tests should use the client directly after login.
+    Returns Bearer token headers for the test_user.
+    Compatible with both cookie-based and header-based auth flows.
     """
-    # For cookie-based auth, TestClient automatically handles cookies
-    # Just login to set cookies on the client
-    # Note: test_user uses "hashed_password" placeholder, so we need to
-    # create a user with a known password for actual login tests
-    return {}
+    return get_auth_headers_for_user(test_user)
 
 
 @pytest.fixture

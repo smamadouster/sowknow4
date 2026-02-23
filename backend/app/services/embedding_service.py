@@ -1,9 +1,10 @@
 """
 Embedding service using multilingual-e5-large model
 """
+
 import os
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -12,26 +13,44 @@ logger = logging.getLogger(__name__)
 class EmbeddingService:
     """Service for generating text embeddings using multilingual-e5-large"""
 
+    _instance = None
+    _model_loaded = False
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        if hasattr(self, "_initialized") and self._initialized:
+            return
         self.model_name = "intfloat/multilingual-e5-large"
         self.embedding_dim = 1024
         self._model = None
         self._device = "cpu"
+        self._load_error = None
+        self._initialized = True
 
     @property
     def model(self):
-        """Lazy load the model"""
         if self._model is None:
             self._load_model()
         return self._model
 
+    @property
+    def is_loaded(self) -> bool:
+        return self._model is not None
+
+    @property
+    def can_embed(self) -> bool:
+        """True only when the model is loaded and ready."""
+        return self._model is not None and self._load_error is None
+
     def _load_model(self):
-        """Load the embedding model"""
         try:
             from sentence_transformers import SentenceTransformer
             import torch
 
-            # Check if GPU is available
             if torch.cuda.is_available():
                 self._device = "cuda"
                 logger.info("Using CUDA for embeddings")
@@ -40,20 +59,67 @@ class EmbeddingService:
 
             logger.info(f"Loading embedding model: {self.model_name}")
             self._model = SentenceTransformer(self.model_name, device=self._device)
+            self._model_loaded = True
+            self._load_error = None
             logger.info("Embedding model loaded successfully")
 
         except Exception as e:
-            logger.error(f"Error loading embedding model: {str(e)}")
-            raise
+            self._load_error = str(e)
+            # Do NOT re-raise: graceful degradation — backend container runs without
+            # sentence_transformers (requirements-minimal.txt).  Semantic search will
+            # be skipped and keyword-only results returned.
+            logger.warning(
+                f"Embedding model unavailable (sentence_transformers not installed or "
+                f"model download failed): {str(e)}. "
+                f"Semantic search disabled; keyword search will still work."
+            )
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        try:
+            import psutil
+
+            process = psutil.Process(os.getpid())
+            mem_info = process.memory_info()
+            return {
+                "model_loaded": self.is_loaded,
+                "model_name": self.model_name if self.is_loaded else None,
+                "rss_mb": round(mem_info.rss / 1024 / 1024, 2),
+                "vms_mb": round(mem_info.vms / 1024 / 1024, 2),
+                "percent": round(process.memory_percent(), 2),
+                "device": self._device,
+                "load_error": self._load_error,
+            }
+        except ImportError:
+            return {
+                "model_loaded": self.is_loaded,
+                "model_name": self.model_name if self.is_loaded else None,
+                "device": self._device,
+                "psutil_available": False,
+                "load_error": self._load_error,
+            }
+        except Exception as e:
+            return {
+                "model_loaded": self.is_loaded,
+                "error": str(e),
+                "load_error": self._load_error,
+            }
+
+    def health_check(self) -> Dict[str, Any]:
+        stats = self.get_memory_stats()
+        stats["status"] = "healthy" if self.is_loaded else "model_not_loaded"
+        if self._load_error:
+            stats["status"] = "error"
+        return stats
 
     def encode(
-        self,
-        texts: List[str],
-        batch_size: int = 32,
-        show_progress: bool = False
+        self, texts: List[str], batch_size: int = 32, show_progress: bool = False
     ) -> List[List[float]]:
         """
-        Generate embeddings for a list of texts
+        Generate embeddings for a list of texts.
+
+        Returns zero vectors when the model is unavailable (graceful degradation for
+        the backend container which runs without sentence_transformers).  Callers
+        should check ``can_embed`` before using results for vector similarity.
 
         Args:
             texts: List of text strings to encode
@@ -66,6 +132,14 @@ class EmbeddingService:
         if not texts:
             return []
 
+        # Graceful degradation: model not available in backend container
+        if not self.can_embed:
+            logger.debug(
+                "Embedding model not available; returning zero vectors "
+                "(semantic search disabled)."
+            )
+            return [[0.0] * self.embedding_dim for _ in texts]
+
         try:
             # Preprocess texts - add prefix for e5 model
             # The e5 model expects "query:" prefix for queries and "passage:" for passages
@@ -77,7 +151,7 @@ class EmbeddingService:
                 batch_size=batch_size,
                 show_progress_bar=show_progress,
                 convert_to_numpy=True,
-                normalize_embeddings=True  # L2 normalization
+                normalize_embeddings=True,  # L2 normalization
             )
 
             # Convert to list of lists
@@ -95,13 +169,18 @@ class EmbeddingService:
         result = self.encode([text])
         return result[0] if result else [0.0] * self.embedding_dim
 
-    async def encode_async(self, texts: List[str], batch_size: int = 32) -> List[List[float]]:
+    async def encode_async(
+        self, texts: List[str], batch_size: int = 32
+    ) -> List[List[float]]:
         """Async wrapper for encoding (runs in thread pool)"""
         import asyncio
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.encode, texts, batch_size)
 
-    def calculate_similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
+    def calculate_similarity(
+        self, embedding1: List[float], embedding2: List[float]
+    ) -> float:
         """
         Calculate cosine similarity between two embeddings
 
@@ -160,7 +239,7 @@ class ChunkingService:
         self,
         chunk_size: int = 512,
         chunk_overlap: int = 50,
-        separators: Optional[List[str]] = None
+        separators: Optional[List[str]] = None,
     ):
         self.chunk_size = chunk_size  # Target token count
         self.chunk_overlap = chunk_overlap  # Overlapping tokens
@@ -179,11 +258,7 @@ class ChunkingService:
         # Rough approximation: ~4 characters per token for English/French
         return len(text) // 4
 
-    def chunk_text(
-        self,
-        text: str,
-        metadata: Optional[dict] = None
-    ) -> List[dict]:
+    def chunk_text(self, text: str, metadata: Optional[dict] = None) -> List[dict]:
         """
         Split text into chunks for embedding
 
@@ -205,7 +280,7 @@ class ChunkingService:
             # Calculate end position for this chunk
             end_position = min(
                 current_position + self.chunk_size * 4,  # Convert tokens to chars
-                len(text)
+                len(text),
             )
 
             # Try to find a good break point
@@ -219,14 +294,16 @@ class ChunkingService:
             chunk_text = text[current_position:best_break].strip()
 
             if chunk_text:
-                chunks.append({
-                    "text": chunk_text,
-                    "index": chunk_index,
-                    "token_count": self.count_tokens(chunk_text),
-                    "start_pos": current_position,
-                    "end_pos": best_break,
-                    "metadata": metadata or {}
-                })
+                chunks.append(
+                    {
+                        "text": chunk_text,
+                        "index": chunk_index,
+                        "token_count": self.count_tokens(chunk_text),
+                        "start_pos": current_position,
+                        "end_pos": best_break,
+                        "metadata": metadata or {},
+                    }
+                )
                 chunk_index += 1
 
             # Move to next position with overlap
@@ -235,10 +312,7 @@ class ChunkingService:
         return chunks
 
     def chunk_document(
-        self,
-        text: str,
-        document_id: str,
-        metadata: Optional[dict] = None
+        self, text: str, document_id: str, metadata: Optional[dict] = None
     ) -> List[dict]:
         """
         Chunk document text with document metadata
@@ -251,10 +325,7 @@ class ChunkingService:
         Returns:
             List of chunk dictionaries
         """
-        chunk_metadata = {
-            "document_id": document_id,
-            **(metadata or {})
-        }
+        chunk_metadata = {"document_id": document_id, **(metadata or {})}
 
         return self.chunk_text(text, chunk_metadata)
 

@@ -1,8 +1,10 @@
 """
 Search API endpoints for hybrid semantic and keyword search
 """
+import asyncio
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 import logging
@@ -16,6 +18,17 @@ from app.services.search_service import search_service
 from app.api.deps import get_current_user
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Concurrency guardrail — cap simultaneous search operations at 5.
+# Requests that arrive when all slots are taken receive HTTP 429 immediately
+# (non-blocking: no request is ever queued and starved).
+# ---------------------------------------------------------------------------
+MAX_CONCURRENT_SEARCHES = 5
+_search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
+
+# Wall-clock timeout for a single hybrid search operation (seconds).
+SEARCH_TIMEOUT_SECONDS = 3.0
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -55,7 +68,7 @@ async def search_documents(
     db: Session = Depends(get_db)
 ):
     """
-    Perform hybrid search combining semantic and keyword search
+    Perform hybrid search combining semantic and keyword search.
 
     Results are filtered based on user role:
     - Admin: All documents
@@ -67,74 +80,102 @@ async def search_documents(
 
     SECURITY: All searches require authentication via get_current_user.
     Confidential searches are logged for audit trail.
+
+    Reliability guardrails:
+    - Max {MAX_CONCURRENT_SEARCHES} simultaneous searches; returns 429 when full.
+    - Hard {SEARCH_TIMEOUT_SECONDS}s timeout; returns partial results with warning.
     """
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
 
-    try:
-        # Perform hybrid search
-        result = await search_service.hybrid_search(
-            query=request.query,
-            limit=request.limit,
-            offset=request.offset,
-            db=db,
-            user=current_user
+    # -----------------------------------------------------------------------
+    # Concurrency check — non-blocking.  If all slots are taken, reject with
+    # 429 + Retry-After so clients can back off gracefully.
+    # -----------------------------------------------------------------------
+    if _search_semaphore._value == 0:
+        logger.warning(
+            f"Search capacity reached ({MAX_CONCURRENT_SEARCHES} concurrent). "
+            f"Rejecting request from user {current_user.email}."
+        )
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": (
+                    f"Search capacity reached ({MAX_CONCURRENT_SEARCHES} concurrent "
+                    "searches). Please retry in a few seconds."
+                )
+            },
+            headers={"Retry-After": "5"},
         )
 
-        # Check if any confidential documents are in results
-        has_confidential = any(
-            r.document_bucket == "confidential" for r in result["results"]
-        )
-
-        # AUDIT LOG: Log confidential searches for compliance
-        if has_confidential:
-            logger.info(
-                f"CONFIDENTIAL_SEARCH - User: {current_user.email} (ID: {current_user.id}, "
-                f"Role: {current_user.role.value}) | Query: {request.query[:100]} | "
-                f"Results: {len(result['results'])} items"
-            )
-            # Create audit log entry
-            create_audit_log(
+    async with _search_semaphore:
+        try:
+            # Perform hybrid search with built-in timeout
+            result = await search_service.hybrid_search(
+                query=request.query,
+                limit=request.limit,
+                offset=request.offset,
                 db=db,
-                user_id=current_user.id,
-                action=AuditAction.CONFIDENTIAL_ACCESSED,
-                resource_type="search",
-                resource_id=None,
-                details={
-                    "query": request.query[:200],
-                    "result_count": len(result["results"]),
-                    "action": "confidential_search"
-                }
+                user=current_user,
+                timeout=SEARCH_TIMEOUT_SECONDS,
             )
 
-        # Determine which LLM would be used for follow-up
-        llm_used = "ollama" if has_confidential else "kimi"
+            # Check if any confidential documents are in results
+            has_confidential = any(
+                r.document_bucket == "confidential" for r in result["results"]
+            )
 
-        # Convert results to response format
-        search_results = []
-        for r in result["results"]:
-            search_results.append(SearchResultChunk(
-                chunk_id=r.chunk_id,
-                document_id=r.document_id,
-                document_name=r.document_name,
-                document_bucket=r.document_bucket,
-                chunk_text=r.chunk_text[:500] + "..." if len(r.chunk_text) > 500 else r.chunk_text,
-                chunk_index=r.chunk_index,
-                page_number=r.page_number,
-                relevance_score=round(r.final_score, 4),
-                semantic_score=round(r.semantic_score, 4),
-                keyword_score=round(r.keyword_score, 4)
-            ))
+            # AUDIT LOG: Log confidential searches for compliance
+            if has_confidential:
+                logger.info(
+                    f"CONFIDENTIAL_SEARCH - User: {current_user.email} (ID: {current_user.id}, "
+                    f"Role: {current_user.role.value}) | Query: {request.query[:100]} | "
+                    f"Results: {len(result['results'])} items"
+                )
+                create_audit_log(
+                    db=db,
+                    user_id=current_user.id,
+                    action=AuditAction.CONFIDENTIAL_ACCESSED,
+                    resource_type="search",
+                    resource_id=None,
+                    details={
+                        "query": request.query[:200],
+                        "result_count": len(result["results"]),
+                        "action": "confidential_search",
+                        "partial": result.get("partial", False),
+                    }
+                )
 
-        return SearchResponse(
-            query=request.query,
-            results=search_results,
-            total=result["total"],
-            llm_used=llm_used
-        )
+            # Determine which LLM would be used for follow-up
+            llm_used = "ollama" if has_confidential else "kimi"
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+            # Convert results to response format
+            search_results = []
+            for r in result["results"]:
+                search_results.append(SearchResultChunk(
+                    chunk_id=r.chunk_id,
+                    document_id=r.document_id,
+                    document_name=r.document_name,
+                    document_bucket=r.document_bucket,
+                    chunk_text=r.chunk_text[:500] + "..." if len(r.chunk_text) > 500 else r.chunk_text,
+                    chunk_index=r.chunk_index,
+                    page_number=r.page_number,
+                    relevance_score=round(r.final_score, 4),
+                    semantic_score=round(r.semantic_score, 4),
+                    keyword_score=round(r.keyword_score, 4)
+                ))
+
+            return SearchResponse(
+                query=request.query,
+                results=search_results,
+                total=result["total"],
+                llm_used=llm_used,
+                partial=result.get("partial", False),
+                warning=result.get("warning"),
+            )
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
 @router.get("/suggest")

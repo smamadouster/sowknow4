@@ -89,11 +89,14 @@ services:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
-      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
-      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
       - LOCAL_LLM_URL=http://host.docker.internal:11434
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # CORS and Cookie Settings (CRITICAL for authentication)
+      - APP_ENV=${APP_ENV:-production}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN}
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -134,10 +137,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://redis:6379/0
-      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
-      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
       - LOCAL_LLM_URL=http://host.docker.internal:11434
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -158,7 +159,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1536M
+          # 2GB: enough for multilingual-e5-large (1.3GB) + worker overhead.
+          # Reduced from 2.5GB to stay within 6.4GB total VPS budget.
+          memory: 2048M
           cpus: '1.5'
     command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
     networks:
@@ -177,9 +180,7 @@ services:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
-      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
-      - HUNYUAN_API_KEY=${HUNYUAN_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
     command: celery -A app.celery_app beat --loglevel=info
     volumes:
       - ./backend:/app
@@ -195,7 +196,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          # Beat only schedules tasks - 256MB is sufficient.
+          # Reduced from 512MB to stay within 6.4GB total VPS budget.
+          memory: 256M
           cpus: '0.25'
     networks:
       - sowknow-net

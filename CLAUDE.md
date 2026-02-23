@@ -1,12 +1,12 @@
 # Project Configuration - SOWKNOW Multi-Generational Legacy Knowledge System
 
 ## CRITICAL RULES
-- **PRIVACY FIRST**: Zero PII ever sent to cloud APIs (MiniMax/Kimi/Hunyuan-OCR)
+- **PRIVACY FIRST**: Zero PII ever sent to cloud APIs (MiniMax/Kimi/PaddleOCR)
 - **CONFIDENTIAL ROUTING**: Auto-switch to shared Ollama when confidential documents detected
 - **VPS RESOURCE CONSTRAINTS**: Total SOWKNOW container memory <= 6.4GB (shared 16GB VPS)
 - **TRI-LLM STRATEGY**: MiniMax for public docs, Kimi for chatbot/telegram/search, Ollama for confidential docs
 - **ROLE-BASED ACCESS**: Strict RBAC with 3 roles: Admin (full), Super User (view all), User (public only)
-- **NO GPU**: OCR via Hunyuan API, embeddings via CPU with multilingual-e5-large
+- **NO GPU**: OCR via PaddleOCR with Tesseract fallback, embeddings via CPU with multilingual-e5-large
 - **FRENCH DEFAULT**: Interface defaults to French with full English support
 
 ## PROJECT CONTEXT
@@ -98,3 +98,41 @@
   - **Response**: `{ "new_password": "temporary_password_string" }`
   - **Behavior**: Generates a cryptographically secure temporary password, hashes it with bcrypt, and returns the plain text password for secure delivery to the user
   - **Audit**: All password resets are logged with admin ID, target user ID, and timestamp
+
+## OCR CONFIGURATION
+
+### OCR Engine Stack
+- **Primary**: PaddleOCR (open source, CPU-based, multilingual)
+- **Fallback**: Tesseract OCR (open source, CPU-based)
+- **Privacy**: All OCR processing done locally - zero PII sent to cloud APIs
+
+### OCR Processing Modes
+
+| Mode | Image Size | Use Case | Passes |
+|------|------------|----------|--------|
+| Base | 1024x1024 | Standard documents, receipts, forms | 1 pass |
+| Large | 1280x1280 | High-resolution images, detailed photos | 1 pass |
+| Gundam | Multi-pass | Complex documents, handwriting, degraded text | 3 passes + merging |
+
+### Mode Specifications
+
+**Base Mode (1024x1024)**
+- Single pass OCR
+- Fast processing for standard documents
+- Best for: receipts, invoices, standard forms, clear print
+
+**Large Mode (1280x1280)**
+- Single pass with higher resolution
+- Better detail capture
+- Best for: high-resolution photos, detailed images, small text
+
+**Gundam Mode (Multi-pass)**
+- 3 passes at different scales (0.5x, 1x, 1.5x)
+- Result merging with confidence scoring
+- Best for: complex layouts, handwriting, degraded/old documents
+
+### OCR Audit Logging
+- All OCR operations logged with engine used (paddle/tesseract)
+- Mode selection recorded for each document
+- Processing time tracked
+- Confidence scores stored for quality metrics

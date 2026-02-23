@@ -3,15 +3,24 @@ Collections API endpoints for Smart Collections feature
 
 Provides endpoints for creating, managing, and querying Smart Collections.
 """
+
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_, desc
 from typing import Optional, List
 from uuid import UUID
 
 import json
 from app.database import get_db
 from app.models.user import User
-from app.models.collection import Collection, CollectionItem, CollectionVisibility, CollectionType
+from app.models.collection import (
+    Collection,
+    CollectionItem,
+    CollectionVisibility,
+    CollectionType,
+)
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.collection import (
     CollectionCreate,
@@ -29,12 +38,15 @@ from app.schemas.collection import (
     ParsedIntentResponse,
     CollectionChatCreate,
     CollectionChatResponse,
+    CollectionExportResponse,
+    ExportFormat,
 )
 from app.services.collection_service import collection_service
 from app.services.collection_chat_service import collection_chat_service
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/collections", tags=["collections"])
+logger = logging.getLogger(__name__)
 
 
 def create_audit_log(
@@ -43,7 +55,7 @@ def create_audit_log(
     action: AuditAction,
     resource_type: str,
     resource_id: Optional[str] = None,
-    details: Optional[dict] = None
+    details: Optional[dict] = None,
 ):
     """Helper function to create audit log entries for confidential access"""
     try:
@@ -52,13 +64,14 @@ def create_audit_log(
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
-            details=json.dumps(details) if details else None
+            details=json.dumps(details) if details else None,
         )
         db.add(audit_entry)
         db.commit()
     except Exception as e:
         db.rollback()
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Audit logging failed: {str(e)}")
 
@@ -67,7 +80,7 @@ def create_audit_log(
 async def create_collection(
     collection_data: CollectionCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Create a new Smart Collection from natural language query
@@ -78,20 +91,20 @@ async def create_collection(
     """
     try:
         collection = await collection_service.create_collection(
-            collection_data=collection_data,
-            user=current_user,
-            db=db
+            collection_data=collection_data, user=current_user, db=db
         )
         return collection
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create collection: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create collection: {str(e)}"
+        )
 
 
 @router.post("/preview", response_model=CollectionPreviewResponse)
 async def preview_collection(
     request: CollectionPreviewRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Preview a collection without saving it
@@ -101,9 +114,7 @@ async def preview_collection(
     """
     try:
         preview = await collection_service.preview_collection(
-            query=request.query,
-            user=current_user,
-            db=db
+            query=request.query, user=current_user, db=db
         )
 
         # Convert to response format
@@ -112,10 +123,12 @@ async def preview_collection(
             documents=preview["documents"],
             estimated_count=preview["estimated_count"],
             ai_summary=preview["ai_summary"],
-            suggested_name=preview["suggested_name"]
+            suggested_name=preview["suggested_name"],
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to preview collection: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to preview collection: {str(e)}"
+        )
 
 
 @router.get("", response_model=CollectionListResponse)
@@ -127,7 +140,7 @@ async def list_collections(
     pinned_only: bool = False,
     favorites_only: bool = False,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     List user's collections with pagination and filtering
@@ -145,7 +158,7 @@ async def list_collections(
     query = db.query(Collection).filter(
         or_(
             Collection.user_id == current_user.id,
-            Collection.visibility.in_(visibility_filter)
+            Collection.visibility.in_(visibility_filter),
         )
     )
 
@@ -173,17 +186,13 @@ async def list_collections(
     collections = query.offset(offset).limit(page_size).all()
 
     return CollectionListResponse(
-        collections=collections,
-        total=total,
-        page=page,
-        page_size=page_size
+        collections=collections, total=total, page=page, page_size=page_size
     )
 
 
 @router.get("/stats", response_model=CollectionStatsResponse)
 async def get_collection_stats(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Get statistics about user's collections
@@ -191,10 +200,7 @@ async def get_collection_stats(
     Includes totals, counts by type, and recent activity.
     """
     try:
-        stats = collection_service.get_collection_stats(
-            user=current_user,
-            db=db
-        )
+        stats = collection_service.get_collection_stats(user=current_user, db=db)
         return CollectionStatsResponse(**stats)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
@@ -204,7 +210,7 @@ async def get_collection_stats(
 async def get_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get collection details with items
@@ -216,26 +222,37 @@ async def get_collection(
 
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            or_(
-                Collection.user_id == current_user.id,
-                Collection.visibility.in_(visibility_filter)
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(
+                Collection.id == collection_id,
+                or_(
+                    Collection.user_id == current_user.id,
+                    Collection.visibility.in_(visibility_filter),
+                ),
             )
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
 
     # Get collection items with document info
-    items = db.query(CollectionItem).filter(
-        CollectionItem.collection_id == collection_id
-    ).order_by(CollectionItem.order_index).all()
+    items = (
+        db.query(CollectionItem)
+        .filter(CollectionItem.collection_id == collection_id)
+        .order_by(CollectionItem.order_index)
+        .all()
+    )
 
     # Check for confidential documents and log access
-    confidential_items = [item for item in items if item.document and item.document.bucket.value == "confidential"]
+    confidential_items = [
+        item
+        for item in items
+        if item.document and item.document.bucket.value == "confidential"
+    ]
     if confidential_items:
         confidential_docs = [
             {"id": str(item.document.id), "filename": item.document.filename}
@@ -251,8 +268,8 @@ async def get_collection(
                 "collection_name": collection.name,
                 "confidential_document_count": len(confidential_docs),
                 "confidential_documents": confidential_docs,
-                "action": "view_collection"
-            }
+                "action": "view_collection",
+            },
         )
 
     # Enrich items with document info
@@ -264,13 +281,13 @@ async def get_collection(
             item_dict["document"] = {
                 "id": str(item.document.id),
                 "filename": item.document.filename,
-                "created_at": item.document.created_at.isoformat()
+                "created_at": item.document.created_at.isoformat(),
             }
         enriched_items.append(item_dict)
 
     return CollectionDetailResponse(
         **CollectionResponse.model_validate(collection).model_dump(),
-        items=enriched_items
+        items=enriched_items,
     )
 
 
@@ -279,19 +296,20 @@ async def update_collection(
     collection_id: UUID,
     update_data: CollectionUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update collection metadata
 
     Can update name, description, visibility, pinned status, and favorite status.
     """
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            Collection.user_id == current_user.id
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -318,19 +336,20 @@ async def update_collection(
 async def delete_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Delete a collection
 
     Only the collection owner can delete it.
     """
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            Collection.user_id == current_user.id
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -346,7 +365,7 @@ async def refresh_collection(
     collection_id: UUID,
     refresh_data: Optional[CollectionRefreshRequest] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Refresh collection documents
@@ -359,21 +378,25 @@ async def refresh_collection(
             collection_id=collection_id,
             user=current_user,
             db=db,
-            update_summary=refresh_data.update_summary if refresh_data else True
+            update_summary=refresh_data.update_summary if refresh_data else True,
         )
         return collection
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to refresh collection: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to refresh collection: {str(e)}"
+        )
 
 
-@router.post("/{collection_id}/items", response_model=CollectionItemResponse, status_code=201)
+@router.post(
+    "/{collection_id}/items", response_model=CollectionItemResponse, status_code=201
+)
 async def add_collection_item(
     collection_id: UUID,
     item_data: CollectionItemCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Manually add a document to a collection
@@ -381,31 +404,39 @@ async def add_collection_item(
     Allows manual curation of collections beyond AI-generated results.
     """
     # Verify collection ownership
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            Collection.user_id == current_user.id
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
 
     # Check if item already exists
-    existing = db.query(CollectionItem).filter(
-        and_(
-            CollectionItem.collection_id == collection_id,
-            CollectionItem.document_id == item_data.document_id
+    existing = (
+        db.query(CollectionItem)
+        .filter(
+            and_(
+                CollectionItem.collection_id == collection_id,
+                CollectionItem.document_id == item_data.document_id,
+            )
         )
-    ).first()
+        .first()
+    )
 
     if existing:
         raise HTTPException(status_code=400, detail="Document already in collection")
 
     # Get current max order
-    max_order = db.query(CollectionItem.order_index).filter(
-        CollectionItem.collection_id == collection_id
-    ).order_by(CollectionItem.order_index.desc()).first()
+    max_order = (
+        db.query(CollectionItem.order_index)
+        .filter(CollectionItem.collection_id == collection_id)
+        .order_by(CollectionItem.order_index.desc())
+        .first()
+    )
 
     order_index = (max_order[0] + 1) if max_order else collection.document_count
 
@@ -418,7 +449,7 @@ async def add_collection_item(
         is_highlighted=item_data.is_highlighted,
         order_index=order_index,
         added_by=current_user.email,
-        added_reason="Manual addition"
+        added_reason="Manual addition",
     )
 
     db.add(item)
@@ -438,7 +469,7 @@ async def update_collection_item(
     item_id: UUID,
     update_data: CollectionItemUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update collection item metadata
@@ -446,23 +477,28 @@ async def update_collection_item(
     Can update relevance score, notes, highlight status, and order.
     """
     # Verify collection ownership
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            Collection.user_id == current_user.id
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
 
     # Get item
-    item = db.query(CollectionItem).filter(
-        and_(
-            CollectionItem.id == item_id,
-            CollectionItem.collection_id == collection_id
+    item = (
+        db.query(CollectionItem)
+        .filter(
+            and_(
+                CollectionItem.id == item_id,
+                CollectionItem.collection_id == collection_id,
+            )
         )
-    ).first()
+        .first()
+    )
 
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -488,29 +524,34 @@ async def remove_collection_item(
     collection_id: UUID,
     item_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Remove a document from a collection
     """
     # Verify collection ownership
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            Collection.user_id == current_user.id
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
 
     # Get item
-    item = db.query(CollectionItem).filter(
-        and_(
-            CollectionItem.id == item_id,
-            CollectionItem.collection_id == collection_id
+    item = (
+        db.query(CollectionItem)
+        .filter(
+            and_(
+                CollectionItem.id == item_id,
+                CollectionItem.collection_id == collection_id,
+            )
         )
-    ).first()
+        .first()
+    )
 
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -529,15 +570,16 @@ async def remove_collection_item(
 async def pin_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Toggle collection pinned status"""
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            Collection.user_id == current_user.id
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -553,15 +595,16 @@ async def pin_collection(
 async def favorite_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Toggle collection favorite status"""
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            Collection.user_id == current_user.id
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -578,7 +621,7 @@ async def chat_with_collection(
     collection_id: UUID,
     chat_data: CollectionChatCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Send a message to a collection-scoped chat
@@ -591,15 +634,19 @@ async def chat_with_collection(
     # Verify user has access to collection
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 
-    collection = db.query(Collection).filter(
-        and_(
-            Collection.id == collection_id,
-            or_(
-                Collection.user_id == current_user.id,
-                Collection.visibility.in_(visibility_filter)
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(
+                Collection.id == collection_id,
+                or_(
+                    Collection.user_id == current_user.id,
+                    Collection.visibility.in_(visibility_filter),
+                ),
             )
         )
-    ).first()
+        .first()
+    )
 
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
@@ -610,7 +657,7 @@ async def chat_with_collection(
             message=chat_data.message,
             user=current_user,
             db=db,
-            session_name=chat_data.session_name
+            session_name=chat_data.session_name,
         )
         return CollectionChatResponse(**response)
     except ValueError as e:
@@ -619,18 +666,275 @@ async def chat_with_collection(
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
 
+@router.get("/{collection_id}/export", response_model=CollectionExportResponse)
+async def export_collection(
+    collection_id: UUID,
+    format: str = Query(
+        "json", pattern="^(pdf|json)$", description="Export format: pdf or json"
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Export a collection in PDF or JSON format.
+
+    RBAC: Users cannot export collections containing confidential documents.
+    Only Admin and Super User roles can export collections with confidential docs.
+
+    Args:
+        collection_id: UUID of the collection to export
+        format: Export format - 'pdf' or 'json' (default: json)
+        current_user: Authenticated user
+        db: Database session
+
+    Returns:
+        CollectionExportResponse with export data
+
+    Raises:
+        403: If user lacks permission to export collection with confidential docs
+        404: If collection not found
+    """
+    from sqlalchemy import or_
+    from datetime import datetime
+    import io
+    import base64
+
+    visibility_filter = collection_service._get_user_visibility_filter(current_user)
+
+    collection = (
+        db.query(Collection)
+        .filter(
+            and_(
+                Collection.id == collection_id,
+                or_(
+                    Collection.user_id == current_user.id,
+                    Collection.visibility.in_(visibility_filter),
+                ),
+            )
+        )
+        .first()
+    )
+
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    items = (
+        db.query(CollectionItem)
+        .filter(CollectionItem.collection_id == collection_id)
+        .order_by(CollectionItem.order_index)
+        .all()
+    )
+
+    confidential_items = [
+        item
+        for item in items
+        if item.document and item.document.bucket.value == "confidential"
+    ]
+
+    if confidential_items:
+        if current_user.role.value not in ["admin", "superuser"]:
+            logger.warning(
+                f"SECURITY: User {current_user.email} (role: {current_user.role.value}) "
+                f"attempted to export collection {collection_id} containing confidential documents"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: Cannot export collection containing confidential documents",
+            )
+
+        create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_ACCESSED,
+            resource_type="collection_export",
+            resource_id=str(collection_id),
+            details={
+                "collection_name": collection.name,
+                "format": format,
+                "confidential_document_count": len(confidential_items),
+                "action": "export_collection",
+            },
+        )
+
+    documents_data = []
+    for item in items:
+        if item.document:
+            documents_data.append(
+                {
+                    "id": str(item.document.id),
+                    "filename": item.document.filename,
+                    "relevance_score": item.relevance_score,
+                    "notes": item.notes,
+                    "is_highlighted": item.is_highlighted,
+                    "created_at": item.document.created_at.isoformat(),
+                }
+            )
+
+    generated_at = datetime.utcnow()
+
+    if format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.platypus import (
+                SimpleDocTemplate,
+                Paragraph,
+                Spacer,
+                Table,
+                TableStyle,
+            )
+            from reportlab.lib import colors
+        except ImportError:
+            raise HTTPException(
+                status_code=500,
+                detail="PDF generation library not installed. Please install reportlab.",
+            )
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch
+        )
+        styles = getSampleStyleSheet()
+        story = []
+
+        title_style = ParagraphStyle(
+            "CustomTitle", parent=styles["Heading1"], fontSize=18, spaceAfter=12
+        )
+        heading_style = ParagraphStyle(
+            "CustomHeading", parent=styles["Heading2"], fontSize=14, spaceAfter=8
+        )
+        normal_style = styles["Normal"]
+
+        story.append(Paragraph(f"Collection: {collection.name}", title_style))
+        story.append(Spacer(1, 0.2 * inch))
+
+        story.append(Paragraph("<b>Query:</b>", normal_style))
+        story.append(Paragraph(collection.query, normal_style))
+        story.append(Spacer(1, 0.1 * inch))
+
+        story.append(
+            Paragraph(
+                f"<b>Created:</b> {collection.created_at.strftime('%Y-%m-%d %H:%M')}",
+                normal_style,
+            )
+        )
+        story.append(
+            Paragraph(f"<b>Document Count:</b> {len(documents_data)}", normal_style)
+        )
+        story.append(Spacer(1, 0.2 * inch))
+
+        if collection.ai_summary:
+            story.append(Paragraph("AI Summary", heading_style))
+            story.append(Paragraph(collection.ai_summary, normal_style))
+            story.append(Spacer(1, 0.2 * inch))
+
+        if documents_data:
+            story.append(Paragraph("Documents", heading_style))
+
+            table_data = [["#", "Filename", "Relevance", "Notes"]]
+            for idx, doc_item in enumerate(documents_data, 1):
+                notes = doc_item.get("notes", "") or ""
+                if len(notes) > 50:
+                    notes = notes[:47] + "..."
+                table_data.append(
+                    [
+                        str(idx),
+                        doc_item["filename"][:40]
+                        if len(doc_item["filename"]) > 40
+                        else doc_item["filename"],
+                        f"{doc_item['relevance_score']}%",
+                        notes,
+                    ]
+                )
+
+            table = Table(
+                table_data, colWidths=[0.3 * inch, 2.5 * inch, 0.8 * inch, 2.4 * inch]
+            )
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                        ("ALIGN", (2, 0), (2, -1), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, 0), 10),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                        ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                        ("FONTSIZE", (0, 1), (-1, -1), 9),
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ]
+                )
+            )
+            story.append(table)
+
+        story.append(Spacer(1, 0.3 * inch))
+        story.append(
+            Paragraph(
+                f"<i>Generated by SOWKNOW on {generated_at.strftime('%Y-%m-%d %H:%M UTC')}</i>",
+                normal_style,
+            )
+        )
+
+        doc.build(story)
+        buffer.seek(0)
+        pdf_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        return CollectionExportResponse(
+            collection_id=collection_id,
+            collection_name=collection.name,
+            format=ExportFormat.PDF,
+            content=pdf_base64,
+            generated_at=generated_at,
+            document_count=len(documents_data),
+        )
+
+    else:
+        json_content = {
+            "collection": {
+                "id": str(collection.id),
+                "name": collection.name,
+                "description": collection.description,
+                "query": collection.query,
+                "ai_summary": collection.ai_summary,
+                "created_at": collection.created_at.isoformat(),
+                "updated_at": collection.updated_at.isoformat(),
+            },
+            "documents": documents_data,
+            "export_metadata": {
+                "generated_at": generated_at.isoformat(),
+                "exported_by": current_user.email,
+                "document_count": len(documents_data),
+            },
+        }
+
+        return CollectionExportResponse(
+            collection_id=collection_id,
+            collection_name=collection.name,
+            format=ExportFormat.JSON,
+            content=json.dumps(json_content, indent=2),
+            generated_at=generated_at,
+            document_count=len(documents_data),
+        )
+
+
 @router.get("/{collection_id}/chat/sessions")
 async def get_collection_chat_sessions(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Get all chat sessions for a collection"""
     from app.models.collection import CollectionChatSession
 
-    sessions = db.query(CollectionChatSession).filter(
-        CollectionChatSession.collection_id == collection_id
-    ).order_by(CollectionChatSession.created_at.desc()).all()
+    sessions = (
+        db.query(CollectionChatSession)
+        .filter(CollectionChatSession.collection_id == collection_id)
+        .order_by(CollectionChatSession.created_at.desc())
+        .all()
+    )
 
     return {
         "sessions": [
@@ -639,7 +943,7 @@ async def get_collection_chat_sessions(
                 "session_name": s.session_name,
                 "message_count": s.message_count,
                 "llm_used": s.llm_used,
-                "created_at": s.created_at.isoformat()
+                "created_at": s.created_at.isoformat(),
             }
             for s in sessions
         ]

@@ -190,9 +190,9 @@ class TestCachingPerformance:
 class TestResponseTimeTargets:
     """Test response time targets"""
 
-    def test_target_response_time_gemini(self):
-        """Test Gemini response time target"""
-        # Target: < 3s for Gemini
+    def test_target_response_time_minimax(self):
+        """Test MiniMax response time target"""
+        # Target: < 3s for MiniMax
         target_seconds = 3
         
         # This is a documentation test

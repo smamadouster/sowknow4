@@ -19,7 +19,7 @@ from app.models.knowledge_graph import (
     RelationType
 )
 from app.models.document import Document, DocumentChunk, DocumentBucket
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class GraphRAGService:
     """Service for graph-augmented retrieval and generation"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self._ollama_service = None
         self._openrouter_service = None
     

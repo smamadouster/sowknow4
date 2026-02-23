@@ -162,7 +162,11 @@
     "visibility_public": "Public",
     "type_smart": "Smart",
     "type_manual": "Manual",
-    "type_folder": "Smart Folder"
+    "type_folder": "Smart Folder",
+    "export_pdf": "Export PDF",
+    "exporting_pdf": "Generating PDF...",
+    "export_error": "Failed to generate PDF report",
+    "export_success": "PDF report generated successfully"
   },
   "smart_folders": {
     "title": "Smart Folders",
@@ -186,7 +190,10 @@
     "examples": "Example Topics to Try",
     "word_count": "words",
     "llm_gemini": "Generated with Gemini Flash",
-    "llm_ollama": "Generated with Ollama"
+    "llm_ollama": "Generated with Ollama",
+    "export_pdf": "Export PDF",
+    "exporting_pdf": "Generating PDF...",
+    "export_error": "Failed to generate PDF report"
   },
   "reports": {
     "title": "Reports",

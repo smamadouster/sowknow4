@@ -85,13 +85,13 @@ class TestRoleBasedRouting:
         # This is enforced at the document bucket level
         assert admin_user.role == UserRole.ADMIN
 
-    def test_user_can_use_gemini_for_public(self):
-        """Test that regular users can use Gemini for public documents"""
+    def test_user_can_use_minimax_for_public(self):
+        """Test that regular users can use MiniMax for public documents"""
         regular_user = User(
             email="user@example.com", hashed_password="hash", role=UserRole.USER
         )
 
-        # Regular users can use Gemini for public documents
+        # Regular users can use MiniMax for public documents
         assert regular_user.role == UserRole.USER
 
     def test_user_cannot_access_confidential(self):

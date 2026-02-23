@@ -43,6 +43,8 @@ export default function CollectionDetailPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<Array<{role: string, content: string}>>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [toast, setToast] = useState<{message: string, type: 'error' | 'success'} | null>(null);
 
   useEffect(() => {
     fetchCollection();
@@ -95,6 +97,62 @@ export default function CollectionDetailPage() {
       }
     } catch (error) {
       console.error("Error refreshing collection:", error);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!collection) return;
+
+    setExportLoading(true);
+    setToast(null);
+
+    try {
+      const token = getTokenFromCookie();
+      const locale = params.locale || 'en';
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/reports/generate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            collection_id: collection.id,
+            format: "standard",
+            language: locale,
+            include_citations: true,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.content) {
+          setToast({ message: t('collections.export_success'), type: 'success' });
+          
+          const filename = `${collection.name.replace(/[^a-z0-9]/gi, '_')}_report.pdf`;
+          const blob = new Blob([data.content], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+      } else {
+        const errorData = await response.json();
+        setToast({ message: errorData.detail || t('collections.export_error'), type: 'error' });
+      }
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      setToast({ message: t('collections.export_error'), type: 'error' });
+    } finally {
+      setExportLoading(false);
+      setTimeout(() => setToast(null), 5000);
     }
   };
 
@@ -192,9 +250,56 @@ export default function CollectionDetailPage() {
             >
               Refresh
             </button>
+            <button
+              onClick={handleExportPdf}
+              disabled={exportLoading || collection.items.length === 0}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {exportLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  {t('collections.exporting_pdf')}
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  {t('collections.export_pdf')}
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+          toast.type === 'error' 
+            ? 'bg-red-50 dark:bg-red-900 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800'
+            : 'bg-green-50 dark:bg-green-900 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800'
+        }`}>
+          <div className="flex items-center gap-2">
+            {toast.type === 'error' ? (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            <span className="text-sm font-medium">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 hover:opacity-70"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

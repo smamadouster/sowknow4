@@ -251,6 +251,17 @@ async def health():
     }
 
 
+@app.get("/api/v1/health/embedding")
+async def embedding_health():
+    """
+    Memory health check for the embedding service.
+    Monitors multilingual-e5-large model memory usage.
+    """
+    from app.services.embedding_service import embedding_service
+
+    return embedding_service.health_check()
+
+
 @app.get("/api/v1/health/detailed")
 async def health_detailed():
     """

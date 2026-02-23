@@ -4,13 +4,14 @@ Verification Agent for Multi-Agent Search System
 Verifies the accuracy, consistency, and reliability of information
 found during research before it's presented to the user.
 """
+
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
 
-from app.services.gemini_service import gemini_service
 from app.services.ollama_service import ollama_service
+from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class VerificationRequest:
     """Request for verification"""
+
     claim: str
     sources: List[Dict[str, Any]]
     context: Optional[str] = None
@@ -26,6 +28,7 @@ class VerificationRequest:
 @dataclass
 class VerificationResult:
     """Result of verification"""
+
     claim: str
     is_verified: bool
     confidence: float
@@ -58,22 +61,18 @@ class VerificationAgent:
     """
 
     def __init__(self):
-        self.gemini_service = gemini_service
         self.ollama_service = ollama_service
+        self.minimax_service = minimax_service
 
     def _has_confidential_documents(self, sources: List[Dict[str, Any]]) -> bool:
         """Check if any sources contain confidential documents"""
         if not sources:
             return False
         return any(
-            source.get("document_bucket") == "confidential"
-            for source in sources
+            source.get("document_bucket") == "confidential" for source in sources
         )
 
-    async def verify(
-        self,
-        request: VerificationRequest
-    ) -> VerificationResult:
+    async def verify(self, request: VerificationRequest) -> VerificationResult:
         """
         Verify a claim against available sources
 
@@ -87,7 +86,9 @@ class VerificationAgent:
         self._use_ollama = self._has_confidential_documents(request.sources)
         if self._use_ollama:
             logger.info("VerificationAgent: Using Ollama for confidential documents")
-        self._llm_service = self.ollama_service if self._use_ollama else self.gemini_service
+        self._llm_service = (
+            self.ollama_service if self._use_ollama else self.minimax_service
+        )
 
         try:
             # Step 1: Analyze the claim
@@ -99,10 +100,7 @@ class VerificationAgent:
             source_reliability = []
 
             for source in request.sources:
-                evidence = await self._check_source_for_claim(
-                    request.claim,
-                    source
-                )
+                evidence = await self._check_source_for_claim(request.claim, source)
 
                 if evidence["supports"]:
                     supporting.append(evidence)
@@ -132,18 +130,19 @@ class VerificationAgent:
                 confidence = max(0.0, min(1.0, (confidence + 1) / 2))
 
             # Step 5: Calculate reliability score
-            reliability = sum(source_reliability) / len(source_reliability) if source_reliability else 0.0
+            reliability = (
+                sum(source_reliability) / len(source_reliability)
+                if source_reliability
+                else 0.0
+            )
 
             # Step 6: Generate notes
             notes = await self._generate_verification_notes(
-                request.claim,
-                supporting,
-                contradicting,
-                reliability
+                request.claim, supporting, contradicting, reliability
             )
 
             # Determine which LLM was used
-            llm_used = "ollama" if self._use_ollama else "gemini"
+            llm_used = "ollama" if self._use_ollama else "minimax"
 
             return VerificationResult(
                 claim=request.claim,
@@ -154,7 +153,7 @@ class VerificationAgent:
                 source_count=total_sources,
                 reliability_score=reliability,
                 notes=notes,
-                llm_used=llm_used
+                llm_used=llm_used,
             )
 
         except Exception as e:
@@ -168,22 +167,17 @@ class VerificationAgent:
                 source_count=0,
                 reliability_score=0.0,
                 notes=[f"Verification error: {str(e)}"],
-                llm_used="error"
+                llm_used="error",
             )
 
     async def verify_batch(
-        self,
-        claims: List[str],
-        sources: List[Dict[str, Any]]
+        self, claims: List[str], sources: List[Dict[str, Any]]
     ) -> List[VerificationResult]:
         """Verify multiple claims in batch"""
         results = []
 
         for claim in claims:
-            request = VerificationRequest(
-                claim=claim,
-                sources=sources
-            )
+            request = VerificationRequest(claim=claim, sources=sources)
             result = await self.verify(request)
             results.append(result)
 
@@ -204,21 +198,23 @@ Return JSON:
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Claim: {claim}"}
+            {"role": "user", "content": f"Claim: {claim}"},
         ]
 
         try:
             response = []
             async for chunk in self._llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=512
+                messages=messages, stream=False, temperature=0.3, max_tokens=512
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             import json
+
             result = json.loads("".join(response).strip())
             return result
 
@@ -229,13 +225,11 @@ Return JSON:
                 "entities": [],
                 "attributes": [],
                 "certainty_language": "uncertain",
-                "verifiable": True
+                "verifiable": True,
             }
 
     async def _check_source_for_claim(
-        self,
-        claim: str,
-        source: Dict[str, Any]
+        self, claim: str, source: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Check if a source supports or contradicts the claim"""
         system_prompt = """Analyze whether the source text supports, contradicts, or is neutral to the claim.
@@ -259,26 +253,28 @@ Return JSON:
                 "relevant": False,
                 "evidence": "",
                 "reliability": 0.0,
-                "reasoning": "No content available"
+                "reasoning": "No content available",
             }
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Claim: {claim}\n\nSource: {source_text}"}
+            {"role": "user", "content": f"Claim: {claim}\n\nSource: {source_text}"},
         ]
 
         try:
             response = []
             async for chunk in self._llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=512
+                messages=messages, stream=False, temperature=0.3, max_tokens=512
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             import json
+
             result = json.loads("".join(response).strip())
 
             # Add source info
@@ -295,7 +291,7 @@ Return JSON:
                 "relevant": False,
                 "evidence": "",
                 "reliability": 0.0,
-                "reasoning": f"Error: {str(e)}"
+                "reasoning": f"Error: {str(e)}",
             }
 
     async def _generate_verification_notes(
@@ -303,7 +299,7 @@ Return JSON:
         claim: str,
         supporting: List[Dict[str, Any]],
         contradicting: List[Dict[str, Any]],
-        reliability: float
+        reliability: float,
     ) -> List[str]:
         """Generate human-readable verification notes"""
         notes = []
@@ -333,8 +329,7 @@ Return JSON:
         return notes
 
     async def detect_inconsistencies(
-        self,
-        sources: List[Dict[str, Any]]
+        self, sources: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
         Detect inconsistencies between multiple sources
@@ -349,7 +344,7 @@ Return JSON:
 
         # Compare pairs of sources
         for i, source1 in enumerate(sources):
-            for source2 in sources[i+1:]:
+            for source2 in sources[i + 1 :]:
                 # Check for conflicting information
                 conflicts = await self._find_conflicts(source1, source2)
                 inconsistencies.extend(conflicts)
@@ -357,9 +352,7 @@ Return JSON:
         return inconsistencies
 
     async def _find_conflicts(
-        self,
-        source1: Dict[str, Any],
-        source2: Dict[str, Any]
+        self, source1: Dict[str, Any], source2: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Find conflicts between two sources"""
         system_prompt = """Identify any factual conflicts between the two source texts.
@@ -382,21 +375,23 @@ Return JSON array of conflicts:
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Source 1:\n{text1}\n\nSource 2:\n{text2}"}
+            {"role": "user", "content": f"Source 1:\n{text1}\n\nSource 2:\n{text2}"},
         ]
 
         try:
             response = []
             async for chunk in self._llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=1024
+                messages=messages, stream=False, temperature=0.3, max_tokens=1024
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             import json
+
             result = json.loads("".join(response).strip())
 
             if isinstance(result, list):
@@ -412,10 +407,7 @@ Return JSON array of conflicts:
 
         return []
 
-    async def assess_source_reliability(
-        self,
-        source: Dict[str, Any]
-    ) -> float:
+    async def assess_source_reliability(self, source: Dict[str, Any]) -> float:
         """
         Assess the reliability of a source
 

@@ -1,6 +1,7 @@
 """
 Text extraction service for various document formats
 """
+
 import os
 import logging
 from typing import Optional, Dict, Any, List
@@ -48,7 +49,7 @@ class TextExtractor:
             return {
                 "text": "",
                 "error": f"Unsupported file format: {file_extension}",
-                "pages": 0
+                "pages": 0,
             }
 
         try:
@@ -68,7 +69,7 @@ class TextExtractor:
                 "error": str(e),
                 "format": file_extension,
                 "pages": 0,
-                "success": False
+                "success": False,
             }
 
     async def _extract_from_pdf(self, file_path: str) -> Dict[str, Any]:
@@ -89,7 +90,7 @@ class TextExtractor:
             return {
                 "text": "\n\n".join(text_parts),
                 "pages": page_count,
-                "source": "pypdf2"
+                "source": "pypdf2",
             }
 
         except Exception as e:
@@ -115,11 +116,7 @@ class TextExtractor:
                     if row_text.strip():
                         text_parts.append(row_text)
 
-            return {
-                "text": "\n".join(text_parts),
-                "pages": 0,
-                "source": "python-docx"
-            }
+            return {"text": "\n".join(text_parts), "pages": 0, "source": "python-docx"}
 
         except Exception as e:
             logger.error(f"Error extracting from DOCX: {str(e)}")
@@ -132,7 +129,7 @@ class TextExtractor:
             "text": "",
             "error": "Legacy DOC files require conversion tool",
             "pages": 0,
-            "source": "error"
+            "source": "error",
         }
 
     async def _extract_from_pptx(self, file_path: str) -> Dict[str, Any]:
@@ -151,12 +148,14 @@ class TextExtractor:
                         slide_text_parts.append(shape.text)
 
                 if slide_text_parts:
-                    text_parts.append(f"[Slide {slide_num + 1}]\n" + "\n".join(slide_text_parts))
+                    text_parts.append(
+                        f"[Slide {slide_num + 1}]\n" + "\n".join(slide_text_parts)
+                    )
 
             return {
                 "text": "\n\n".join(text_parts),
                 "pages": slide_count,
-                "source": "python-pptx"
+                "source": "python-pptx",
             }
 
         except Exception as e:
@@ -169,7 +168,7 @@ class TextExtractor:
             "text": "",
             "error": "Legacy PPT files require conversion tool",
             "pages": 0,
-            "source": "error"
+            "source": "error",
         }
 
     async def _extract_from_xlsx(self, file_path: str) -> Dict[str, Any]:
@@ -186,7 +185,9 @@ class TextExtractor:
                 sheet_text_parts = [f"[Sheet: {sheet_name}]"]
 
                 for row in sheet.iter_rows(values_only=True):
-                    row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
+                    row_text = " | ".join(
+                        [str(cell) if cell is not None else "" for cell in row]
+                    )
                     empty_row = " | " * (len(row) - 1)
                     if row_text.strip() and row_text != empty_row:
                         sheet_text_parts.append(row_text)
@@ -197,7 +198,7 @@ class TextExtractor:
             return {
                 "text": "\n\n".join(text_parts),
                 "pages": sheet_count,
-                "source": "openpyxl"
+                "source": "openpyxl",
             }
 
         except Exception as e:
@@ -210,7 +211,7 @@ class TextExtractor:
             "text": "",
             "error": "Legacy XLS files require xlrd library",
             "pages": 0,
-            "source": "error"
+            "source": "error",
         }
 
     async def _extract_from_txt(self, file_path: str) -> Dict[str, Any]:
@@ -224,11 +225,7 @@ class TextExtractor:
                 with open(file_path, "r", encoding="latin-1") as f:
                     text = f.read()
 
-            return {
-                "text": text,
-                "pages": 0,
-                "source": "file"
-            }
+            return {"text": text, "pages": 0, "source": "file"}
 
         except Exception as e:
             logger.error(f"Error extracting from TXT: {str(e)}")
@@ -245,11 +242,7 @@ class TextExtractor:
             # Convert JSON to readable text
             text = json.dumps(data, indent=2, ensure_ascii=False)
 
-            return {
-                "text": text,
-                "pages": 0,
-                "source": "json"
-            }
+            return {"text": text, "pages": 0, "source": "json"}
 
         except Exception as e:
             logger.error(f"Error extracting from JSON: {str(e)}")
@@ -267,17 +260,14 @@ class TextExtractor:
                 if item.get_type() == epub.EpubHtml:
                     # Remove HTML tags
                     import re
+
                     content = item.get_content().decode("utf-8")
                     text = re.sub(r"<[^>]+>", "", content)
                     text = " ".join(text.split())
                     if text.strip():
                         text_parts.append(text)
 
-            return {
-                "text": "\n\n".join(text_parts),
-                "pages": 0,
-                "source": "ebooklib"
-            }
+            return {"text": "\n\n".join(text_parts), "pages": 0, "source": "ebooklib"}
 
         except Exception as e:
             logger.error(f"Error extracting from EPUB: {str(e)}")
@@ -311,7 +301,7 @@ class TextExtractor:
                                 try:
                                     image_data = xObject[obj_name]._data
                                     images.append(image_data)
-                                except:
+                                except (KeyError, AttributeError, IndexError):
                                     continue
 
             return images

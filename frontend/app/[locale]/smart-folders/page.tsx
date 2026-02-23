@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter as useIntlRouter, Link as IntlLink } from "@/i18n/routing";
@@ -37,6 +37,8 @@ export default function SmartFoldersPage() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GeneratedFolder | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [toast, setToast] = useState<{message: string, type: 'error' | 'success'} | null>(null);
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;
@@ -83,6 +85,67 @@ export default function SmartFoldersPage() {
       intlRouter.push(`/collections/${result.collection_id}`);
     }
   };
+
+  const handleExportPdf = async () => {
+    if (!result) return;
+
+    setExportLoading(true);
+    setToast(null);
+
+    try {
+      const token = getTokenFromCookie();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/reports/generate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            collection_id: result.collection_id,
+            format: "standard",
+            language: locale,
+            include_citations: true,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.content) {
+          setToast({ message: t('collections.export_success'), type: 'success' });
+          
+          const filename = `${result.topic.replace(/[^a-z0-9]/gi, '_')}_report.pdf`;
+          const blob = new Blob([data.content], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+      } else {
+        const errorData = await response.json();
+        setToast({ message: errorData.detail || t('export_error'), type: 'error' });
+      }
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      setToast({ message: t('export_error'), type: 'error' });
+    } finally {
+      setExportLoading(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  useEffect(() => {
+    if (result?.collection_id) {
+      localStorage.setItem('lastGeneratedCollectionId', result.collection_id);
+    }
+  }, [result]);
 
   const styles = [
     { value: "informative", label: t('style_informative'), desc: "Educational & clear" },
@@ -252,7 +315,7 @@ export default function SmartFoldersPage() {
                     {result.topic}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    {result.word_count} {t('word_count')} • {result.llm_used === "gemini" ? t('llm_gemini') : t('llm_ollama')}
+                    {result.word_count} {t('word_count')} • {result.llm_used === "minimax" ? t('llm_minimax') : t('llm_ollama')}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -261,6 +324,25 @@ export default function SmartFoldersPage() {
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
                   >
                     {t('view_collection')}
+                  </button>
+                  <button
+                    onClick={handleExportPdf}
+                    disabled={exportLoading || result.sources_used.length === 0}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {exportLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        {t('exporting_pdf')}
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        {t('export_pdf')}
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -338,6 +420,34 @@ export default function SmartFoldersPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+            toast.type === 'error' 
+              ? 'bg-red-50 dark:bg-red-900 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800'
+              : 'bg-green-50 dark:bg-green-900 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800'
+          }`}>
+            <div className="flex items-center gap-2">
+              {toast.type === 'error' ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              <span className="text-sm font-medium">{toast.message}</span>
+              <button
+                onClick={() => setToast(null)}
+                className="ml-2 hover:opacity-70"
+              >
+                ×
+              </button>
+            </div>
           </div>
         )}
       </div>

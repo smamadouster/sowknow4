@@ -162,7 +162,11 @@
     "visibility_public": "Public",
     "type_smart": "Intelligente",
     "type_manual": "Manuelle",
-    "type_folder": "Dossier Intelligent"
+    "type_folder": "Dossier Intelligent",
+    "export_pdf": "Exporter en PDF",
+    "exporting_pdf": "Génération du PDF...",
+    "export_error": "Échec de la génération du rapport PDF",
+    "export_success": "Rapport PDF généré avec succès"
   },
   "smart_folders": {
     "title": "Dossiers Intelligents",
@@ -186,7 +190,10 @@
     "examples": "Exemples de sujets à essayer",
     "word_count": "mots",
     "llm_gemini": "Généré avec Gemini Flash",
-    "llm_ollama": "Généré avec Ollama"
+    "llm_ollama": "Généré avec Ollama",
+    "export_pdf": "Exporter en PDF",
+    "exporting_pdf": "Génération du PDF...",
+    "export_error": "Échec de la génération du rapport PDF"
   },
   "reports": {
     "title": "Rapports",

@@ -1,11 +1,13 @@
 """
 Celery tasks for document processing
 """
+
 from celery import shared_task
 from app.celery_app import celery_app
 import logging
 from typing import Optional
 import uuid
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +36,41 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
     processing_task = None  # Initialize to prevent UnboundLocalError
     try:
         # Get document
-        document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
+        document = (
+            db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
+        )
         if not document:
             logger.error(f"Document {document_id} not found")
             return {"status": "error", "message": "Document not found"}
 
+        # Check if document is already being processed (prevent duplicate processing)
+        if document.status == DocumentStatus.PROCESSING and document.document_metadata:
+            existing_task_id = document.document_metadata.get("celery_task_id")
+            if existing_task_id and existing_task_id != self.request.id:
+                logger.warning(
+                    f"Document {document_id} is already being processed by task {existing_task_id}"
+                )
+                # Don't fail, just return - the other task is handling it
+                return {
+                    "status": "skipped",
+                    "message": "Document already being processed",
+                }
+
         # Create or update processing queue entry
-        processing_task = db.query(ProcessingQueue).filter(
-            ProcessingQueue.document_id == document.id,
-            ProcessingQueue.task_type == TaskType.OCR_PROCESSING
-        ).first()
+        processing_task = (
+            db.query(ProcessingQueue)
+            .filter(
+                ProcessingQueue.document_id == document.id,
+                ProcessingQueue.task_type == TaskType.OCR_PROCESSING,
+            )
+            .first()
+        )
 
         if not processing_task:
             processing_task = ProcessingQueue(
                 document_id=document.id,
                 task_type=TaskType.OCR_PROCESSING,
-                status=TaskStatus.PENDING
+                status=TaskStatus.PENDING,
             )
             db.add(processing_task)
             db.commit()
@@ -57,6 +78,16 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
         # Update task status
         processing_task.status = TaskStatus.IN_PROGRESS
         processing_task.celery_task_id = self.request.id
+        # Track start time for timeout detection
+        processing_task.started_at = datetime.utcnow()
+        db.commit()
+
+        # Add processing metadata to document
+        document.document_metadata = document.document_metadata or {}
+        document.document_metadata["processing_started_at"] = (
+            datetime.utcnow().isoformat()
+        )
+        document.document_metadata["celery_task_id"] = self.request.id
         db.commit()
 
         logger.info(f"Processing document {document_id}: {document.filename}")
@@ -70,24 +101,29 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
             from app.services.ocr_service import ocr_service
 
             # Extract text based on file type (run async code in event loop)
-            extraction_result = asyncio.run(text_extractor.extract_text(
-                file_path=document.file_path,
-                filename=document.original_filename
-            ))
+            extraction_result = asyncio.run(
+                text_extractor.extract_text(
+                    file_path=document.file_path, filename=document.original_filename
+                )
+            )
 
             extracted_text = extraction_result.get("text", "")
             document.page_count = extraction_result.get("pages", 0)
 
             # If no text extracted and it's an image-based PDF, try OCR
             if not extracted_text.strip() and document.mime_type == "application/pdf":
-                self.update_state(state="PROGRESS", meta={"step": "ocr_images", "progress": 20})
+                self.update_state(
+                    state="PROGRESS", meta={"step": "ocr_images", "progress": 20}
+                )
                 # Extract images and run OCR
-                images = asyncio.run(text_extractor.extract_images_from_pdf(document.file_path))
+                images = asyncio.run(
+                    text_extractor.extract_images_from_pdf(document.file_path)
+                )
                 ocr_texts = []
                 for i, image_bytes in enumerate(images):
                     ocr_result = asyncio.run(ocr_service.extract_text(image_bytes))
                     if ocr_result.get("text"):
-                        ocr_texts.append(f"[Image Page {i+1}] {ocr_result['text']}")
+                        ocr_texts.append(f"[Image Page {i + 1}] {ocr_result['text']}")
                 extracted_text = "\n\n".join(ocr_texts)
 
             # For image files, run OCR directly
@@ -107,16 +143,139 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
             logger.info(f"OCR/Text extraction completed for {document_id}")
 
         # Step 2: Chunking
+        chunks = []
         if task_type in ["chunking", "full_pipeline"]:
-            self.update_state(state="PROGRESS", meta={"step": "chunking", "progress": 40})
-            # Chunking will be implemented in chunking service
-            logger.info(f"Chunking for {document_id}")
+            self.update_state(
+                state="PROGRESS", meta={"step": "chunking", "progress": 40}
+            )
+
+            from app.services.embedding_service import chunking_service
+
+            # Read extracted text from file
+            text_file_path = f"{document.file_path}.txt"
+            extracted_text = ""
+            try:
+                with open(text_file_path, "r", encoding="utf-8") as f:
+                    extracted_text = f.read()
+            except FileNotFoundError:
+                logger.warning(
+                    f"No extracted text file found for document {document_id}"
+                )
+
+            if extracted_text:
+                # Chunk the text
+                chunks = chunking_service.chunk_document(
+                    text=extracted_text,
+                    document_id=str(document.id),
+                    metadata={
+                        "filename": document.filename,
+                        "bucket": document.bucket.value,
+                        "mime_type": document.mime_type,
+                    },
+                )
+                logger.info(f"Created {len(chunks)} chunks for document {document_id}")
+
+                # Store chunks in database with proper transaction handling
+                from app.models.document import DocumentChunk
+
+                try:
+                    for chunk_data in chunks:
+                        chunk = DocumentChunk(
+                            document_id=document.id,
+                            chunk_index=chunk_data["index"],
+                            chunk_text=chunk_data["text"],
+                            token_count=chunk_data["token_count"],
+                        )
+                        db.add(chunk)
+
+                    document.chunk_count = len(chunks)
+                    processing_task.progress_percentage = 50
+                    db.commit()
+                    logger.info(
+                        f"Successfully stored {len(chunks)} chunks for document {document_id}"
+                    )
+                except Exception as chunk_error:
+                    db.rollback()
+                    logger.error(
+                        f"Failed to store chunks for document {document_id}: {chunk_error}"
+                    )
+                    metadata = document.document_metadata or {}
+                    metadata["chunk_storage_error"] = str(chunk_error)
+                    document.document_metadata = metadata
+                    db.commit()
+                    raise chunk_error
+            else:
+                logger.warning(f"No text to chunk for document {document_id}")
 
         # Step 3: Embedding Generation
-        if task_type in ["embedding", "full_pipeline"]:
-            self.update_state(state="PROGRESS", meta={"step": "embedding", "progress": 70})
-            # Embedding will be implemented in embedding service
-            logger.info(f"Generating embeddings for {document_id}")
+        if task_type in ["embedding", "full_pipeline"] and chunks:
+            self.update_state(
+                state="PROGRESS", meta={"step": "embedding", "progress": 70}
+            )
+
+            from app.services.embedding_service import embedding_service
+            from app.models.document import DocumentChunk
+
+            # Get chunks from database
+            db_chunks = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == document.id)
+                .order_by(DocumentChunk.chunk_index)
+                .all()
+            )
+
+            if db_chunks:
+                # Generate embeddings for all chunks
+                chunk_texts = [chunk.chunk_text for chunk in db_chunks]
+
+                embedding_success = False
+                try:
+                    embeddings = embedding_service.encode(
+                        texts=chunk_texts, batch_size=32, show_progress=False
+                    )
+
+                    # Store embeddings in chunk metadata (pgvector will be used in production)
+                    for i, chunk in enumerate(db_chunks):
+                        if i < len(embeddings):
+                            # Store embedding in metadata (until pgvector column is added)
+                            metadata = chunk.document_metadata or {}
+                            metadata["embedding"] = embeddings[i]
+                            chunk.document_metadata = metadata
+
+                    document.embedding_generated = True
+                    processing_task.progress_percentage = 90
+                    db.commit()
+
+                    logger.info(
+                        f"Generated {len(embeddings)} embeddings for document {document_id}"
+                    )
+                    embedding_success = True
+
+                except Exception as embed_error:
+                    logger.error(
+                        f"Error generating embeddings for document {document_id}: {embed_error}"
+                    )
+                    # Mark embedding as failed in metadata but continue with text indexing
+                    doc_metadata = document.document_metadata or {}
+                    doc_metadata["embedding_error"] = str(embed_error)
+                    doc_metadata["embedding_failed_at"] = datetime.utcnow().isoformat()
+                    document.document_metadata = doc_metadata
+                    processing_task.error_message = (
+                        f"Embedding failed: {str(embed_error)[:400]}"
+                    )
+                    db.commit()
+                    # Document can still be searched via text, so we continue
+                finally:
+                    # Ensure progress is updated even on partial failure
+                    if not embedding_success:
+                        logger.warning(
+                            f"Embedding generation incomplete for document {document_id}, "
+                            "document will be searchable via text only"
+                        )
+            else:
+                logger.warning(
+                    f"No chunks found for embedding generation (document {document_id})"
+                )
 
         # Step 4: Update document status
         document.status = DocumentStatus.INDEXED
@@ -130,18 +289,47 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
             "status": "success",
             "document_id": str(document.id),
             "filename": document.filename,
-            "message": "Document processed successfully"
+            "message": "Document processed successfully",
         }
 
     except Exception as e:
         logger.error(f"Error processing document {document_id}: {str(e)}")
-        if processing_task:
+
+        # Safely handle the error - ensure processing_task is defined
+        if "processing_task" in locals() and processing_task:
             processing_task.status = TaskStatus.FAILED
-            processing_task.error_message = str(e)
+            processing_task.error_message = str(e)[:500]  # Limit error message length
+            # Increment retry count (default to 0 if not set)
+            processing_task.retry_count = (processing_task.retry_count or 0) + 1
+            current_retry = processing_task.retry_count
+            db.commit()
+        else:
+            current_retry = 1  # Default retry count if processing_task not available
+
+        # CRITICAL: Update document status too (not just ProcessingQueue)
+        if "document" in locals() and document:
+            # Update document metadata with error info
+            metadata = document.document_metadata or {}
+            metadata["processing_error"] = str(e)[:500]
+            metadata["retry_count"] = current_retry
+            metadata["last_error_at"] = datetime.utcnow().isoformat()
+            document.document_metadata = metadata
+
+            if current_retry >= 3:
+                document.status = DocumentStatus.ERROR
+                logger.error(
+                    f"Document {document_id} failed permanently after {current_retry} retries: {str(e)}"
+                )
+            else:
+                document.status = DocumentStatus.PENDING
+                logger.warning(
+                    f"Document {document_id} will be retried ({current_retry}/3)"
+                )
             db.commit()
 
-        # Retry with exponential backoff
-        raise self.retry(exc=e, countdown=60, max_retries=3)
+        # Retry with exponential backoff (max 3 retries)
+        countdown_seconds = min(60 * current_retry, 300)  # Cap at 5 minutes
+        raise self.retry(exc=e, countdown=countdown_seconds, max_retries=3)
 
     finally:
         db.close()
@@ -162,16 +350,20 @@ def process_batch_documents(document_ids: list):
     for doc_id in document_ids:
         try:
             result = process_document.delay(str(doc_id))
-            results.append({"document_id": doc_id, "task_id": result.id, "status": "queued"})
+            results.append(
+                {"document_id": doc_id, "task_id": result.id, "status": "queued"}
+            )
         except Exception as e:
             logger.error(f"Failed to queue document {doc_id}: {str(e)}")
-            results.append({"document_id": doc_id, "status": "error", "message": str(e)})
+            results.append(
+                {"document_id": doc_id, "status": "error", "message": str(e)}
+            )
 
     return {
         "total": len(document_ids),
         "queued": sum(1 for r in results if r["status"] == "queued"),
         "errors": sum(1 for r in results if r["status"] == "error"),
-        "results": results
+        "results": results,
     }
 
 
@@ -199,7 +391,7 @@ def generate_embeddings(chunk_ids: list):
         return {
             "status": "success",
             "processed": len(chunks),
-            "message": "Embeddings generated successfully"
+            "message": "Embeddings generated successfully",
         }
 
     except Exception as e:
@@ -228,10 +420,14 @@ def cleanup_old_tasks(days: int = 7):
     db = SessionLocal()
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        old_tasks = db.query(ProcessingQueue).filter(
-            ProcessingQueue.status == TaskStatus.COMPLETED,
-            ProcessingQueue.completed_at < cutoff_date
-        ).all()
+        old_tasks = (
+            db.query(ProcessingQueue)
+            .filter(
+                ProcessingQueue.status == TaskStatus.COMPLETED,
+                ProcessingQueue.completed_at < cutoff_date,
+            )
+            .all()
+        )
 
         count = len(old_tasks)
         for task in old_tasks:
@@ -243,7 +439,7 @@ def cleanup_old_tasks(days: int = 7):
         return {
             "status": "success",
             "cleaned": count,
-            "cutoff_date": cutoff_date.isoformat()
+            "cutoff_date": cutoff_date.isoformat(),
         }
 
     except Exception as e:

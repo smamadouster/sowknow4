@@ -1,6 +1,7 @@
 """
 Celery application configuration for SOWKNOW async tasks
 """
+
 from celery import Celery
 from celery.schedules import crontab
 import os
@@ -19,7 +20,7 @@ celery_app = Celery(
     include=[
         "app.tasks.document_tasks",
         "app.tasks.anomaly_tasks",
-    ]
+    ],
 )
 
 # Celery configuration
@@ -30,34 +31,33 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-
     # Task routing
     task_routes={
         "app.tasks.document_tasks.*": {"queue": "document_processing"},
         "app.tasks.anomaly_tasks.*": {"queue": "scheduled"},
     },
-
     # Task result backend
     result_extended=True,
     result_expires=3600,  # 1 hour
-
     # Retry settings
     task_acks_late=True,
     worker_prefetch_multiplier=1,
-
     # Rate limiting
     task_default_rate_limit="10/m",
-
     # Task time limits
     task_soft_time_limit=300,  # 5 minutes
     task_time_limit=600,  # 10 minutes
-
     # Beat scheduler configuration
     beat_schedule={
         "daily-anomaly-report": {
             "task": "app.tasks.anomaly_tasks.daily_anomaly_report",
             "schedule": crontab(hour=9, minute=0),  # 09:00 AM daily
             "args": (),
+        },
+        "recover-stuck-documents": {
+            "task": "app.tasks.anomaly_tasks.recover_stuck_documents",
+            "schedule": 600,  # Every 10 minutes (600 seconds)
+            "args": (5,),  # Max 5 minutes in processing state before recovery
         },
     },
 )

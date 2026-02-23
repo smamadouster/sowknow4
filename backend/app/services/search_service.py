@@ -2,6 +2,7 @@
 Hybrid search service combining vector and keyword search
 """
 
+import asyncio
 import logging
 from typing import List, Optional, Dict, Any
 from uuid import UUID
@@ -107,7 +108,11 @@ class HybridSearchService:
         user: User = None,
     ) -> List[SearchResult]:
         """
-        Perform vector similarity search using pgvector
+        Perform vector similarity search using pgvector.
+
+        Returns an empty list when the embedding model is unavailable (backend
+        container runs without sentence_transformers — heavy ML is exclusively
+        in the celery-worker).  Hybrid search will fall back to keyword-only.
 
         Args:
             query: Search query text
@@ -119,6 +124,15 @@ class HybridSearchService:
         Returns:
             List of search results
         """
+        # Skip semantic search when model is unavailable (backend container)
+        if not embedding_service.can_embed:
+            logger.info(
+                "Semantic search skipped: embedding model not loaded in this container "
+                "(backend runs requirements-minimal.txt without sentence_transformers). "
+                "Keyword-only results will be returned."
+            )
+            return []
+
         # Generate query embedding
         query_embedding = embedding_service.encode_single(query)
         embedding_array = ",".join(map(str, query_embedding))
@@ -288,9 +302,14 @@ class HybridSearchService:
         offset: int = 0,
         db: Session = None,
         user: User = None,
+        timeout: float = 3.0,
     ) -> Dict[str, Any]:
         """
-        Perform hybrid search combining semantic and keyword results
+        Perform hybrid search combining semantic and keyword results.
+
+        Both sub-searches run concurrently.  If the overall wall-clock time
+        exceeds ``timeout`` seconds any pending sub-search is cancelled and the
+        result is marked ``partial=True`` with a human-readable ``warning``.
 
         Args:
             query: Search query text
@@ -298,9 +317,10 @@ class HybridSearchService:
             offset: Number of results to skip
             db: Database session
             user: Current user for access control
+            timeout: Maximum seconds to wait before returning partial results
 
         Returns:
-            Dictionary with results and metadata
+            Dictionary with results, metadata, and optional partial/warning flags
         """
         # Check for PII in query for privacy protection
         has_pii = pii_detection_service.detect_pii(query)
@@ -312,17 +332,41 @@ class HybridSearchService:
                 f"PII detected in search query by user {user.email if user else 'unknown'}: {pii_summary['detected_types']}"
             )
 
-        # Get both search results
-        semantic_results = await self.semantic_search(
-            query=query,
-            limit=limit * 2,  # Get more to merge
-            offset=0,
-            db=db,
-            user=user,
+        # Run both searches concurrently; return partial results on timeout
+        semantic_task = asyncio.create_task(
+            self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
+        )
+        keyword_task = asyncio.create_task(
+            self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
 
-        keyword_results = await self.keyword_search(
-            query=query, limit=limit * 2, offset=0, db=db, user=user
+        done, pending = await asyncio.wait(
+            {semantic_task, keyword_task},
+            timeout=timeout,
+        )
+
+        # Cancel any tasks that didn't finish in time
+        for task in pending:
+            task.cancel()
+
+        is_partial = bool(pending)
+        if is_partial:
+            completed_names = [
+                "semantic" if t is semantic_task else "keyword" for t in done
+            ]
+            missed_names = [
+                "semantic" if t is semantic_task else "keyword" for t in pending
+            ]
+            logger.warning(
+                f"Search timeout ({timeout}s): completed={completed_names}, "
+                f"cancelled={missed_names}. Returning partial results."
+            )
+
+        semantic_results: List[SearchResult] = (
+            semantic_task.result() if semantic_task in done else []
+        )
+        keyword_results: List[SearchResult] = (
+            keyword_task.result() if keyword_task in done else []
         )
 
         # Merge results using RRF (Reciprocal Rank Fusion)
@@ -382,6 +426,13 @@ class HybridSearchService:
 
         paginated_results = sorted_results[offset : offset + limit]
 
+        warning = (
+            "Search timeout: results may be incomplete (partial keyword and/or "
+            "semantic results returned)"
+            if is_partial
+            else None
+        )
+
         return {
             "query": query,
             "results": [item["result"] for item in paginated_results],
@@ -390,6 +441,8 @@ class HybridSearchService:
             "limit": limit,
             "has_pii": has_pii,
             "pii_summary": pii_summary,
+            "partial": is_partial,
+            "warning": warning,
         }
 
 

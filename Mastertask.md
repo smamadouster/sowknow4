@@ -7161,3 +7161,158 @@ The collection export endpoint has been successfully implemented with:
 The implementation follows the existing codebase patterns and security requirements from CLAUDE.md.
 
 **Status:** ✅ COMPLETE
+
+---
+
+## SESSION-STATE: Agent C2 - Telegram Bot Redis Session Storage
+**Timestamp:** 2026-02-23T11:00:00Z
+**Agent:** Agent C2: Telegram Bot Architecture & Resilience Specialist
+**Task:** Fix in-memory user_context dict causing session loss on bot restart
+
+### Problem Statement
+
+The `user_context` dict in `bot.py` was in-memory only, causing all user sessions to be lost on bot restart. This breaks upload flows mid-process, resulting in:
+- Users losing authentication state during multi-step upload process
+- Pending file uploads lost when bot restarts
+- Poor user experience with "Please use /start first" errors
+
+### Files Modified
+
+1. `/root/development/src/active/sowknow4/backend/requirements-telegram.txt`
+2. `/root/development/src/active/sowknow4/backend/telegram_bot/bot.py`
+3. `/root/development/src/active/sowknow4/backend/tests/unit/test_telegram_session.py` (NEW)
+
+### Implementation Details
+
+#### 1. RedisSessionManager Class (NEW)
+
+```python
+class RedisSessionManager:
+    """
+    Redis-backed session storage for Telegram bot user contexts.
+    
+    - Key format: telegram_session:{telegram_user_id}
+    - TTL: 24 hours (86400 seconds)
+    - Uses same Redis instance as token blacklisting
+    """
+    
+    async def connect(self) -> bool
+    async def close(self) -> None
+    async def get_session(self, telegram_user_id: int) -> Optional[Dict[str, Any]]
+    async def set_session(self, telegram_user_id: int, session_data: Dict[str, Any]) -> bool
+    async def delete_session(self, telegram_user_id: int) -> bool
+    async def update_session(self, telegram_user_id: int, updates: Dict[str, Any]) -> bool
+    async def count_active_sessions(self) -> int
+    async def clear_pending_file(self, telegram_user_id: int) -> bool
+```
+
+#### 2. Bot Startup Integration
+
+```python
+async def post_init(application: Application) -> None:
+    """Initialize Redis session storage and log restored sessions."""
+    connected = await session_manager.connect()
+    if connected:
+        active_count = await session_manager.count_active_sessions()
+        logger.info(f"✅ Redis session storage initialized. {active_count} active session(s) restored.")
+    else:
+        logger.warning("⚠️ Redis session storage unavailable. Sessions will not persist.")
+
+async def post_shutdown(application: Application) -> None:
+    """Clean up Redis connection on shutdown."""
+    await session_manager.close()
+```
+
+#### 3. Session Key Format
+
+- Key: `telegram_session:{telegram_user_id}`
+- TTL: 86400 seconds (24 hours)
+- Serialization: JSON
+
+### Changes Summary
+
+| Change | Location | Purpose |
+|--------|----------|---------|
+| Add redis to requirements | requirements-telegram.txt | Redis async client dependency |
+| Create RedisSessionManager | bot.py:47-151 | Redis-backed session storage |
+| Replace user_context dict | bot.py:354 | Use session_manager instead |
+| Update start_command | bot.py:369 | Store session in Redis |
+| Update handle_document_upload | bot.py:432-471 | Use session_manager.get_session() |
+| Update bucket_callback | bot.py:508-544 | Use session_manager |
+| Update handle_text_message | bot.py:589-655 | Use session_manager |
+| Add post_init hook | bot.py:977-985 | Initialize Redis on startup |
+| Add post_shutdown hook | bot.py:988-992 | Cleanup on shutdown |
+| Create test suite | test_telegram_session.py | 23 tests for session manager |
+
+### Test Results
+
+```
+============================= test session starts ==============================
+collected 23 items
+
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_connect_success PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_connect_failure PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_set_session PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_get_session_existing PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_get_session_not_found PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_get_session_expired PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_update_session PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_update_session_no_existing PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_delete_session PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_clear_pending_file PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_count_active_sessions PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_count_active_sessions_empty PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_get_session_redis_unavailable PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_set_session_redis_unavailable PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_json_decode_error_handling PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_close_connection PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_session_key_format PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_ttl_is_24_hours PASSED
+tests/unit/test_telegram_session.py::TestRedisSessionManager::test_pending_file_with_bytes_serialization PASSED
+tests/unit/test_telegram_session.py::TestTelegramBotSessionIntegration::test_expired_session_prompts_restart PASSED
+tests/unit/test_telegram_session.py::TestTelegramBotSessionIntegration::test_session_restored_on_startup PASSED
+tests/unit/test_telegram_session.py::TestSessionResilience::test_session_survives_bot_restart PASSED
+tests/unit/test_telegram_session.py::TestSessionResilience::test_upload_flow_continues_after_restart PASSED
+
+============================== 23 passed in 0.30s ==============================
+```
+
+### Security & Resilience Features
+
+| Feature | Implementation | Status |
+|---------|----------------|--------|
+| Session persistence | Redis-backed storage | ✅ |
+| 24-hour TTL | Auto-expiration | ✅ |
+| Graceful degradation | Returns None on Redis failure | ✅ |
+| Session restoration logging | Logs active sessions on startup | ✅ |
+| Expired session handling | Prompts user to /start again | ✅ |
+| JSON serialization | UTF-8 encoding | ✅ |
+| Redis connection reuse | Same instance as token blacklisting | ✅ |
+
+### Verification Results
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Syntax validation | ✅ PASS | `python3 -m py_compile bot.py` succeeds |
+| Unit tests | ✅ PASS | 23/23 tests pass |
+| Redis dependency | ✅ ADDED | `redis==4.6.0` in requirements-telegram.txt |
+| Session key format | ✅ CORRECT | `telegram_session:{telegram_user_id}` |
+| TTL enforcement | ✅ CORRECT | 86400 seconds (24 hours) |
+| Graceful handling | ✅ IMPLEMENTED | Returns None on missing/expired sessions |
+| Startup logging | ✅ IMPLEMENTED | Logs count of restored sessions |
+
+### Blockers
+
+**NONE** - Implementation is complete and all tests pass.
+
+### Summary
+
+The in-memory `user_context` dict has been replaced with a Redis-backed `RedisSessionManager`. This ensures:
+
+1. **Sessions survive bot restarts** - Users can continue upload flows after bot restart
+2. **24-hour TTL** - Sessions automatically expire after 24 hours
+3. **Graceful degradation** - Bot continues to function if Redis is unavailable
+4. **Startup logging** - Active sessions are counted and logged on bot startup
+5. **Same Redis instance** - Uses existing Redis infrastructure for token blacklisting
+
+**Status:** ✅ COMPLETE

@@ -111,3 +111,15 @@ class DocumentChunkResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Batch Upload Schemas
+class BatchUploadResponse(BaseModel):
+    total_files: int
+    successful: int
+    failed: int
+    documents: List[DocumentUploadResponse]
+    errors: List[str]
+    total_size_bytes: int
+    batch_limit_exceeded: bool = False
+    message: str = "Batch upload processed"

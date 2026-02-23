@@ -7732,6 +7732,62 @@ Hunyuan references have been completely removed from the codebase. The OCR servi
 
 ---
 
+## Phase 10: COMPLETED - Migrate Embeddings to pgvector Column
+**Started:** 2026-02-23
+**Status:** ✅ COMPLETE
+
+### Task Summary
+
+Migrated embedding storage from JSONB to proper pgvector `vector(1024)` column:
+
+| File | Changes | Status |
+|------|---------|--------|
+| `backend/alembic/versions/004_add_pgvector_column.py` | New migration for vector column + backfill | ✅ |
+| `backend/app/models/document.py` | Added embedding_vector column using pgvector | ✅ |
+| `backend/app/tasks/document_tasks.py` | Store embeddings in vector column | ✅ |
+| `backend/app/services/search_service.py` | Use embedding_vector column with <=> operator | ✅ |
+| `scripts/backfill_embeddings_to_vector.py` | Backfill script for existing JSONB embeddings | ✅ |
+| `backend/tests/unit/test_pgvector_migration.py` | Unit tests for migration | ✅ |
+
+### Implementation Details
+
+**Migration Features:**
+- Adds `embedding_vector` column with `vector(1024)` type from pgvector
+- Backfills existing embeddings from JSONB metadata->embedding
+- Creates IVFFlat index for fast cosine similarity search
+- Uses pgvector's `<=>` cosine distance operator for semantic search
+
+**Backward Compatibility:**
+- Embeddings continue to be stored in JSONB metadata during transition
+- Backfill script can migrate existing JSONB embeddings to vector column
+- Search filters out chunks without embeddings (NULL check)
+
+### Files Modified
+
+1. **backend/alembic/versions/004_add_pgvector_column.py**
+   - Creates embedding_vector column with proper pgvector type
+   - Backfills from JSONB metadata
+   - Creates IVFFlat index
+
+2. **backend/app/models/document.py**
+   - Added embedding_vector Column using pgvector.sqlalchemy.Vector
+   - Added conditional import with fallback for testing
+
+3. **backend/app/tasks/document_tasks.py:237-244**
+   - Stores embeddings in embedding_vector column
+   - Maintains JSONB backup for backward compatibility
+
+4. **backend/app/services/search_service.py:129-144**
+   - Uses `<=>` cosine distance operator with embedding_vector
+   - Filters out NULL embeddings
+
+5. **scripts/backfill_embeddings_to_vector.py**
+   - Standalone backfill script
+   - Supports dry-run mode
+   - Batch processing for large datasets
+
+---
+
 ## Phase 9: COMPLETED - 500MB Batch Upload Size Enforcement
 **Started:** 2026-02-23
 **Status:** ✅ COMPLETE

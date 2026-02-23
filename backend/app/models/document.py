@@ -1,7 +1,25 @@
-from sqlalchemy import Column, String, Integer, BigInteger, Boolean, Enum, ForeignKey, Text, Index, event
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    BigInteger,
+    Boolean,
+    Enum,
+    ForeignKey,
+    Text,
+    Index,
+    event,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
+# Import Vector type from pgvector for embeddings
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    # Fallback for testing with SQLite - use Text column
+    Vector = None
 import uuid
 import enum
 from app.models.base import Base, TimestampMixin, GUIDType
@@ -9,12 +27,14 @@ from app.models.base import Base, TimestampMixin, GUIDType
 
 class DocumentBucket(str, enum.Enum):
     """Document storage bucket classification"""
+
     PUBLIC = "public"
     CONFIDENTIAL = "confidential"
 
 
 class DocumentStatus(str, enum.Enum):
     """Document processing status"""
+
     PENDING = "pending"
     UPLOADING = "uploading"
     PROCESSING = "processing"
@@ -24,6 +44,7 @@ class DocumentStatus(str, enum.Enum):
 
 class DocumentLanguage(str, enum.Enum):
     """Supported document languages"""
+
     FRENCH = "fr"
     ENGLISH = "en"
     MULTILINGUAL = "multi"
@@ -34,20 +55,40 @@ class Document(Base, TimestampMixin):
     """
     Document model for storing file metadata
     """
+
     __tablename__ = "documents"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
+    id = Column(
+        GUIDType(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        unique=True,
+        nullable=False,
+    )
     filename = Column(String(512), nullable=False)
     original_filename = Column(String(512), nullable=False)
     file_path = Column(String(1024), nullable=False)
-    bucket = Column(Enum(DocumentBucket, values_callable=lambda obj: [e.value for e in obj]), default=DocumentBucket.PUBLIC, nullable=False, index=True)
-    status = Column(Enum(DocumentStatus, values_callable=lambda obj: [e.value for e in obj]), default=DocumentStatus.PENDING, nullable=False, index=True)
+    bucket = Column(
+        Enum(DocumentBucket, values_callable=lambda obj: [e.value for e in obj]),
+        default=DocumentBucket.PUBLIC,
+        nullable=False,
+        index=True,
+    )
+    status = Column(
+        Enum(DocumentStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=DocumentStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
 
     # File metadata
     size = Column(BigInteger, nullable=False)  # Size in bytes
     mime_type = Column(String(256), nullable=False)
-    language = Column(Enum(DocumentLanguage, values_callable=lambda obj: [e.value for e in obj]), default=DocumentLanguage.UNKNOWN)
+    language = Column(
+        Enum(DocumentLanguage, values_callable=lambda obj: [e.value for e in obj]),
+        default=DocumentLanguage.UNKNOWN,
+    )
     page_count = Column(Integer)  # For PDFs, PPTX, etc.
 
     # Processing metadata
@@ -59,9 +100,15 @@ class Document(Base, TimestampMixin):
     document_metadata = Column("metadata", JSONB, default=dict)
 
     # Relationships
-    tags = relationship("DocumentTag", back_populates="document", cascade="all, delete-orphan")
-    chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
-    processing_queue = relationship("ProcessingQueue", back_populates="document", uselist=False)
+    tags = relationship(
+        "DocumentTag", back_populates="document", cascade="all, delete-orphan"
+    )
+    chunks = relationship(
+        "DocumentChunk", back_populates="document", cascade="all, delete-orphan"
+    )
+    processing_queue = relationship(
+        "ProcessingQueue", back_populates="document", uselist=False
+    )
 
     # Indexes
     __table_args__ = (
@@ -79,11 +126,22 @@ class DocumentTag(Base, TimestampMixin):
     """
     Tags associated with documents for categorization
     """
+
     __tablename__ = "document_tags"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
+    id = Column(
+        GUIDType(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        unique=True,
+        nullable=False,
+    )
+    document_id = Column(
+        GUIDType(as_uuid=True),
+        ForeignKey("sowknow.documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     tag_name = Column(String(256), nullable=False, index=True)
     tag_type = Column(String(100))  # topic, entity, project, importance, etc.
     auto_generated = Column(Boolean, default=False)
@@ -107,39 +165,81 @@ class DocumentChunk(Base, TimestampMixin):
     """
     Text chunks with embeddings for semantic search
     """
+
     __tablename__ = "document_chunks"
     __table_args__ = {"schema": "sowknow"}
 
-    id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False)
+    id = Column(
+        GUIDType(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        unique=True,
+        nullable=False,
+    )
+    document_id = Column(
+        GUIDType(as_uuid=True),
+        ForeignKey("sowknow.documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     chunk_index = Column(Integer, nullable=False)
     chunk_text = Column(Text, nullable=False)
 
-    # Metadata
+    # Embedding vector column (pgvector)
+    # This stores the 1024-dimensional embedding for semantic search
+    if Vector is not None:
+        embedding_vector = Column(Vector(dim=1024), nullable=True, index=True)
+    else:
+        # Fallback for testing without pgvector - use Text column
+        embedding_vector = Column(Text, nullable=True)
+
+    # Metadata (legacy: also stores embedding in JSONB for backward compatibility)
     token_count = Column(Integer)
     page_number = Column(Integer)  # For PDFs
+    document_metadata = Column(
+        "metadata", JSONB, default=dict
+    )  # For embeddings and other metadata
 
     # Relationships
     document = relationship("Document", back_populates="chunks")
 
     # Indexes
-    __table_args__ = (
-        Index("ix_document_chunks_document_id", "document_id"),
-        Index("ix_document_chunks_chunk_index", "document_id", "chunk_index"),
-        {"schema": "sowknow"},
-    )
+    if Vector is not None:
+        __table_args__ = (
+            Index("ix_document_chunks_document_id", "document_id"),
+            Index("ix_document_chunks_chunk_index", "document_id", "chunk_index"),
+            Index(
+                "ix_document_chunks_embedding_vector",
+                "embedding_vector",
+                postgresql_using="ivfflat",
+                postgresql_with={"lists": 100},
+            ),
+            {"schema": "sowknow"},
+        )
+    else:
+        __table_args__ = (
+            Index("ix_document_chunks_document_id", "document_id"),
+            Index("ix_document_chunks_chunk_index", "document_id", "chunk_index"),
+            {"schema": "sowknow"},
+        )
 
     def __repr__(self):
         return f"<DocumentChunk {self.document_id}/{self.chunk_index}>"
 
+
 # Set up defaults for test instances
-@event.listens_for(Document, 'init', propagate=True)
+@event.listens_for(Document, "init", propagate=True)
 def _document_init(target, args, kwargs):
     """Set default values for fields when creating instances"""
-    kwargs.setdefault('bucket', DocumentBucket.PUBLIC)
-    kwargs.setdefault('status', DocumentStatus.PENDING)
-    kwargs.setdefault('language', DocumentLanguage.UNKNOWN)
-    kwargs.setdefault('ocr_processed', False)
-    kwargs.setdefault('embedding_generated', False)
-    kwargs.setdefault('chunk_count', 0)
-    kwargs.setdefault('document_metadata', {})
+    kwargs.setdefault("bucket", DocumentBucket.PUBLIC)
+    kwargs.setdefault("status", DocumentStatus.PENDING)
+    kwargs.setdefault("language", DocumentLanguage.UNKNOWN)
+    kwargs.setdefault("ocr_processed", False)
+    kwargs.setdefault("embedding_generated", False)
+    kwargs.setdefault("chunk_count", 0)
+    kwargs.setdefault("document_metadata", {})
+
+
+@event.listens_for(DocumentChunk, "init", propagate=True)
+def _document_chunk_init(target, args, kwargs):
+    """Set default values for DocumentChunk instances"""
+    kwargs.setdefault("document_metadata", {})

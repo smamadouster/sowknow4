@@ -119,6 +119,28 @@ class OpenRouterService:
 
         return f"{CACHE_KEY_PREFIX}{cache_hash}"
 
+    def check_cache(self, messages: List[Dict[str, str]]) -> Optional[str]:
+        """Check Redis cache for a previously computed non-streaming response.
+
+        Used by the streaming pipeline to detect cache hits before issuing an
+        LLM call, so the `cache_hit` SSE flag can be set accurately.
+
+        Returns:
+            Cached response string if found, else None.
+        """
+        if not self._cache_enabled:
+            return None
+        cache_key = self._generate_cache_key(self.model, messages)
+        redis_client = _get_redis_client()
+        if not redis_client:
+            return None
+        try:
+            cached = redis_client.get(cache_key)
+            return str(cached) if cached else None
+        except Exception as e:
+            logger.debug(f"Cache check error: {e}")
+            return None
+
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count using simple character-based approximation"""
         if not text:
@@ -349,7 +371,7 @@ class OpenRouterService:
             error_body = ""
             try:
                 error_body = e.response.text
-            except:
+            except (AttributeError, KeyError):
                 pass
 
             # Handle rate limit (429) errors with specific retry trigger

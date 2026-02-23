@@ -6,8 +6,10 @@ from enum import Enum
 
 
 class LLMProvider(str, Enum):
+    MINIMAX = "minimax"
     KIMI = "kimi"
     OLLAMA = "ollama"
+    OPENROUTER = "openrouter"
 
 
 class MessageRole(str, Enum):

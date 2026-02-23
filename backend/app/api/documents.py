@@ -31,6 +31,7 @@ from app.models.document import (
     DocumentBucket,
     DocumentStatus,
     DocumentLanguage,
+    DocumentTag,
 )
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.document import (
@@ -122,6 +123,7 @@ async def upload_document(
     file: UploadFile = File(...),
     bucket: str = Form("public"),
     title: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
     x_bot_api_key: Optional[str] = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -132,6 +134,7 @@ async def upload_document(
     - **file**: The file to upload
     - **bucket**: Either "public" or "confidential" (admin/superuser only)
     - **title**: Optional title for the document
+    - **tags**: Optional comma-separated tag names (e.g. "urgent,invoice")
 
     SECURITY: Role-based access control enforced for confidential uploads.
     - Public bucket: Any authenticated user can upload (with or without bot API key)
@@ -250,6 +253,21 @@ async def upload_document(
     db.add(document)
     db.commit()
     db.refresh(document)
+
+    # Step 3b: Persist user-supplied tags (e.g. hashtags from Telegram caption)
+    if tags:
+        tag_names = [t.strip().lower() for t in tags.split(",") if t.strip()]
+        for tag_name in tag_names:
+            document_tag = DocumentTag(
+                document_id=document.id,
+                tag_name=tag_name,
+                tag_type="user",
+                auto_generated=False,
+            )
+            db.add(document_tag)
+        if tag_names:
+            db.commit()
+            logger.info(f"Added {len(tag_names)} user tag(s) to document {document.id}: {tag_names}")
 
     # Step 4: Register hash for future deduplication checks
     deduplication_service.register_upload(

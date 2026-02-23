@@ -123,9 +123,9 @@ def test_batch_upload_no_files(client: TestClient, admin_headers):
     assert response.status_code == 422
 
 
-def test_list_documents(client: TestClient, test_document):
+def test_list_documents(client: TestClient, test_document, auth_headers):
     """Test listing documents"""
-    response = client.get("/api/v1/documents")
+    response = client.get("/api/v1/documents", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -133,9 +133,9 @@ def test_list_documents(client: TestClient, test_document):
     assert "total" in data
 
 
-def test_list_documents_with_pagination(client: TestClient):
+def test_list_documents_with_pagination(client: TestClient, auth_headers):
     """Test document listing with pagination"""
-    response = client.get("/api/v1/documents?page=1&page_size=10")
+    response = client.get("/api/v1/documents?page=1&page_size=10", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -143,22 +143,22 @@ def test_list_documents_with_pagination(client: TestClient):
     assert data["page_size"] == 10
 
 
-def test_get_document(client: TestClient, test_document):
+def test_get_document(client: TestClient, test_document, auth_headers):
     """Test getting a specific document"""
-    response = client.get(f"/api/v1/documents/{test_document.id}")
+    response = client.get(f"/api/v1/documents/{test_document.id}", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == str(test_document.id)
 
 
-def test_get_document_not_found(client: TestClient):
+def test_get_document_not_found(client: TestClient, auth_headers):
     """Test getting non-existent document"""
     import uuid
 
     fake_id = uuid.uuid4()
 
-    response = client.get(f"/api/v1/documents/{fake_id}")
+    response = client.get(f"/api/v1/documents/{fake_id}", headers=auth_headers)
 
     assert response.status_code == 404
 

@@ -36,20 +36,20 @@ class PIIDetectionService:
             r'(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}\b',  # French phone numbers
             re.IGNORECASE
         ),
+        'ip_address': re.compile(
+            r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
+            re.IGNORECASE
+        ),
+        'iban': re.compile(
+            r'\b[A-Z]{2}[0-9]{2}(?:\s?[A-Z0-9]){11,35}\b',  # IBAN with optional spaces
+            re.IGNORECASE
+        ),
         'phone_intl': re.compile(
             r'(?:(?:\+|00)[1-9]\d{0,2})?[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}',  # International
             re.IGNORECASE
         ),
         'credit_card': re.compile(
             r'\b(?:\d[ -]*?){13,16}\b',  # Credit card pattern (13-16 digits)
-            re.IGNORECASE
-        ),
-        'iban': re.compile(
-            r'\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,35}\b',  # IBAN pattern (more specific length)
-            re.IGNORECASE
-        ),
-        'ip_address': re.compile(
-            r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
             re.IGNORECASE
         ),
         'url_with_params': re.compile(
@@ -61,7 +61,9 @@ class PIIDetectionService:
     # Patterns that might indicate PII (lower confidence)
     SUSPICIOUS_PATTERNS = {
         'address_indicator': re.compile(
-            r'\b(?:\d+\s+)?(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\s+[A-Z][a-z]+',
+            # Matches "123 rue de" (French) or "123 Main Street" (English)
+            r'\b\d+\s+\w+\s+(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\b'
+            r'|\b(?:\d+\s+)?(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\s+[A-Za-z]+',
             re.IGNORECASE
         ),
         'full_address': re.compile(
@@ -93,7 +95,7 @@ class PIIDetectionService:
             re.IGNORECASE
         ),
         'license': re.compile(
-            r'\b(?:driver\'s|driving|permis)\s*(?:license|licence)\s*(?:number|no|#)?[:\s]*[A-Z0-9]{5,15}',
+            r'\b(?:driver\'s|driving|permis)\s*(?:license|licence)\s*(?:number|no|#)?[:\s]*[A-Z0-9][A-Z0-9\-]{4,14}',
             re.IGNORECASE
         ),
     }

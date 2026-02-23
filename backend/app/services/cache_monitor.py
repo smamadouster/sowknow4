@@ -331,7 +331,7 @@ class CacheMonitor:
 
         with self._lock:
             for date, stats in self._daily_stats.items():
-                if date >= cutoff_date:
+                if date > cutoff_date:
                     total += stats.tokens_saved
 
         return total

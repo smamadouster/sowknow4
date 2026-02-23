@@ -577,6 +577,25 @@ async def list_documents(
         query.order_by(Document.created_at.desc()).offset(offset).limit(page_size).all()
     )
 
+    # Audit: log a summary entry when admin/superuser receives confidential documents
+    if current_user.role in [UserRole.ADMIN, UserRole.SUPERUSER]:
+        confidential_docs = [d for d in documents if d.bucket == DocumentBucket.CONFIDENTIAL]
+        if confidential_docs:
+            create_audit_log(
+                db=db,
+                user_id=current_user.id,
+                action=AuditAction.CONFIDENTIAL_ACCESSED,
+                resource_type="document_list",
+                resource_id=None,
+                details={
+                    "action": "list",
+                    "confidential_count": len(confidential_docs),
+                    "confidential_ids": [str(d.id) for d in confidential_docs],
+                    "page": page,
+                    "bucket_filter": bucket,
+                },
+            )
+
     return DocumentListResponse(
         documents=[DocumentResponse.model_validate(doc) for doc in documents],
         total=total,

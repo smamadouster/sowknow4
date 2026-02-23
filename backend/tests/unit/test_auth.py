@@ -19,8 +19,8 @@ def test_register_success(client: TestClient):
         json={
             "email": "newuser@example.com",
             "password": "SecurePassword123!",  # Meets complexity requirements
-            "full_name": "New User"
-        }
+            "full_name": "New User",
+        },
     )
 
     assert response.status_code == 201
@@ -39,8 +39,8 @@ def test_register_password_too_short(client: TestClient):
         json={
             "email": "short@example.com",
             "password": "Short1!",  # Only 7 characters
-            "full_name": "Short Password"
-        }
+            "full_name": "Short Password",
+        },
     )
 
     assert response.status_code == 422  # Validation error
@@ -53,8 +53,8 @@ def test_register_password_no_uppercase(client: TestClient):
         json={
             "email": "noupper@example.com",
             "password": "lowercase123!",  # No uppercase
-            "full_name": "No Uppercase"
-        }
+            "full_name": "No Uppercase",
+        },
     )
 
     assert response.status_code == 422
@@ -67,8 +67,8 @@ def test_register_password_no_lowercase(client: TestClient):
         json={
             "email": "nolower@example.com",
             "password": "UPPERCASE123!",  # No lowercase
-            "full_name": "No Lowercase"
-        }
+            "full_name": "No Lowercase",
+        },
     )
 
     assert response.status_code == 422
@@ -81,8 +81,8 @@ def test_register_password_no_digit(client: TestClient):
         json={
             "email": "nodigit@example.com",
             "password": "NoDigitsHere!",  # No digits
-            "full_name": "No Digits"
-        }
+            "full_name": "No Digits",
+        },
     )
 
     assert response.status_code == 422
@@ -95,8 +95,8 @@ def test_register_password_no_special(client: TestClient):
         json={
             "email": "nospecial@example.com",
             "password": "NoSpecialChars123",  # No special character
-            "full_name": "No Special"
-        }
+            "full_name": "No Special",
+        },
     )
 
     assert response.status_code == 422
@@ -109,8 +109,8 @@ def test_register_duplicate_email(client: TestClient, test_user):
         json={
             "email": test_user.email,
             "password": "SecurePassword123!",
-            "full_name": "Duplicate User"
-        }
+            "full_name": "Duplicate User",
+        },
     )
 
     assert response.status_code == 400
@@ -129,7 +129,7 @@ def test_login_success(client: TestClient, db: Session):
         hashed_password=hashed,
         full_name="Login User",
         role="user",
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -137,11 +137,8 @@ def test_login_success(client: TestClient, db: Session):
     # Login with form data (OAuth2PasswordRequestForm format)
     response = client.post(
         "/api/v1/auth/login",
-        data={
-            "username": "login@example.com",
-            "password": password
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+        data={"username": "login@example.com", "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
     assert response.status_code == 200
@@ -165,11 +162,8 @@ def test_login_invalid_credentials(client: TestClient):
     """Test login with invalid credentials"""
     response = client.post(
         "/api/v1/auth/login",
-        data={
-            "username": "nonexistent@example.com",
-            "password": "anypassword"
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+        data={"username": "nonexistent@example.com", "password": "anypassword"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
     assert response.status_code == 401
@@ -180,11 +174,8 @@ def test_login_wrong_password(client: TestClient, test_user):
     """Test login with correct email but wrong password"""
     response = client.post(
         "/api/v1/auth/login",
-        data={
-            "username": test_user.email,
-            "password": "wrongpassword"
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+        data={"username": test_user.email, "password": "wrongpassword"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
     assert response.status_code == 401
@@ -203,7 +194,7 @@ def test_get_current_user_with_cookie(client: TestClient, db: Session):
         hashed_password=hashed,
         full_name="Cookie User",
         role="user",
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -211,11 +202,8 @@ def test_get_current_user_with_cookie(client: TestClient, db: Session):
     # Login to get cookies
     login_response = client.post(
         "/api/v1/auth/login",
-        data={
-            "username": "cookieuser@example.com",
-            "password": password
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+        data={"username": "cookieuser@example.com", "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
     # Extract cookies from login response
@@ -250,7 +238,7 @@ def test_logout(client: TestClient, db: Session):
         hashed_password=hashed,
         full_name="Logout User",
         role="user",
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -258,11 +246,8 @@ def test_logout(client: TestClient, db: Session):
     # Login
     login_response = client.post(
         "/api/v1/auth/login",
-        data={
-            "username": "logoutuser@example.com",
-            "password": password
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+        data={"username": "logoutuser@example.com", "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert login_response.status_code == 200
 
@@ -288,18 +273,15 @@ def test_cookie_attributes(client: TestClient, db: Session):
         hashed_password=hashed,
         full_name="Cookie Attr",
         role="user",
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
 
     response = client.post(
         "/api/v1/auth/login",
-        data={
-            "username": "cookieattr@example.com",
-            "password": password
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+        data={"username": "cookieattr@example.com", "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
     # Check cookie attributes (via Set-Cookie headers)
@@ -331,7 +313,7 @@ def test_refresh_token_with_cookie(client: TestClient, db: Session):
         hashed_password=hashed,
         full_name="Refresh User",
         role="user",
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -339,11 +321,8 @@ def test_refresh_token_with_cookie(client: TestClient, db: Session):
     # Login to get cookies
     login_response = client.post(
         "/api/v1/auth/login",
-        data={
-            "username": "refreshuser@example.com",
-            "password": password
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
+        data={"username": "refreshuser@example.com", "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
     # Get the original refresh token
@@ -372,7 +351,130 @@ def test_refresh_token_without_cookie(client: TestClient):
     # Clear any existing cookies by creating a new client
     from fastapi.testclient import TestClient
     from app.main import app
+
     new_client = TestClient(app)
 
     response = new_client.post("/api/v1/auth/refresh")
     assert response.status_code == 401
+
+
+def test_refresh_token_uses_current_role_from_db(client: TestClient, db: Session):
+    """
+    SECURITY TEST: Verify that token refresh uses the current role from database,
+    NOT the role from the old token payload.
+
+    This ensures that role changes (e.g., user promoted to admin) take effect
+    immediately on the next token refresh, without requiring logout/login.
+
+    Bug fix: Previously, the refresh endpoint copied the role from the old token
+    payload instead of fetching the current role from the database.
+    """
+    from app.models.user import User, UserRole
+    from app.utils.security import get_password_hash, decode_token
+
+    # Step 1: Create user with "user" role
+    password = "SecurePassword123!"
+    hashed = get_password_hash(password)
+    user = User(
+        email="rolechange@example.com",
+        hashed_password=hashed,
+        full_name="Role Change User",
+        role=UserRole.USER,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Verify initial role is "user"
+    assert user.role == UserRole.USER
+
+    # Step 2: Login to get tokens with "user" role
+    login_response = client.post(
+        "/api/v1/auth/login",
+        data={"username": "rolechange@example.com", "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert login_response.status_code == 200
+
+    # Step 3: Promote user to "admin" in database
+    user.role = UserRole.ADMIN
+    db.commit()
+    db.refresh(user)
+
+    # Verify role is now "admin"
+    assert user.role == UserRole.ADMIN
+
+    # Step 4: Call /refresh endpoint
+    refresh_response = client.post("/api/v1/auth/refresh")
+    assert refresh_response.status_code == 200
+    assert refresh_response.json()["message"] == "Token refreshed"
+
+    # Step 5: Verify the new access token has "admin" role
+    new_access_token = refresh_response.cookies.get("access_token")
+    assert new_access_token is not None
+
+    # Decode the new access token
+    payload = decode_token(new_access_token, expected_type="access")
+
+    # CRITICAL: The role should be "admin" (from DB), NOT "user" (from old token)
+    assert payload.get("role") == "admin", (
+        "SECURITY BUG: Token refresh did not update role from database. "
+        f"Expected 'admin', got '{payload.get('role')}'. "
+        "Role changes require logout/login to take effect."
+    )
+
+    # Also verify the response body shows the correct role
+    user_data = refresh_response.json()["user"]
+    assert user_data["role"] == "admin"
+
+
+def test_refresh_token_role_downgrade_from_db(client: TestClient, db: Session):
+    """
+    SECURITY TEST: Verify role downgrade also takes effect on refresh.
+
+    This tests the opposite direction - admin demoted to user.
+    """
+    from app.models.user import User, UserRole
+    from app.utils.security import get_password_hash, decode_token
+
+    # Step 1: Create user with "admin" role
+    password = "SecurePassword123!"
+    hashed = get_password_hash(password)
+    user = User(
+        email="roledowngrade@example.com",
+        hashed_password=hashed,
+        full_name="Role Downgrade User",
+        role=UserRole.ADMIN,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Step 2: Login to get tokens with "admin" role
+    login_response = client.post(
+        "/api/v1/auth/login",
+        data={"username": "roledowngrade@example.com", "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert login_response.status_code == 200
+
+    # Step 3: Demote user to "user" in database
+    user.role = UserRole.USER
+    db.commit()
+    db.refresh(user)
+
+    # Step 4: Call /refresh endpoint
+    refresh_response = client.post("/api/v1/auth/refresh")
+    assert refresh_response.status_code == 200
+
+    # Step 5: Verify the new access token has "user" role
+    new_access_token = refresh_response.cookies.get("access_token")
+    payload = decode_token(new_access_token, expected_type="access")
+
+    # The role should be "user" (from DB), NOT "admin" (from old token)
+    assert payload.get("role") == "user", (
+        "SECURITY BUG: Token refresh did not downgrade role from database. "
+        f"Expected 'user', got '{payload.get('role')}'."
+    )

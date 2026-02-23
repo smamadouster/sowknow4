@@ -5,7 +5,7 @@
 # CRITICAL - API Keys Configuration:
 # Before deployment, ensure these environment variables are set in .secrets or backend/.env.production:
 #   - GEMINI_API_KEY: Required for public document processing
-#   - HUNYUAN_SECRET_ID: Required for Hunyuan API authentication
+#   - OCR_ENGINE: OCR engine (paddle or tesseract)
 #   - POSTGRES_PASSWORD: Database password
 #   - REDIS_PASSWORD: Redis password
 #   - SECRET_KEY: JWT secret for authentication

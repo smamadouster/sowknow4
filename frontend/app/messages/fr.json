@@ -70,7 +70,7 @@
     "bucket_public": "Public",
     "bucket_confidential": "Confidentiel",
     "uploading": "Téléchargement en cours...",
-    "upload_success": "Document téléchargé avec succès",
+    "upload_success": "{filename} téléchargé avec succès",
     "upload_error": "Erreur lors du téléchargement",
     "filename": "Nom du fichier",
     "size": "Taille",
@@ -86,7 +86,16 @@
     "upload": "Télécharger",
     "no_documents": "Aucun document trouvé",
     "delete_confirm": "Êtes-vous sûr de vouloir supprimer ce document?",
-    "delete_success": "Document supprimé"
+    "delete_success": "Document supprimé",
+    "drop_files_here": "Déposez les fichiers ici pour télécharger",
+    "drag_drop_hint": "Glissez-déposez les fichiers ici ou cliquez pour sélectionner",
+    "max_file_size": "Taille max par fichier: {size}",
+    "max_batch_size": "Taille max du lot: {size}",
+    "upload_queue": "File d'attente ({count})",
+    "clear_completed": "Effacer terminés",
+    "upload_complete": "Téléchargement terminé",
+    "batch_upload_success": "{count} fichier(s) téléchargé(s) avec succès",
+    "batch_too_large": "Lot trop volumineux. Maximum {maxSize}, obtenu {actualSize}"
   },
   "search": {
     "title": "Recherche Sémantique",

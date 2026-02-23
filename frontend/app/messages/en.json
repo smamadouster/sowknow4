@@ -70,7 +70,7 @@
     "bucket_public": "Public",
     "bucket_confidential": "Confidential",
     "uploading": "Uploading...",
-    "upload_success": "Document uploaded successfully",
+    "upload_success": "{filename} uploaded successfully",
     "upload_error": "Upload error",
     "filename": "Filename",
     "size": "Size",
@@ -86,7 +86,16 @@
     "upload": "Upload",
     "no_documents": "No documents found",
     "delete_confirm": "Are you sure you want to delete this document?",
-    "delete_success": "Document deleted"
+    "delete_success": "Document deleted",
+    "drop_files_here": "Drop files here to upload",
+    "drag_drop_hint": "Drag and drop files here or click to select",
+    "max_file_size": "Max file size: {size}",
+    "max_batch_size": "Max batch size: {size}",
+    "upload_queue": "Upload Queue ({count})",
+    "clear_completed": "Clear completed",
+    "upload_complete": "Upload complete",
+    "batch_upload_success": "{count} file(s) uploaded successfully",
+    "batch_too_large": "Batch too large. Maximum {maxSize}, got {actualSize}"
   },
   "search": {
     "title": "Semantic Search",

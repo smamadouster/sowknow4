@@ -1,10 +1,10 @@
 # Project Configuration - SOWKNOW Multi-Generational Legacy Knowledge System
 
 ## CRITICAL RULES
-- **PRIVACY FIRST**: Zero PII ever sent to cloud APIs (Gemini Flash/Hunyuan-OCR)
+- **PRIVACY FIRST**: Zero PII ever sent to cloud APIs (MiniMax/Kimi/Hunyuan-OCR)
 - **CONFIDENTIAL ROUTING**: Auto-switch to shared Ollama when confidential documents detected
 - **VPS RESOURCE CONSTRAINTS**: Total SOWKNOW container memory <= 6.4GB (shared 16GB VPS)
-- **DUAL-LLM STRATEGY**: Gemini Flash for public docs, shared Ollama for confidential docs
+- **TRI-LLM STRATEGY**: MiniMax for public docs, Kimi for chatbot/telegram/search, Ollama for confidential docs
 - **ROLE-BASED ACCESS**: Strict RBAC with 3 roles: Admin (full), Super User (view all), User (public only)
 - **NO GPU**: OCR via Hunyuan API, embeddings via CPU with multilingual-e5-large
 - **FRENCH DEFAULT**: Interface defaults to French with full English support
@@ -13,9 +13,9 @@
 - **Project Type**: Privacy-first AI-powered legacy knowledge vault with conversational interface
 - **Primary Goal**: Transform 100GB+ of scattered digital life into queryable wisdom system
 - **Core Stack**: FastAPI + Next.js + PostgreSQL/pgvector + Celery + Redis
-- **AI Stack**: Gemini Flash (Google Generative AI API) + shared Ollama + multilingual-e5-large embeddings
+- **AI Stack**: MiniMax (public docs via OpenRouter) + Kimi (chatbot/telegram/search) + Ollama (confidential docs) + multilingual-e5-large embeddings
 - **Architecture**: Containerized microservices (8 containers) on shared Hostinger VPS
-- **Key Innovation**: Dual-LLM routing with automatic privacy protection for confidential docs; context caching for up to 80% cost reduction on repeated queries
+- **Key Innovation**: Tri-LLM routing with automatic privacy protection for confidential docs; MiniMax context caching for cost optimization
 
 ## DEVELOPMENT PATTERNS
 - **Frontend**: Next.js 14 PWA with TypeScript, Tailwind CSS, Zustand state management
@@ -32,14 +32,14 @@
 - **Parallel Execution**: Batch processing of documents (50+/hour), concurrent user limit: 5
 - **LLM Routing Logic**: Smart routing based on document context and user role
 - **Pipeline Orchestration**: Sequential document processing pipeline with status tracking
-- **Fallback Handling**: Tesseract OCR fallback, Gemini Flash retry logic, Ollama graceful degradation
+- **Fallback Handling**: Tesseract OCR fallback, MiniMax retry logic, Ollama graceful degradation
 
 ## MEMORY MANAGEMENT
 - **Context Storage**: PostgreSQL for all persistent data (vectors, chat history, metadata)
 - **Decision Tracking**: Audit logs for confidential access, LLM routing decisions logged
 - **Session Management**: Redis for chat sessions, JWT refresh tokens
 - **Embedding Cache**: multilingual-e5-large model loaded in Celery worker (1.3GB)
-- **Prompt Optimization**: Gemini Flash context caching for up to 80% cost reduction on repeated queries
+- **Prompt Optimization**: MiniMax context caching for cost optimization on repeated queries
 - **Knowledge Persistence**: Daily backups, encrypted cold storage, 7-4-3 retention policy
 
 ## DEPLOYMENT & CI/CD
@@ -53,9 +53,9 @@
 - **Admin Routes**: Administrative endpoints are located in main_minimal.py for security isolation
 
 ## MONITORING & ANALYTICS
-- **Performance Tracking**: Search latency (<3s Gemini, <8s Ollama), processing throughput (>50 docs/hour)
+- **Performance Tracking**: Search latency (<3s MiniMax/Kimi, <8s Ollama), processing throughput (>50 docs/hour)
 - **Error Monitoring**: 5xx error rate alerts (>5%), processing queue depth (>100)
-- **Cost Analytics**: Daily Gemini API cost tracking with cache hit-rate metrics, budget caps
+- **Cost Analytics**: Daily MiniMax/Kimi API cost tracking with cache hit-rate metrics, budget caps
 - **Quality Metrics**: OCR accuracy (>97%), search relevance (>90% satisfaction), cache hit-rate (>50% target)
 - **User Analytics**: Feature adoption (Smart Collections/Folders >3/5 users)
 - **System Health**: Daily anomaly reports (09:00 AM) for stuck processing jobs, cache effectiveness monitoring

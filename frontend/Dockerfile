@@ -11,9 +11,6 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Create public directory
-RUN mkdir -p public
-
 # Build the application
 RUN npm run build
 
@@ -29,11 +26,9 @@ RUN apk add --no-cache curl
 
 # Copy built application
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
-
-# Create public directory
-RUN mkdir -p /app/public
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

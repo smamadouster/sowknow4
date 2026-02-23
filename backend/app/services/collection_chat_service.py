@@ -1,9 +1,10 @@
 """
-Collection Chat Service for follow-up Q&A with context caching
+Collection Chat Service for follow-up Q&A
 
-Manages chat sessions scoped to specific collections with Gemini Flash
-context caching for cost optimization on recurring queries.
+Manages chat sessions scoped to specific collections with MiniMax 2.5
+for public documents and Ollama for confidential documents.
 """
+
 import logging
 import uuid
 import json
@@ -17,7 +18,7 @@ from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.models.user import User
 from app.models.document import Document
 from app.models.audit import AuditLog, AuditAction
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def create_audit_log(
     action: AuditAction,
     resource_type: str,
     resource_id: Optional[str] = None,
-    details: Optional[dict] = None
+    details: Optional[dict] = None,
 ):
     """Helper function to create audit log entries for confidential access"""
     try:
@@ -38,7 +39,7 @@ def create_audit_log(
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
-            details=json.dumps(details) if details else None
+            details=json.dumps(details) if details else None,
         )
         db.add(audit_entry)
         db.commit()
@@ -51,7 +52,7 @@ class CollectionChatService:
     """Service for collection-scoped chat with context caching"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self.ollama_service = ollama_service
 
     async def get_or_create_chat_session(
@@ -59,7 +60,7 @@ class CollectionChatService:
         collection_id: uuid.UUID,
         user: User,
         db: Session,
-        session_name: Optional[str] = None
+        session_name: Optional[str] = None,
     ) -> tuple[ChatSession, bool]:
         """
         Get existing chat session for collection or create new one
@@ -74,18 +75,18 @@ class CollectionChatService:
             Tuple of (ChatSession, created)
         """
         # Get collection
-        collection = db.query(Collection).filter(
-            Collection.id == collection_id
-        ).first()
+        collection = db.query(Collection).filter(Collection.id == collection_id).first()
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
         # Check for existing session
         if collection.chat_session_id:
-            session = db.query(ChatSession).filter(
-                ChatSession.id == collection.chat_session_id
-            ).first()
+            session = (
+                db.query(ChatSession)
+                .filter(ChatSession.id == collection.chat_session_id)
+                .first()
+            )
             if session:
                 return session, False
 
@@ -93,8 +94,8 @@ class CollectionChatService:
         session = ChatSession(
             user_id=user.id,
             title=session_name or f"Chat about {collection.name}",
-            model_preference=LLMProvider.GEMINI,
-            document_scope=[]  # Will be populated with collection documents
+            model_preference=LLMProvider.MINIMAX,
+            document_scope=[],  # Will be populated with collection documents
         )
 
         db.add(session)
@@ -108,7 +109,7 @@ class CollectionChatService:
             collection_id=collection_id,
             user_id=user.id,
             session_name=session_name,
-            llm_used="gemini"
+            llm_used="minimax",
         )
         db.add(collection_chat)
 
@@ -124,7 +125,7 @@ class CollectionChatService:
         message: str,
         user: User,
         db: Session,
-        session_name: Optional[str] = None
+        session_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Send message to collection-scoped chat
@@ -141,30 +142,28 @@ class CollectionChatService:
         """
         # Get or create chat session
         session, created = await self.get_or_create_chat_session(
-            collection_id=collection_id,
-            user=user,
-            db=db,
-            session_name=session_name
+            collection_id=collection_id, user=user, db=db, session_name=session_name
         )
 
         # Get collection documents for context
-        collection = db.query(Collection).filter(
-            Collection.id == collection_id
-        ).first()
+        collection = db.query(Collection).filter(Collection.id == collection_id).first()
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
         # Get collection items (documents with relevance)
         from app.models.collection import CollectionItem
-        collection_items = db.query(CollectionItem).filter(
-            CollectionItem.collection_id == collection_id
-        ).order_by(CollectionItem.relevance_score.desc()).limit(20).all()
+
+        collection_items = (
+            db.query(CollectionItem)
+            .filter(CollectionItem.collection_id == collection_id)
+            .order_by(CollectionItem.relevance_score.desc())
+            .limit(20)
+            .all()
+        )
 
         # Gather document context
-        document_context = await self._build_document_context(
-            collection_items, db
-        )
+        document_context = await self._build_document_context(collection_items, db)
 
         # Check for confidential documents
         has_confidential = any(
@@ -190,17 +189,19 @@ class CollectionChatService:
                     "collection_name": collection.name,
                     "confidential_document_count": len(confidential_docs),
                     "confidential_documents": confidential_docs,
-                    "action": "chat_with_collection"
-                }
+                    "action": "chat_with_collection",
+                },
             )
-            logger.info(f"CONFIDENTIAL_ACCESSED: User {user.email} accessed confidential documents in collection chat {collection_id}")
+            logger.info(
+                f"CONFIDENTIAL_ACCESSED: User {user.email} accessed confidential documents in collection chat {collection_id}"
+            )
 
         # Store user message
         user_msg = ChatMessage(
             session_id=session.id,
             role=MessageRole.USER,
             content=message,
-            llm_used=LLMProvider.OLLAMA if has_confidential else LLMProvider.GEMINI
+            llm_used=LLMProvider.OLLAMA if has_confidential else LLMProvider.MINIMAX,
         )
         db.add(user_msg)
         db.flush()
@@ -212,15 +213,15 @@ class CollectionChatService:
                 collection=collection,
                 document_context=document_context,
                 session=session,
-                db=db
+                db=db,
             )
         else:
-            response_data = await self._chat_with_gemini(
+            response_data = await self._chat_with_minimax(
                 message=message,
                 collection=collection,
                 document_context=document_context,
                 session=session,
-                db=db
+                db=db,
             )
 
         # Store assistant message
@@ -232,7 +233,7 @@ class CollectionChatService:
             sources=response_data.get("sources"),
             prompt_tokens=response_data.get("prompt_tokens"),
             completion_tokens=response_data.get("completion_tokens"),
-            total_tokens=response_data.get("total_tokens")
+            total_tokens=response_data.get("total_tokens"),
         )
         db.add(assistant_msg)
 
@@ -240,9 +241,11 @@ class CollectionChatService:
         session.title = session.title  # Triggers updated_at
 
         # Update collection chat stats
-        collection_chat = db.query(CollectionChatSession).filter(
-            CollectionChatSession.collection_id == collection_id
-        ).first()
+        collection_chat = (
+            db.query(CollectionChatSession)
+            .filter(CollectionChatSession.collection_id == collection_id)
+            .first()
+        )
         if collection_chat:
             collection_chat.message_count += 1
             collection_chat.llm_used = response_data["llm_used"]
@@ -256,13 +259,11 @@ class CollectionChatService:
             "response": response_data["response"],
             "sources": response_data.get("sources", []),
             "llm_used": response_data["llm_used"],
-            "cache_hit": response_data.get("cache_hit", False)
+            "cache_hit": response_data.get("cache_hit", False),
         }
 
     async def _build_document_context(
-        self,
-        collection_items: List[Any],
-        db: Session
+        self, collection_items: List[Any], db: Session
     ) -> List[Dict[str, Any]]:
         """Build document context from collection items"""
         context = []
@@ -273,9 +274,13 @@ class CollectionChatService:
 
             # Get document chunks for better context
             from app.models.document import DocumentChunk
-            chunks = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == item.document_id
-            ).limit(3).all()  # Top 3 chunks per document
+
+            chunks = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == item.document_id)
+                .limit(3)
+                .all()
+            )  # Top 3 chunks per document
 
             doc_info = {
                 "id": str(item.document.id),
@@ -283,26 +288,23 @@ class CollectionChatService:
                 "created_at": item.document.created_at.isoformat(),
                 "relevance": item.relevance_score,
                 "chunks": [
-                    {
-                        "text": chunk.chunk_text[:500],
-                        "page": chunk.page_number
-                    }
+                    {"text": chunk.chunk_text[:500], "page": chunk.page_number}
                     for chunk in chunks
-                ]
+                ],
             }
             context.append(doc_info)
 
         return context
 
-    async def _chat_with_gemini(
+    async def _chat_with_minimax(
         self,
         message: str,
         collection: Collection,
         document_context: List[Dict[str, Any]],
         session: ChatSession,
-        db: Session
+        db: Session,
     ) -> Dict[str, Any]:
-        """Chat with Gemini Flash with context caching"""
+        """Chat with MiniMax for public collections"""
 
         # Build system prompt with collection context
         system_prompt = f"""You are SOWKNOW, a helpful assistant for a document collection called "{collection.name}".
@@ -321,14 +323,20 @@ When answering:
         # Build document context text
         context_parts = []
         for doc in document_context:
-            chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc['chunks']])
+            chunk_text = chr(10).join(
+                [f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]]
+            )
             context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
         context_text = "\n\n".join(context_parts)
 
         # Get conversation history
-        history = db.query(ChatMessage).filter(
-            ChatMessage.session_id == session.id
-        ).order_by(ChatMessage.created_at).limit(10).all()
+        history = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session.id)
+            .order_by(ChatMessage.created_at)
+            .limit(10)
+            .all()
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -340,33 +348,21 @@ When answering:
             messages.append({"role": role, "content": msg.content})
 
         # Add current message with document context
-        messages.append({
-            "role": "user",
-            "content": f"Documents context:\n{context_text}\n\nUser question: {message}"
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": f"Documents context:\n{context_text}\n\nUser question: {message}",
+            }
+        )
 
-        # Generate response with OpenRouter (MiniMax) for public collections
+        # Generate response with MiniMax for public collections
         response_parts = []
-        usage_metadata = {}
 
-        # Use OpenRouter for public documents instead of direct Gemini
-        from app.services.openrouter_service import openrouter_service
-        async for chunk in openrouter_service.chat_completion(
-            messages=messages,
-            stream=False,
-            temperature=0.7,
-            max_tokens=2048
+        async for chunk in self.minimax_service.chat_completion(
+            messages=messages, stream=False, temperature=0.7, max_tokens=2048
         ):
             if chunk and not chunk.startswith("Error:"):
-                if chunk.startswith("__USAGE__"):
-                    import json
-                    try:
-                        usage_json = chunk.replace("__USAGE__: ", "")
-                        usage_metadata = json.loads(usage_json)
-                    except:
-                        pass
-                else:
-                    response_parts.append(chunk)
+                response_parts.append(chunk)
 
         response_text = "".join(response_parts).strip()
 
@@ -375,7 +371,7 @@ When answering:
             {
                 "document_id": doc["id"],
                 "filename": doc["filename"],
-                "relevance": doc["relevance"]
+                "relevance": doc["relevance"],
             }
             for doc in document_context[:5]
         ]
@@ -383,10 +379,7 @@ When answering:
         return {
             "response": response_text,
             "sources": sources,
-            "llm_used": "openrouter",
-            "prompt_tokens": usage_metadata.get("prompt_tokens"),
-            "completion_tokens": usage_metadata.get("completion_tokens"),
-            "total_tokens": usage_metadata.get("total_tokens")
+            "llm_used": "minimax",
         }
 
     async def _chat_with_ollama(
@@ -395,18 +388,15 @@ When answering:
         collection: Collection,
         document_context: List[Dict[str, Any]],
         session: ChatSession,
-        db: Session
+        db: Session,
     ) -> Dict[str, Any]:
         """Chat with Ollama for confidential collections"""
 
         # Build prompt
-        context_text = "\n\n".join([
-            f"- {doc['filename']}"
-            for doc in document_context
-        ])
+        context_text = "\n\n".join([f"- {doc['filename']}" for doc in document_context])
 
         prompt = f"""Collection: {collection.name}
-Summary: {collection.ai_summary or 'No summary'}
+Summary: {collection.ai_summary or "No summary"}
 
 Available documents:
 {context_text}
@@ -420,14 +410,11 @@ Answer based on the available documents. If you don't have enough information, s
             response_text = await self.ollama_service.generate(
                 prompt=prompt,
                 system="You are SOWKNOW, a helpful document assistant.",
-                temperature=0.7
+                temperature=0.7,
             )
 
             sources = [
-                {
-                    "document_id": doc["id"],
-                    "filename": doc["filename"]
-                }
+                {"document_id": doc["id"], "filename": doc["filename"]}
                 for doc in document_context[:5]
             ]
 
@@ -435,7 +422,7 @@ Answer based on the available documents. If you don't have enough information, s
                 "response": response_text,
                 "sources": sources,
                 "llm_used": "ollama",
-                "cache_hit": False
+                "cache_hit": False,
             }
 
         except Exception as e:
@@ -444,7 +431,7 @@ Answer based on the available documents. If you don't have enough information, s
                 "response": "I'm sorry, I couldn't process your question. The local LLM may be unavailable.",
                 "sources": [],
                 "llm_used": "ollama",
-                "cache_hit": False
+                "cache_hit": False,
             }
 
 

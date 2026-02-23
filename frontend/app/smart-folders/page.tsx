@@ -248,7 +248,7 @@ export default function SmartFoldersPage() {
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {result.word_count} words • Generated with{" "}
-                    {result.llm_used === "gemini" ? "Gemini Flash" : "Ollama"}
+                    {result.llm_used === "minimax" ? "MiniMax" : "Ollama"}
                   </p>
                 </div>
                 <div className="flex gap-2">

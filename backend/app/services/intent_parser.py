@@ -1,7 +1,7 @@
 """
 Intent Parser Service for Smart Collections
 
-Uses Gemini Flash to extract structured intent from natural language queries,
+Uses MiniMax to extract structured intent from natural language queries,
 including keywords, date ranges, entities, and document types.
 """
 import os
@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 import re
 
-from app.services.gemini_service import gemini_service, GeminiUsageMetadata
+from app.services.minimax_service import minimax_service
 from app.models.user import UserRole
 
 logger = logging.getLogger(__name__)
@@ -154,7 +154,7 @@ class IntentParserService:
     """Service for parsing natural language queries into structured intent"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self._intent_prompt_template = self._get_intent_prompt_template()
         
         # Lazy imports for routing

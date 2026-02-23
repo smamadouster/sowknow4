@@ -8,8 +8,8 @@ import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
-from app.services.gemini_service import gemini_service
 from app.services.ollama_service import ollama_service
+from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,8 @@ class AnswerAgent:
     """
 
     def __init__(self):
-        self.gemini_service = gemini_service
         self.ollama_service = ollama_service
+        self.minimax_service = minimax_service
 
     def _has_confidential_documents(self, findings: List[Dict[str, Any]]) -> bool:
         """Check if any findings contain confidential documents"""
@@ -76,7 +76,7 @@ class AnswerAgent:
         if self._has_confidential_documents(findings):
             logger.info("Answer: Using Ollama for confidential documents")
             return self.ollama_service
-        return self.gemini_service
+        return self.minimax_service
 
     async def generate_answer(
         self,
@@ -96,7 +96,7 @@ class AnswerAgent:
         self._use_ollama = self._has_confidential_documents(all_findings)
         if self._use_ollama:
             logger.info("AnswerAgent: Using Ollama for confidential documents")
-        self._llm_service = self.ollama_service if self._use_ollama else self.gemini_service
+        self._llm_service = self.ollama_service if self._use_ollama else self.minimax_service
 
         try:
             # Step 1: Analyze what type of answer is needed
@@ -143,7 +143,7 @@ class AnswerAgent:
             )
 
             # Determine which LLM was used
-            llm_used = "ollama" if self._use_ollama else "gemini"
+            llm_used = "ollama" if self._use_ollama else "minimax"
 
             return AnswerResult(
                 query=request.query,

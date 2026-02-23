@@ -413,3 +413,90 @@ def check_api_costs(daily_budget_threshold: float = 5.0):
         logger.warning(f"API cost at 80% of budget: ${daily_cost:.2f} / ${daily_budget:.2f}")
 
     return result
+
+
+@shared_task(name="app.tasks.anomaly_tasks.recover_stuck_documents")
+def recover_stuck_documents(max_processing_minutes: int = 15):
+    """
+    Find and recover documents stuck in 'processing' state for too long.
+    This handles cases where a Celery worker crashed or was killed.
+
+    Args:
+        max_processing_minutes: Maximum time a document should be in processing state
+
+    Returns:
+        dict with recovery results
+    """
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentStatus
+    from app.models.processing import ProcessingQueue, TaskStatus
+    from app.tasks.document_tasks import process_document
+
+    db = SessionLocal()
+    recovered = []
+    failed = []
+
+    try:
+        cutoff_time = datetime.utcnow() - timedelta(minutes=max_processing_minutes)
+
+        # Find documents stuck in processing state
+        stuck_documents = db.query(Document).filter(
+            Document.status == DocumentStatus.PROCESSING,
+            Document.updated_at < cutoff_time
+        ).all()
+
+        for doc in stuck_documents:
+            try:
+                # Get processing task info
+                processing_task = db.query(ProcessingQueue).filter(
+                    ProcessingQueue.document_id == doc.id
+                ).first()
+
+                # Check if this is a real stuck document or just slow processing
+                stuck_duration = (datetime.utcnow() - doc.updated_at).total_seconds() / 60
+
+                logger.warning(
+                    f"Document {doc.id} ({doc.filename}) stuck in processing for "
+                    f"{stuck_duration:.1f} minutes"
+                )
+
+                # Reset document to pending state for reprocessing
+                doc.status = DocumentStatus.PENDING
+                metadata = doc.document_metadata or {}
+                metadata["recovered_from_stuck"] = True
+                metadata["stuck_duration_minutes"] = stuck_duration
+                metadata["recovered_at"] = datetime.utcnow().isoformat()
+                doc.document_metadata = metadata
+
+                if processing_task:
+                    processing_task.status = TaskStatus.PENDING
+                    processing_task.error_message = f"Recovered from stuck state after {stuck_duration:.1f} minutes"
+                    processing_task.retry_count = 0  # Reset retry count
+
+                db.commit()
+
+                # Re-queue the document for processing
+                process_document.delay(str(doc.id))
+
+                recovered.append({
+                    "document_id": str(doc.id),
+                    "filename": doc.filename,
+                    "stuck_duration_minutes": round(stuck_duration, 1),
+                })
+
+                logger.info(f"Re-queued stuck document {doc.id} for processing")
+
+            except Exception as e:
+                logger.error(f"Failed to recover document {doc.id}: {e}")
+                failed.append({"document_id": str(doc.id), "error": str(e)})
+
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "max_processing_minutes": max_processing_minutes,
+            "stuck_count": len(stuck_documents),
+            "recovered": recovered,
+            "failed": failed,
+        }
+
+    finally:
+        db.close()

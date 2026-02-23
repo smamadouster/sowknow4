@@ -14,7 +14,7 @@ from collections import defaultdict
 from app.models.user import User
 from app.models.knowledge_graph import Entity, EntityRelationship, TimelineEvent
 from app.models.document import DocumentBucket
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class ProgressiveRevelationService:
     """Service for progressive information disclosure"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self._ollama_service = None
         self._openrouter_service = None
     

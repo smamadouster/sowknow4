@@ -27,7 +27,7 @@ from app.schemas.collection import (
 )
 from app.services.intent_parser import intent_parser_service, ParsedIntent as ParsedIntentModel
 from app.services.search_service import search_service
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class CollectionService:
     def __init__(self):
         self.intent_parser = intent_parser_service
         self.search_service = search_service
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self.ollama_service = ollama_service
 
     def _get_user_visibility_filter(self, user: User) -> List[CollectionVisibility]:

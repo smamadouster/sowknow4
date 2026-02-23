@@ -4,6 +4,7 @@ Performance Tuning Service for SOWKNOW
 Optimizes embedding batch processing, Gemini context caching,
 and provides memory profiling recommendations.
 """
+
 import logging
 import time
 import psutil
@@ -28,8 +29,8 @@ class PerformanceMetrics:
         self.cache_hit_rate = 0.0
         self.memory_usage = 0
         self.memory_available = 0
-        self.gemini_avg_latency = 0.0
-        self.gemini_cache_hit_rate = 0.0
+        self.minimax_avg_latency = 0.0
+        self.minimax_cache_hit_rate = 0.0
 
 
 class PerformanceTuningService:
@@ -56,7 +57,7 @@ class PerformanceTuningService:
         cpu_percent = process.cpu_percent(interval=1)
 
         # Disk metrics
-        disk_usage = psutil.disk_usage('/')
+        disk_usage = psutil.disk_usage("/")
 
         # Get embedding stats
         embedding_stats = await self._get_embedding_stats()
@@ -64,28 +65,28 @@ class PerformanceTuningService:
         # Get cache stats
         cache_stats = await self._get_cache_stats()
 
-        # Get Gemini stats
-        gemini_stats = await self._get_gemini_stats()
+        # Get MiniMax stats
+        minimax_stats = await self._get_minimax_stats()
 
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "memory": {
                 "used_mb": round(memory_info.rss / 1024 / 1024, 2),
                 "percent": round(memory_percent, 2),
-                "available_mb": round(psutil.virtual_memory().available / 1024 / 1024, 2)
+                "available_mb": round(
+                    psutil.virtual_memory().available / 1024 / 1024, 2
+                ),
             },
-            "cpu": {
-                "percent": round(cpu_percent, 2)
-            },
+            "cpu": {"percent": round(cpu_percent, 2)},
             "disk": {
                 "used_gb": round(disk_usage.used / (1024**3), 2),
                 "free_gb": round(disk_usage.free / (1024**3), 2),
-                "percent": round(disk_usage.percent, 2)
+                "percent": round(disk_usage.percent, 2),
             },
             "embeddings": embedding_stats,
             "cache": cache_stats,
-            "gemini": gemini_stats,
-            "recommendations": await self._generate_recommendations()
+            "minimax": minimax_stats,
+            "recommendations": await self._generate_recommendations(),
         }
 
     async def _get_embedding_stats(self) -> Dict[str, Any]:
@@ -96,7 +97,7 @@ class PerformanceTuningService:
             "batch_size": 10,
             "avg_time_per_batch": 5.2,  # seconds
             "chunks_processed": 0,
-            "queue_depth": 0
+            "queue_depth": 0,
         }
 
     async def _get_cache_stats(self) -> Dict[str, Any]:
@@ -106,11 +107,11 @@ class PerformanceTuningService:
             "hit_rate": stats.get("hit_rate", 0.0),
             "total_hits": stats.get("total_hits", 0),
             "total_misses": stats.get("total_misses", 0),
-            "total_cached_tokens": stats.get("total_cached_tokens", 0)
+            "total_cached_tokens": stats.get("total_cached_tokens", 0),
         }
 
-    async def _get_gemini_stats(self) -> Dict[str, Any]:
-        """Get Gemini API performance statistics"""
+    async def _get_minimax_stats(self) -> Dict[str, Any]:
+        """Get MiniMax API performance statistics"""
         # Calculate average latency from recent chat sessions
         return {
             "avg_latency_ms": 1200,
@@ -118,7 +119,7 @@ class PerformanceTuningService:
             "p95_latency": 2000,
             "p99_latency": 3500,
             "total_requests": 0,
-            "error_rate": 0.0
+            "error_rate": 0.0,
         }
 
     async def _generate_recommendations(self) -> List[str]:
@@ -152,9 +153,7 @@ class PerformanceTuningService:
         return recommendations
 
     async def optimize_embedding_batch_size(
-        self,
-        db: Session,
-        target_memory_mb: int = 1200
+        self, db: Session, target_memory_mb: int = 1200
     ) -> Dict[str, Any]:
         """
         Determine optimal embedding batch size based on available memory
@@ -167,14 +166,17 @@ class PerformanceTuningService:
             Dictionary with recommended batch size
         """
         process = psutil.Process()
-        available_mb = (psutil.virtual_memory().available / 1024 / 1024)
+        available_mb = psutil.virtual_memory().available / 1024 / 1024
 
         # Estimate memory per embedding
         # multilingual-e5-large model is ~1.3GB loaded
         # Each embedding vector is ~4KB (1024 dims * 4 bytes)
 
         # Conservative estimate: allow 50% of available memory for batch
-        usable_mb = min(available_mb * 0.5, target_memory_mb - process.memory_info().rss / 1024 / 1024)
+        usable_mb = min(
+            available_mb * 0.5,
+            target_memory_mb - process.memory_info().rss / 1024 / 1024,
+        )
 
         # Assume ~50MB overhead per batch (model inference)
         batch_size = max(1, min(100, int(usable_mb / 50)))
@@ -184,13 +186,11 @@ class PerformanceTuningService:
             "estimated_memory_per_batch_mb": round(batch_size * 50 / 1024 / 1024, 2),
             "available_memory_mb": round(available_mb, 2),
             "reasoning": f"With {round(available_mb)}MB available, batch size of {batch_size} "
-                       f"is recommended for optimal throughput."
+            f"is recommended for optimal throughput.",
         }
 
-    async def optimize_gemini_cache(
-        self,
-        db: Session,
-        collection_id: str = None
+    async def optimize_minimax_cache(
+        self, db: Session, collection_id: str = None
     ) -> Dict[str, Any]:
         """
         Optimize Gemini context caching for collections
@@ -206,9 +206,7 @@ class PerformanceTuningService:
         from app.models.collection import Collection
         from sqlalchemy import desc
 
-        query = db.query(Collection).order_by(
-            desc(Collection.document_count)
-        )
+        query = db.query(Collection).order_by(desc(Collection.document_count))
 
         if collection_id:
             query = query.filter(Collection.id == collection_id)
@@ -222,17 +220,19 @@ class PerformanceTuningService:
             document_count = collection.document_count
 
             if document_count > 20 and access_frequency > 0.5:
-                recommendations.append({
-                    "collection_id": str(collection.id),
-                    "collection_name": collection.name,
-                    "should_cache": True,
-                    "reason": f"Has {document_count} documents with high access frequency",
-                    "estimated_savings": f"60-80% on recurring queries"
-                })
+                recommendations.append(
+                    {
+                        "collection_id": str(collection.id),
+                        "collection_name": collection.name,
+                        "should_cache": True,
+                        "reason": f"Has {document_count} documents with high access frequency",
+                        "estimated_savings": f"60-80% on recurring queries",
+                    }
+                )
 
         return {
             "collections_analyzed": len(collections),
-            "recommendations": recommendations
+            "recommendations": recommendations,
         }
 
     async def profile_embedding_memory(self, db: Session) -> Dict[str, Any]:
@@ -255,6 +255,7 @@ class PerformanceTuningService:
         model_memory_mb = 0
         try:
             import sentence_transformers
+
             # Model would be loaded in worker process
             model_memory_mb = 1300  # e5-large approximate
         except ImportError:
@@ -269,7 +270,7 @@ class PerformanceTuningService:
                 "Memory usage is within acceptable range."
                 if embedding_storage_mb + model_memory_mb < 1400
                 else "Consider switching to e5-base model."
-            )
+            ),
         }
 
     async def get_cost_analysis(self, days: int = 7) -> Dict[str, Any]:
@@ -305,16 +306,20 @@ class PerformanceTuningService:
             "period_days": days,
             "total_cost_usd": round(total_cost, 4),
             "cache_savings_usd": round(cache_savings, 4),
-            "savings_percentage": round((cache_savings / savings_without_cache * 100), 1) if savings_without_cache > 0 else 0,
+            "savings_percentage": round(
+                (cache_savings / savings_without_cache * 100), 1
+            )
+            if savings_without_cache > 0
+            else 0,
             "breakdown": {
                 "input_tokens": total_tokens - cached_tokens,
                 "cached_tokens": cached_tokens,
                 "completion_tokens": stats.get("total_completion_tokens", 0),
                 "input_cost": round(input_cost, 4),
                 "cached_cost": round(cached_cost, 4),
-                "output_cost": round(output_cost, 4)
+                "output_cost": round(output_cost, 4),
             },
-            "daily_average": round(total_cost / days, 4) if days > 0 else 0
+            "daily_average": round(total_cost / days, 4) if days > 0 else 0,
         }
 
 

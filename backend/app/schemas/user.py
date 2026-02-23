@@ -92,8 +92,10 @@ class UserInDB(UserBase):
         from_attributes = True
 
 
-class UserPublic(UserBase):
+class UserPublic(BaseModel):
     id: str
+    email: str  # Use str instead of EmailStr to allow internal domains like .local
+    full_name: Optional[str] = None
     role: UserRole
 
     @field_validator('id', mode='before')

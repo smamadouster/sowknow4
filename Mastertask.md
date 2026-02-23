@@ -7841,3 +7841,86 @@ tests/unit/test_documents.py::test_batch_upload_no_files PASSED
   - Empty files list validation
 
 **Status:** ✅ COMPLETE
+
+---
+
+## Phase 10: COMPLETED - At-Rest Encryption for Document Storage
+**Started:** 2026-02-23
+**Status:** ✅ COMPLETE
+
+### Task Summary
+
+Implemented Fernet symmetric encryption for confidential documents at rest in `storage_service.py`:
+
+| File | Changes | Status |
+|------|---------|--------|
+| `backend/app/services/storage_service.py` | Added Fernet encryption for confidential documents | ✅ |
+| `scripts/encrypt_confidential_documents.py` | One-time migration script | ✅ |
+| `backend/tests/unit/test_storage_encryption.py` | 25 encryption tests | ✅ |
+
+### Implementation Details
+
+**Environment Variables:**
+- `STORAGE_ENCRYPTION_KEY`: Fernet key (base64 32 bytes) or password for derivation
+- `STORAGE_ENCRYPTION_SALT`: Optional salt for key derivation
+
+**Encryption Features:**
+- Confidential documents are encrypted using Fernet symmetric encryption
+- Public documents remain unencrypted for performance
+- Encryption key loaded from `STORAGE_ENCRYPTION_KEY` environment variable
+- Supports key derivation from password using PBKDF2
+- Auto-detects encrypted files by `.encrypted` extension
+
+**API Changes:**
+- `save_file()`: Encrypts confidential files automatically
+- `get_file()`: Auto-decrypts encrypted files
+- `get_file_plaintext()`: Returns raw content without decryption
+- `encrypt_file()`: Encrypts existing files in place
+- `decrypt_file()`: Decrypts files in place (rollback)
+- `needs_migration()`: Checks if files need encryption
+
+**Migration Script:**
+- One-time script to encrypt existing confidential documents
+- Supports `--dry-run` for testing
+- Supports `--limit` for batch processing
+- Supports `--rollback` for emergency decryption
+- Updates database with encryption metadata
+
+### Test Results
+
+```
+tests/unit/test_storage_encryption.py - 25 tests PASSED
+
+Test Categories:
+- Encryption key management (4 tests)
+- StorageService encryption (16 tests)
+- Key derivation (3 tests)
+- Integration tests (2 tests)
+```
+
+**Key Test Coverage:**
+- Encrypt/decrypt round-trip for confidential documents
+- Public documents remain unencrypted
+- Graceful degradation when encryption key unavailable
+- Migration detection and execution
+- Error handling for invalid tokens/keys
+- Key derivation from password consistency
+
+### Configuration for Production
+
+```bash
+# Generate a Fernet key
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Or use a password (less secure)
+export STORAGE_ENCRYPTION_KEY="your_secure_password"
+export STORAGE_ENCRYPTION_SALT="unique_salt_for_this_instance"
+
+# Run migration
+python scripts/encrypt_confidential_documents.py --limit 100
+
+# Verify
+python scripts/encrypt_confidential_documents.py --verify
+```
+
+**Status:** ✅ COMPLETE

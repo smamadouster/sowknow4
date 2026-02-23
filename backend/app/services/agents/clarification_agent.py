@@ -9,8 +9,8 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel
 
-from app.services.gemini_service import gemini_service
 from app.services.ollama_service import ollama_service
+from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,11 @@ class ClarificationRequest:
     context: Optional[str] = None
     conversation_history: Optional[List[Dict[str, str]]] = None
     user_preferences: Optional[Dict[str, Any]] = None
+    # Sources from a prior retrieval step (used for auto-detecting confidential docs)
+    sources: Optional[List[Dict[str, Any]]] = None
+    # Explicit override: set to True when the caller already knows confidential
+    # content is involved (e.g. first-turn clarification with no sources yet)
+    has_confidential: bool = False
 
 
 @dataclass
@@ -54,32 +59,59 @@ class ClarificationAgent:
     """
 
     def __init__(self):
-        self.gemini_service = gemini_service
         self.ollama_service = ollama_service
+        self.minimax_service = minimax_service
 
-    def _get_llm_service(self, use_ollama: bool = False):
-        """Get appropriate LLM service based on confidentiality flag"""
-        if use_ollama:
+    def _has_confidential_documents(
+        self, sources: Optional[List[Dict[str, Any]]]
+    ) -> bool:
+        """Check if any sources contain confidential documents."""
+        if not sources:
+            return False
+        return any(
+            s.get("document_bucket") == "confidential" for s in sources
+        )
+
+    def _get_llm_service(self, request: "ClarificationRequest"):
+        """Select LLM based on document confidentiality.
+
+        Priority:
+        1. Any source in request.sources tagged as confidential → Ollama
+        2. request.has_confidential explicitly set to True → Ollama
+        3. Otherwise → MiniMax (public / general-chat)
+        """
+        if self._has_confidential_documents(request.sources) or request.has_confidential:
             logger.info("ClarificationAgent: Using Ollama for confidential context")
             return self.ollama_service
-        return self.gemini_service
+        return self.minimax_service
 
     async def clarify(
         self,
         request: ClarificationRequest,
-        use_ollama: bool = False
+        use_ollama: bool = False,  # kept for backward compatibility
     ) -> ClarificationResult:
         """
-        Analyze and potentially clarify a user query
+        Analyze and potentially clarify a user query.
+
+        Routing is determined automatically from ``request.sources`` /
+        ``request.has_confidential``.  The legacy ``use_ollama`` kwarg is
+        still accepted for backward compatibility but the request-level
+        flags take precedence.
 
         Args:
-            request: Clarification request with query and context
-            use_ollama: Set to True if confidential documents are involved
+            request: Clarification request with query, optional sources, and
+                     optional has_confidential flag.
+            use_ollama: Deprecated – set ``request.has_confidential = True``
+                        instead.  Still applied as a fallback override.
 
         Returns:
-            Clarification result with questions and assumptions
+            Clarification result with questions and assumptions.
         """
-        llm_service = self._get_llm_service(use_ollama)
+        # Merge legacy kwarg into request so _get_llm_service has a single path
+        if use_ollama:
+            request.has_confidential = True
+
+        llm_service = self._get_llm_service(request)
 
         # Build the messages for the LLM
         system_prompt = """You are the Clarification Agent for SOWKNOW. Analyze user queries to determine if they are clear enough to proceed.

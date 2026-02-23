@@ -1,7 +1,7 @@
 """
 Auto-Tagging Service for Document Ingestion
 
-Uses Gemini Flash to automatically extract topics, entities, importance,
+Uses MiniMax to automatically extract topics, entities, importance,
 and language from documents during the ingestion pipeline.
 """
 import logging
@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from app.models.document import Document, DocumentTag, DocumentLanguage, DocumentBucket
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class AutoTaggingService:
     """Service for automatic document tagging on ingestion"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self._ollama_service = None
         self._openrouter_service = None
     
@@ -62,7 +62,7 @@ class AutoTaggingService:
             if use_ollama:
                 tags_data = await self._extract_tags_with_ollama(analysis_text, document)
             else:
-                tags_data = await self._extract_tags_with_gemini(analysis_text, document)
+                tags_data = await self._extract_tags_with_minimax(analysis_text, document)
 
             if not tags_data:
                 logger.warning(f"No tags extracted for document {document.id}")
@@ -128,19 +128,19 @@ class AutoTaggingService:
             return []
 
     def _prepare_text_for_analysis(self, text: str, filename: str) -> str:
-        """Prepare text for Gemini analysis"""
+        """Prepare text for LLM analysis (MiniMax for public, Ollama for confidential)"""
         # Get first 3000 characters for analysis
         text_preview = text[:3000] if text else ""
 
         # Add filename context
         return f"Filename: {filename}\n\nContent:\n{text_preview}"
 
-    async def _extract_tags_with_gemini(
+    async def _extract_tags_with_minimax(
         self,
         text: str,
         document: Document
     ) -> Optional[Dict[str, Any]]:
-        """Extract tags using OpenRouter (MiniMax) for public documents"""
+        """Extract tags using MiniMax for public documents"""
 
         system_prompt = """You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:
 
@@ -177,8 +177,8 @@ Extract the tags now:"""
 
         try:
             response_parts = []
-            # Use OpenRouter (MiniMax) for public documents instead of direct Gemini
-            llm_service = self._get_openrouter_service()
+            # Use MiniMax for public documents
+            llm_service = self.minimax_service
             async for chunk in llm_service.chat_completion(
                 messages=messages,
                 stream=False,
@@ -198,7 +198,7 @@ Extract the tags now:"""
                 return json.loads(json_text)
 
         except Exception as e:
-            logger.error(f"OpenRouter tagging error: {e}")
+            logger.error(f"MiniMax tagging error: {e}")
 
         return None
 

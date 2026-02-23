@@ -1,9 +1,11 @@
 """
 Synthesis Pipeline Service for Knowledge Graph
 
-Uses Map-Reduce pattern with Gemini Flash to synthesize information
-from multiple documents, creating comprehensive insights and summaries.
+Uses Map-Reduce pattern with MiniMax (public documents) or Ollama
+(confidential documents) to synthesize information from multiple documents,
+creating comprehensive insights and summaries.
 """
+
 import logging
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
@@ -12,7 +14,7 @@ from collections import defaultdict
 
 from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.models.knowledge_graph import Entity, TimelineEvent
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +32,13 @@ class SynthesisRequest:
         max_length: int = 2000,
         include_timeline: bool = True,
         include_entities: bool = True,
-        include_sources: bool = True
+        include_sources: bool = True,
     ):
         self.topic = topic
         self.document_ids = document_ids
-        self.synthesis_type = synthesis_type  # comprehensive, brief, analytical, timeline
+        self.synthesis_type = (
+            synthesis_type  # comprehensive, brief, analytical, timeline
+        )
         self.style = style  # informative, professional, creative, casual
         self.language = language
         self.max_length = max_length
@@ -54,7 +58,7 @@ class SynthesisResult:
         sources: List[Dict[str, Any]],
         entities: List[Dict[str, Any]],
         timeline: Optional[List[Dict[str, Any]]] = None,
-        confidence: float = 0.8
+        confidence: float = 0.8,
     ):
         self.topic = topic
         self.synthesis = synthesis
@@ -70,19 +74,21 @@ class SynthesisPipelineService:
     """Service for map-reduce style synthesis of multiple documents"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self._ollama_service = None
         self._openrouter_service = None
-    
+
     def _get_ollama_service(self):
         if self._ollama_service is None:
             from app.services.ollama_service import ollama_service
+
             self._ollama_service = ollama_service
         return self._ollama_service
-    
+
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
             from app.services.openrouter_service import openrouter_service
+
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
@@ -90,7 +96,7 @@ class SynthesisPipelineService:
         self,
         request: SynthesisRequest,
         db: Session,
-        on_progress: Optional[Callable[[str, float], None]] = None
+        on_progress: Optional[Callable[[str, float], None]] = None,
     ) -> SynthesisResult:
         """
         Synthesize information from multiple documents using Map-Reduce
@@ -117,10 +123,7 @@ class SynthesisPipelineService:
                 on_progress("Extracting key information...", 0.3)
 
             mapped_results = await self._map_documents(
-                documents,
-                request.topic,
-                request.synthesis_type,
-                on_progress
+                documents, request.topic, request.synthesis_type, on_progress
             )
 
             # Step 3: Gather related entities if requested
@@ -149,14 +152,16 @@ class SynthesisPipelineService:
                 request.style,
                 request.language,
                 request.max_length,
-                documents
+                documents,
             )
 
             # Step 6: Extract key points
             if on_progress:
                 on_progress("Extracting key points...", 0.9)
 
-            key_points = await self._extract_key_points(synthesis, request.topic, documents)
+            key_points = await self._extract_key_points(
+                synthesis, request.topic, documents
+            )
 
             # Step 7: Prepare source citations
             sources = self._prepare_sources(documents, mapped_results)
@@ -171,7 +176,7 @@ class SynthesisPipelineService:
                 sources=sources,
                 entities=entities,
                 timeline=timeline if request.include_timeline else None,
-                confidence=self._calculate_confidence(mapped_results, len(documents))
+                confidence=self._calculate_confidence(mapped_results, len(documents)),
             )
 
         except Exception as e:
@@ -179,9 +184,7 @@ class SynthesisPipelineService:
             raise
 
     async def _fetch_documents(
-        self,
-        document_ids: List[str],
-        db: Session
+        self, document_ids: List[str], db: Session
     ) -> List[Document]:
         """Fetch documents from database"""
         documents = []
@@ -196,7 +199,7 @@ class SynthesisPipelineService:
         documents: List[Document],
         topic: str,
         synthesis_type: str,
-        on_progress: Optional[Callable[[str, float], None]] = None
+        on_progress: Optional[Callable[[str, float], None]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Map phase: Extract key information from each document
@@ -208,18 +211,18 @@ class SynthesisPipelineService:
         for i, doc in enumerate(documents):
             try:
                 # Get document chunks for content
-                chunks = db.query(DocumentChunk).filter(
-                    DocumentChunk.document_id == doc.id
-                ).limit(10).all()
+                chunks = (
+                    db.query(DocumentChunk)
+                    .filter(DocumentChunk.document_id == doc.id)
+                    .limit(10)
+                    .all()
+                )
 
                 content = "\n\n".join([c.chunk_text[:500] for c in chunks])
 
                 # Map this document
                 mapped = await self._map_single_document(
-                    doc,
-                    content,
-                    topic,
-                    synthesis_type
+                    doc, content, topic, synthesis_type
                 )
                 results.append(mapped)
 
@@ -229,20 +232,18 @@ class SynthesisPipelineService:
 
             except Exception as e:
                 logger.warning(f"Error mapping document {doc.id}: {e}")
-                results.append({
-                    "document_id": str(doc.id),
-                    "filename": doc.filename,
-                    "error": str(e)
-                })
+                results.append(
+                    {
+                        "document_id": str(doc.id),
+                        "filename": doc.filename,
+                        "error": str(e),
+                    }
+                )
 
         return results
 
     async def _map_single_document(
-        self,
-        doc: Document,
-        content: str,
-        topic: str,
-        synthesis_type: str
+        self, doc: Document, content: str, topic: str, synthesis_type: str
     ) -> Dict[str, Any]:
         """Extract key information from a single document"""
         system_prompt = f"""You are an expert information extractor for SOWKNOW.
@@ -261,7 +262,7 @@ Extract:
 Keep your extraction focused and concise. Return as structured JSON."""
 
         user_prompt = f"""Document: {doc.filename}
-Date: {doc.created_at.isoformat() if doc.created_at else 'Unknown'}
+Date: {doc.created_at.isoformat() if doc.created_at else "Unknown"}
 
 Content:
 {content[:3000]}
@@ -270,31 +271,37 @@ Extract all relevant information about "{topic}" from this document:"""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
             # Determine LLM routing based on document bucket
             use_ollama = doc.bucket == DocumentBucket.CONFIDENTIAL
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
-            
+            llm_service = (
+                self._get_ollama_service()
+                if use_ollama
+                else self._get_openrouter_service()
+            )
+
             response = []
             async for chunk in llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=1024
+                messages=messages, stream=False, temperature=0.3, max_tokens=1024
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             response_text = "".join(response).strip()
 
             # Try to parse as JSON
             import json
+
             try:
                 extracted = json.loads(self._extract_json(response_text))
-            except:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 # Fallback: treat as plain text
                 extracted = {"summary": response_text, "facts": []}
 
@@ -304,7 +311,7 @@ Extract all relevant information about "{topic}" from this document:"""
                 "bucket": doc.bucket,
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "extracted": extracted,
-                "content_length": len(content)
+                "content_length": len(content),
             }
 
         except Exception as e:
@@ -313,13 +320,11 @@ Extract all relevant information about "{topic}" from this document:"""
                 "document_id": str(doc.id),
                 "filename": doc.filename,
                 "bucket": doc.bucket,
-                "error": str(e)
+                "error": str(e),
             }
 
     async def _gather_entities(
-        self,
-        documents: List[Document],
-        db: Session
+        self, documents: List[Document], db: Session
     ) -> List[Dict[str, Any]]:
         """Gather entities mentioned in the documents"""
         from app.models.knowledge_graph import EntityMention
@@ -328,9 +333,11 @@ Extract all relevant information about "{topic}" from this document:"""
         entity_details = {}
 
         for doc in documents:
-            mentions = db.query(EntityMention).filter(
-                EntityMention.document_id == doc.id
-            ).all()
+            mentions = (
+                db.query(EntityMention)
+                .filter(EntityMention.document_id == doc.id)
+                .all()
+            )
 
             for mention in mentions:
                 entity_counts[mention.entity_id] += 1
@@ -342,14 +349,12 @@ Extract all relevant information about "{topic}" from this document:"""
                             "name": entity.name,
                             "type": entity.entity_type.value,
                             "aliases": entity.aliases,
-                            "attributes": entity.attributes
+                            "attributes": entity.attributes,
                         }
 
         # Sort by mention count
         sorted_entities = sorted(
-            entity_counts.items(),
-            key=lambda x: x[1],
-            reverse=True
+            entity_counts.items(), key=lambda x: x[1], reverse=True
         )
 
         return [
@@ -358,35 +363,36 @@ Extract all relevant information about "{topic}" from this document:"""
         ]
 
     async def _build_timeline(
-        self,
-        documents: List[Document],
-        db: Session
+        self, documents: List[Document], db: Session
     ) -> List[Dict[str, Any]]:
         """Build timeline from documents"""
         events_by_date = defaultdict(list)
 
         for doc in documents:
-            events = db.query(TimelineEvent).filter(
-                TimelineEvent.document_id == doc.id
-            ).all()
+            events = (
+                db.query(TimelineEvent)
+                .filter(TimelineEvent.document_id == doc.id)
+                .all()
+            )
 
             for event in events:
-                events_by_date[event.event_date].append({
-                    "id": str(event.id),
-                    "title": event.title,
-                    "description": event.description,
-                    "type": event.event_type,
-                    "importance": event.importance,
-                    "document_id": str(doc.id)
-                })
+                events_by_date[event.event_date].append(
+                    {
+                        "id": str(event.id),
+                        "title": event.title,
+                        "description": event.description,
+                        "type": event.event_type,
+                        "importance": event.importance,
+                        "document_id": str(doc.id),
+                    }
+                )
 
         # Sort by date
         sorted_timeline = []
         for date in sorted(events_by_date.keys()):
-            sorted_timeline.append({
-                "date": date.isoformat(),
-                "events": events_by_date[date]
-            })
+            sorted_timeline.append(
+                {"date": date.isoformat(), "events": events_by_date[date]}
+            )
 
         return sorted_timeline
 
@@ -399,7 +405,7 @@ Extract all relevant information about "{topic}" from this document:"""
         style: str,
         language: str,
         max_length: int,
-        documents: List[Document]
+        documents: List[Document],
     ) -> str:
         """
         Reduce phase: Synthesize all mapped information into a coherent summary
@@ -414,13 +420,13 @@ Extract all relevant information about "{topic}" from this document:"""
         use_ollama = any(
             r.get("bucket") == DocumentBucket.CONFIDENTIAL for r in successful
         )
-        
+
         # Build context
         context_parts = []
 
         # Add extracted information from each document
         for i, result in enumerate(successful):
-            context_parts.append(f"## Document {i+1}: {result['filename']}")
+            context_parts.append(f"## Document {i + 1}: {result['filename']}")
             if result.get("created_at"):
                 context_parts.append(f"Date: {result['created_at']}")
 
@@ -459,7 +465,7 @@ Extract all relevant information about "{topic}" from this document:"""
             "informative": "Write in a clear, educational style that explains the topic thoroughly",
             "professional": "Write in a formal business tone with professional language",
             "creative": "Write in an engaging, narrative style that captures interest",
-            "casual": "Write in a friendly, conversational tone"
+            "casual": "Write in a friendly, conversational tone",
         }
 
         system_prompt = f"""You are SOWKNOW's synthesis engine. Create a comprehensive synthesis about the topic.
@@ -484,21 +490,26 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
             # Determine LLM routing based on document bucket
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
-            
+            llm_service = (
+                self._get_ollama_service()
+                if use_ollama
+                else self._get_openrouter_service()
+            )
+
             response = []
             async for chunk in llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.7,
-                max_tokens=4096
+                messages=messages, stream=False, temperature=0.7, max_tokens=4096
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             return "".join(response).strip()
@@ -508,15 +519,12 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
             return f"Error synthesizing information: {str(e)}"
 
     async def _extract_key_points(
-        self,
-        synthesis: str,
-        topic: str,
-        documents: List[Document]
+        self, synthesis: str, topic: str, documents: List[Document]
     ) -> List[str]:
         """Extract key points from the synthesis"""
         # Determine bucket-based routing
         use_ollama = any(doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents)
-        
+
         system_prompt = """Extract the 3-7 most important key points from the text.
 Return as a JSON array of strings, each being a key point."""
 
@@ -529,35 +537,45 @@ Extract the key points:"""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
-            
+            llm_service = (
+                self._get_ollama_service()
+                if use_ollama
+                else self._get_openrouter_service()
+            )
+
             response = []
             async for chunk in llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=512
+                messages=messages, stream=False, temperature=0.3, max_tokens=512
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             response_text = "".join(response).strip()
 
             import json
+
             try:
                 key_points = json.loads(self._extract_json(response_text))
                 if isinstance(key_points, list):
                     return key_points[:7]
-            except:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 pass
 
             # Fallback: split by newlines
             lines = synthesis.split("\n")
-            points = [line.strip("- ").strip() for line in lines if line.strip().startswith(("- ", "•", "*"))]
+            points = [
+                line.strip("- ").strip()
+                for line in lines
+                if line.strip().startswith(("- ", "•", "*"))
+            ]
             return points[:7]
 
         except Exception as e:
@@ -565,27 +583,27 @@ Extract the key points:"""
             return []
 
     def _prepare_sources(
-        self,
-        documents: List[Document],
-        mapped_results: List[Dict[str, Any]]
+        self, documents: List[Document], mapped_results: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Prepare source citations"""
         sources = []
 
         for doc in documents:
-            sources.append({
-                "document_id": str(doc.id),
-                "filename": doc.filename,
-                "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                "mime_type": doc.mime_type
-            })
+            sources.append(
+                {
+                    "document_id": str(doc.id),
+                    "filename": doc.filename,
+                    "created_at": doc.created_at.isoformat()
+                    if doc.created_at
+                    else None,
+                    "mime_type": doc.mime_type,
+                }
+            )
 
         return sources
 
     def _calculate_confidence(
-        self,
-        mapped_results: List[Dict[str, Any]],
-        total_documents: int
+        self, mapped_results: List[Dict[str, Any]], total_documents: int
     ) -> float:
         """Calculate confidence score based on successful extractions"""
         successful = sum(1 for r in mapped_results if "error" not in r)
@@ -641,7 +659,7 @@ Extract the key points:"""
         self,
         requests: List[SynthesisRequest],
         db: Session,
-        on_progress: Optional[Callable[[int, int, str], None]] = None
+        on_progress: Optional[Callable[[int, int, str], None]] = None,
     ) -> List[SynthesisResult]:
         """
         Process multiple synthesis requests in batch
@@ -666,14 +684,16 @@ Extract the key points:"""
             except Exception as e:
                 logger.error(f"Error in batch synthesis {i}: {e}")
                 # Add error result
-                results.append(SynthesisResult(
-                    topic=request.topic,
-                    synthesis=f"Error: {str(e)}",
-                    key_points=[],
-                    sources=[],
-                    entities=[],
-                    confidence=0.0
-                ))
+                results.append(
+                    SynthesisResult(
+                        topic=request.topic,
+                        synthesis=f"Error: {str(e)}",
+                        key_points=[],
+                        sources=[],
+                        entities=[],
+                        confidence=0.0,
+                    )
+                )
 
         return results
 

@@ -1,9 +1,11 @@
 """
 Smart Folder Service for AI-generated content from documents
 
-Uses Gemini Flash to generate articles, reports, and synthesized content
-from gathered documents based on user-provided topics.
+Uses MiniMax (public documents) or Ollama (confidential documents) to
+generate articles, reports, and synthesized content from gathered documents
+based on user-provided topics.
 """
+
 import logging
 import uuid
 from typing import List, Dict, Any, Optional
@@ -15,11 +17,11 @@ from app.models.collection import (
     Collection,
     CollectionItem,
     CollectionType,
-    CollectionVisibility
+    CollectionVisibility,
 )
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 from app.services.search_service import search_service
 
@@ -30,7 +32,7 @@ class SmartFolderService:
     """Service for generating AI content from document collections"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self.ollama_service = ollama_service
         self.search_service = search_service
 
@@ -41,7 +43,7 @@ class SmartFolderService:
         length: str = "medium",
         include_confidential: bool = False,
         user: User = None,
-        db: Session = None
+        db: Session = None,
     ) -> Dict[str, Any]:
         """
         Generate a Smart Folder with AI-generated content
@@ -60,9 +62,13 @@ class SmartFolderService:
         # Search for relevant documents
         documents = await self._search_documents_for_topic(
             topic=topic,
-            include_confidential=include_confidential and (user.role in [UserRole.ADMIN, UserRole.SUPERUSER] or user.can_access_confidential),
+            include_confidential=include_confidential
+            and (
+                user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+                or user.can_access_confidential
+            ),
             user=user,
-            db=db
+            db=db,
         )
 
         if not documents:
@@ -71,13 +77,12 @@ class SmartFolderService:
                 "generated_content": f"No relevant documents found for topic: {topic}",
                 "sources_used": [],
                 "word_count": 0,
-                "llm_used": "none"
+                "llm_used": "none",
             }
 
         # Check if confidential documents are present
         has_confidential = any(
-            doc.bucket == DocumentBucket.CONFIDENTIAL
-            for doc in documents
+            doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents
         )
 
         # Gather document context
@@ -89,17 +94,17 @@ class SmartFolderService:
                 topic=topic,
                 document_context=document_context,
                 style=style,
-                length=length
+                length=length,
             )
             llm_used = "ollama"
         else:
-            generated = await self._generate_with_gemini(
+            generated = await self._generate_with_minimax(
                 topic=topic,
                 document_context=document_context,
                 style=style,
-                length=length
+                length=length,
             )
-            llm_used = "gemini"
+            llm_used = "minimax"
 
         # Create collection for the smart folder
         collection_name = f"Smart Folder: {topic[:50]}"
@@ -117,7 +122,7 @@ class SmartFolderService:
             ai_entities=[],
             filter_criteria={"topic": topic},
             document_count=len(documents),
-            last_refreshed_at=datetime.utcnow().isoformat()
+            last_refreshed_at=datetime.utcnow().isoformat(),
         )
 
         db.add(collection)
@@ -131,7 +136,7 @@ class SmartFolderService:
                 relevance_score=100 - (idx * 5),  # Decreasing relevance
                 order_index=idx,
                 added_by="ai",
-                added_reason=f"Smart Folder generation for: {topic}"
+                added_reason=f"Smart Folder generation for: {topic}",
             )
             db.add(item)
 
@@ -146,29 +151,21 @@ class SmartFolderService:
                 {
                     "id": str(doc.id),
                     "filename": doc.filename,
-                    "created_at": doc.created_at.isoformat()
+                    "created_at": doc.created_at.isoformat(),
                 }
                 for doc in documents[:10]
             ],
             "word_count": len(generated.split()),
-            "llm_used": llm_used
+            "llm_used": llm_used,
         }
 
     async def _search_documents_for_topic(
-        self,
-        topic: str,
-        include_confidential: bool,
-        user: User,
-        db: Session
+        self, topic: str, include_confidential: bool, user: User, db: Session
     ) -> List[Document]:
         """Search for documents relevant to the topic"""
         # Use hybrid search
         search_result = await self.search_service.hybrid_search(
-            query=topic,
-            limit=50,
-            offset=0,
-            db=db,
-            user=user
+            query=topic, limit=50, offset=0, db=db, user=user
         )
 
         # Extract unique document IDs
@@ -179,10 +176,7 @@ class SmartFolderService:
 
         # Fetch documents
         query = db.query(Document).filter(
-            and_(
-                Document.id.in_(doc_ids),
-                Document.status == DocumentStatus.INDEXED
-            )
+            and_(Document.id.in_(doc_ids), Document.status == DocumentStatus.INDEXED)
         )
 
         # Apply confidential filter
@@ -192,9 +186,7 @@ class SmartFolderService:
         return query.all()[:20]  # Top 20 documents
 
     async def _build_document_context(
-        self,
-        documents: List[Document],
-        db: Session
+        self, documents: List[Document], db: Session
     ) -> List[Dict[str, Any]]:
         """Build context from documents for content generation"""
         context = []
@@ -202,48 +194,51 @@ class SmartFolderService:
         for doc in documents[:10]:  # Top 10 documents
             from app.models.document import DocumentChunk
 
-            chunks = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == doc.id
-            ).order_by(DocumentChunk.chunk_index).limit(5).all()
+            chunks = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == doc.id)
+                .order_by(DocumentChunk.chunk_index)
+                .limit(5)
+                .all()
+            )
 
             doc_info = {
                 "filename": doc.filename,
                 "created_at": doc.created_at.isoformat(),
                 "chunks": [
-                    {
-                        "text": chunk.chunk_text,
-                        "page": chunk.page_number
-                    }
+                    {"text": chunk.chunk_text, "page": chunk.page_number}
                     for chunk in chunks
-                ]
+                ],
             }
             context.append(doc_info)
 
         return context
 
-    async def _generate_with_gemini(
+    async def _generate_with_minimax(
         self,
         topic: str,
         document_context: List[Dict[str, Any]],
         style: str,
-        length: str
+        length: str,
     ) -> str:
-        """Generate content using Gemini Flash"""
+        """Generate content using MiniMax"""
 
         # Build context text
-        context_text = "\n\n".join([
-            f"Document: {doc['filename']}\n" + "\n".join([
-                f"[Page {c['page']}]: {c['text'][:300]}..."
-                for c in doc['chunks']
-            ])
-            for doc in document_context
-        ])
+        context_text = "\n\n".join(
+            [
+                f"Document: {doc['filename']}\n"
+                + "\n".join(
+                    [f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]]
+                )
+                for doc in document_context
+            ]
+        )
 
         # Determine length constraint
         length_guide = {
             "short": "2-3 paragraphs",
             "medium": "4-6 paragraphs",
-            "long": "7-10 paragraphs"
+            "long": "7-10 paragraphs",
         }.get(length, "4-6 paragraphs")
 
         # Determine style guide
@@ -251,7 +246,7 @@ class SmartFolderService:
             "informative": "Write in an educational, informative tone. Explain concepts clearly.",
             "creative": "Write with creativity and engagement. Use vivid language and storytelling.",
             "professional": "Write in a formal, professional tone suitable for business contexts.",
-            "casual": "Write in a friendly, conversational tone."
+            "casual": "Write in a friendly, conversational tone.",
         }.get(style, "Write in an informative, clear tone.")
 
         system_prompt = f"""You are SOWKNOW, an AI content generator. Create a {length_guide} article about the topic: "{topic}"
@@ -271,20 +266,19 @@ Document Context:
 Generate the article now:"""
 
         messages = [
-            {"role": "system", "content": "You are SOWKNOW, an AI content generator that creates well-structured articles from document context."},
-            {"role": "user", "content": system_prompt}
+            {
+                "role": "system",
+                "content": "You are SOWKNOW, an AI content generator that creates well-structured articles from document context.",
+            },
+            {"role": "user", "content": system_prompt},
         ]
 
         response_parts = []
-        # Use OpenRouter (MiniMax) for public documents instead of direct Gemini
-        from app.services.openrouter_service import openrouter_service
-        async for chunk in openrouter_service.chat_completion(
-            messages=messages,
-            stream=False,
-            temperature=0.7,
-            max_tokens=4096
+        # Use MiniMax for public documents
+        async for chunk in self.minimax_service.chat_completion(
+            messages=messages, stream=False, temperature=0.7, max_tokens=4096
         ):
-            if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+            if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
 
         return "".join(response_parts).strip()
@@ -294,7 +288,7 @@ Generate the article now:"""
         topic: str,
         document_context: List[Dict[str, Any]],
         style: str,
-        length: str
+        length: str,
     ) -> str:
         """Generate content using Ollama for confidential documents"""
 
@@ -315,7 +309,7 @@ Generate a well-structured article based on these documents."""
             response = await self.ollama_service.generate(
                 prompt=prompt,
                 system=f"You are a content generator. Write in a {style} style.",
-                temperature=0.7
+                temperature=0.7,
             )
             return response
         except Exception as e:

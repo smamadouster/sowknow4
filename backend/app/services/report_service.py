@@ -1,9 +1,11 @@
 """
 Report Generation Service for Smart Collections
 
-Generates PDF reports in Short/Standard/Comprehensive formats
-from collection data using Gemini Flash for analysis and synthesis.
+Generates PDF reports in Short/Standard/Comprehensive formats from collection
+data using MiniMax (public documents) or Ollama (confidential documents) for
+analysis and synthesis.
 """
+
 import logging
 import uuid
 from typing import List, Dict, Any, Optional
@@ -14,7 +16,7 @@ from io import BytesIO
 from app.models.collection import Collection, CollectionItem
 from app.models.document import Document
 from app.models.user import User
-from app.services.gemini_service import gemini_service
+from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ class ReportService:
     """Service for generating reports from collections"""
 
     def __init__(self):
-        self.gemini_service = gemini_service
+        self.minimax_service = minimax_service
         self.ollama_service = ollama_service
 
     async def generate_report(
@@ -40,7 +42,7 @@ class ReportService:
         include_citations: bool = True,
         language: str = "en",
         user: User = None,
-        db: Session = None
+        db: Session = None,
     ) -> Dict[str, Any]:
         """
         Generate a report from a collection
@@ -57,19 +59,19 @@ class ReportService:
             Dictionary with report content, metadata, and file info
         """
         # Get collection
-        collection = db.query(Collection).filter(
-            Collection.id == collection_id
-        ).first()
+        collection = db.query(Collection).filter(Collection.id == collection_id).first()
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
         # Get collection items with documents
-        items = db.query(CollectionItem).filter(
-            CollectionItem.collection_id == collection_id
-        ).join(Document).order_by(
-            CollectionItem.relevance_score.desc()
-        ).all()
+        items = (
+            db.query(CollectionItem)
+            .filter(CollectionItem.collection_id == collection_id)
+            .join(Document)
+            .order_by(CollectionItem.relevance_score.desc())
+            .all()
+        )
 
         # Build document context
         document_context = await self._build_document_context(items, db)
@@ -88,18 +90,18 @@ class ReportService:
                 document_context=document_context,
                 format=format,
                 include_citations=include_citations,
-                language=language
+                language=language,
             )
             llm_used = "ollama"
         else:
-            report_content = await self._generate_report_with_gemini(
+            report_content = await self._generate_report_with_minimax(
                 collection=collection,
                 document_context=document_context,
                 format=format,
                 include_citations=include_citations,
-                language=language
+                language=language,
             )
-            llm_used = "gemini"
+            llm_used = "minimax"
 
         # Extract citations
         citations = []
@@ -109,7 +111,7 @@ class ReportService:
                     "filename": item.document.filename,
                     "id": str(item.document.id),
                     "relevance": item.relevance_score,
-                    "added_reason": item.added_reason
+                    "added_reason": item.added_reason,
                 }
                 for item in items[:10]
                 if item.document
@@ -126,30 +128,22 @@ class ReportService:
             "llm_used": llm_used,
             "document_count": len(items),
             "word_count": len(report_content.split()),
-            "citations": citations
+            "citations": citations,
         }
 
         # Generate PDF (if available)
         file_url = None
         try:
             file_url = await self._generate_pdf_report(
-                content=report_content,
-                metadata=report_metadata,
-                collection=collection
+                content=report_content, metadata=report_metadata, collection=collection
             )
         except Exception as e:
             logger.error(f"PDF generation failed: {e}")
 
-        return {
-            **report_metadata,
-            "content": report_content,
-            "file_url": file_url
-        }
+        return {**report_metadata, "content": report_content, "file_url": file_url}
 
     async def _build_document_context(
-        self,
-        items: List[CollectionItem],
-        db: Session
+        self, items: List[CollectionItem], db: Session
     ) -> List[Dict[str, Any]]:
         """Build document context from collection items"""
         context = []
@@ -160,77 +154,102 @@ class ReportService:
 
             from app.models.document import DocumentChunk
 
-            chunks = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == item.document_id
-            ).order_by(DocumentChunk.chunk_index).limit(3).all()
+            chunks = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == item.document_id)
+                .order_by(DocumentChunk.chunk_index)
+                .limit(3)
+                .all()
+            )
 
             doc_info = {
                 "filename": item.document.filename,
                 "created_at": item.document.created_at.isoformat(),
                 "relevance": item.relevance_score,
                 "chunks": [
-                    {
-                        "text": chunk.chunk_text[:400],
-                        "page": chunk.page_number
-                    }
+                    {"text": chunk.chunk_text[:400], "page": chunk.page_number}
                     for chunk in chunks
-                ]
+                ],
             }
             context.append(doc_info)
 
         return context
 
-    async def _generate_report_with_gemini(
+    async def _generate_report_with_minimax(
         self,
         collection: Collection,
         document_context: List[Dict[str, Any]],
         format: str,
         include_citations: bool,
-        language: str
+        language: str,
     ) -> str:
-        """Generate report using Gemini Flash"""
+        """Generate report using MiniMax"""
 
         # Build format guidelines
         format_guides = {
             ReportFormat.SHORT: {
                 "length": "1-2 pages",
                 "sections": ["Executive Summary", "Key Findings", "Recommendations"],
-                "detail": "Concise, high-level overview"
+                "detail": "Concise, high-level overview",
             },
             ReportFormat.STANDARD: {
                 "length": "3-5 pages",
-                "sections": ["Executive Summary", "Introduction", "Analysis", "Key Findings", "Recommendations", "Conclusion"],
-                "detail": "Balanced overview with supporting details"
+                "sections": [
+                    "Executive Summary",
+                    "Introduction",
+                    "Analysis",
+                    "Key Findings",
+                    "Recommendations",
+                    "Conclusion",
+                ],
+                "detail": "Balanced overview with supporting details",
             },
             ReportFormat.COMPREHENSIVE: {
                 "length": "6-10 pages",
-                "sections": ["Executive Summary", "Introduction", "Background", "Detailed Analysis", "Key Findings", "Supporting Evidence", "Recommendations", "Implementation Notes", "Conclusion", "Appendices"],
-                "detail": "In-depth analysis with extensive supporting evidence"
-            }
+                "sections": [
+                    "Executive Summary",
+                    "Introduction",
+                    "Background",
+                    "Detailed Analysis",
+                    "Key Findings",
+                    "Supporting Evidence",
+                    "Recommendations",
+                    "Implementation Notes",
+                    "Conclusion",
+                    "Appendices",
+                ],
+                "detail": "In-depth analysis with extensive supporting evidence",
+            },
         }
 
         guide = format_guides.get(format, format_guides[ReportFormat.STANDARD])
 
         # Language instruction
-        lang_instruction = "Write the report in English." if language == "en" else "Rédigez le rapport en français."
+        lang_instruction = (
+            "Write the report in English."
+            if language == "en"
+            else "Rédigez le rapport en français."
+        )
 
         # Build document list
-        doc_list = "\n".join([
-            f"- {doc['filename']} (relevance: {doc['relevance']}%)"
-            for doc in document_context[:10]
-        ])
+        doc_list = "\n".join(
+            [
+                f"- {doc['filename']} (relevance: {doc['relevance']}%)"
+                for doc in document_context[:10]
+            ]
+        )
 
-        system_prompt = f"""You are SOWKNOW, a professional report generator. Create a {guide['length']} report in {language} about the collection: "{collection.name}"
+        system_prompt = f"""You are SOWKNOW, a professional report generator. Create a {guide["length"]} report in {language} about the collection: "{collection.name}"
 
 Collection Query: {collection.query}
-AI Summary: {collection.ai_summary or 'Not available'}
+AI Summary: {collection.ai_summary or "Not available"}
 
 FORMAT REQUIREMENTS:
 {lang_instruction}
-Length: {guide['length']}
+Length: {guide["length"]}
 Style: Professional business report
-Sections: {', '.join(guide['sections'])}
-Detail Level: {guide['detail']}
+Sections: {", ".join(guide["sections"])}
+Detail Level: {guide["detail"]}
 
 AVAILABLE DOCUMENTS ({len(document_context)} files):
 {doc_list}
@@ -246,20 +265,19 @@ REPORT GUIDELINES:
 Generate the complete report now:"""
 
         messages = [
-            {"role": "system", "content": "You are SOWKNOW, a professional report generator that creates well-structured business reports."},
-            {"role": "user", "content": system_prompt}
+            {
+                "role": "system",
+                "content": "You are SOWKNOW, a professional report generator that creates well-structured business reports.",
+            },
+            {"role": "user", "content": system_prompt},
         ]
 
         response_parts = []
-        # Use OpenRouter (MiniMax) for public documents instead of direct Gemini
-        from app.services.openrouter_service import openrouter_service
-        async for chunk in openrouter_service.chat_completion(
-            messages=messages,
-            stream=False,
-            temperature=0.5,
-            max_tokens=8192
+        # Use MiniMax for public documents
+        async for chunk in self.minimax_service.chat_completion(
+            messages=messages, stream=False, temperature=0.5, max_tokens=8192
         ):
-            if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+            if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
 
         return "".join(response_parts).strip()
@@ -270,7 +288,7 @@ Generate the complete report now:"""
         document_context: List[Dict[str, Any]],
         format: str,
         include_citations: bool,
-        language: str
+        language: str,
     ) -> str:
         """Generate report using Ollama for confidential collections"""
 
@@ -279,13 +297,13 @@ Generate the complete report now:"""
         length_desc = {
             ReportFormat.SHORT: "concise 1-2 page",
             ReportFormat.STANDARD: "standard 3-5 page",
-            ReportFormat.COMPREHENSIVE: "detailed 6-10 page"
+            ReportFormat.COMPREHENSIVE: "detailed 6-10 page",
         }.get(format, "standard 3-5 page")
 
         prompt = f"""Generate a {length_desc} report about: {collection.name}
 
 Collection Query: {collection.query}
-Summary: {collection.ai_summary or 'N/A'}
+Summary: {collection.ai_summary or "N/A"}
 
 Documents:
 {doc_list}
@@ -295,13 +313,13 @@ Create a professional report with:
 - Key Findings
 - Recommendations
 
-{'' if language == 'en' else 'Rédigez le rapport en français.'}"""
+{"" if language == "en" else "Rédigez le rapport en français."}"""
 
         try:
             response = await self.ollama_service.generate(
                 prompt=prompt,
                 system="You are a professional report generator. Create structured, insightful business reports.",
-                temperature=0.5
+                temperature=0.5,
             )
             return response
         except Exception as e:
@@ -309,10 +327,7 @@ Create a professional report with:
             return f"Report generation failed: {str(e)}"
 
     async def _generate_pdf_report(
-        self,
-        content: str,
-        metadata: Dict[str, Any],
-        collection: Collection
+        self, content: str, metadata: Dict[str, Any], collection: Collection
     ) -> Optional[str]:
         """
         Generate PDF report
@@ -324,7 +339,14 @@ Create a professional report with:
             from reportlab.lib.pagesizes import letter, A4
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib.units import inch
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
+            from reportlab.platypus import (
+                SimpleDocTemplate,
+                Paragraph,
+                Spacer,
+                PageBreak,
+                Table,
+                TableStyle,
+            )
             from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
             from reportlab.lib import colors
             import os
@@ -339,7 +361,7 @@ Create a professional report with:
                 rightMargin=72,
                 leftMargin=72,
                 topMargin=72,
-                bottomMargin=18
+                bottomMargin=18,
             )
 
             # Build PDF story
@@ -348,12 +370,12 @@ Create a professional report with:
 
             # Title style
             title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
+                "CustomTitle",
+                parent=styles["Heading1"],
                 fontSize=24,
-                textColor=colors.HexColor('#1e40af'),
+                textColor=colors.HexColor("#1e40af"),
                 alignment=TA_CENTER,
-                spaceAfter=30
+                spaceAfter=30,
             )
 
             # Add title
@@ -362,20 +384,27 @@ Create a professional report with:
 
             # Add metadata
             meta_style = ParagraphStyle(
-                'MetaData',
-                parent=styles['Normal'],
+                "MetaData",
+                parent=styles["Normal"],
                 fontSize=10,
                 textColor=colors.gray,
-                alignment=TA_CENTER
+                alignment=TA_CENTER,
             )
 
-            generated_date = datetime.fromisoformat(metadata['generated_at']).strftime('%B %d, %Y')
-            story.append(Paragraph(f"Generated: {generated_date} | Documents: {metadata['document_count']}", meta_style))
+            generated_date = datetime.fromisoformat(metadata["generated_at"]).strftime(
+                "%B %d, %Y"
+            )
+            story.append(
+                Paragraph(
+                    f"Generated: {generated_date} | Documents: {metadata['document_count']}",
+                    meta_style,
+                )
+            )
             story.append(Spacer(1, 24))
 
             # Parse content into paragraphs
-            lines = content.split('\n')
-            current_style = styles['Normal']
+            lines = content.split("\n")
+            current_style = styles["Normal"]
 
             for line in lines:
                 line = line.strip()
@@ -384,39 +413,41 @@ Create a professional report with:
                     continue
 
                 # Handle headings
-                if line.startswith('# ') or line.upper() == line and len(line) < 50:
+                if line.startswith("# ") or line.upper() == line and len(line) < 50:
                     heading_style = ParagraphStyle(
-                        'Heading',
-                        parent=styles['Heading2'],
+                        "Heading",
+                        parent=styles["Heading2"],
                         fontSize=14,
-                        textColor=colors.HexColor('#1e3a8a'),
-                        spaceAfter=12
+                        textColor=colors.HexColor("#1e3a8a"),
+                        spaceAfter=12,
                     )
-                    clean_line = line.lstrip('#').strip()
+                    clean_line = line.lstrip("#").strip()
                     story.append(Paragraph(clean_line, heading_style))
-                elif line.startswith('- '):
+                elif line.startswith("- "):
                     # Bullet point
                     bullet_style = ParagraphStyle(
-                        'Bullet',
-                        parent=styles['Normal'],
+                        "Bullet",
+                        parent=styles["Normal"],
                         leftIndent=20,
-                        bulletIndent=10
+                        bulletIndent=10,
                     )
                     story.append(Paragraph(line, bullet_style))
                 else:
-                    story.append(Paragraph(line, styles['BodyText']))
+                    story.append(Paragraph(line, styles["BodyText"]))
 
                 story.append(Spacer(1, 6))
 
             # Add citations if available
-            if metadata.get('citations'):
+            if metadata.get("citations"):
                 story.append(PageBreak())
-                story.append(Paragraph("References", styles['Heading2']))
+                story.append(Paragraph("References", styles["Heading2"]))
                 story.append(Spacer(1, 12))
 
-                for citation in metadata['citations'][:10]:
-                    citation_text = f"{citation['filename']} (Relevance: {citation['relevance']}%)"
-                    story.append(Paragraph(f"• {citation_text}", styles['Normal']))
+                for citation in metadata["citations"][:10]:
+                    citation_text = (
+                        f"{citation['filename']} (Relevance: {citation['relevance']}%)"
+                    )
+                    story.append(Paragraph(f"• {citation_text}", styles["Normal"]))
 
             # Build PDF
             doc.build(story)

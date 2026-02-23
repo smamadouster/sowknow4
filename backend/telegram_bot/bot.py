@@ -12,7 +12,9 @@ import os
 import logging
 import sys
 import json
-from typing import Optional, Dict, Any
+import re
+from datetime import datetime
+from typing import Optional, Dict, Any, List
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
@@ -262,11 +264,18 @@ class TelegramBotClient:
             return {"error": str(e), "exists": False}
 
     async def upload_document(
-        self, file_bytes: bytes, filename: str, bucket: str, access_token: str
+        self,
+        file_bytes: bytes,
+        filename: str,
+        bucket: str,
+        access_token: str,
+        tags: Optional[List[str]] = None,
     ) -> dict:
         try:
             files = {"file": (filename, file_bytes)}
-            data = {"bucket": bucket}
+            data: Dict[str, Any] = {"bucket": bucket}
+            if tags:
+                data["tags"] = ",".join(tags)
             headers = {"Authorization": f"Bearer {access_token}"}
             if BOT_API_KEY:
                 headers["X-Bot-Api-Key"] = BOT_API_KEY
@@ -329,12 +338,35 @@ class TelegramBotClient:
             logger.error(f"Search error: {str(e)}")
             return {"error": str(e)}
 
+    async def create_chat_session(self, access_token: str) -> dict:
+        """Create a new backend chat session for multi-turn conversation."""
+        try:
+            title = f"Telegram Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            response = await self._client.post(
+                "/api/v1/chat/sessions",
+                json={"title": title},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable. Please try again later."}
+        except Exception as e:
+            logger.error(f"Create chat session error: {str(e)}")
+            return {"error": str(e)}
+
     async def send_chat_message(
         self, session_id: str, content: str, access_token: str
     ) -> dict:
+        """Send a message to an existing chat session (non-streaming).
+
+        Conversation history is managed server-side by the backend using the
+        ``session_id``.  Each call automatically includes all prior turns.
+        """
         try:
             response = await self._client.post(
-                f"/api/v1/chat/sessions/{session_id}/message",
+                f"/api/v1/chat/sessions/{session_id}/message?stream=false",
                 json={"content": content},
                 headers={"Authorization": f"Bearer {access_token}"},
             )
@@ -385,7 +417,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 • Just ask me anything
 
 💬 <b>Chat</b>
-• Conversational AI powered by Gemini Flash
+• Conversational AI powered by MiniMax
 
 📌 Commands:
 /start - Show this message
@@ -446,6 +478,12 @@ async def handle_document_upload(
     else:
         return
 
+    # Parse hashtags from caption (e.g. "#urgent #invoice → ["urgent", "invoice"])
+    caption = update.message.caption or ""
+    parsed_tags: List[str] = re.findall(r"#(\w+)", caption)
+    if parsed_tags:
+        logger.info(f"Parsed {len(parsed_tags)} tag(s) from caption: {parsed_tags}")
+
     try:
         file_obj = await file.get_file()
         file_bytes = await file_obj.download_as_bytearray()
@@ -456,6 +494,7 @@ async def handle_document_upload(
                 "pending_file": {
                     "file": bytes(file_bytes),
                     "filename": filename,
+                    "tags": parsed_tags,
                 }
             },
         )
@@ -545,6 +584,7 @@ async def bucket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         filename=pending["filename"],
         bucket=bucket,
         access_token=session["access_token"],
+        tags=pending.get("tags") or None,
     )
 
     await session_manager.clear_pending_file(user.id)
@@ -622,6 +662,7 @@ async def handle_text_message(
                 filename=pending["filename"],
                 bucket=bucket,
                 access_token=session["access_token"],
+                tags=pending.get("tags") or None,
             )
 
             await session_manager.clear_pending_file(user.id)
@@ -657,27 +698,45 @@ async def handle_text_message(
                 )
             return
 
-    await update.message.reply_text("🔍 Searching...")
-    result = await bot_client.search(text, session["access_token"])
+    # --- Multi-turn conversation via backend chat session ---
+    # The backend manages full conversation history using the session_id.
+    # We create one session per user (stored in Redis) and reuse it so
+    # every subsequent message automatically gets the prior context.
+    chat_session_id = session.get("chat_session_id")
+    if not chat_session_id:
+        session_result = await bot_client.create_chat_session(session["access_token"])
+        if "error" in session_result:
+            await update.message.reply_text(
+                "❌ Could not start conversation. Please use /start again."
+            )
+            return
+        chat_session_id = session_result.get("id")
+        await session_manager.update_session(user.id, {"chat_session_id": chat_session_id})
+        logger.info(f"Created chat session {chat_session_id} for user {user.id}")
+
+    thinking_msg = await update.message.reply_text("💭 Thinking...")
+    result = await bot_client.send_chat_message(
+        chat_session_id, text, session["access_token"]
+    )
 
     if "error" in result:
-        await update.message.reply_text(f"❌ Search error: {result['error']}")
+        await thinking_msg.edit_text(f"❌ Error: {result['error']}")
         return
 
-    results = result.get("results", [])
-    total = result.get("total", 0)
+    content = result.get("content", "")
+    llm_used = result.get("llm_used", "")
+    sources = result.get("sources") or []
 
-    if total == 0:
-        await update.message.reply_text(f'📭 No results for: "{text}"')
-    else:
-        response = f"🔍 Found {total} result(s):\n\n"
-        for i, r in enumerate(results[:5], 1):
-            snippet = r.get("chunk_text", "")[:150]
-            doc_name = r.get("document_name", "Unknown")
-            score = r.get("relevance_score", 0)
-            response += f"{i}. <b>{doc_name}</b> ({score:.0%})\n{snippet}...\n\n"
-        response += f"🤖 {result.get('llm_used', 'minimax').capitalize()}"
-        await update.message.reply_html(response, disable_web_page_preview=True)
+    response_parts = [content]
+    if sources:
+        source_list = "\n".join(
+            [f"• {s.get('document_name', 'Unknown')}" for s in sources[:3]]
+        )
+        response_parts.append(f"\n\n📚 <b>Sources:</b>\n{source_list}")
+    if llm_used:
+        response_parts.append(f"\n\n🤖 {llm_used}")
+
+    await thinking_msg.edit_text("".join(response_parts), parse_mode="HTML")
 
 
 async def upload_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

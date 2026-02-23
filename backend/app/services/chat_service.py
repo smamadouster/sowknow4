@@ -475,25 +475,52 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
-        # Send initial event with LLM info
-        yield f"event: llm_info\ndata: {json.dumps({'llm_used': llm_provider.value, 'has_confidential': has_confidential})}\n\n"
+        # --- Cache pre-check (OpenRouter path only) ---
+        # For the OpenRouter/MiniMax service, check whether an identical
+        # non-streaming response has already been cached in Redis.  If so we
+        # can serve it immediately and emit cache_hit=True so the frontend
+        # can display the ⚡ indicator.
+        cache_hit = False
+        cached_content: Optional[str] = None
+        if hasattr(llm_service, "check_cache") and callable(llm_service.check_cache):
+            cached_content = llm_service.check_cache(messages)
+            if isinstance(cached_content, str) and cached_content:
+                cache_hit = True
+                logger.info("Stream cache HIT – serving from Redis cache")
+                try:
+                    from app.services.cache_monitor import cache_monitor
+                    cache_monitor.record_cache_hit(
+                        cache_key="stream_pre_check",
+                        tokens_saved=len(cached_content) // 4,
+                    )
+                except Exception:
+                    pass
 
-        # Stream response
-        async for chunk in llm_service.chat_completion(messages, stream=True):
-            yield f"event: message\ndata: {json.dumps({'content': chunk})}\n\n"
+        # Emit llm_info metadata including cache_hit flag.
+        # Data payload uses `type` field so the frontend SSE reader can
+        # dispatch on parsed.type without relying on the SSE `event:` name.
+        yield f"data: {json.dumps({'type': 'llm_info', 'llm_used': llm_provider.value, 'has_confidential': has_confidential, 'cache_hit': cache_hit})}\n\n"
+
+        if cache_hit and cached_content is not None:
+            # Serve cached response as a single message chunk
+            yield f"data: {json.dumps({'type': 'message', 'content': cached_content})}\n\n"
+        else:
+            # Stream live response from LLM
+            async for chunk in llm_service.chat_completion(messages, stream=True):
+                yield f"data: {json.dumps({'type': 'message', 'content': chunk})}\n\n"
 
         # Send sources
         formatted_sources = []
         for source in sources:
             formatted_sources.append({
-                "document_id": source["document_id"],
+                "document_id": str(source["document_id"]),
                 "document_name": source["document_name"],
-                "chunk_id": source["chunk_id"],
+                "chunk_id": str(source["chunk_id"]),
                 "relevance_score": source["relevance_score"]
             })
 
-        yield f"event: sources\ndata: {json.dumps({'sources': formatted_sources})}\n\n"
-        yield "event: done\ndata: {}\n\n"
+        yield f"data: {json.dumps({'type': 'sources', 'sources': formatted_sources})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
 
 # Global chat service instance

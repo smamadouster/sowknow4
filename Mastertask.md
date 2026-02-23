@@ -7729,3 +7729,59 @@ Hunyuan references have been completely removed from the codebase. The OCR servi
 - Logs engine used for every operation
 - Supports French and English languages
 - All 29 tests pass
+
+---
+
+## Phase 9: COMPLETED - 500MB Batch Upload Size Enforcement
+**Started:** 2026-02-23
+**Status:** ✅ COMPLETE
+
+### Task Summary
+
+Added server-side batch upload size enforcement in `documents.py`:
+
+| File | Changes | Status |
+|------|---------|--------|
+| `backend/app/api/documents.py` | Added batch upload endpoint with 500MB limit | ✅ |
+| `backend/app/schemas/document.py` | Added BatchUploadResponse schema | ✅ |
+| `backend/tests/unit/test_documents.py` | Added 5 batch upload tests | ✅ |
+
+### Implementation Details
+
+**Endpoint:** `POST /api/v1/documents/upload-batch`
+
+**Features:**
+- Accepts multiple files in a single request
+- Tracks cumulative file sizes within a single batch
+- Rejects entire batch with HTTP 413 if total exceeds 500MB
+- Returns clear error message: "Batch total size exceeds limit. Received: X.XXMB, Limit: 500MB..."
+- Per-file 100MB limit preserved (line 105: `MAX_FILE_SIZE = 100 * 1024 * 1024`)
+- Role-based access control enforced for confidential bucket
+
+### Test Results
+
+```
+tests/unit/test_documents.py::test_batch_upload_exceeds_500mb_limit PASSED
+tests/unit/test_documents.py::test_batch_upload_under_500mb_limit PASSED
+tests/unit/test_documents.py::test_batch_upload_unauthorized PASSED
+tests/unit/test_documents.py::test_batch_upload_confidential_as_user PASSED
+tests/unit/test_documents.py::test_batch_upload_no_files PASSED
+
+5 passed in 5.61s
+```
+
+### Summary
+
+- Added `MAX_BATCH_SIZE = 500 * 1024 * 1024` constant
+- Created `upload_batch_documents` endpoint that:
+  - Validates batch total size before processing any files
+  - Returns HTTP 413 with detailed error message showing received vs limit
+  - Preserves existing per-file 100MB limit
+- Unit tests cover:
+  - 500MB limit edge case (exceeding limit returns 413)
+  - Under limit (files accepted)
+  - Unauthorized access (401)
+  - Confidential bucket access (403)
+  - Empty files list validation
+
+**Status:** ✅ COMPLETE

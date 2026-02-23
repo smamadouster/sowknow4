@@ -41,7 +41,7 @@ from app.utils.security import (
     TokenExpiredError,
     TokenInvalidError,
     ACCESS_TOKEN_EXPIRE_MINUTES,
-    REFRESH_TOKEN_EXPIRE_DAYS
+    REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from app.api.deps import get_current_user
 
@@ -80,23 +80,24 @@ BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 async def verify_telegram_user(telegram_user_id: int, bot_token: str) -> bool:
     """
     Verify that a Telegram user ID is valid by checking against Telegram API.
-    
+
     This prevents attackers from impersonating Telegram users.
-    
+
     Args:
         telegram_user_id: The Telegram user ID to verify
         bot_token: The bot token to use for verification
-        
+
     Returns:
         True if the user exists and is valid, False otherwise
     """
     import httpx
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"https://api.telegram.org/bot{bot_token}/getChat",
                 params={"chat_id": telegram_user_id},
-                timeout=10.0
+                timeout=10.0,
             )
             if response.status_code == 200:
                 data = response.json()
@@ -172,11 +173,8 @@ def is_token_blacklisted(token: str) -> bool:
 # COOKIE HELPER FUNCTIONS
 # =============================================================================
 
-def set_auth_cookies(
-    response: Response,
-    access_token: str,
-    refresh_token: str
-) -> None:
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     """
     Set httpOnly, Secure, SameSite=lax cookies for authentication tokens.
 
@@ -202,7 +200,7 @@ def set_auth_cookies(
         domain=COOKIE_DOMAIN,
         httponly=True,  # CRITICAL: Prevents XSS access
         secure=SECURE_FLAG,  # True in production, False for HTTP development
-        samesite=SAMESITE_VALUE  # "lax" allows normal navigation
+        samesite=SAMESITE_VALUE,  # "lax" allows normal navigation
     )
 
     # Set refresh token cookie (7 days)
@@ -217,7 +215,7 @@ def set_auth_cookies(
         domain=COOKIE_DOMAIN,
         httponly=True,  # CRITICAL: Prevents XSS access
         secure=SECURE_FLAG,  # True in production, False for HTTP development
-        samesite=SAMESITE_VALUE  # "lax" allows normal navigation
+        samesite=SAMESITE_VALUE,  # "lax" allows normal navigation
     )
 
     logger.debug(
@@ -235,17 +233,11 @@ def clear_auth_cookies(response: Response) -> None:
         response: FastAPI Response object
     """
     # Clear access token cookie
-    response.delete_cookie(
-        key=COOKIE_ACCESS_TOKEN_NAME,
-        path="/",
-        domain=COOKIE_DOMAIN
-    )
+    response.delete_cookie(key=COOKIE_ACCESS_TOKEN_NAME, path="/", domain=COOKIE_DOMAIN)
 
     # Clear refresh token cookie (must match path used when setting)
     response.delete_cookie(
-        key=COOKIE_REFRESH_TOKEN_NAME,
-        path="/api/v1/auth",
-        domain=COOKIE_DOMAIN
+        key=COOKIE_REFRESH_TOKEN_NAME, path="/api/v1/auth", domain=COOKIE_DOMAIN
     )
 
     logger.debug("Auth cookies cleared")
@@ -306,7 +298,10 @@ def authenticate_user(db: Session, email: str, password: str):
 # ENDPOINTS
 # =============================================================================
 
-@router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED
+)
 # RATE_LIMIT: 10/minute (prevent automated account creation)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """
@@ -334,7 +329,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         # Generic error message prevents email enumeration
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email already exists"
+            detail="User with this email already exists",
         )
 
     # Hash password with bcrypt (auto-handled by passlib CryptContext)
@@ -345,7 +340,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         email=user_data.email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
-        role="user"  # Default role, can be upgraded by admin
+        role="user",  # Default role, can be upgraded by admin
     )
 
     db.add(db_user)
@@ -361,7 +356,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 async def login(
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Login and set httpOnly cookies with tokens.
@@ -396,27 +391,18 @@ async def login(
 
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
 
     # Create JWT tokens
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={
-            "sub": user.email,
-            "role": user.role.value,
-            "user_id": str(user.id)
-        },
-        expires_delta=access_token_expires
+        data={"sub": user.email, "role": user.role.value, "user_id": str(user.id)},
+        expires_delta=access_token_expires,
     )
 
     refresh_token = create_refresh_token(
-        data={
-            "sub": user.email,
-            "role": user.role.value,
-            "user_id": str(user.id)
-        }
+        data={"sub": user.email, "role": user.role.value, "user_id": str(user.id)}
     )
 
     # Set httpOnly cookies with tokens
@@ -431,17 +417,15 @@ async def login(
             "id": str(user.id),
             "email": user.email,
             "full_name": user.full_name,
-            "role": user.role.value
-        }
+            "role": user.role.value,
+        },
     )
 
 
 @router.post("/refresh", response_model=LoginResponse)
 # RATE_LIMIT: 200/minute (refresh may happen frequently)
 async def refresh_token(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db)
+    request: Request, response: Response, db: Session = Depends(get_db)
 ):
     """
     Refresh access token using refresh token from httpOnly cookie.
@@ -472,16 +456,14 @@ async def refresh_token(
 
     if not refresh_token:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required"
         )
 
     # Check if token is blacklisted
     if is_token_blacklisted(refresh_token):
         logger.warning("Blacklisted refresh token used")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         )
 
     # Decode and validate refresh token
@@ -492,12 +474,11 @@ async def refresh_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token expired",
-            code="TOKEN_EXPIRED"  # Frontend uses this to redirect to login
+            code="TOKEN_EXPIRED",  # Frontend uses this to redirect to login
         )
     except TokenInvalidError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         )
 
     # Verify user still exists and is active
@@ -506,33 +487,38 @@ async def refresh_token(
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive"
+            detail="User not found or inactive",
         )
 
     # TOKEN ROTATION: Blacklist old refresh token
     # Calculate remaining time until expiration for blacklist TTL
     import time
+
     exp_time = payload.get("exp", int(time.time()) + REFRESH_TOKEN_EXPIRE_DAYS * 86400)
     ttl = max(0, exp_time - int(time.time()))
     blacklist_token(refresh_token, ttl)
 
     # Create NEW access token
+    # SECURITY: Use user.role from database, NOT payload.get("role") from old token
+    # This ensures role changes (e.g., promotion to admin) take effect immediately
+    # without requiring logout/login
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     new_access_token = create_access_token(
         data={
             "sub": payload.get("sub"),
-            "role": payload.get("role"),
-            "user_id": payload.get("user_id")
+            "role": user.role.value,
+            "user_id": payload.get("user_id"),
         },
-        expires_delta=access_token_expires
+        expires_delta=access_token_expires,
     )
 
     # Create NEW refresh token (token rotation)
+    # SECURITY: Use user.role from database, NOT payload.get("role") from old token
     new_refresh_token = create_refresh_token(
         data={
             "sub": payload.get("sub"),
-            "role": payload.get("role"),
-            "user_id": payload.get("user_id")
+            "role": user.role.value,
+            "user_id": payload.get("user_id"),
         }
     )
 
@@ -547,15 +533,13 @@ async def refresh_token(
             "id": str(user.id),
             "email": user.email,
             "full_name": user.full_name,
-            "role": user.role.value
-        }
+            "role": user.role.value,
+        },
     )
 
 
 @router.get("/me", response_model=UserPublic)
-async def get_me(
-    current_user: User = Depends(get_current_user)
-):
+async def get_me(current_user: User = Depends(get_current_user)):
     """
     Get current user information using token from httpOnly cookie.
 
@@ -573,10 +557,7 @@ async def get_me(
 
 @router.post("/logout", response_model=LoginResponse)
 # RATE_LIMIT: 60/minute (prevent abuse but allow legitimate repeated logouts)
-async def logout(
-    request: Request,
-    response: Response
-):
+async def logout(request: Request, response: Response):
     """
     Logout and clear authentication cookies.
 
@@ -602,10 +583,7 @@ async def logout(
 
     logger.info("User logged out")
 
-    return LoginResponse(
-        message="Logout successful",
-        user=None
-    )
+    return LoginResponse(message="Logout successful", user=None)
 
 
 # =============================================================================
@@ -629,7 +607,7 @@ async def telegram_auth(
     response: Response,
     request: Request,
     auth_data: TelegramAuthRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Authenticate or create a user via Telegram.
@@ -637,7 +615,7 @@ async def telegram_auth(
     This endpoint is called by the Telegram bot when a user starts a conversation.
     It creates a new user if one doesn't exist, or returns an existing user.
 
-    SECURITY: 
+    SECURITY:
     - Requires X-Bot-Api-Key header for authentication
     - Verifies Telegram user ID against Telegram API
     - Tokens are set in httpOnly, Secure, SameSite=lax cookies
@@ -655,29 +633,34 @@ async def telegram_auth(
     # SECURITY: Validate Bot API Key header
     incoming_api_key = request.headers.get("X-Bot-Api-Key")
     if not incoming_api_key or incoming_api_key != BOT_API_KEY:
-        logger.warning(f"Telegram auth failed: invalid or missing API key from {request.client.host if request.client else 'unknown'}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key"
+        logger.warning(
+            f"Telegram auth failed: invalid or missing API key from {request.client.host if request.client else 'unknown'}"
         )
-    
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+        )
+
     # SECURITY: Verify Telegram user ID against Telegram API
     if TELEGRAM_BOT_TOKEN:
         is_valid_telegram_user = await verify_telegram_user(
-            auth_data.telegram_user_id, 
-            TELEGRAM_BOT_TOKEN
+            auth_data.telegram_user_id, TELEGRAM_BOT_TOKEN
         )
         if not is_valid_telegram_user:
-            logger.warning(f"Telegram auth failed: invalid telegram_user_id {auth_data.telegram_user_id}")
+            logger.warning(
+                f"Telegram auth failed: invalid telegram_user_id {auth_data.telegram_user_id}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Telegram credentials"
+                detail="Invalid Telegram credentials",
             )
-    
+
     # Create deterministic but non-enumerable email
     # Use UUID-based hash to prevent enumeration
     import hashlib
-    telegram_id_hash = hashlib.sha256(str(auth_data.telegram_user_id).encode()).hexdigest()[:16]
+
+    telegram_id_hash = hashlib.sha256(
+        str(auth_data.telegram_user_id).encode()
+    ).hexdigest()[:16]
     email = f"telegram_{telegram_id_hash}@sowknow.local"
 
     # Check if user exists
@@ -691,6 +674,7 @@ async def telegram_auth(
 
         # Generate a random password for Telegram users
         import secrets
+
         temp_password = secrets.token_urlsafe(32)
         hashed_password = get_password_hash(temp_password)
 
@@ -700,7 +684,7 @@ async def telegram_auth(
             hashed_password=hashed_password,
             full_name=full_name,
             role="user",
-            is_active=True
+            is_active=True,
         )
 
         db.add(user)
@@ -711,8 +695,7 @@ async def telegram_auth(
 
     elif not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User account is disabled"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="User account is disabled"
         )
 
     # Create JWT tokens
@@ -722,9 +705,9 @@ async def telegram_auth(
             "sub": user.email,
             "role": user.role.value,
             "user_id": str(user.id),
-            "telegram_id": str(auth_data.telegram_user_id)
+            "telegram_id": str(auth_data.telegram_user_id),
         },
-        expires_delta=access_token_expires
+        expires_delta=access_token_expires,
     )
 
     refresh_token = create_refresh_token(
@@ -732,7 +715,7 @@ async def telegram_auth(
             "sub": user.email,
             "role": user.role.value,
             "user_id": str(user.id),
-            "telegram_id": str(auth_data.telegram_user_id)
+            "telegram_id": str(auth_data.telegram_user_id),
         }
     )
 
@@ -748,7 +731,7 @@ async def telegram_auth(
             "id": str(user.id),
             "email": user.email,
             "full_name": user.full_name,
-            "role": user.role.value
+            "role": user.role.value,
         },
-        access_token=access_token
+        access_token=access_token,
     )

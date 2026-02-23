@@ -6861,3 +6861,174 @@ The documentation and test suite have been updated to accurately reflect the act
 This is now accurately documented and tested.
 
 **Status:** ✅ COMPLETE
+
+---
+
+## SESSION-STATE: Agent B2 (Cost Optimization Engineer) - Context Caching Implementation
+**Timestamp:** 2026-02-23T10:00:00Z
+**Agent:** Agent B2 - LLM Cost Optimization and API Integration Specialist
+**Task:** Implement Redis-backed context caching for OpenRouter (MiniMax) cost optimization
+
+### Problem Statement
+
+Context caching was not implemented despite a target of 80% cost reduction.
+The `cache_key` parameter existed in `openrouter_service.py:90-97` but had no logic.
+
+### Implementation
+
+#### Files Modified
+
+1. `/root/development/src/active/sowknow4/backend/app/services/openrouter_service.py`
+
+#### New Features Added
+
+1. **Redis-backed Context Caching**
+   - Cache key = SHA256(model + sorted messages content)
+   - TTL = 1 hour (3600 seconds) for public document responses
+   - Streaming requests bypass cache (not useful for streaming)
+   - Ollama (confidential) responses are NEVER cached - handled by caller
+
+2. **Cache Key Generation**
+   ```python
+   def _generate_cache_key(self, model: str, messages: List[Dict[str, str]]) -> str:
+       # Sort messages for deterministic ordering
+       sorted_messages = sorted(messages, key=lambda m: f"{m.get('role', '')}:{m.get('content', '')}")
+       cache_content = f"{model}:{json.dumps(sorted_messages, sort_keys=True)}"
+       cache_hash = hashlib.sha256(cache_content.encode('utf-8')).hexdigest()
+       return f"{CACHE_KEY_PREFIX}{cache_hash}"
+   ```
+
+3. **Cache Hit/Miss Metrics Logging**
+   - Integrated with existing `cache_monitor` service
+   - Records `record_cache_hit()` with `tokens_saved` on cache hits
+   - Records `record_cache_miss()` on API calls
+   - Supports `user_id` tracking for per-user analytics
+
+4. **Graceful Degradation**
+   - Service continues working if Redis is unavailable
+   - Cache read/write errors logged but don't break functionality
+   - `_cache_enabled` flag tracks Redis availability
+
+### Files Created
+
+1. `/root/development/src/active/sowknow4/backend/tests/unit/test_openrouter_cache.py`
+
+#### Test Coverage (21 tests)
+
+| Test Category | Tests | Status |
+|--------------|-------|--------|
+| CacheKeyGeneration | 6 | ✅ PASS |
+| CacheHitScenario | 3 | ✅ PASS |
+| CacheMissScenario | 3 | ✅ PASS |
+| StreamingBypassCache | 2 | ✅ PASS |
+| RedisFailureGracefulDegradation | 3 | ✅ PASS |
+| CustomCacheKey | 2 | ✅ PASS |
+| CacheTTL | 2 | ✅ PASS |
+
+**Total: 21/21 PASS**
+
+### Cache Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    OPENROUTER CACHE FLOW                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  [chat_completion called]                                        │
+│       │                                                          │
+│       ├── stream=True? ──────────────────────────────┐          │
+│       │                    │                          │          │
+│       │                   YES ──→ [Skip cache]        │          │
+│       │                    │                          │          │
+│       │                   NO                          │          │
+│       │                    │                          │          │
+│       │                    ▼                          │          │
+│       │     [Generate cache key: SHA256]             │          │
+│       │                    │                          │          │
+│       │                    ▼                          │          │
+│       │     [Check Redis for cached response]        │          │
+│       │                    │                          │          │
+│       │         ┌─────────┴─────────┐                │          │
+│       │         │                   │                │          │
+│       │      HIT                  MISS               │          │
+│       │         │                   │                │          │
+│       │         ▼                   ▼                │          │
+│       │   [Record hit]        [Record miss]          │          │
+│       │   [Return cached]     [Call OpenRouter API]  │          │
+│       │         │                   │                │          │
+│       │         │                   ▼                │          │
+│       │         │           [Cache response]         │          │
+│       │         │           [Return response]        │          │
+│       │         │                   │                │          │
+│       └─────────┴───────────────────┴────────────────┘          │
+│                                                                  │
+│  KEY FEATURES:                                                   │
+│  • TTL: 1 hour (3600s)                                          │
+│  • Key prefix: "sowknow:openrouter:cache:"                      │
+│  • Order-independent message hashing                            │
+│  • Automatic metrics via cache_monitor                          │
+│  • Graceful degradation on Redis failure                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### API Changes
+
+#### Updated Parameters
+
+```python
+async def chat_completion(
+    self,
+    messages: List[Dict[str, str]],
+    stream: bool = False,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    cache_key: Optional[str] = None,  # NEW: Auto-generated if None
+    user_id: Optional[str] = None,    # NEW: For metrics tracking
+) -> AsyncGenerator[str, None]:
+```
+
+### Cost Optimization Impact
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Repeated query cost | Full API call | Cache hit (free) |
+| Cache TTL | N/A | 1 hour |
+| Expected cost reduction | 0% | 50-80% target |
+| Metrics tracking | None | Full (hits, misses, tokens saved) |
+
+### Security Considerations
+
+1. **Confidential Documents**: Ollama responses are NEVER cached (handled by caller routing)
+2. **PII Protection**: Cache key is SHA256 hash, no PII in key
+3. **Cache Isolation**: Prefix `sowknow:openrouter:cache:` prevents collision
+4. **Graceful Degradation**: Redis failure doesn't expose errors to users
+
+### Verification Results
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Syntax validation | ✅ PASS | `python3 -m py_compile` successful |
+| Unit tests | ✅ PASS | 21/21 tests passing |
+| Cache key generation | ✅ VERIFIED | SHA256 with sorted messages |
+| Redis integration | ✅ VERIFIED | Graceful fallback implemented |
+| Metrics logging | ✅ VERIFIED | cache_monitor integration |
+| Streaming bypass | ✅ VERIFIED | Cache skipped for streaming |
+
+### Blockers
+
+**NONE** - Implementation is complete and tested.
+
+### Summary
+
+The Redis-backed context caching for OpenRouter (MiniMax) has been successfully implemented. The system now:
+
+1. **Caches responses** for non-streaming requests with 1-hour TTL
+2. **Generates deterministic cache keys** using SHA256(model + sorted messages)
+3. **Tracks metrics** via existing `cache_monitor` service
+4. **Gracefully degrades** when Redis is unavailable
+5. **Bypasses cache** for streaming requests (not useful)
+
+Expected cost reduction: **50-80%** on repeated queries to public documents.
+
+**Status:** ✅ COMPLETE

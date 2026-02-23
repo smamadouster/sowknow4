@@ -253,6 +253,106 @@ Target metrics for production:
 
 ---
 
+## 🔑 Credential Management
+
+### ⚠️ CRITICAL: Credentials Exposed in Repository History
+
+**IMMEDIATE ACTION REQUIRED**: Several credentials were accidentally exposed in this repository and must be rotated immediately.
+
+#### Credentials That Were Exposed (MUST ROTATE):
+
+| Credential | Type | Exposure Risk | Action Required |
+|------------|------|---------------|-----------------|
+| `DATABASE_PASSWORD` | Database | CRITICAL | Rotate immediately |
+| `JWT_SECRET` | JWT Token Signing | CRITICAL | Rotate immediately |
+| `MOONSHOT_API_KEY` | Kimi API Key | CRITICAL | Rotate immediately |
+| `TELEGRAM_BOT_TOKEN` | Bot Token | CRITICAL | Rotate immediately |
+| `ADMIN_EMAIL` | Email Address | HIGH | Review and rotate if needed |
+| `ADMIN_PASSWORD` | Admin Password | CRITICAL | Rotate immediately |
+
+### Credential Rotation Procedure
+
+#### 1. Database Password
+
+```bash
+# Generate a new secure password
+openssl rand -base64 24
+
+# Update PostgreSQL
+psql -U postgres -c "ALTER USER sowknow WITH PASSWORD 'NEW_PASSWORD_HERE';"
+
+# Update production environment
+# Edit /var/docker/sowknow4/.env or production secrets manager
+```
+
+#### 2. JWT Secret
+
+```bash
+# Generate a new JWT secret
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Update production environment
+# All existing tokens will be invalidated - users will need to log in again
+```
+
+#### 3. Moonshot/Kimi API Key
+
+1. Go to https://platform.moonshot.cn/
+2. Navigate to API Keys
+3. Create a new API key
+4. Delete the old exposed key
+5. Update production environment
+
+#### 4. Telegram Bot Token
+
+1. Contact @BotFather on Telegram
+2. Use `/revoke` command to invalidate the old token
+3. Use `/newbot` to create a new bot if needed
+4. Update production environment
+
+#### 5. Admin Password
+
+```bash
+# Use the admin password reset endpoint (requires admin access)
+curl -X POST https://sowknow.gollamtech.com/api/v1/admin/users/{user_id}/reset-password
+```
+
+### Pre-Commit Hook for Credential Prevention
+
+This repository includes a pre-commit hook that prevents accidental credential commits:
+
+```bash
+# The hook is located at .git/hooks/pre-commit
+# It scans staged files for potential secrets and blocks the commit if found
+
+# To bypass (USE WITH CAUTION):
+git commit --no-verify
+```
+
+### Recommended: Install detect-secrets (Optional Enhancement)
+
+For enhanced detection, install Yelp's detect-secrets:
+
+```bash
+pip install detect-secrets
+
+# Initialize baseline
+detect-secrets scan > .secrets.baseline
+
+# Enable hook
+detect-secrets hook --install
+```
+
+### Environment File Best Practices
+
+1. **NEVER commit `.env` files** - They should be in `.gitignore`
+2. **Use `.env.example` as template** - Already sanitized with placeholders
+3. **Use secrets managers** - Consider AWS Secrets Manager, HashiCorp Vault, or similar
+4. **Rotate credentials regularly** - Quarterly at minimum
+5. **Monitor for leaks** - Set up GitHub alerts for secret exposure
+
+---
+
 ## 📈 Monitoring
 
 ### Health Endpoints

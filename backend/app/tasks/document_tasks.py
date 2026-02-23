@@ -234,10 +234,12 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
                         texts=chunk_texts, batch_size=32, show_progress=False
                     )
 
-                    # Store embeddings in chunk metadata (pgvector will be used in production)
+                    # Store embeddings in the dedicated vector column
                     for i, chunk in enumerate(db_chunks):
                         if i < len(embeddings):
-                            # Store embedding in metadata (until pgvector column is added)
+                            # Store embedding in vector column (pgvector)
+                            chunk.embedding_vector = embeddings[i]
+                            # Also keep in metadata for backward compatibility during transition
                             metadata = chunk.document_metadata or {}
                             metadata["embedding"] = embeddings[i]
                             chunk.document_metadata = metadata

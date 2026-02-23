@@ -1,6 +1,7 @@
 """
 Hybrid search service combining vector and keyword search
 """
+
 import logging
 from typing import List, Optional, Dict, Any
 from uuid import UUID
@@ -29,7 +30,7 @@ class SearchResult:
         page_number: Optional[int],
         semantic_score: float,
         keyword_score: float,
-        final_score: float
+        final_score: float,
     ):
         self.chunk_id = chunk_id
         self.document_id = document_id
@@ -50,7 +51,7 @@ class HybridSearchService:
         self,
         semantic_weight: float = 0.7,
         keyword_weight: float = 0.3,
-        min_score_threshold: float = 0.1
+        min_score_threshold: float = 0.1,
     ):
         self.semantic_weight = semantic_weight
         self.keyword_weight = keyword_weight
@@ -59,9 +60,9 @@ class HybridSearchService:
     def _get_user_bucket_filter(self, user: User) -> List[str]:
         """
         Get allowed buckets for user based on role.
-        
+
         Role-Based Access Control (RBAC) - VIEW-ONLY access for search:
-        
+
         ┌──────────────────────────────────────────────────────────────────────────────┐
         │ SEARCH ACCESS LEVELS (VIEW-ONLY - no upload/delete/modify permissions)       │
         ├──────────────────────────────────────────────────────────────────────────────┤
@@ -71,14 +72,14 @@ class HybridSearchService:
         │                                   ⚠️  Can SEE but NOT upload/delete/modify    │
         │ USER (public_only):               PUBLIC bucket only                          │
         └──────────────────────────────────────────────────────────────────────────────┘
-        
+
         IMPORTANT: SuperUser role has VIEW-ONLY access to confidential documents.
         - SuperUsers can SEARCH and READ confidential documents
         - SuperUsers CANNOT upload to confidential bucket
         - SuperUsers CANNOT delete or modify confidential documents
         - This is a search-specific permission; actual document operations are
           enforced separately in document_service.py
-        
+
         Args:
             user: Current user requesting bucket filter
 
@@ -103,7 +104,7 @@ class HybridSearchService:
         limit: int = 50,
         offset: int = 0,
         db: Session = None,
-        user: User = None
+        user: User = None,
     ) -> List[SearchResult]:
         """
         Perform vector similarity search using pgvector
@@ -123,9 +124,14 @@ class HybridSearchService:
         embedding_array = ",".join(map(str, query_embedding))
 
         # Get user bucket filter
-        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+        bucket_filter = (
+            self._get_user_bucket_filter(user)
+            if user
+            else [DocumentBucket.PUBLIC.value]
+        )
 
-        # Build SQL query for vector similarity
+        # Build SQL query for vector similarity using pgvector's cosine distance operator
+        # Uses embedding_vector column for pgvector operations
         sql_query = text("""
             SELECT
                 dc.id as chunk_id,
@@ -135,11 +141,12 @@ class HybridSearchService:
                 dc.chunk_text,
                 dc.chunk_index,
                 dc.page_number,
-                1 - (dc.embedding <=> :embedding::vector) as similarity
+                1 - (dc.embedding_vector <=> :embedding::vector) as similarity
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
             WHERE d.bucket = ANY(:buckets)
-            ORDER BY dc.embedding <=> :embedding::vector
+            AND dc.embedding_vector IS NOT NULL
+            ORDER BY dc.embedding_vector <=> :embedding::vector
             LIMIT :limit OFFSET :offset
         """)
 
@@ -149,24 +156,26 @@ class HybridSearchService:
                 "embedding": embedding_array,
                 "buckets": bucket_filter,
                 "limit": limit,
-                "offset": offset
-            }
+                "offset": offset,
+            },
         )
 
         search_results = []
         for row in result:
-            search_results.append(SearchResult(
-                chunk_id=str(row.chunk_id),
-                document_id=str(row.document_id),
-                document_name=row.document_name,
-                document_bucket=row.document_bucket,
-                chunk_text=row.chunk_text,
-                chunk_index=row.chunk_index,
-                page_number=row.page_number,
-                semantic_score=float(row.similarity),
-                keyword_score=0.0,
-                final_score=float(row.similarity)  # Will be recalculated
-            ))
+            search_results.append(
+                SearchResult(
+                    chunk_id=str(row.chunk_id),
+                    document_id=str(row.document_id),
+                    document_name=row.document_name,
+                    document_bucket=row.document_bucket,
+                    chunk_text=row.chunk_text,
+                    chunk_index=row.chunk_index,
+                    page_number=row.page_number,
+                    semantic_score=float(row.similarity),
+                    keyword_score=0.0,
+                    final_score=float(row.similarity),  # Will be recalculated
+                )
+            )
 
         return search_results
 
@@ -176,7 +185,7 @@ class HybridSearchService:
         limit: int = 50,
         offset: int = 0,
         db: Session = None,
-        user: User = None
+        user: User = None,
     ) -> List[SearchResult]:
         """
         Perform keyword full-text search using PostgreSQL
@@ -192,7 +201,11 @@ class HybridSearchService:
             List of search results
         """
         # Get user bucket filter
-        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+        bucket_filter = (
+            self._get_user_bucket_filter(user)
+            if user
+            else [DocumentBucket.PUBLIC.value]
+        )
 
         # Build query for full-text search
         query_parts = query.split()
@@ -207,19 +220,18 @@ class HybridSearchService:
             where_conditions.append(DocumentChunk.chunk_text.ilike(f"%{part}%"))
 
         # Base query
-        q = db.query(
-            DocumentChunk.id,
-            DocumentChunk.document_id,
-            Document.filename,
-            Document.bucket,
-            DocumentChunk.chunk_text,
-            DocumentChunk.chunk_index,
-            DocumentChunk.page_number
-        ).join(
-            Document,
-            DocumentChunk.document_id == Document.id
-        ).filter(
-            Document.bucket.in_(bucket_filter)
+        q = (
+            db.query(
+                DocumentChunk.id,
+                DocumentChunk.document_id,
+                Document.filename,
+                Document.bucket,
+                DocumentChunk.chunk_text,
+                DocumentChunk.chunk_index,
+                DocumentChunk.page_number,
+            )
+            .join(Document, DocumentChunk.document_id == Document.id)
+            .filter(Document.bucket.in_(bucket_filter))
         )
 
         # Apply search conditions
@@ -252,18 +264,20 @@ class HybridSearchService:
             # Normalize score
             score = min(score, 1.0)
 
-            search_results.append(SearchResult(
-                chunk_id=str(row.id),
-                document_id=str(row.document_id),
-                document_name=row.filename,
-                document_bucket=row.bucket.value,
-                chunk_text=row.chunk_text,
-                chunk_index=row.chunk_index,
-                page_number=row.page_number,
-                semantic_score=0.0,
-                keyword_score=score,
-                final_score=score  # Will be recalculated
-            ))
+            search_results.append(
+                SearchResult(
+                    chunk_id=str(row.id),
+                    document_id=str(row.document_id),
+                    document_name=row.filename,
+                    document_bucket=row.bucket.value,
+                    chunk_text=row.chunk_text,
+                    chunk_index=row.chunk_index,
+                    page_number=row.page_number,
+                    semantic_score=0.0,
+                    keyword_score=score,
+                    final_score=score,  # Will be recalculated
+                )
+            )
 
         return search_results
 
@@ -273,7 +287,7 @@ class HybridSearchService:
         limit: int = 50,
         offset: int = 0,
         db: Session = None,
-        user: User = None
+        user: User = None,
     ) -> Dict[str, Any]:
         """
         Perform hybrid search combining semantic and keyword results
@@ -294,7 +308,9 @@ class HybridSearchService:
 
         if has_pii:
             pii_summary = pii_detection_service.get_pii_summary(query)
-            logger.warning(f"PII detected in search query by user {user.email if user else 'unknown'}: {pii_summary['detected_types']}")
+            logger.warning(
+                f"PII detected in search query by user {user.email if user else 'unknown'}: {pii_summary['detected_types']}"
+            )
 
         # Get both search results
         semantic_results = await self.semantic_search(
@@ -302,15 +318,11 @@ class HybridSearchService:
             limit=limit * 2,  # Get more to merge
             offset=0,
             db=db,
-            user=user
+            user=user,
         )
 
         keyword_results = await self.keyword_search(
-            query=query,
-            limit=limit * 2,
-            offset=0,
-            db=db,
-            user=user
+            query=query, limit=limit * 2, offset=0, db=db, user=user
         )
 
         # Merge results using RRF (Reciprocal Rank Fusion)
@@ -325,13 +337,13 @@ class HybridSearchService:
                     "result": result,
                     "semantic_score": result.semantic_score,
                     "keyword_score": result.keyword_score,
-                    "rrf_score": score
+                    "rrf_score": score,
                 }
             else:
                 merged_scores[result.chunk_id]["rrf_score"] += score
                 merged_scores[result.chunk_id]["semantic_score"] = max(
                     merged_scores[result.chunk_id]["semantic_score"],
-                    result.semantic_score
+                    result.semantic_score,
                 )
 
         # Add keyword scores (k=60)
@@ -342,13 +354,13 @@ class HybridSearchService:
                     "result": result,
                     "semantic_score": result.semantic_score,
                     "keyword_score": result.keyword_score,
-                    "rrf_score": score
+                    "rrf_score": score,
                 }
             else:
                 merged_scores[result.chunk_id]["rrf_score"] += score
                 merged_scores[result.chunk_id]["keyword_score"] = max(
                     merged_scores[result.chunk_id]["keyword_score"],
-                    result.keyword_score
+                    result.keyword_score,
                 )
 
         # Calculate final scores
@@ -359,19 +371,16 @@ class HybridSearchService:
 
             # Combined score using weights
             final_score = (
-                self.semantic_weight * semantic +
-                self.keyword_weight * keyword
+                self.semantic_weight * semantic + self.keyword_weight * keyword
             )
             result.final_score = final_score
 
         # Sort by final score and apply pagination
         sorted_results = sorted(
-            merged_scores.values(),
-            key=lambda x: x["result"].final_score,
-            reverse=True
+            merged_scores.values(), key=lambda x: x["result"].final_score, reverse=True
         )
 
-        paginated_results = sorted_results[offset:offset + limit]
+        paginated_results = sorted_results[offset : offset + limit]
 
         return {
             "query": query,
@@ -380,7 +389,7 @@ class HybridSearchService:
             "offset": offset,
             "limit": limit,
             "has_pii": has_pii,
-            "pii_summary": pii_summary
+            "pii_summary": pii_summary,
         }
 
 

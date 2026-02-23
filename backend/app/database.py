@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://sowknow:sowknow@localhost:5432/sowknow")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://sowknow:sowknow@localhost:5432/sowknow"
+)
 
 # Create engine with pgvector support and connection pooling
 engine = create_engine(
@@ -21,6 +23,7 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 def get_db():
     """Dependency to get database session"""
     db = SessionLocal()
@@ -29,14 +32,20 @@ def get_db():
     finally:
         db.close()
 
+
 def init_pgvector():
-    """Initialize pgvector extension if not exists"""
+    """Initialize pgvector extension if not exists (PostgreSQL only)"""
+    if DATABASE_URL.startswith("sqlite"):
+        return
     from sqlalchemy import text
+
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.commit()
 
+
 def get_vector_type():
     """Get the vector type from pgvector"""
     from pgvector.sqlalchemy import Vector
+
     return Vector

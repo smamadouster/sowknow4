@@ -1,9 +1,12 @@
 """
 Test configuration and fixtures for pytest
 """
+
 import pytest
 import os
+
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+os.environ["APP_ENV"] = "development"
 
 from typing import Generator, Dict
 from sqlalchemy import create_engine, event
@@ -25,10 +28,9 @@ TEST_DATABASE_URL = "sqlite:///./test.db"
 
 # Create test engine with proper UUID handling
 test_engine = create_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool
+    TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool
 )
+
 
 # Remove schema from all tables for SQLite compatibility
 # and replace PostgreSQL-specific types
@@ -36,17 +38,18 @@ test_engine = create_engine(
 def remove_schema(metadata, connection, **kw):
     from sqlalchemy import JSON, String, Text
     from sqlalchemy.dialects.postgresql import JSONB, ARRAY
-    
+
     for table in metadata.tables.values():
         table.schema = None
         for column in table.columns:
             col_type = type(column.type).__name__
-            if col_type == 'JSONB':
+            if col_type == "JSONB":
                 column.type = JSON()
-            elif col_type == 'Vector':
+            elif col_type == "Vector":
                 column.type = Text()
-            elif col_type == 'ARRAY':
+            elif col_type == "ARRAY":
                 column.type = Text()
+
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
@@ -71,6 +74,7 @@ def db() -> Generator[Session, None, None]:
 @pytest.fixture(scope="function")
 def client(db: Session) -> Generator[TestClient, None, None]:
     """Create a test client with database override"""
+
     def override_get_db():
         try:
             yield db
@@ -93,7 +97,7 @@ def test_user(db: Session) -> User:
         hashed_password="hashed_password",
         full_name="Test User",
         role=UserRole.USER,
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -111,7 +115,7 @@ def admin_user(db: Session) -> User:
         role=UserRole.ADMIN,
         is_superuser=True,
         can_access_confidential=True,
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -129,7 +133,7 @@ def test_document(db: Session) -> Document:
         bucket=DocumentBucket.PUBLIC,
         status=DocumentStatus.INDEXED,
         size=1024,
-        mime_type="application/pdf"
+        mime_type="application/pdf",
     )
     db.add(document)
     db.commit()
@@ -164,7 +168,7 @@ def superuser(db: Session) -> User:
         role=UserRole.SUPERUSER,
         is_active=True,
         is_superuser=True,
-        can_access_confidential=True
+        can_access_confidential=True,
     )
     db.add(user)
     db.commit()
@@ -180,7 +184,7 @@ def regular_user(db: Session) -> User:
         hashed_password=get_password_hash("user_password"),
         full_name="Regular User",
         role=UserRole.USER,
-        is_active=True
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -198,7 +202,7 @@ def public_document(db: Session) -> Document:
         bucket=DocumentBucket.PUBLIC,
         status=DocumentStatus.INDEXED,
         size=1024,
-        mime_type="application/pdf"
+        mime_type="application/pdf",
     )
     db.add(document)
     db.commit()
@@ -216,7 +220,7 @@ def confidential_document(db: Session) -> Document:
         bucket=DocumentBucket.CONFIDENTIAL,
         status=DocumentStatus.INDEXED,
         size=1024,
-        mime_type="application/pdf"
+        mime_type="application/pdf",
     )
     db.add(document)
     db.commit()
@@ -226,11 +230,9 @@ def confidential_document(db: Session) -> Document:
 
 def get_auth_headers_for_user(user: User) -> Dict[str, str]:
     """Helper to create auth headers for a user"""
-    token = create_access_token(data={
-        "sub": user.email,
-        "role": user.role.value,
-        "user_id": str(user.id)
-    })
+    token = create_access_token(
+        data={"sub": user.email, "role": user.role.value, "user_id": str(user.id)}
+    )
     return {"Authorization": f"Bearer {token}"}
 
 

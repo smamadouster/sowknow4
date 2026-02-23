@@ -4,6 +4,7 @@ Collection schemas for Smart Collections feature
 These schemas define the API contract for creating, managing, and querying
 Smart Collections - AI-generated document groups based on natural language.
 """
+
 from pydantic import BaseModel, Field
 from uuid import UUID
 from datetime import datetime
@@ -27,6 +28,7 @@ class CollectionType(str, Enum):
 # Intent Parsing Schemas
 class ParsedIntentResponse(BaseModel):
     """Response from intent parsing"""
+
     query: str
     keywords: List[str] = []
     date_range: Dict[str, Any] = {}
@@ -48,7 +50,9 @@ class CollectionBase(BaseModel):
 
 
 class CollectionCreate(CollectionBase):
-    query: str = Field(..., min_length=1, description="Natural language query to generate collection")
+    query: str = Field(
+        ..., min_length=1, description="Natural language query to generate collection"
+    )
     save: bool = Field(default=True, description="Whether to save the collection")
 
 
@@ -124,6 +128,7 @@ class CollectionResponse(BaseModel):
 
 class CollectionDetailResponse(CollectionResponse):
     """Extended response with items"""
+
     items: List[CollectionItemResponse] = []
 
 
@@ -136,11 +141,13 @@ class CollectionListResponse(BaseModel):
 
 class CollectionPreviewRequest(BaseModel):
     """Request to preview collection without saving"""
+
     query: str = Field(..., min_length=1, description="Natural language query")
 
 
 class CollectionPreviewResponse(BaseModel):
     """Preview of collection before saving"""
+
     intent: ParsedIntentResponse
     documents: List[Dict[str, Any]] = []
     estimated_count: int = 0
@@ -152,7 +159,9 @@ class CollectionPreviewResponse(BaseModel):
 class CollectionChatCreate(BaseModel):
     collection_id: UUID
     message: str = Field(..., min_length=1, description="User message")
-    session_name: Optional[str] = Field(None, description="Optional name for the Q&A session")
+    session_name: Optional[str] = Field(
+        None, description="Optional name for the Q&A session"
+    )
 
 
 class CollectionChatResponse(BaseModel):
@@ -167,16 +176,23 @@ class CollectionChatResponse(BaseModel):
 
 # Bulk Operations
 class CollectionBulkAddRequest(BaseModel):
-    document_ids: List[UUID] = Field(..., min_length=1, description="List of document IDs to add")
-    relevance_scores: Optional[List[int]] = Field(None, description="Optional relevance scores for each document")
+    document_ids: List[UUID] = Field(
+        ..., min_length=1, description="List of document IDs to add"
+    )
+    relevance_scores: Optional[List[int]] = Field(
+        None, description="Optional relevance scores for each document"
+    )
 
 
 class CollectionBulkRemoveRequest(BaseModel):
-    document_ids: List[UUID] = Field(..., min_length=1, description="List of document IDs to remove")
+    document_ids: List[UUID] = Field(
+        ..., min_length=1, description="List of document IDs to remove"
+    )
 
 
 class CollectionRefreshRequest(BaseModel):
     """Request to refresh collection documents based on query"""
+
     include_new_documents: bool = True
     update_summary: bool = True
 
@@ -195,9 +211,16 @@ class CollectionStatsResponse(BaseModel):
 # Smart Folder Generation
 class SmartFolderGenerateRequest(BaseModel):
     topic: str = Field(..., min_length=1, description="Topic for smart folder")
-    include_confidential: bool = Field(default=False, description="Include confidential documents (admin only)")
-    style: str = Field(default="informative", description="Writing style: informative, creative, professional, casual")
-    length: str = Field(default="medium", description="Content length: short, medium, long")
+    include_confidential: bool = Field(
+        default=False, description="Include confidential documents (admin only)"
+    )
+    style: str = Field(
+        default="informative",
+        description="Writing style: informative, creative, professional, casual",
+    )
+    length: str = Field(
+        default="medium", description="Content length: short, medium, long"
+    )
 
 
 class SmartFolderResponse(BaseModel):
@@ -230,3 +253,20 @@ class CollectionReportResponse(BaseModel):
     citations: List[Dict[str, Any]] = []
     generated_at: datetime
     file_url: Optional[str] = None  # URL to download PDF report
+
+
+class ExportFormat(str, Enum):
+    PDF = "pdf"
+    JSON = "json"
+
+
+class CollectionExportResponse(BaseModel):
+    """Response for collection export"""
+
+    collection_id: UUID
+    collection_name: str
+    format: ExportFormat
+    content: Optional[str] = None
+    file_url: Optional[str] = None
+    generated_at: datetime
+    document_count: int

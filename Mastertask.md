@@ -6761,3 +6761,103 @@ new_access_token = create_access_token(
 4. ✅ QA validated with 98% confidence
 
 **Outcome:** Role changes now take effect immediately on token refresh, ensuring proper access control without requiring logout/login.
+
+---
+
+## SESSION-STATE: Agent B2 (LLM Routing Specialist) - Documentation & Test Fix
+**Timestamp:** 2026-02-23T10:30:00Z
+**Agent:** Agent B2 - LLM Routing Specialist
+**Task:** Fix incorrect documentation of LLM providers (Gemini Flash → MiniMax/Kimi/Ollama)
+
+### Problem Analysis
+
+CLAUDE.md incorrectly documented "Gemini Flash" as the LLM provider. The actual providers are:
+- **MiniMax**: Default for public document RAG (via OpenRouter)
+- **Kimi**: Chatbot, telegram, search flows
+- **Ollama**: All confidential documents and PII-containing queries
+
+### Files Modified
+
+1. `/root/development/src/active/sowknow4/CLAUDE.md`
+2. `/root/development/src/active/sowknow4/backend/tests/unit/test_llm_routing.py`
+
+### CLAUDE.md Changes
+
+| Section | Before | After |
+|---------|--------|-------|
+| CRITICAL RULES | "Gemini Flash/Hunyuan-OCR", "DUAL-LLM STRATEGY: Gemini Flash for public docs" | "MiniMax/Kimi/Hunyuan-OCR", "TRI-LLM STRATEGY: MiniMax for public docs, Kimi for chatbot/telegram/search" |
+| PROJECT CONTEXT | "AI Stack: Gemini Flash (Google Generative AI API)" | "AI Stack: MiniMax (public docs via OpenRouter) + Kimi (chatbot/telegram/search) + Ollama (confidential docs)" |
+| Key Innovation | "Dual-LLM routing", "80% cost reduction" | "Tri-LLM routing", "MiniMax context caching for cost optimization" |
+| SWARM ORCHESTRATION | "Gemini Flash retry logic" | "MiniMax retry logic" |
+| MEMORY MANAGEMENT | "Gemini Flash context caching" | "MiniMax context caching" |
+| MONITORING | "Search latency <3s Gemini", "Daily Gemini API cost tracking" | "Search latency <3s MiniMax/Kimi", "Daily MiniMax/Kimi API cost tracking" |
+
+### test_llm_routing.py Changes
+
+| Before | After |
+|--------|-------|
+| `test_no_pii_routes_to_gemini` | `test_no_pii_routes_to_minimax` |
+| `test_admin_can_use_gemini_for_public` | `test_admin_can_use_minimax_for_public` |
+| `test_superuser_can_use_gemini_for_public` | `test_superuser_can_use_minimax_for_public` |
+| `test_public_bucket_allows_gemini` | `test_public_bucket_allows_minimax` |
+| `test_gemini_provider_exists` | `test_minimax_provider_exists` + `test_kimi_provider_exists` |
+| `test_provider_in_chat_message` (uses GEMINI) | (uses MINIMAX) |
+| `test_provider_tracking_for_auditing` (checks GEMINI, OLLAMA) | (checks MINIMAX, KIMI, OLLAMA) |
+| `test_public_without_pii_routes_to_gemini` | `test_public_without_pii_routes_to_minimax` |
+| `TestGeminiServiceAvailability` | `TestMiniMaxServiceAvailability` |
+| `test_gemini_requires_api_key` | `test_openrouter_requires_api_key` |
+| `test_gemini_fallback_to_ollama` | `test_openrouter_fallback_to_ollama` |
+| `test_context_caching_for_gemini` | `test_context_caching_for_minimax` |
+| `test_redaction_before_gemini` | `test_redaction_before_cloud_llm` |
+
+### LLMProvider Enum (Verified)
+
+```python
+class LLMProvider(str, enum.Enum):
+    MINIMAX = "minimax"  # MiniMax 2.5 - default for public documents
+    KIMI = "kimi"  # Moonshot AI (Kimi 2.5) - for chatbot, telegram, search agentic
+    OLLAMA = "ollama"  # Shared local Ollama instance - for confidential documents
+```
+
+### Test Results
+
+| Test Suite | Tests | Status |
+|------------|-------|--------|
+| TestPIIBasedRouting | 5 | ✅ PASS |
+| TestRoleBasedRouting | 5 | ✅ PASS |
+| TestDocumentBucketRouting | 3 | ✅ PASS |
+| TestLLMProviderSelection | 5 | ✅ PASS |
+| TestRoutingDecisionLogic | 4 | ✅ PASS |
+| TestMiniMaxServiceAvailability | 2 | ✅ PASS |
+| TestOllamaServiceConfiguration | 2 | ✅ PASS |
+| TestRoutingAuditing | 3 | ✅ PASS |
+| TestCostOptimization | 3 | ✅ PASS |
+| TestEdgeCases | 4 | ✅ PASS |
+
+**Total: 36/36 PASS**
+
+### Verification Results
+
+| Check | Status | Details |
+|-------|--------|---------|
+| CLAUDE.md Gemini references removed | ✅ VERIFIED | All occurrences replaced |
+| Documentation reflects actual architecture | ✅ VERIFIED | MiniMax/Kimi/Ollama documented |
+| test_llm_routing.py GEMINI references removed | ✅ VERIFIED | All occurrences replaced |
+| LLMProvider enum has correct providers | ✅ VERIFIED | MINIMAX, KIMI, OLLAMA defined |
+| All tests pass | ✅ VERIFIED | 36/36 passing |
+
+### Blockers
+
+**NONE** - Fix is complete and ready for deployment.
+
+### Summary
+
+The documentation and test suite have been updated to accurately reflect the actual LLM routing architecture. Previously, CLAUDE.md and test_llm_routing.py incorrectly referenced "Gemini Flash" as a provider, which doesn't exist in the codebase. The actual providers are:
+
+1. **MiniMax (via OpenRouter)** - Default for public document RAG
+2. **Kimi** - For chatbot, telegram, search flows
+3. **Ollama (local)** - For all confidential documents and PII-containing queries
+
+This is now accurately documented and tested.
+
+**Status:** ✅ COMPLETE

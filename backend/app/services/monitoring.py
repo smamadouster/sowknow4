@@ -4,6 +4,7 @@ Comprehensive monitoring service for SOWKNOW infrastructure.
 Provides health checks, queue depth monitoring, cost tracking,
 and alerting capabilities per PRD requirements.
 """
+
 import os
 import asyncio
 import logging
@@ -21,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class APICostRecord:
-    """Track API costs for Gemini and other services."""
+    """Track API costs for MiniMax and other services."""
+
     timestamp: datetime
-    service: str  # 'gemini', 'hunyuan', 'moonshot', etc.
+    service: str  # 'minimax', 'paddleocr', 'tesseract', 'moonshot', etc.
     operation: str  # 'chat', 'embedding', 'ocr', etc.
     input_tokens: int = 0
     output_tokens: int = 0
@@ -33,6 +35,7 @@ class APICostRecord:
 @dataclass
 class AlertConfig:
     """Configuration for monitoring alerts."""
+
     name: str
     threshold: float
     comparison: str = "gt"  # 'gt', 'lt', 'eq'
@@ -43,6 +46,7 @@ class AlertConfig:
 @dataclass
 class AlertState:
     """Track alert state to prevent duplicate notifications."""
+
     alert_name: str
     triggered_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
@@ -97,7 +101,7 @@ class CostTracker:
         Record an API call and return its cost.
 
         Args:
-            service: Service name ('gemini', 'hunyuan', etc.)
+            service: Service name ('minimax', 'paddleocr', 'tesseract', etc.)
             operation: Operation type ('chat', 'embedding', 'ocr', etc.)
             model: Model identifier
             input_tokens: Number of input tokens
@@ -110,14 +114,15 @@ class CostTracker:
         cost = 0.0
 
         if service == "openrouter":
-            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING["minimax/minimax-01"])
-            cost = (
-                (input_tokens / 1000) * pricing["input"] +
-                (output_tokens / 1000) * pricing["output"]
+            pricing = self.OPENROUTER_PRICING.get(
+                model, self.OPENROUTER_PRICING["minimax/minimax-01"]
             )
-        elif service == "hunyuan":
-            # Hunyuan OCR pricing (example - update with actual)
-            cost = 0.001  # Fixed cost per OCR call
+            cost = (input_tokens / 1000) * pricing["input"] + (
+                output_tokens / 1000
+            ) * pricing["output"]
+        elif service in ("paddleocr", "tesseract"):
+            # Local OCR - no API cost, just compute resources
+            cost = 0.0  # Free open source OCR
         else:
             # Default cost calculation
             cost = 0.0001
@@ -241,8 +246,7 @@ class QueueMonitor:
             with self._lock:
                 if self._redis_client is None:
                     self._redis_client = redis.from_url(
-                        self._redis_url,
-                        decode_responses=True
+                        self._redis_url, decode_responses=True
                     )
         return self._redis_client
 
@@ -363,9 +367,9 @@ class SystemMonitor:
             disk = psutil.disk_usage(path)
             return {
                 "path": path,
-                "total_gb": round(disk.total / (1024 ** 3), 2),
-                "used_gb": round(disk.used / (1024 ** 3), 2),
-                "free_gb": round(disk.free / (1024 ** 3), 2),
+                "total_gb": round(disk.total / (1024**3), 2),
+                "used_gb": round(disk.used / (1024**3), 2),
+                "free_gb": round(disk.free / (1024**3), 2),
                 "percent": disk.percent,
                 "alert_high": disk.percent > 85,
             }
@@ -383,34 +387,43 @@ class SystemMonitor:
         """
         try:
             import subprocess
+
             result = subprocess.run(
-                ["docker", "stats", "--no-stream", "--format", "{{.Name}}\t{{.MemUsage}}"],
+                [
+                    "docker",
+                    "stats",
+                    "--no-stream",
+                    "--format",
+                    "{{.Name}}\t{{.MemUsage}}",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            lines = result.stdout.strip().split('\n')
+            lines = result.stdout.strip().split("\n")
             containers = []
             total_sowknow_mb = 0.0
-            
+
             for line in lines:
                 if not line.strip():
                     continue
-                parts = line.split('\t')
+                parts = line.split("\t")
                 if len(parts) >= 2:
                     name = parts[0]
                     mem_str = parts[1]
-                    
+
                     mem_mb = SystemMonitor._parse_memory_string(mem_str)
-                    
+
                     if "sowknow" in name.lower():
                         total_sowknow_mb += mem_mb
-                    
-                    containers.append({
-                        "name": name,
-                        "memory_mb": mem_mb,
-                        "memory_str": mem_str,
-                    })
+
+                    containers.append(
+                        {
+                            "name": name,
+                            "memory_mb": mem_mb,
+                            "memory_str": mem_str,
+                        }
+                    )
             return {
                 "containers": containers,
                 "total_sowknow_mb": round(total_sowknow_mb, 2),
@@ -424,22 +437,23 @@ class SystemMonitor:
     def _parse_memory_string(mem_str: str) -> float:
         """Parse memory string like '1.5GiB' or '512MiB' to MB."""
         import re
-        match = re.match(r'([\d.]+)\s*([KMGT]i?B)', mem_str.strip())
+
+        match = re.match(r"([\d.]+)\s*([KMGT]i?B)", mem_str.strip())
         if not match:
             return 0.0
         value = float(match.group(1))
         unit = match.group(2).upper()
-        
+
         multipliers = {
-            'B': 1 / 1024,
-            'KB': 1 / 1024,
-            'MB': 1,
-            'GB': 1024,
-            'TB': 1024 * 1024,
-            'KIB': 1 / 1024,
-            'MIB': 1,
-            'GIB': 1024,
-            'TIB': 1024 * 1024,
+            "B": 1 / 1024,
+            "KB": 1 / 1024,
+            "MB": 1,
+            "GB": 1024,
+            "TB": 1024 * 1024,
+            "KIB": 1 / 1024,
+            "MIB": 1,
+            "GIB": 1024,
+            "TIB": 1024 * 1024,
         }
         return value * multipliers.get(unit, 1)
 
@@ -488,7 +502,9 @@ class AlertManager:
 
         if triggered and state.triggered_at is None:
             state.triggered_at = datetime.now()
-            logger.warning(f"Alert triggered: {name} (value: {current_value}, threshold: {config.threshold})")
+            logger.warning(
+                f"Alert triggered: {name} (value: {current_value}, threshold: {config.threshold})"
+            )
             return True
         elif not triggered and state.triggered_at is not None:
             state.resolved_at = datetime.now()
@@ -505,11 +521,13 @@ class AlertManager:
             for name, state in self._alert_states.items():
                 if state.triggered_at is not None:
                     config = self._alerts.get(name)
-                    active.append({
-                        "name": name,
-                        "triggered_at": state.triggered_at.isoformat(),
-                        "threshold": config.threshold if config else None,
-                    })
+                    active.append(
+                        {
+                            "name": name,
+                            "triggered_at": state.triggered_at.isoformat(),
+                            "threshold": config.threshold if config else None,
+                        }
+                    )
         return active
 
 
@@ -547,7 +565,9 @@ def setup_default_alerts() -> None:
     manager = get_alert_manager()
 
     defaults = [
-        AlertConfig("sowknow_memory_gb", 6.0, "gt", 300),  # PRD: SOWKNOW containers >6GB
+        AlertConfig(
+            "sowknow_memory_gb", 6.0, "gt", 300
+        ),  # PRD: SOWKNOW containers >6GB
         AlertConfig("vps_memory_percent", 80.0, "gt", 300),  # PRD: VPS memory >80%
         AlertConfig("disk_high", 85.0, "gt", 300),
         AlertConfig("queue_congested", 100.0, "gt", 300),

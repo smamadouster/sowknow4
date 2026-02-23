@@ -7664,3 +7664,68 @@ The OCR service has been modernized to use PaddleOCR as the primary engine with 
 5. **Open Source**: PaddleOCR + Tesseract (both open source, no API costs)
 
 **Status:** ✅ COMPLETE
+
+---
+
+## Phase 8: COMPLETED - Hunyuan Cleanup & OCR Verification
+**Started:** 2026-02-23
+**Status:** ✅ COMPLETE
+
+### Task Summary
+
+Removed all Hunyuan references from codebase, replaced with PaddleOCR + Tesseract:
+
+| File | Changes | Status |
+|------|---------|--------|
+| `backend/app/services/monitoring.py` | Removed Hunyuan service tracking, added paddleocr/tesseract (cost: 0) | ✅ |
+| `backend/.env.production` | Replaced HUNYUAN_* vars with OCR_ENGINE, OCR_FALLBACK_ENABLED | ✅ |
+| `backend/.env.example` | Added PaddleOCR/Tesseract config section | ✅ |
+| `.env.example` (root) | Added PaddleOCR/Tesseract config section | ✅ |
+| `.env.new` | Removed HUNYUAN_API_KEY, added OCR_* vars | ✅ |
+| `docker-compose.production.yml` | Removed HUNYUAN_SECRET_ID reference | ✅ |
+
+### OCR Service Verification
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| Base mode (1024x1024) | ✅ | MODE_CONFIGS[OCRMode.BASE] |
+| Large mode (1280x1280) | ✅ | MODE_CONFIGS[OCRMode.LARGE] |
+| Gundam mode (multi-pass) | ✅ | 3 passes at 0.5x, 1x, 1.5x |
+| PaddleOCR primary | ✅ | _extract_text_paddle() |
+| Tesseract fallback | ✅ | _extract_text_tesseract() |
+| FR/EN bilingual | ✅ | _get_language_for_ocr() |
+| Audit logging | ✅ | Result includes engine, mode, passes |
+
+### Test Results
+
+```
+============================= test session starts ==============================
+tests/unit/test_ocr_service.py::TestOCRMode::test_ocr_mode_enum_values PASSED
+tests/unit/test_ocr_service.py::TestOCRMode::test_ocr_engine_enum_values PASSED
+tests/unit/test_ocr_service.py::TestOCRServiceModeConfigs::test_mode_configs_exist PASSED
+tests/unit/test_ocr_service.py::TestOCRServiceModeConfigs::test_base_mode_config PASSED
+tests/unit/test_ocr_service.py::TestOCRServiceModeConfigs::test_large_mode_config PASSED
+tests/unit/test_ocr_service.py::TestOCRServiceModeConfigs::test_gundam_mode_config PASSED
+...
+======================== 29 passed, 1 skipped in 0.21s =========================
+```
+
+### Compliance Status
+
+| Requirement | Status |
+|-------------|--------|
+| Zero PII to cloud APIs | ✅ Local OCR only |
+| Open source fallback | ✅ Tesseract |
+| Three processing modes | ✅ Base/Large/Gundam |
+| FR/EN bilingual support | ✅ Language parameter |
+| Audit logging | ✅ Engine tracked |
+
+### Summary
+
+Hunyuan references have been completely removed from the codebase. The OCR service:
+- Uses PaddleOCR as primary (local, no API cost)
+- Falls back to Tesseract if PaddleOCR fails
+- Supports three processing modes (Base/Large/Gundam)
+- Logs engine used for every operation
+- Supports French and English languages
+- All 29 tests pass

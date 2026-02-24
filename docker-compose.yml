@@ -151,19 +151,29 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'from celery import Celery; import os; c = Celery(\"sowknow\", broker=os.getenv(\"REDIS_URL\")); c.connection().connect(); exit(0)' || exit 1"]
+      # Two-phase check:
+      # 1. Broker reachability (fast path, always verified).
+      # 2. Embedding model loaded in the worker process: inspects the active worker via
+      #    celery inspect ping, then checks that EmbeddingService reports model loaded.
+      #    If the model failed to load (OOM or missing package), this exits non-zero and
+      #    Docker will restart the container before it processes documents with zero vectors.
+      test: ["CMD-SHELL", "python -c \"\nimport os, sys\nfrom celery import Celery\nc = Celery('sowknow', broker=os.getenv('REDIS_URL', 'redis://redis:6379/0'))\ntry:\n    c.connection().connect()\nexcept Exception as e:\n    print(f'Broker unreachable: {e}'); sys.exit(1)\ntry:\n    from app.services.embedding_service import embedding_service\n    # Trigger lazy load; raises on hard failure\n    _ = embedding_service.model\n    if not embedding_service.can_embed:\n        print(f'Embedding model not ready: {embedding_service._load_error}'); sys.exit(1)\n    print('OK: broker reachable, embedding model loaded')\nexcept Exception as e:\n    print(f'Embedding check failed: {e}'); sys.exit(1)\n\" || exit 1"]
       interval: 90s
-      timeout: 15s
+      timeout: 60s
       retries: 3
-      start_period: 90s
+      start_period: 120s
     deploy:
       resources:
         limits:
-          # 2GB: enough for multilingual-e5-large (1.3GB) + worker overhead.
-          # Reduced from 2.5GB to stay within 6.4GB total VPS budget.
+          # 2048M is sufficient for a SINGLE worker process loading multilingual-e5-large
+          # (~1.3 GB) + Python overhead (~300 MB) = ~1.6 GB peak.
+          # CRITICAL: concurrency MUST stay at 1. With fork pool, each worker process
+          # gets its own private copy of the model after fork (lazy load = no CoW sharing).
+          # Two workers × 1.6 GB = 3.2 GB > 2048 M → SIGKILL-9. One worker keeps peak
+          # below 2048 M and total container budget stays within the 6.4 GB VPS limit.
           memory: 2048M
           cpus: '1.5'
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=1 -Q celery,document_processing,scheduled
     networks:
       - sowknow-net
 

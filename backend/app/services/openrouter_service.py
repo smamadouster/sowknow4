@@ -1,6 +1,7 @@
 """
-OpenRouter service for LLM access (MiniMax, etc.)
-OpenRouter provides OpenAI-compatible API access to multiple LLMs
+OpenRouter service for LLM access — Kimi K2.5 fallback
+OpenRouter provides OpenAI-compatible API access to multiple LLMs.
+Used as the fallback when MiniMax M2.5 direct API is unavailable.
 
 CONTEXT CACHING:
 - Redis-backed cache for repeated queries to reduce API costs
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "minimax/minimax-01")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "moonshotai/kimi-k2.5")
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamtech.com")
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
@@ -36,7 +37,7 @@ CACHE_TTL_SECONDS = 3600  # 1 hour TTL for cached responses
 CACHE_KEY_PREFIX = "sowknow:openrouter:cache:"
 
 # Context window limits (in tokens)
-MINIMAX_CONTEXT_WINDOW = 128000  # MiniMax 2.5 supports 128K
+KIMI_CONTEXT_WINDOW = 128000  # Kimi K2.5 supports 128K
 MAX_INPUT_TOKENS = 120000  # Leave buffer for response
 
 # Collection cache key tracking (for invalidation)

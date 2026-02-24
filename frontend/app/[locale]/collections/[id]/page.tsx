@@ -132,8 +132,8 @@ export default function CollectionDetailPage() {
         if (data.content) {
           setToast({ message: t('collections.export_success'), type: 'success' });
           
-          const filename = `${collection.name.replace(/[^a-z0-9]/gi, '_')}_report.pdf`;
-          const blob = new Blob([data.content], { type: 'text/plain' });
+          const filename = `${collection.name.replace(/[^a-z0-9]/gi, '_')}_report.md`;
+          const blob = new Blob([data.content], { type: 'text/markdown' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;

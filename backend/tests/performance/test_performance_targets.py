@@ -14,7 +14,7 @@ Resilience Test Matrix:
 - Ollama unresponsive
 - Redis container restart
 - PostgreSQL high load
-- Hunyuan-OCR API down
+- PaddleOCR failure / Tesseract fallback
 - Worker OOM (embedding model)
 - Disk space < 5GB
 - Nginx restart
@@ -666,7 +666,7 @@ class TestResilienceMatrix:
         assert successful >= 16, f"Only {successful}/20 queries succeeded under high load"
 
     # ----------------------------------------
-    # Test 5: Hunyuan-OCR API down
+    # Test 5: PaddleOCR failure / Tesseract fallback
     # ----------------------------------------
     @pytest.mark.asyncio
     async def test_ocr_api_down_retry_fallback(self):
@@ -678,10 +678,10 @@ class TestResilienceMatrix:
         # Mock OCR service failure
         ocr_service = Mock()
 
-        # Simulate API failure
+        # Simulate PaddleOCR failure triggering Tesseract fallback
         ocr_service.extract_text.side_effect = [
-            Exception("Hunyuan API down"),
-            Exception("Hunyuan API down"),
+            Exception("PaddleOCR unavailable"),
+            Exception("PaddleOCR unavailable"),
             "Fallback OCR text"  # Third attempt succeeds with Tesseract
         ]
 

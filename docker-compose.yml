@@ -55,13 +55,15 @@ services:
     container_name: sowknow4-redis
     restart: unless-stopped
     logging: *default-logging
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
       - sowknow-redis-data:/data
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -87,9 +89,10 @@ services:
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - LOCAL_LLM_URL=http://host.docker.internal:11434
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       # CORS and Cookie Settings (CRITICAL for authentication)
@@ -136,8 +139,9 @@ services:
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - KIMI_API_KEY=${KIMI_API_KEY}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - LOCAL_LLM_URL=http://host.docker.internal:11434
     volumes:
       - sowknow-public-data:/data/public
@@ -188,7 +192,7 @@ services:
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY}
     command: celery -A app.celery_app beat --loglevel=info

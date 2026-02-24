@@ -10,10 +10,10 @@ from app.models.base import Base, TimestampMixin, GUIDType
 class LLMProvider(str, enum.Enum):
     """LLM providers used for chat responses"""
 
-    MINIMAX = "minimax"  # MiniMax 2.5 - default for public documents
-    KIMI = "kimi"  # Moonshot AI (Kimi 2.5) - for chatbot, telegram, search agentic
-    OLLAMA = "ollama"  # Shared local Ollama instance - for confidential documents
-    OPENROUTER = "openrouter"  # OpenRouter gateway (MiniMax fallback)
+    MINIMAX = "minimax"    # MiniMax M2.5 — default for all public docs (direct API)
+    KIMI = "kimi"          # Moonshot direct API (legacy / Telegram bot only)
+    OLLAMA = "ollama"      # Local Ollama — confidential documents (privacy guarantee)
+    OPENROUTER = "openrouter"  # OpenRouter gateway — Kimi K2.5 fallback for public docs
 
 
 class MessageRole(str, enum.Enum):

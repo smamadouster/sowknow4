@@ -1,10 +1,9 @@
 """
-Chat service for RAG-powered conversations with Kimi, MiniMax, OpenRouter, and Ollama
+Chat service for RAG-powered conversations
 
 LLM Routing Strategy:
-- Confidential Docs: Ollama (privacy)
-- RAG with public docs: MiniMax (direct API) -> OpenRouter -> Ollama
-- General chat: Kimi (direct API) -> MiniMax -> OpenRouter -> Ollama
+- Confidential Docs: Ollama (privacy — never leaves the server)
+- All public (RAG + general): MiniMax M2.5 (direct API) -> Kimi K2.5 (OpenRouter) -> Ollama
 """
 import os
 import logging
@@ -324,55 +323,27 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Build RAG context
         messages = self.build_rag_context(user_message, sources, history)
 
-        # Select LLM based on use case and confidentiality
-        # Priority:
-        # 1. Confidential docs -> Ollama (privacy)
-        # 2. RAG with public docs -> MiniMax (direct API)
-        # 3. General chat (no docs) -> Kimi 2.5 (direct API)
-        # 4. Fallbacks -> OpenRouter -> Ollama
+        # Select LLM based on confidentiality — unified routing for all public interactions
+        # 1. Confidential docs -> Ollama (privacy guarantee)
+        # 2. All public (RAG + general) -> MiniMax M2.5 (direct) -> Kimi K2.5 (OpenRouter) -> Ollama
 
         if has_confidential:
-            # Confidential: always use Ollama
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
-        elif sources and len(sources) > 0:
-            # RAG mode with public docs: use MiniMax (direct API)
-            if self.minimax_service:
-                llm_service = self.minimax_service
-                llm_provider = LLMProvider.OPENROUTER  # Reuse enum for now
-                routing_reason = "rag_public_docs_minimax"
-            elif self.openrouter_service:
-                # Fallback to OpenRouter if MiniMax not available
-                llm_service = self.openrouter_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "rag_public_docs_openrouter"
-            else:
-                # Final fallback to Ollama
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
-                routing_reason = "rag_public_docs_fallback"
+        elif self.minimax_service and self.minimax_service.api_key:
+            llm_service = self.minimax_service
+            llm_provider = LLMProvider.MINIMAX
+            routing_reason = "minimax_m25_direct"
+        elif self.openrouter_service:
+            # Kimi K2.5 via OpenRouter
+            llm_service = self.openrouter_service
+            llm_provider = LLMProvider.OPENROUTER
+            routing_reason = "kimi_k25_openrouter"
         else:
-            # General chat mode: use Kimi 2.5 (direct API)
-            if self.kimi_service:
-                llm_service = self.kimi_service
-                llm_provider = LLMProvider.KIMI
-                routing_reason = "general_chat_kimi"
-            elif self.minimax_service:
-                # Fallback to MiniMax if Kimi not available
-                llm_service = self.minimax_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "general_chat_minimax"
-            elif self.openrouter_service:
-                # Fallback to OpenRouter if neither available
-                llm_service = self.openrouter_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "general_chat_openrouter"
-            else:
-                # Final fallback to Ollama
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
-                routing_reason = "general_chat_final_fallback"
+            llm_service = self.ollama_service
+            llm_provider = LLMProvider.OLLAMA
+            routing_reason = "final_fallback_ollama"
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
@@ -423,55 +394,27 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Build RAG context
         messages = self.build_rag_context(user_message, sources, history)
 
-        # Select LLM based on use case and confidentiality
-        # Priority:
-        # 1. Confidential docs -> Ollama (privacy)
-        # 2. RAG with public docs -> MiniMax (direct API)
-        # 3. General chat (no docs) -> Kimi 2.5 (direct API)
-        # 4. Fallbacks -> OpenRouter -> Ollama
+        # Select LLM based on confidentiality — unified routing for all public interactions
+        # 1. Confidential docs -> Ollama (privacy guarantee)
+        # 2. All public (RAG + general) -> MiniMax M2.5 (direct) -> Kimi K2.5 (OpenRouter) -> Ollama
 
         if has_confidential:
-            # Confidential: always use Ollama
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
-        elif sources and len(sources) > 0:
-            # RAG mode with public docs: use MiniMax (direct API)
-            if self.minimax_service:
-                llm_service = self.minimax_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "rag_public_docs_minimax"
-            elif self.openrouter_service:
-                # Fallback to OpenRouter if MiniMax not available
-                llm_service = self.openrouter_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "rag_public_docs_openrouter"
-            else:
-                # Final fallback to Ollama
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
-                routing_reason = "rag_public_docs_fallback"
+        elif self.minimax_service and self.minimax_service.api_key:
+            llm_service = self.minimax_service
+            llm_provider = LLMProvider.MINIMAX
+            routing_reason = "minimax_m25_direct"
+        elif self.openrouter_service:
+            # Kimi K2.5 via OpenRouter
+            llm_service = self.openrouter_service
+            llm_provider = LLMProvider.OPENROUTER
+            routing_reason = "kimi_k25_openrouter"
         else:
-            # General chat mode: use Kimi 2.5 (direct API)
-            if self.kimi_service:
-                llm_service = self.kimi_service
-                llm_provider = LLMProvider.KIMI
-                routing_reason = "general_chat_kimi"
-            elif self.minimax_service:
-                # Fallback to MiniMax if Kimi not available
-                llm_service = self.minimax_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "general_chat_minimax"
-            elif self.openrouter_service:
-                # Fallback to OpenRouter if neither available
-                llm_service = self.openrouter_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "general_chat_openrouter"
-            else:
-                # Final fallback to Ollama
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
-                routing_reason = "general_chat_final_fallback"
+            llm_service = self.ollama_service
+            llm_provider = LLMProvider.OLLAMA
+            routing_reason = "final_fallback_ollama"
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 

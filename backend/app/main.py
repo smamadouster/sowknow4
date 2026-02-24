@@ -326,7 +326,7 @@ async def api_status():
             {"name": "Database Models", "status": "✅", "description": "SQLAlchemy models with pgvector"},
             {"name": "OpenRouter Integration", "status": "✅", "description": "OpenRouter API with MiniMax"},
             {"name": "Document Upload", "status": "✅", "description": "File upload and processing"},
-            {"name": "OCR Processing", "status": "✅", "description": "Hunyuan OCR text extraction"},
+            {"name": "OCR Processing", "status": "✅", "description": "PaddleOCR text extraction"},
             {"name": "RAG Search", "status": "✅", "description": "Hybrid vector + keyword search"},
             {"name": "Smart Collections", "status": "✅", "description": "NL query to document groups with chat"},
             {"name": "Smart Folders", "status": "✅", "description": "AI-generated articles from docs"},

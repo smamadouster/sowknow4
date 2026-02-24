@@ -504,7 +504,7 @@ async def api_status():
             "Implement document models",
             "Create document upload API",
             "Set up file storage buckets",
-            "Integrate Hunyuan OCR API",
+            "PaddleOCR integration (complete)",
             "Implement vector embeddings",
         ],
     }

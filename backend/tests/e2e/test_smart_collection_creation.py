@@ -5,6 +5,7 @@ Tests the complete Smart Collection flow including AI analysis and LLM routing.
 import pytest
 import time
 from datetime import datetime
+from uuid import uuid4
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -386,8 +387,7 @@ class TestStep5CollectionConfidentialDocuments:
 class TestStep6CollectionChat:
     """Step 6: Collection Chat"""
 
-    @pytest.mark.asyncio
-    async def test_collection_chat_scoped_to_documents(
+    def test_collection_chat_scoped_to_documents(
         self, client: TestClient, db: Session, admin_headers: dict, admin_user: User
     ):
         """Test POST /api/v1/collections/{id}/chat - chat scoped to collection documents"""
@@ -404,11 +404,12 @@ class TestStep6CollectionChat:
         db.commit()
         db.refresh(collection)
 
-        # Mock the chat service
-        with patch('app.services.collection_chat_service.collection_chat_service.chat_with_collection') as mock_chat:
+        # Mock the chat service (AsyncMock required since chat_with_collection is async)
+        with patch('app.services.collection_chat_service.collection_chat_service.chat_with_collection', new_callable=AsyncMock) as mock_chat:
             mock_chat.return_value = {
-                "session_id": "test-session-id",
+                "session_id": str(uuid4()),
                 "collection_id": str(collection.id),
+                "message_count": 1,
                 "response": "This is a test response scoped to collection documents.",
                 "sources": [],
                 "llm_used": "minimax",

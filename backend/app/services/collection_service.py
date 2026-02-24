@@ -338,14 +338,20 @@ class CollectionService:
         if intent.date_range:
             resolved_range = intent._resolve_date_range()
             if resolved_range:
-                start_date = datetime.fromisoformat(resolved_range["start"])
-                end_date = datetime.fromisoformat(resolved_range["end"])
-                query = query.filter(
-                    and_(
-                        Document.created_at >= start_date,
-                        Document.created_at < end_date
+                start_val = resolved_range.get("start") if isinstance(resolved_range, dict) else None
+                end_val = resolved_range.get("end") if isinstance(resolved_range, dict) else None
+                try:
+                    start_date = datetime.fromisoformat(start_val) if isinstance(start_val, str) else (start_val if isinstance(start_val, datetime) else None)
+                    end_date = datetime.fromisoformat(end_val) if isinstance(end_val, str) else (end_val if isinstance(end_val, datetime) else None)
+                except (TypeError, ValueError):
+                    start_date = end_date = None
+                if start_date and end_date:
+                    query = query.filter(
+                        and_(
+                            Document.created_at >= start_date,
+                            Document.created_at < end_date
+                        )
                     )
-                )
 
         # Get documents by semantic search if we have keywords
         if intent.keywords:

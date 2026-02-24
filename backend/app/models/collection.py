@@ -158,7 +158,7 @@ class CollectionChatSession(Base, TimestampMixin):
     message_count = Column(Integer, default=0)
 
     # LLM usage tracking
-    llm_used = Column(String(50))  # "gemini" or "ollama"
+    llm_used = Column(String(50))  # "minimax", "kimi", "openrouter", or "ollama"
     total_tokens_used = Column(Integer, default=0)
     cache_hits = Column(Integer, default=0)
 

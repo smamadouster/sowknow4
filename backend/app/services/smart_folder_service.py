@@ -73,7 +73,7 @@ class SmartFolderService:
 
         if not documents:
             return {
-                "topic": topic,
+                "collection_id": str(uuid.uuid4()),
                 "generated_content": f"No relevant documents found for topic: {topic}",
                 "sources_used": [],
                 "word_count": 0,

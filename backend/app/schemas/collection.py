@@ -94,8 +94,8 @@ class CollectionItemResponse(BaseModel):
     added_reason: Optional[str] = None
     created_at: datetime
 
-    # Include document summary
-    document: Optional[Dict[str, Any]] = None
+    # Include document summary (set after ORM validation)
+    document: Optional[Any] = None
 
     class Config:
         from_attributes = True
@@ -109,16 +109,17 @@ class CollectionResponse(BaseModel):
     collection_type: CollectionType
     visibility: CollectionVisibility
     query: str
-    parsed_intent: Dict[str, Any] = {}
+    parsed_intent: Optional[Dict[str, Any]] = None
     ai_summary: Optional[str] = None
-    ai_keywords: List[str] = []
-    ai_entities: List[Dict[str, str]] = []
-    filter_criteria: Dict[str, Any] = {}
+    ai_keywords: Optional[List[str]] = []
+    ai_entities: Optional[List[Any]] = []
+    filter_criteria: Optional[Dict[str, Any]] = None
     document_count: int
     last_refreshed_at: Optional[str] = None
     chat_session_id: Optional[UUID] = None
     is_pinned: bool
     is_favorite: bool
+    status: str = "active"  # Collections are always active once created
     created_at: datetime
     updated_at: datetime
 
@@ -157,7 +158,7 @@ class CollectionPreviewResponse(BaseModel):
 
 # Collection Chat Schemas
 class CollectionChatCreate(BaseModel):
-    collection_id: UUID
+    collection_id: Optional[UUID] = None  # May be provided in path instead of body
     message: str = Field(..., min_length=1, description="User message")
     session_name: Optional[str] = Field(
         None, description="Optional name for the Q&A session"

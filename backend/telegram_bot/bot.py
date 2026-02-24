@@ -45,6 +45,16 @@ SESSION_KEY_PREFIX = "telegram_session:"
 
 (SELECTING_BUCKET, CHECKING_DUPLICATE) = range(2)
 
+_SENSITIVE_HEADERS = {"authorization", "x-bot-api-key"}
+
+
+def _redact_headers(headers: dict) -> dict:
+    """Return a copy of headers with sensitive values redacted for logging."""
+    return {
+        k: "***REDACTED***" if k.lower() in _SENSITIVE_HEADERS else v
+        for k, v in headers.items()
+    }
+
 
 class RedisSessionManager:
     """
@@ -296,7 +306,7 @@ class TelegramBotClient:
                 f"Uploading document: {filename} ({len(file_bytes)} bytes) to bucket: {bucket}"
             )
             logger.info(f"Backend URL: {self.base_url}/api/v1/documents/upload")
-            logger.info(f"Headers: {headers}")
+            logger.debug(f"Headers: {_redact_headers(headers)}")
             logger.info(f"BOT_API_KEY present: {bool(BOT_API_KEY)}")
 
             response = await self._client.post(
@@ -1063,14 +1073,28 @@ async def post_shutdown(application: Application) -> None:
     logger.info("Redis session storage shut down complete.")
 
 
+def _validate_required_env_vars() -> bool:
+    """Validate all required environment variables are present before startup."""
+    required = {
+        "TELEGRAM_BOT_TOKEN": BOT_TOKEN,
+        "BOT_API_KEY": BOT_API_KEY,
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        for name in missing:
+            logger.error(f"Required environment variable not set: {name}")
+            print(f"ERROR: {name} environment variable is not set!")
+        print("Please set all required environment variables and restart the bot.")
+        print("See .env.example for the list of required variables.")
+        return False
+    return True
+
+
 def main() -> None:
-    if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN not set! Bot cannot start.")
-        print("ERROR: TELEGRAM_BOT_TOKEN environment variable is not set!")
-        print("Please set TELEGRAM_BOT_TOKEN and restart the bot.")
+    if not _validate_required_env_vars():
         return
 
-    logger.info(f"Initializing Telegram bot with token prefix: {BOT_TOKEN[:10]}...")
+    logger.info("Initializing Telegram bot...")
 
     try:
         application = (

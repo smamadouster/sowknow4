@@ -5,7 +5,7 @@ Lead: Orchestrator
 ---
 
 ## ═══════════════════════════════════════════════════
-## CURRENT STATUS — 2026-02-24 (C1-bench session)
+## CURRENT STATUS — 2026-02-24 (C2 session)
 ## ═══════════════════════════════════════════════════
 
 ### ✅ DONE THIS SESSION
@@ -23,6 +23,23 @@ Lead: Orchestrator
 | B2: context caching — confidential bypass + collection invalidation | `f9261e2` | ✅ Done — 32/32 cache tests pass, 406 passed / 5 skipped overall |
 | C1: PDF export — StreamingResponse + themes + excerpts + page numbers + branding | `e68efa6` | ✅ Done — 58/58 tests pass |
 | C1-bench: Collection performance benchmarks — real PostgreSQL container | `4a2c036` | ✅ Done — 5/5 bench tests pass, all PRD targets met |
+| C2: Telegram persistent sessions — RedisSessionManager + 23 unit tests | TBD | ✅ Done — 23/23 tests pass, 431 passed overall |
+
+### ✅ COMPLETED: C2 — Telegram Bot Persistent Sessions
+**Result**: 23/23 session unit tests pass. Full unit suite: 431 passed / 5 skipped / 3 pre-existing failures (Redis/Celery connectivity, unrelated).
+
+**What was implemented**:
+- `RedisSessionManager` class in `backend/telegram_bot/bot.py`:
+  - Key pattern: `telegram_session:{telegram_user_id}`
+  - TTL: 86400s (24 hours) — auto-expiry of stale sessions
+  - JSON serialization/deserialization for all session fields
+  - Methods: `connect`, `close`, `get_session`, `set_session`, `delete_session`, `update_session`, `count_active_sessions`, `clear_pending_file`
+  - Graceful fallback: `_redis = None` when Redis unavailable — all methods return `None`/`False` with warning logs
+- `post_init` hook logs count of active sessions restored on bot startup
+- `post_shutdown` hook closes Redis connection cleanly
+- All handler references (`start_command`, `handle_document_upload`, `bucket_callback`, `handle_text_message`) use `await session_manager.*_session()` — no in-memory dict
+- 23 unit tests in `tests/unit/test_telegram_session.py` (mock Redis, no live dependency):
+  - Connect success/failure, set/get/delete/update/clear, TTL enforcement, key format, JSON decode errors, Redis-unavailable fallback, session count, resilience scenarios
 
 ### ✅ COMPLETED: C1-bench — Collection Performance Benchmarks
 **Result**: 5/5 benchmark tests pass. All PRD targets met with real PostgreSQL.

@@ -41,6 +41,7 @@ from app.schemas.document import (
     DocumentUploadResponse,
     DocumentUpdate,
     BatchUploadResponse,
+    DocumentStatusResponse,
 )
 from app.services.storage_service import storage_service
 from app.services.deduplication_service import deduplication_service
@@ -658,6 +659,70 @@ async def get_document(
         )
 
     return DocumentResponse.model_validate(document)
+
+
+@router.get("/{document_id}/status", response_model=DocumentStatusResponse)
+async def get_document_status(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get the processing status of a specific document.
+
+    Returns status, error message and retry count from the processing queue.
+    SECURITY: Returns 404 (not 403) for confidential documents to prevent enumeration.
+    """
+    from app.models.processing import ProcessingQueue
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Confidential visibility: same rule as get_document
+    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
+        UserRole.ADMIN,
+        UserRole.SUPERUSER,
+    ]:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Pull processing details from ProcessingQueue if available
+    processing_task = (
+        db.query(ProcessingQueue)
+        .filter(ProcessingQueue.document_id == document_id)
+        .first()
+    )
+
+    error_message: Optional[str] = None
+    retry_count: int = 0
+    processing_started_at = None
+
+    if processing_task:
+        error_message = processing_task.error_message
+        retry_count = processing_task.retry_count or 0
+        processing_started_at = processing_task.started_at
+
+    # Also surface error stored directly in document metadata
+    doc_meta = document.document_metadata or {}
+    if not error_message and doc_meta.get("processing_error"):
+        error_message = doc_meta["processing_error"]
+
+    last_error_at = None
+    if doc_meta.get("last_error_at"):
+        try:
+            last_error_at = datetime.fromisoformat(doc_meta["last_error_at"])
+        except (ValueError, TypeError):
+            pass
+
+    return DocumentStatusResponse(
+        document_id=document.id,
+        status=document.status,
+        error_message=error_message,
+        retry_count=retry_count,
+        processing_started_at=processing_started_at,
+        last_error_at=last_error_at,
+    )
 
 
 @router.get("/{document_id}/download")

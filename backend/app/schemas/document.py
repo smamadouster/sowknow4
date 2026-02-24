@@ -113,6 +113,16 @@ class DocumentChunkResponse(BaseModel):
         from_attributes = True
 
 
+# Document Status Schema
+class DocumentStatusResponse(BaseModel):
+    document_id: UUID
+    status: DocumentStatus
+    error_message: Optional[str] = None
+    retry_count: int = 0
+    processing_started_at: Optional[datetime] = None
+    last_error_at: Optional[datetime] = None
+
+
 # Batch Upload Schemas
 class BatchUploadResponse(BaseModel):
     total_files: int

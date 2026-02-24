@@ -325,13 +325,12 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline"):
             else:
                 document.status = DocumentStatus.PENDING
                 logger.warning(
-                    f"Document {document_id} will be retried ({current_retry}/3)"
+                    f"Document {document_id} will be retried ({current_retry}/2)"
                 )
             db.commit()
 
-        # Retry with exponential backoff (max 3 retries)
-        countdown_seconds = min(60 * current_retry, 300)  # Cap at 5 minutes
-        raise self.retry(exc=e, countdown=countdown_seconds, max_retries=3)
+        # Retry with fixed 30s delay (max 2 retries = 3 total attempts)
+        raise self.retry(exc=e, countdown=30, max_retries=2)
 
     finally:
         db.close()

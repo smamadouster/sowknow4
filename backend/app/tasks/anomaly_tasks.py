@@ -460,13 +460,54 @@ def recover_stuck_documents(max_processing_minutes: int = 15):
                     f"{stuck_duration:.1f} minutes"
                 )
 
-                # Reset document to pending state for reprocessing
+                # Track how many times we've already recovered this document.
+                # Always build a NEW dict to guarantee SQLAlchemy detects the mutation
+                # (same-object assignment can be silently skipped by the ORM).
+                existing_meta = doc.document_metadata or {}
+                recovery_count = existing_meta.get("recovery_count", 0) + 1
+
+                # After 3 recovery attempts, mark as permanently failed
+                MAX_RECOVERY_ATTEMPTS = 3
+                if recovery_count > MAX_RECOVERY_ATTEMPTS:
+                    doc.status = DocumentStatus.ERROR
+                    doc.document_metadata = {
+                        **existing_meta,
+                        "recovery_count": recovery_count,
+                        "recovered_from_stuck": True,
+                        "stuck_duration_minutes": stuck_duration,
+                        "recovered_at": datetime.utcnow().isoformat(),
+                        "processing_error": (
+                            f"Permanently failed: stuck in processing after "
+                            f"{recovery_count} recovery attempts"
+                        ),
+                    }
+
+                    if processing_task:
+                        processing_task.status = TaskStatus.FAILED
+                        processing_task.error_message = (
+                            f"Exhausted {MAX_RECOVERY_ATTEMPTS} recovery attempts"
+                        )
+
+                    db.commit()
+                    logger.error(
+                        f"Document {doc.id} permanently failed after "
+                        f"{recovery_count} recovery attempts"
+                    )
+                    failed.append({
+                        "document_id": str(doc.id),
+                        "error": f"Exhausted {MAX_RECOVERY_ATTEMPTS} recovery attempts",
+                    })
+                    continue
+
+                # Reset document to pending state for reprocessing (use new dict copy)
                 doc.status = DocumentStatus.PENDING
-                metadata = doc.document_metadata or {}
-                metadata["recovered_from_stuck"] = True
-                metadata["stuck_duration_minutes"] = stuck_duration
-                metadata["recovered_at"] = datetime.utcnow().isoformat()
-                doc.document_metadata = metadata
+                doc.document_metadata = {
+                    **existing_meta,
+                    "recovery_count": recovery_count,
+                    "recovered_from_stuck": True,
+                    "stuck_duration_minutes": stuck_duration,
+                    "recovered_at": datetime.utcnow().isoformat(),
+                }
 
                 if processing_task:
                     processing_task.status = TaskStatus.PENDING
@@ -482,9 +523,10 @@ def recover_stuck_documents(max_processing_minutes: int = 15):
                     "document_id": str(doc.id),
                     "filename": doc.filename,
                     "stuck_duration_minutes": round(stuck_duration, 1),
+                    "recovery_attempt": recovery_count,
                 })
 
-                logger.info(f"Re-queued stuck document {doc.id} for processing")
+                logger.info(f"Re-queued stuck document {doc.id} for processing (attempt {recovery_count}/{MAX_RECOVERY_ATTEMPTS})")
 
             except Exception as e:
                 logger.error(f"Failed to recover document {doc.id}: {e}")

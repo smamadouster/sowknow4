@@ -398,3 +398,111 @@ class TestCeleryBeatSchedule:
         beat_schedule = celery_app.conf.beat_schedule
 
         assert "daily-anomaly-report" in beat_schedule
+
+
+class TestRecoveryAttemptCap:
+    """Tests for the recovery attempt cap that prevents infinite requeue loops"""
+
+    def test_recovery_cap_marks_error_after_max_attempts(self, db: Session):
+        """Test that a document is set to ERROR after exceeding recovery attempts"""
+        doc = Document(
+            id=uuid.uuid4(),
+            filename="loop_stuck.pdf",
+            original_filename="loop_stuck.pdf",
+            file_path="/data/public/loop_stuck.pdf",
+            bucket=DocumentBucket.PUBLIC,
+            status=DocumentStatus.PROCESSING,
+            size=1024,
+            mime_type="application/pdf",
+            # Already recovered 3 times — next attempt should permanentely fail
+            document_metadata={"recovery_count": 3},
+            updated_at=datetime.utcnow() - timedelta(minutes=10),
+        )
+        db.add(doc)
+        db.commit()
+
+        result = recover_stuck_documents(max_processing_minutes=5)
+
+        db.refresh(doc)
+        assert doc.status == DocumentStatus.ERROR
+        assert "permanently" in (doc.document_metadata.get("processing_error") or "").lower()
+        # Should appear in failed, not recovered
+        assert any(r["document_id"] == str(doc.id) for r in result["failed"])
+        assert not any(r["document_id"] == str(doc.id) for r in result["recovered"])
+
+    def test_recovery_increments_count_on_first_recovery(self, db: Session):
+        """Test that recovery_count is incremented on each recovery attempt"""
+        doc = Document(
+            id=uuid.uuid4(),
+            filename="first_stuck.pdf",
+            original_filename="first_stuck.pdf",
+            file_path="/data/public/first_stuck.pdf",
+            bucket=DocumentBucket.PUBLIC,
+            status=DocumentStatus.PROCESSING,
+            size=1024,
+            mime_type="application/pdf",
+            document_metadata={},
+            updated_at=datetime.utcnow() - timedelta(minutes=10),
+        )
+        db.add(doc)
+        db.commit()
+
+        recover_stuck_documents(max_processing_minutes=5)
+
+        db.refresh(doc)
+        # After 1st recovery: still PENDING (recovery_count=1, threshold=3)
+        assert doc.status == DocumentStatus.PENDING
+        assert doc.document_metadata.get("recovery_count") == 1
+
+    def test_recovery_cap_processing_queue_marked_failed(self, db: Session):
+        """Test that ProcessingQueue is set to FAILED when recovery cap exceeded"""
+        doc = Document(
+            id=uuid.uuid4(),
+            filename="exhausted.pdf",
+            original_filename="exhausted.pdf",
+            file_path="/data/public/exhausted.pdf",
+            bucket=DocumentBucket.PUBLIC,
+            status=DocumentStatus.PROCESSING,
+            size=1024,
+            mime_type="application/pdf",
+            document_metadata={"recovery_count": 3},
+            updated_at=datetime.utcnow() - timedelta(minutes=10),
+        )
+        db.add(doc)
+        processing_task = ProcessingQueue(
+            id=uuid.uuid4(),
+            document_id=doc.id,
+            task_type=TaskType.OCR_PROCESSING,
+            status=TaskStatus.IN_PROGRESS,
+            started_at=datetime.utcnow() - timedelta(minutes=10),
+        )
+        db.add(processing_task)
+        db.commit()
+
+        recover_stuck_documents(max_processing_minutes=5)
+
+        db.refresh(processing_task)
+        assert processing_task.status == TaskStatus.FAILED
+        assert processing_task.error_message is not None
+
+
+class TestDocumentRetryPolicy:
+    """Tests that verify the retry policy constants match task spec"""
+
+    def test_retry_countdown_is_30_seconds(self):
+        """Verify fixed 30s countdown (no exponential backoff)"""
+        import inspect
+        import app.tasks.document_tasks as dt_module
+
+        source = inspect.getsource(dt_module.process_document)
+        assert "countdown=30" in source
+        assert "max_retries=2" in source
+
+    def test_no_exponential_backoff(self):
+        """Verify exponential backoff was removed"""
+        import inspect
+        import app.tasks.document_tasks as dt_module
+
+        source = inspect.getsource(dt_module.process_document)
+        # The old exponential formula should not be present
+        assert "countdown_seconds" not in source

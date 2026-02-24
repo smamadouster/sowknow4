@@ -178,3 +178,55 @@ def test_delete_document_admin(client: TestClient, test_document, admin_headers)
 
     # May fail due to auth, but shouldn't be 403 if authorized
     assert response.status_code in [200, 401]
+
+
+# ──────────────────────────────────────────────────────────────
+# GET /documents/{id}/status endpoint tests
+# ──────────────────────────────────────────────────────────────
+
+def test_get_document_status_requires_auth(client: TestClient, test_document):
+    """Status endpoint must reject unauthenticated requests"""
+    import uuid
+    response = client.get(f"/api/v1/documents/{test_document.id}/status")
+    assert response.status_code == 401
+
+
+def test_get_document_status_not_found(client: TestClient, auth_headers):
+    """Status endpoint returns 404 for non-existent document"""
+    import uuid
+    fake_id = uuid.uuid4()
+    response = client.get(f"/api/v1/documents/{fake_id}/status", headers=auth_headers)
+    assert response.status_code == 404
+
+
+def test_get_document_status_returns_fields(client: TestClient, test_document, auth_headers):
+    """Status endpoint returns expected fields"""
+    response = client.get(
+        f"/api/v1/documents/{test_document.id}/status", headers=auth_headers
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert "document_id" in data
+    assert "status" in data
+    assert "retry_count" in data
+    # Optional fields may be null
+    assert "error_message" in data
+    assert "processing_started_at" in data
+    assert "last_error_at" in data
+    assert data["document_id"] == str(test_document.id)
+
+
+def test_get_document_status_values(client: TestClient, test_document, auth_headers):
+    """Status endpoint returns correct status value"""
+    response = client.get(
+        f"/api/v1/documents/{test_document.id}/status", headers=auth_headers
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # test_document fixture creates a PENDING document
+    valid_statuses = ["pending", "uploading", "processing", "indexed", "error"]
+    assert data["status"] in valid_statuses
+    assert isinstance(data["retry_count"], int)
+    assert data["retry_count"] >= 0

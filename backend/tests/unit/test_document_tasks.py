@@ -44,7 +44,9 @@ class TestStuckDocumentRecovery:
         db.add(processing_task)
         db.commit()
 
-        result = recover_stuck_documents(max_processing_minutes=5)
+        with patch("app.tasks.document_tasks.process_document") as mock_pd:
+            mock_pd.delay = Mock(return_value=None)
+            result = recover_stuck_documents(max_processing_minutes=5)
 
         assert result["stuck_count"] == 1
         assert len(result["recovered"]) == 1
@@ -113,7 +115,9 @@ class TestStuckDocumentRecovery:
             db.add(doc)
         db.commit()
 
-        result = recover_stuck_documents(max_processing_minutes=5)
+        with patch("app.tasks.document_tasks.process_document") as mock_pd:
+            mock_pd.delay = Mock(return_value=None)
+            result = recover_stuck_documents(max_processing_minutes=5)
 
         assert result["stuck_count"] == 3
         assert len(result["recovered"]) == 3

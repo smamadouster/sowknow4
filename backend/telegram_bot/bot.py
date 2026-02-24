@@ -57,6 +57,9 @@ class RedisSessionManager:
     def __init__(self, redis_url: str):
         self._redis_url = redis_url
         self._redis: Optional[redis_async.Redis] = None
+        # In-memory fallback when Redis is unavailable.
+        # Sessions survive the current process but are lost on restart.
+        self._fallback: Dict[int, Dict[str, Any]] = {}
 
     async def connect(self) -> bool:
         """Initialize Redis connection. Returns True if successful."""
@@ -84,13 +87,12 @@ class RedisSessionManager:
 
     async def get_session(self, telegram_user_id: int) -> Optional[Dict[str, Any]]:
         """
-        Retrieve user session from Redis.
+        Retrieve user session from Redis, or in-memory fallback if Redis is down.
 
-        Returns None if session doesn't exist, expired, or Redis unavailable.
+        Returns None if session doesn't exist or has expired.
         """
         if not self._redis:
-            logger.warning("Redis unavailable, cannot retrieve session")
-            return None
+            return self._fallback.get(telegram_user_id)
 
         try:
             key = self._get_key(telegram_user_id)
@@ -110,12 +112,18 @@ class RedisSessionManager:
     ) -> bool:
         """
         Store user session in Redis with 24-hour TTL.
+        Falls back to in-memory storage when Redis is unavailable (sessions
+        remain functional but will be lost on bot restart).
 
-        Returns True if successful, False otherwise.
+        Returns True if session was stored (Redis or fallback), False on error.
         """
         if not self._redis:
-            logger.warning("Redis unavailable, cannot store session")
-            return False
+            logger.warning(
+                f"Redis unavailable — storing session for user {telegram_user_id} "
+                "in memory only (not persistent across restarts)"
+            )
+            self._fallback[telegram_user_id] = session_data
+            return True
 
         try:
             key = self._get_key(telegram_user_id)
@@ -128,9 +136,10 @@ class RedisSessionManager:
             return False
 
     async def delete_session(self, telegram_user_id: int) -> bool:
-        """Delete user session from Redis."""
+        """Delete user session from Redis (or in-memory fallback)."""
         if not self._redis:
-            return False
+            self._fallback.pop(telegram_user_id, None)
+            return True
 
         try:
             key = self._get_key(telegram_user_id)
@@ -159,12 +168,12 @@ class RedisSessionManager:
 
     async def count_active_sessions(self) -> int:
         """
-        Count active sessions in Redis.
+        Count active sessions in Redis (or in-memory fallback).
 
         Used on startup to report session restoration status.
         """
         if not self._redis:
-            return 0
+            return len(self._fallback)
 
         try:
             keys = await self._redis.keys(f"{SESSION_KEY_PREFIX}*")
@@ -1043,7 +1052,8 @@ async def post_init(application: Application) -> None:
         )
     else:
         logger.warning(
-            "⚠️ Redis session storage unavailable. Sessions will not persist across restarts."
+            "⚠️ Redis session storage unavailable. Using in-memory fallback — "
+            "sessions are functional but will be lost on bot restart."
         )
 
 

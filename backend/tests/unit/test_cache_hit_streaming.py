@@ -314,21 +314,28 @@ class TestStreamingCacheHit:
 
     @pytest.mark.asyncio
     async def test_kimi_path_has_no_check_cache(self):
-        """Kimi service has no check_cache – must default to cache_hit=False."""
+        """OpenRouter service without check_cache must default to cache_hit=False.
+
+        The routing chain is: confidential→Ollama, minimax→MiniMax, openrouter→OpenRouter,
+        else→Ollama.  We wire a mock openrouter service whose spec omits check_cache
+        (mimicking a Kimi-only deployment where the cache layer isn't present) and
+        verify cache_hit=False is emitted and the LLM is still called.
+        """
         from app.services.chat_service import ChatService
 
         svc = self._make_chat_service()
 
-        # Kimi service deliberately has no check_cache attribute
-        mock_kimi = MagicMock(spec=[])  # spec=[] → no attributes
+        # OpenRouter service without check_cache attribute
+        mock_openrouter = MagicMock(spec=["chat_completion"])  # no check_cache
+        svc.minimax_service = None
+        svc.openrouter_service = mock_openrouter
         llm_called = []
 
-        async def fake_kimi_stream(messages, stream=False):
+        async def fake_openrouter_stream(messages, stream=False):
             llm_called.append(True)
-            yield "kimi response"
+            yield "openrouter response"
 
-        mock_kimi.chat_completion = fake_kimi_stream
-        svc.kimi_service = mock_kimi
+        mock_openrouter.chat_completion = fake_openrouter_stream
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \

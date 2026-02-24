@@ -236,7 +236,7 @@ class TestRedisSessionManager:
 
     @pytest.mark.asyncio
     async def test_set_session_redis_unavailable(self):
-        """Test set_session returns False when Redis is unavailable."""
+        """Test set_session falls back to in-memory when Redis is unavailable."""
         import sys
         import os
 
@@ -249,7 +249,63 @@ class TestRedisSessionManager:
         sm._redis = None
 
         result = await sm.set_session(12345, {"test": "data"})
-        assert result is False
+        assert result is True  # stored in fallback dict
+
+    @pytest.mark.asyncio
+    async def test_fallback_get_set_roundtrip(self):
+        """Test in-memory fallback: set then get returns the same session."""
+        import sys
+        import os
+
+        sys.path.insert(
+            0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
+        )
+        from bot import RedisSessionManager
+
+        sm = RedisSessionManager("redis://localhost:6379/0")
+        sm._redis = None
+
+        session_data = {"access_token": "tok", "user": {"id": 7}, "chat_session_id": None, "pending_file": None}
+        await sm.set_session(99, session_data)
+        retrieved = await sm.get_session(99)
+        assert retrieved == session_data
+
+    @pytest.mark.asyncio
+    async def test_fallback_delete_clears_session(self):
+        """Test in-memory fallback delete removes the session."""
+        import sys
+        import os
+
+        sys.path.insert(
+            0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
+        )
+        from bot import RedisSessionManager
+
+        sm = RedisSessionManager("redis://localhost:6379/0")
+        sm._redis = None
+
+        await sm.set_session(99, {"access_token": "tok"})
+        await sm.delete_session(99)
+        assert await sm.get_session(99) is None
+
+    @pytest.mark.asyncio
+    async def test_fallback_count_active_sessions(self):
+        """Test count_active_sessions reflects fallback dict size."""
+        import sys
+        import os
+
+        sys.path.insert(
+            0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
+        )
+        from bot import RedisSessionManager
+
+        sm = RedisSessionManager("redis://localhost:6379/0")
+        sm._redis = None
+
+        assert await sm.count_active_sessions() == 0
+        await sm.set_session(1, {"t": "a"})
+        await sm.set_session(2, {"t": "b"})
+        assert await sm.count_active_sessions() == 2
 
     @pytest.mark.asyncio
     async def test_json_decode_error_handling(self, session_manager, mock_redis):

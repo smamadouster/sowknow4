@@ -219,7 +219,7 @@ class TestSmartFolders:
         assert "collection_id" in data
         assert "generated_content" in data
         assert "sources_used" in data
-        assert data["llm_used"] in ["gemini", "ollama"]
+        assert data["llm_used"] in ["minimax", "kimi", "ollama", "openrouter"]
 
     @pytest.mark.asyncio
     async def test_get_report_templates(

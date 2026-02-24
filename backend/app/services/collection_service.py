@@ -406,7 +406,7 @@ class CollectionService:
         Returns:
             Generated summary text
 
-        SECURITY: Routes to Ollama for confidential documents, Gemini for public only
+        SECURITY: Routes to Ollama for confidential documents, MiniMax/Kimi for public only
         """
         # Check for confidential documents - PRIVACY FIRST
         has_confidential = any(
@@ -465,7 +465,7 @@ Generate a concise summary describing what this collection contains and its key 
                 ]
 
                 response_parts = []
-                # Use OpenRouter for public documents instead of direct Gemini
+                # Use OpenRouter to route to MiniMax/Kimi for public documents
                 from app.services.openrouter_service import openrouter_service
                 async for chunk in openrouter_service.chat_completion(
                     messages=messages,

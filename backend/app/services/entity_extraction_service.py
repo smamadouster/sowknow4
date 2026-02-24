@@ -93,7 +93,7 @@ class EntityExtractionService:
         self, document: Document, chunks: List[DocumentChunk], db: Session
     ) -> Dict[str, Any]:
         """
-        Extract entities from a document using Gemini Flash or Ollama
+        Extract entities from a document using cloud LLM or Ollama (local)
 
         Args:
             document: Document to extract from
@@ -186,7 +186,7 @@ class EntityExtractionService:
         metadata: Dict[str, Any],
         use_ollama: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        """Extract entities using Gemini Flash or Ollama based on document confidentiality"""
+        """Extract entities using cloud LLM (MiniMax/Kimi) or Ollama based on document confidentiality"""
 
         system_prompt = """You are an expert entity extractor for SOWKNOW, a knowledge management system. Extract structured information from documents.
 
@@ -296,7 +296,7 @@ Extract all entities, relationships, and dated events now:"""
         return None
 
     def _extract_json(self, text: str) -> Optional[str]:
-        """Extract JSON from Gemini response"""
+        """Extract JSON from LLM response"""
         text = text.strip()
 
         # Remove markdown code blocks

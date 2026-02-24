@@ -41,7 +41,7 @@ Comprehensive test suite created for LLM routing functionality covering unit tes
 - Token consumption monitoring
 - Streaming performance
 - Caching effectiveness
-- Response time targets (<3s Gemini, <8s Ollama)
+- Response time targets (<3s Cloud LLM, <8s Ollama)
 - PII detection speed
 
 ### 4. Security Tests (30+ tests)
@@ -60,12 +60,14 @@ Comprehensive test suite created for LLM routing functionality covering unit tes
 4. **Document bucket isolation** - Public/Confidential separation works
 
 ### ⚠️ Services Need Routing Fixes
-1. **IntentParser** - Uses Gemini directly without confidential content check
-2. **EntityExtractionService** - Uses Gemini directly without routing
-3. **AutoTaggingService** - Uses Gemini directly without routing
-4. **SynthesisService** - Uses Gemini directly without routing
-5. **GraphRAGService** - Uses Gemini directly without routing
-6. **ProgressiveRevelationService** - Uses Gemini directly without routing
+1. **IntentParser** - Uses cloud LLM directly without confidential content check
+2. **EntityExtractionService** - Uses cloud LLM directly without routing
+3. **AutoTaggingService** - Uses cloud LLM directly without routing
+4. **SynthesisService** - Uses cloud LLM directly without routing
+5. **GraphRAGService** - Uses cloud LLM directly without routing
+6. **ProgressiveRevelationService** - Uses cloud LLM directly without routing
+
+Note: "cloud LLM" refers to MiniMax/Kimi (via OpenRouter), which must be checked against confidential bucket status before use
 
 ### 🔒 Security Status
 - PII sanitization: ✅ Working

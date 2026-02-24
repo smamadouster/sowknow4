@@ -186,7 +186,7 @@ class TestMultiAgentOrchestratorRouting:
 
         orchestrator = AgentOrchestrator()
 
-        # Query without PII should use Gemini (not Ollama)
+        # Query without PII should use cloud LLM (Kimi/MiniMax, not Ollama)
         query_no_pii = "What are the main features of our product?"
         assert orchestrator._should_use_ollama_for_clarification(query_no_pii) is False
 
@@ -205,17 +205,17 @@ class TestMultiAgentOrchestratorRouting:
 
         This test ensures the security fix is in place:
         - A user with confidential access asking about public documents
-          should NOT trigger Ollama (should use Gemini)
+          should NOT trigger Ollama (should use cloud LLM: Kimi/MiniMax)
         - Only actual document content determines routing
         """
         from app.services.agents.agent_orchestrator import AgentOrchestrator
 
         orchestrator = AgentOrchestrator()
 
-        # Admin asking about general topic (no PII) - should use Gemini
+        # Admin asking about general topic (no PII) - should use cloud LLM (Kimi/MiniMax)
         admin_query = "Tell me about company policies"
         assert orchestrator._should_use_ollama_for_clarification(admin_query) is False
 
-        # Regular user asking about general topic - should also use Gemini
+        # Regular user asking about general topic - should also use cloud LLM (Kimi/MiniMax)
         user_query = "What are our product features?"
         assert orchestrator._should_use_ollama_for_clarification(user_query) is False

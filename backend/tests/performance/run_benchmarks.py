@@ -5,7 +5,7 @@ SOWKNOW Performance Benchmark Script
 Standalone script to test PRD Performance Targets:
 - Page load < 2s
 - Search response < 3s (p95)
-- Chat first token (Gemini < 2s, Ollama < 5s)
+- Chat first token (Cloud LLM < 2s, Ollama < 5s)
 - Doc processing throughput > 50/hour
 - Concurrent users (5 without degradation)
 - Upload limit (100MB file / 500MB batch)

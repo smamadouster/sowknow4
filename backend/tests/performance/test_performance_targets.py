@@ -526,7 +526,7 @@ class TestResilienceMatrix:
     """Test suite for resilience scenarios from PRD"""
 
     # ----------------------------------------
-    # Test 1: Kill Gemini API (block DNS)
+    # Test 1: Kill MiniMax API (block DNS)
     # ----------------------------------------
     @pytest.mark.asyncio
     async def test_minimax_api_down_graceful_degradation(self):
@@ -562,8 +562,8 @@ class TestResilienceMatrix:
     @pytest.mark.asyncio
     async def test_ollama_unresponsive_warning(self):
         """
-        Test: Warning message, public queries still work via Gemini
-        Expected: No crash, fallback to Gemini
+        Test: Warning message, public queries still work via MiniMax/Kimi fallback
+        Expected: No crash, fallback to cloud LLM
         Status: ☐ PASS
         """
         ollama_service = OllamaService()

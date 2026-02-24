@@ -354,7 +354,7 @@ TOTAL:         6400M  = 6.4GB limit ✓
 | Final fallback | Ollama | — |
 
 ### Remaining Known Issues (from prior audit)
-1. **CRITICAL**: Celery worker OOM (1.5 GB → needs 2.5 GB) — `docker-compose.yml:162`
+1. ~~**CRITICAL**: Celery worker OOM (1.5 GB → needs 2.5 GB) — `docker-compose.yml:162`~~ ✅ FIXED 2026-02-24: concurrency 2→1, healthcheck hardened (commit `6ce8274`)
 2. **CRITICAL**: Multi-agent system still references Gemini in some agents — `agents/*_agent.py`
 3. **CRITICAL**: `CONFIDENTIAL_ACCESSED` audit enum defined but never logged — `search.py`, `documents.py`
 4. **HIGH**: 7+ services lack LLM routing guard (smart_folder, intent_parser, etc.)
@@ -399,6 +399,20 @@ TOTAL:         6400M  = 6.4GB limit ✓
 
 ### Remaining True Issues
 All 4 original "critical" issues from the initial audit are now resolved or substantially mitigated. The codebase is significantly closer to commercially production-ready.
+
+---
+
+## SESSION 2026-02-24 — A2-OOM: Celery Worker Concurrency Fix
+
+### ✅ FIXED: Celery worker SIGKILL-9 under load (was CRITICAL)
+- **Root cause**: With `--concurrency=2` and fork pool, each worker process holds its own private copy of `multilingual-e5-large` (~1.3 GB) after fork (lazy load → no CoW sharing). Two workers × ~1.6 GB peak = ~3.2 GB > 2048 M container limit → SIGKILL-9.
+- **Fix** (`docker-compose.yml`):
+  - `--concurrency=2` → `--concurrency=1` (single worker process, peak ≤ 1.6 GB)
+  - Memory limit kept at 2048 M (no budget increase needed)
+  - Healthcheck rewritten: two-phase (broker reachability + `embedding_service.can_embed` check)
+  - Healthcheck `timeout` 15 s → 60 s; `start_period` 90 s → 120 s (model load ~40-50 s cold)
+- **Commit**: `6ce8274`
+- **QA**: 8/8 checks pass (docker-compose config valid, concurrency=1 confirmed, memory 2048M confirmed, healthcheck timeout 60s confirmed, start_period 120s confirmed, embedding service lazy-load correct, total budget ≤ 6.4 GB, no regressions)
 
 ---
 

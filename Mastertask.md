@@ -5,10 +5,38 @@ Lead: Orchestrator
 ---
 
 ## ═══════════════════════════════════════════════════
-## CURRENT STATUS — 2026-02-24 (C2 session)
+## CURRENT STATUS — 2026-02-24 (Security Remediation)
 ## ═══════════════════════════════════════════════════
 
-### ✅ DONE THIS SESSION
+### ✅ DONE THIS SESSION — Secrets Management Remediation (commit bf5567f)
+| Task | Status |
+|------|--------|
+| Purge .secrets from git history (git-filter-repo) | ✅ Done |
+| Purge backend/.env.production from git history | ✅ Done |
+| Add .secrets to .gitignore | ✅ Done |
+| Redact Authorization + X-Bot-Api-Key from bot.py debug logs | ✅ Done |
+| Add _validate_required_env_vars() startup guard in bot.py | ✅ Done |
+| Add BOT_API_KEY placeholders to both .env.example files | ✅ Done |
+| Sanitize backend/.env.production: hardcoded creds → ${ENV_VAR} | ✅ Done |
+| QA: 7/7 security checks pass | ✅ Done |
+
+### ⚠️ REQUIRED MANUAL ACTIONS (blocking production)
+The following credentials were exposed in git history and **MUST be rotated**:
+- `TELEGRAM_BOT_TOKEN` — get new token from @BotFather on Telegram
+- `BOT_API_KEY` — `openssl rand -hex 32`
+- `POSTGRES_PASSWORD` — `openssl rand -hex 24`
+- `REDIS_PASSWORD` — `openssl rand -hex 24`
+- `SECRET_KEY` — `openssl rand -hex 32`
+- `JWT_SECRET_KEY` — `openssl rand -hex 32`
+See `.secrets` file for placeholders. Do NOT reuse any exposed values.
+
+---
+
+## ═══════════════════════════════════════════════════
+## PREVIOUS STATUS — 2026-02-24 (C2 session)
+## ═══════════════════════════════════════════════════
+
+### ✅ DONE PREVIOUS SESSION
 | Task | Commit | Status |
 |------|--------|--------|
 | P1-E1: backend mem 1024M→512M | `2215647` | ✅ Done |

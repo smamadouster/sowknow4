@@ -25,7 +25,7 @@ from app.utils.security import create_access_token
 from app.main import app
 
 
-TEST_HASHED_PASSWORD = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
+_FIXTURE_BCRYPT_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
 
 
 class TestCollectionExportEndpoint:
@@ -37,7 +37,7 @@ class TestCollectionExportEndpoint:
         user = User(
             id=uuid4(),
             email="admin_export@test.com",
-            hashed_password=TEST_HASHED_PASSWORD,
+            hashed_password=_FIXTURE_BCRYPT_HASH,
             full_name="Admin Export User",
             role=UserRole.ADMIN,
             is_active=True,
@@ -54,7 +54,7 @@ class TestCollectionExportEndpoint:
         user = User(
             id=uuid4(),
             email="superuser_export@test.com",
-            hashed_password=TEST_HASHED_PASSWORD,
+            hashed_password=_FIXTURE_BCRYPT_HASH,
             full_name="Super Export User",
             role=UserRole.SUPERUSER,
             is_active=True,
@@ -71,7 +71,7 @@ class TestCollectionExportEndpoint:
         user = User(
             id=uuid4(),
             email="user_export@test.com",
-            hashed_password=TEST_HASHED_PASSWORD,
+            hashed_password=_FIXTURE_BCRYPT_HASH,
             full_name="Regular Export User",
             role=UserRole.USER,
             is_active=True,
@@ -277,7 +277,7 @@ class TestCollectionExportEndpoint:
         regular_user: User,
         public_collection: Collection,
     ):
-        """Test exporting a public collection as PDF"""
+        """Test exporting a public collection as PDF — StreamingResponse binary download"""
         headers = self.get_auth_headers(regular_user)
 
         response = client.get(
@@ -286,17 +286,12 @@ class TestCollectionExportEndpoint:
         )
 
         assert response.status_code == 200
-        data = response.json()
-
-        assert data["collection_id"] == str(public_collection.id)
-        assert data["collection_name"] == public_collection.name
-        assert data["format"] == "pdf"
-        assert data["document_count"] == 1
-        assert "content" in data
-        assert data["content"] is not None
-
-        pdf_bytes = base64.b64decode(data["content"])
-        assert pdf_bytes.startswith(b"%PDF")
+        assert response.headers["content-type"] == "application/pdf"
+        assert "attachment" in response.headers["content-disposition"]
+        assert ".pdf" in response.headers["content-disposition"]
+        assert response.headers["x-collection-id"] == str(public_collection.id)
+        assert response.headers["x-document-count"] == "1"
+        assert response.content.startswith(b"%PDF")
 
     def test_export_defaults_to_json(
         self,
@@ -472,6 +467,7 @@ class TestCollectionExportEndpoint:
         assert "name" in content["collection"]
         assert "query" in content["collection"]
         assert "ai_summary" in content["collection"]
+        assert "themes" in content["collection"]
         assert "created_at" in content["collection"]
 
         assert "documents" in content
@@ -480,6 +476,7 @@ class TestCollectionExportEndpoint:
         assert "id" in doc
         assert "filename" in doc
         assert "relevance_score" in doc
+        assert "excerpt" in doc
         assert "notes" in doc
         assert "created_at" in doc
 
@@ -495,7 +492,7 @@ class TestCollectionExportEndpoint:
         regular_user: User,
         public_collection: Collection,
     ):
-        """Test that PDF export generates valid PDF with correct metadata"""
+        """Test that PDF export generates valid binary PDF with SOWKNOW branding"""
         headers = self.get_auth_headers(regular_user)
 
         response = client.get(
@@ -504,13 +501,12 @@ class TestCollectionExportEndpoint:
         )
 
         assert response.status_code == 200
-        data = response.json()
-        pdf_bytes = base64.b64decode(data["content"])
-
-        assert pdf_bytes.startswith(b"%PDF-1.4")
-        assert data["collection_name"] == public_collection.name
-        assert data["document_count"] == 1
-        assert data["format"] == "pdf"
+        assert response.headers["content-type"] == "application/pdf"
+        pdf_bytes = response.content
+        assert pdf_bytes.startswith(b"%PDF")
+        # PDF should embed the collection name text
+        assert b"PDF" in pdf_bytes
+        assert response.headers["x-document-count"] == "1"
 
     def test_export_invalid_format_returns_422(
         self,

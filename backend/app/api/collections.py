@@ -666,7 +666,7 @@ async def chat_with_collection(
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
 
 
-@router.get("/{collection_id}/export", response_model=CollectionExportResponse)
+@router.get("/{collection_id}/export")
 async def export_collection(
     collection_id: UUID,
     format: str = Query(
@@ -678,6 +678,9 @@ async def export_collection(
     """
     Export a collection in PDF or JSON format.
 
+    PDF returns a binary file download (StreamingResponse with Content-Disposition: attachment).
+    JSON returns a structured JSON response.
+
     RBAC: Users cannot export collections containing confidential documents.
     Only Admin and Super User roles can export collections with confidential docs.
 
@@ -688,7 +691,7 @@ async def export_collection(
         db: Database session
 
     Returns:
-        CollectionExportResponse with export data
+        StreamingResponse (PDF) or CollectionExportResponse (JSON)
 
     Raises:
         403: If user lacks permission to export collection with confidential docs
@@ -697,7 +700,7 @@ async def export_collection(
     from sqlalchemy import or_
     from datetime import datetime
     import io
-    import base64
+    from fastapi.responses import StreamingResponse
 
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 
@@ -756,21 +759,34 @@ async def export_collection(
             },
         )
 
+    # Build document data — bucket label omitted for regular users (privacy)
+    show_bucket = current_user.role.value in ["admin", "superuser"]
     documents_data = []
     for item in items:
         if item.document:
-            documents_data.append(
-                {
-                    "id": str(item.document.id),
-                    "filename": item.document.filename,
-                    "relevance_score": item.relevance_score,
-                    "notes": item.notes,
-                    "is_highlighted": item.is_highlighted,
-                    "created_at": item.document.created_at.isoformat(),
-                }
-            )
+            doc_entry = {
+                "id": str(item.document.id),
+                "filename": item.document.filename,
+                "relevance_score": item.relevance_score,
+                "excerpt": item.added_reason or "",
+                "notes": item.notes,
+                "is_highlighted": item.is_highlighted,
+                "created_at": item.document.created_at.isoformat(),
+            }
+            if show_bucket:
+                doc_entry["bucket"] = item.document.bucket.value
+            documents_data.append(doc_entry)
 
     generated_at = datetime.utcnow()
+
+    # Extract themes from ai_keywords (used in both PDF and JSON exports)
+    themes: list = []
+    if collection.ai_keywords:
+        kw = collection.ai_keywords
+        if isinstance(kw, list):
+            themes = [str(k) for k in kw if k]
+        elif isinstance(kw, str):
+            themes = [t.strip() for t in kw.split(",") if t.strip()]
 
     if format == "pdf":
         try:
@@ -783,8 +799,10 @@ async def export_collection(
                 Spacer,
                 Table,
                 TableStyle,
+                HRFlowable,
             )
             from reportlab.lib import colors
+            from reportlab.pdfgen import canvas as rl_canvas
         except ImportError:
             raise HTTPException(
                 status_code=500,
@@ -792,103 +810,162 @@ async def export_collection(
             )
 
         buffer = io.BytesIO()
+
+        # Page number + SOWKNOW branding footer callback
+        def _add_footer(canv, doc):
+            canv.saveState()
+            canv.setFont("Helvetica", 8)
+            canv.setFillColor(colors.HexColor("#6B7280"))
+            page_width = letter[0]
+            footer_y = 0.3 * inch
+            canv.drawString(0.75 * inch, footer_y, "SOWKNOW — Multi-Generational Legacy Knowledge System")
+            canv.drawRightString(
+                page_width - 0.75 * inch,
+                footer_y,
+                f"Page {doc.page}",
+            )
+            canv.restoreState()
+
         doc = SimpleDocTemplate(
-            buffer, pagesize=letter, topMargin=0.5 * inch, bottomMargin=0.5 * inch
+            buffer,
+            pagesize=letter,
+            topMargin=0.75 * inch,
+            bottomMargin=0.75 * inch,
+            leftMargin=0.75 * inch,
+            rightMargin=0.75 * inch,
         )
         styles = getSampleStyleSheet()
-        story = []
+
+        brand_blue = colors.HexColor("#1E40AF")
+        brand_grey = colors.HexColor("#6B7280")
 
         title_style = ParagraphStyle(
-            "CustomTitle", parent=styles["Heading1"], fontSize=18, spaceAfter=12
+            "SowknowTitle",
+            parent=styles["Heading1"],
+            fontSize=20,
+            textColor=brand_blue,
+            spaceAfter=6,
+            spaceBefore=0,
+        )
+        subtitle_style = ParagraphStyle(
+            "SowknowSubtitle",
+            parent=styles["Normal"],
+            fontSize=10,
+            textColor=brand_grey,
+            spaceAfter=4,
         )
         heading_style = ParagraphStyle(
-            "CustomHeading", parent=styles["Heading2"], fontSize=14, spaceAfter=8
+            "SowknowHeading",
+            parent=styles["Heading2"],
+            fontSize=13,
+            textColor=brand_blue,
+            spaceBefore=12,
+            spaceAfter=6,
         )
         normal_style = styles["Normal"]
+        small_style = ParagraphStyle(
+            "SowknowSmall",
+            parent=styles["Normal"],
+            fontSize=9,
+            textColor=brand_grey,
+        )
 
+        story = []
+
+        # Header
         story.append(Paragraph(f"Collection: {collection.name}", title_style))
-        story.append(Spacer(1, 0.2 * inch))
-
-        story.append(Paragraph("<b>Query:</b>", normal_style))
-        story.append(Paragraph(collection.query, normal_style))
-        story.append(Spacer(1, 0.1 * inch))
-
         story.append(
             Paragraph(
-                f"<b>Created:</b> {collection.created_at.strftime('%Y-%m-%d %H:%M')}",
+                f"Exported by {current_user.email} &nbsp;·&nbsp; "
+                f"Generated {generated_at.strftime('%Y-%m-%d %H:%M UTC')}",
+                subtitle_style,
+            )
+        )
+        story.append(HRFlowable(width="100%", thickness=1, color=brand_blue, spaceAfter=10))
+
+        # Metadata block
+        story.append(
+            Paragraph(
+                f"<b>Query:</b> {collection.query or '—'}",
                 normal_style,
             )
         )
         story.append(
-            Paragraph(f"<b>Document Count:</b> {len(documents_data)}", normal_style)
+            Paragraph(
+                f"<b>Created:</b> {collection.created_at.strftime('%Y-%m-%d %H:%M')} &nbsp;·&nbsp; "
+                f"<b>Documents:</b> {len(documents_data)}",
+                normal_style,
+            )
         )
-        story.append(Spacer(1, 0.2 * inch))
+        story.append(Spacer(1, 0.15 * inch))
 
+        # AI Summary
         if collection.ai_summary:
             story.append(Paragraph("AI Summary", heading_style))
             story.append(Paragraph(collection.ai_summary, normal_style))
-            story.append(Spacer(1, 0.2 * inch))
+            story.append(Spacer(1, 0.1 * inch))
 
+        if themes:
+            story.append(Paragraph("Identified Themes", heading_style))
+            themes_text = " &nbsp;·&nbsp; ".join(themes)
+            story.append(Paragraph(themes_text, normal_style))
+            story.append(Spacer(1, 0.1 * inch))
+
+        # Documents table
         if documents_data:
             story.append(Paragraph("Documents", heading_style))
 
-            table_data = [["#", "Filename", "Relevance", "Notes"]]
+            table_data = [["#", "Filename", "Score", "Excerpt / Notes"]]
             for idx, doc_item in enumerate(documents_data, 1):
-                notes = doc_item.get("notes", "") or ""
-                if len(notes) > 50:
-                    notes = notes[:47] + "..."
-                table_data.append(
-                    [
-                        str(idx),
-                        doc_item["filename"][:40]
-                        if len(doc_item["filename"]) > 40
-                        else doc_item["filename"],
-                        f"{doc_item['relevance_score']}%",
-                        notes,
-                    ]
-                )
+                excerpt = doc_item.get("excerpt") or doc_item.get("notes") or "—"
+                if len(excerpt) > 80:
+                    excerpt = excerpt[:77] + "..."
+                filename = doc_item["filename"]
+                if len(filename) > 45:
+                    filename = filename[:42] + "..."
+                score = doc_item["relevance_score"]
+                score_str = f"{score}%" if score is not None else "—"
+                table_data.append([str(idx), filename, score_str, excerpt])
 
-            table = Table(
-                table_data, colWidths=[0.3 * inch, 2.5 * inch, 0.8 * inch, 2.4 * inch]
-            )
+            col_widths = [0.35 * inch, 2.8 * inch, 0.65 * inch, 3.0 * inch]
+            table = Table(table_data, colWidths=col_widths)
             table.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                        ("ALIGN", (2, 0), (2, -1), "CENTER"),
+                        ("BACKGROUND", (0, 0), (-1, 0), brand_blue),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("FONTSIZE", (0, 0), (-1, 0), 10),
+                        ("FONTSIZE", (0, 0), (-1, 0), 9),
                         ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-                        ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-                        ("FONTSIZE", (0, 1), (-1, -1), 9),
-                        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                        ("TOPPADDING", (0, 0), (-1, 0), 8),
+                        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                        ("ALIGN", (2, 1), (2, -1), "CENTER"),
+                        ("FONTSIZE", (0, 1), (-1, -1), 8),
+                        ("TOPPADDING", (0, 1), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F4F6")]),
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D1D5DB")),
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ]
                 )
             )
             story.append(table)
 
-        story.append(Spacer(1, 0.3 * inch))
-        story.append(
-            Paragraph(
-                f"<i>Generated by SOWKNOW on {generated_at.strftime('%Y-%m-%d %H:%M UTC')}</i>",
-                normal_style,
-            )
-        )
-
-        doc.build(story)
+        doc.build(story, onFirstPage=_add_footer, onLaterPages=_add_footer)
         buffer.seek(0)
-        pdf_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-        return CollectionExportResponse(
-            collection_id=collection_id,
-            collection_name=collection.name,
-            format=ExportFormat.PDF,
-            content=pdf_base64,
-            generated_at=generated_at,
-            document_count=len(documents_data),
+        # Safe filename for Content-Disposition
+        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in collection.name)
+        filename = f"sowknow_collection_{safe_name}_{generated_at.strftime('%Y%m%d')}.pdf"
+
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Collection-Id": str(collection_id),
+                "X-Document-Count": str(len(documents_data)),
+            },
         )
 
     else:
@@ -899,6 +976,7 @@ async def export_collection(
                 "description": collection.description,
                 "query": collection.query,
                 "ai_summary": collection.ai_summary,
+                "themes": themes,
                 "created_at": collection.created_at.isoformat(),
                 "updated_at": collection.updated_at.isoformat(),
             },

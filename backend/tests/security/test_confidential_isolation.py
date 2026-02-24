@@ -72,7 +72,7 @@ class TestSearchIsolation:
         db.commit()
 
         # Search for "report" - should only find public
-        response = client.post(
+        response = test_client.post(
             "/api/v1/search",
             json={"query": "report", "limit": 10},
             headers=get_auth_headers(user)
@@ -122,7 +122,7 @@ class TestSearchIsolation:
         db.commit()
 
         # Search - should find both
-        response = client.post(
+        response = test_client.post(
             "/api/v1/search",
             json={"query": "report", "limit": 10},
             headers=get_auth_headers(superuser)
@@ -171,7 +171,7 @@ class TestSearchIsolation:
         db.commit()
 
         # Search - should find both
-        response = client.post(
+        response = test_client.post(
             "/api/v1/search",
             json={"query": "report", "limit": 10},
             headers=get_auth_headers(admin)
@@ -219,7 +219,7 @@ class TestDocumentAccessIsolation:
         db.refresh(confidential_doc)
 
         # Try to access confidential document
-        response = client.get(
+        response = test_client.get(
             f"/api/v1/documents/{confidential_doc.id}",
             headers=get_auth_headers(user)
         )
@@ -256,7 +256,7 @@ class TestDocumentAccessIsolation:
         db.refresh(confidential_doc)
 
         # Access confidential document
-        response = client.get(
+        response = test_client.get(
             f"/api/v1/documents/{confidential_doc.id}",
             headers=get_auth_headers(superuser)
         )
@@ -297,7 +297,7 @@ class TestDocumentAccessIsolation:
         db.refresh(confidential_doc)
 
         # Access confidential document
-        response = client.get(
+        response = test_client.get(
             f"/api/v1/documents/{confidential_doc.id}",
             headers=get_auth_headers(admin)
         )
@@ -338,7 +338,7 @@ class TestDocumentAccessIsolation:
         db.refresh(public_doc)
 
         # Access public document
-        response = client.get(
+        response = test_client.get(
             f"/api/v1/documents/{public_doc.id}",
             headers=get_auth_headers(user)
         )
@@ -386,7 +386,7 @@ class TestDocumentListIsolation:
         db.commit()
 
         # List documents
-        response = client.get(
+        response = test_client.get(
             "/api/v1/documents",
             headers=get_auth_headers(user)
         )
@@ -435,7 +435,7 @@ class TestDocumentListIsolation:
         db.commit()
 
         # List documents
-        response = client.get(
+        response = test_client.get(
             "/api/v1/documents",
             headers=get_auth_headers(superuser)
         )
@@ -485,7 +485,7 @@ class TestSearchSuggestionsIsolation:
         db.commit()
 
         # Get suggestions for "report"
-        response = client.get(
+        response = test_client.get(
             "/api/v1/search/suggest?q=report",
             headers=get_auth_headers(user)
         )
@@ -533,7 +533,7 @@ class TestSearchSuggestionsIsolation:
         db.commit()
 
         # Get suggestions for "report"
-        response = client.get(
+        response = test_client.get(
             "/api/v1/search/suggest?q=report",
             headers=get_auth_headers(superuser)
         )
@@ -574,7 +574,7 @@ class TestDocumentDownloadIsolation:
         db.refresh(confidential_doc)
 
         # Try to download
-        response = client.get(
+        response = test_client.get(
             f"/api/v1/documents/{confidential_doc.id}/download",
             headers=get_auth_headers(user)
         )
@@ -609,7 +609,7 @@ class TestDocumentDownloadIsolation:
         db.refresh(confidential_doc)
 
         # Try to download
-        response = client.get(
+        response = test_client.get(
             f"/api/v1/documents/{confidential_doc.id}/download",
             headers=get_auth_headers(superuser)
         )
@@ -663,7 +663,7 @@ class TestBucketEnumerationPrevention:
         db.refresh(doc2)
 
         # Try to access confidential document by direct ID
-        response = client.get(
+        response = test_client.get(
             f"/api/v1/documents/{doc2.id}",
             headers=get_auth_headers(user)
         )
@@ -708,7 +708,7 @@ class TestBucketEnumerationPrevention:
 
         # Time request for existing confidential doc
         start = time.time()
-        response1 = client.get(
+        response1 = test_client.get(
             f"/api/v1/documents/{confidential_doc.id}",
             headers=get_auth_headers(user)
         )
@@ -717,7 +717,7 @@ class TestBucketEnumerationPrevention:
         # Time request for non-existent doc
         fake_id = uuid.uuid4()
         start = time.time()
-        response2 = client.get(
+        response2 = test_client.get(
             f"/api/v1/documents/{fake_id}",
             headers=get_auth_headers(user)
         )
@@ -779,7 +779,7 @@ class TestCrossBucketAccess:
 
         # All should be able to access
         for u in [admin, superuser, user]:
-            response = client.get(
+            response = test_client.get(
                 f"/api/v1/documents/{public_doc.id}",
                 headers=get_auth_headers(u)
             )

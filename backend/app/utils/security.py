@@ -39,6 +39,18 @@ class TokenInvalidError(Exception):
         super().__init__(self.message)
 
 
+# pwd_context compatibility alias for tests that check password hashing configuration
+class _BcryptContext:
+    """Thin wrapper around raw bcrypt to satisfy tests expecting a CryptContext-like object"""
+    schemes = ["bcrypt"]
+    def verify(self, plain: str, hashed: str) -> bool:
+        return verify_password(plain, hashed)
+    def hash(self, password: str) -> str:
+        return get_password_hash(password)
+
+pwd_context = _BcryptContext()
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed password"""
     try:

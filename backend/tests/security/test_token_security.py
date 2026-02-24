@@ -17,6 +17,8 @@ from app.utils.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    TokenExpiredError,
+    TokenInvalidError,
     SECRET_KEY,
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -125,7 +127,7 @@ class TestTokenGeneration:
         """Test that refresh tokens expire at the expected time"""
         token = create_refresh_token(data={"sub": "test@example.com", "role": "user"})
 
-        payload = decode_token(token, expected_type="access")
+        payload = decode_token(token, expected_type="refresh")
 
         expected_exp = int(time.time()) + (REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60)
         assert abs(payload["exp"] - expected_exp) < 5  # 5 second tolerance
@@ -144,7 +146,7 @@ class TestTokenValidation:
         assert payload["sub"] == "test@example.com"
 
     def test_expired_token_returns_empty_dict(self):
-        """Test that expired token returns empty dict"""
+        """Test that expired token raises TokenExpiredError"""
         from jose import jwt
 
         # Create expired token
@@ -153,13 +155,12 @@ class TestTokenValidation:
 
         expired_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        # Try to decode
-        decoded = decode_token(expired_token)
-
-        assert decoded == {}
+        # decode_token raises TokenExpiredError for expired tokens
+        with pytest.raises(TokenExpiredError):
+            decode_token(expired_token)
 
     def test_tampered_token_returns_empty_dict(self):
-        """Test that tampered token returns empty dict"""
+        """Test that tampered token raises TokenInvalidError"""
         valid_token = create_access_token(
             data={"sub": "test@example.com", "role": "user"}
         )
@@ -167,13 +168,12 @@ class TestTokenValidation:
         # Tamper with the token
         tampered_token = valid_token[:-5] + "ABCDE"
 
-        # Try to decode
-        decoded = decode_token(tampered_token)
-
-        assert decoded == {}
+        # decode_token raises TokenInvalidError for tampered tokens
+        with pytest.raises(TokenInvalidError):
+            decode_token(tampered_token)
 
     def test_token_with_wrong_secret_returns_empty_dict(self):
-        """Test that token with wrong secret returns empty dict"""
+        """Test that token with wrong secret raises TokenInvalidError"""
         from jose import jwt
 
         # Create token with different secret
@@ -185,21 +185,20 @@ class TestTokenValidation:
 
         token = jwt.encode(payload, "wrong-secret", algorithm=ALGORITHM)
 
-        # Try to decode with correct secret
-        decoded = decode_token(token)
-
-        assert decoded == {}
+        # decode_token raises TokenInvalidError when secret doesn't match
+        with pytest.raises(TokenInvalidError):
+            decode_token(token)
 
     def test_token_without_expiration(self):
         """Test token without expiration can still be decoded"""
         from jose import jwt
 
-        payload = {"sub": "test@example.com", "role": "user"}
+        payload = {"sub": "test@example.com", "role": "user", "type": "access"}
 
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-        # Should decode successfully
-        decoded = decode_token(token)
+        # Should decode successfully when type claim matches
+        decoded = decode_token(token, expected_type="access")
 
         assert decoded["sub"] == "test@example.com"
 
@@ -325,7 +324,7 @@ class TestTokenRotation:
             data={"sub": "test@example.com", "role": "user"}
         )
 
-        payload = decode_token(refresh_token)
+        payload = decode_token(refresh_token, expected_type="refresh")
 
         # Should have type claim
         assert "type" in payload
@@ -351,7 +350,7 @@ class TestTokenRotation:
 
         token = create_refresh_token(data={"sub": "test@example.com", "role": "user"})
 
-        payload = decode_token(token, expected_type="access")
+        payload = decode_token(token, expected_type="refresh")
 
         # Should expire in approximately 7 days
         expected_exp = int(time.time()) + (REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60)

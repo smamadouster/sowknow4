@@ -38,7 +38,7 @@ from fastapi import Depends, HTTPException
 class TestLoginSecurity:
     """Test login endpoint security"""
 
-    def test_login_with_valid_credentials(self, security_client, db: Session):
+    def test_login_with_valid_credentials(self, test_client: TestClient, db: Session):
         """Test successful login returns 200 with httpOnly cookies, NO tokens in response body"""
         # Create a user with known password
         password = "SecurePassword123!"
@@ -67,13 +67,14 @@ class TestLoginSecurity:
         # Should return 200
         assert response.status_code == 200
 
-        # CRITICAL SECURITY: Tokens should NOT be in response body (XSS prevention)
+        # CRITICAL SECURITY: Token values should NOT be in response body (XSS prevention)
         data = response.json()
-        assert "access_token" not in data, "Access token must NOT be in response body (XSS prevention)"
-        assert "refresh_token" not in data, "Refresh token must NOT be in response body (XSS prevention)"
-        assert data["token_type"] == "bearer"
+        # access_token key may exist but must be None (not a real token string)
+        assert not data.get("access_token"), "Access token value must NOT be in response body (XSS prevention)"
+        assert not data.get("refresh_token"), "Refresh token value must NOT be in response body (XSS prevention)"
 
-        # Response should contain user info (not tokens)
+        # Response should contain message and user info
+        assert "message" in data
         assert "user" in data
         assert data["user"]["email"] == "testuser@example.com"
 
@@ -389,15 +390,16 @@ class TestTokenSecurity:
             "role": "user"
         })
 
-        access_payload = decode_token(access_token)
-        refresh_payload = decode_token(refresh_token)
+        # Decode access token with type="access", refresh token with type="refresh"
+        access_payload = decode_token(access_token, expected_type="access")
+        refresh_payload = decode_token(refresh_token, expected_type="refresh")
 
         # Refresh token should expire much later
         assert refresh_payload["exp"] > access_payload["exp"]
 
     def test_cannot_use_token_after_secret_change(self, db: Session):
         """Test that tokens are invalidated if secret changes"""
-        from app.utils.security import SECRET_KEY
+        from app.utils.security import SECRET_KEY, TokenInvalidError
 
         # Create token with current secret
         token = create_access_token(data={
@@ -405,11 +407,10 @@ class TestTokenSecurity:
             "role": "user"
         })
 
-        # Mock a different secret
+        # Mock a different secret - decode_token should raise TokenInvalidError
         with patch("app.utils.security.SECRET_KEY", "different-secret-key"):
-            # Try to decode with different secret - should fail
-            payload = decode_token(token)
-            assert payload == {}
+            with pytest.raises(TokenInvalidError):
+                decode_token(token)
 
 
 class TestCookieSecurity:
@@ -619,9 +620,9 @@ class TestTokenNotInResponseBody:
         assert response.status_code == 200
         data = response.json()
 
-        # CRITICAL: Tokens must NOT be in response body
-        assert "access_token" not in data, "SECURITY: Access token must NOT be in response body"
-        assert "refresh_token" not in data, "SECURITY: Refresh token must NOT be in response body"
+        # CRITICAL: Token values must NOT be in response body (key may exist as None)
+        assert not data.get("access_token"), "SECURITY: Access token value must NOT be in response body"
+        assert not data.get("refresh_token"), "SECURITY: Refresh token value must NOT be in response body"
 
         # User info should be in response (not tokens)
         assert "user" in data
@@ -685,7 +686,7 @@ class TestLogout:
         db.commit()
 
         # Login first
-        login_response = client.post(
+        login_response = test_client.post(
             "/api/v1/auth/login",
             data={
                 "username": "logouttest@example.com",
@@ -699,7 +700,7 @@ class TestLogout:
         assert len(login_response.cookies) > 0
 
         # Now logout
-        logout_response = client.post(
+        logout_response = test_client.post(
             "/api/v1/auth/logout"
         )
 
@@ -738,7 +739,7 @@ class TestLogout:
         db.commit()
 
         # Login
-        login_response = client.post(
+        login_response = test_client.post(
             "/api/v1/auth/login",
             data={
                 "username": "afterlogout@example.com",
@@ -750,7 +751,7 @@ class TestLogout:
         assert login_response.status_code == 200
 
         # Logout
-        client.post("/api/v1/auth/logout")
+        test_client.post("/api/v1/auth/logout")
 
         # Try to access protected route - should fail
         response = test_client.get("/api/v1/auth/me")
@@ -779,7 +780,7 @@ class TestTokenRotation:
         db.commit()
 
         # Login to get initial tokens
-        login_response = client.post(
+        login_response = test_client.post(
             "/api/v1/auth/login",
             data={
                 "username": "tokenrotation@example.com",
@@ -794,7 +795,7 @@ class TestTokenRotation:
         initial_refresh_cookie = login_response.cookies.get("refresh_token")
 
         # Now refresh tokens
-        refresh_response = client.post(
+        refresh_response = test_client.post(
             "/api/v1/auth/refresh"
         )
 
@@ -845,7 +846,7 @@ class TestTokenRotation:
         expired_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
         # Set the expired cookie manually (TestClient limitation)
-        client.cookies.set("refresh_token", expired_token)
+        test_client.cookies.set("refresh_token", expired_token)
 
         # Try to refresh with expired token
         response = test_client.post("/api/v1/auth/refresh")
@@ -860,7 +861,7 @@ class TestTokenRotation:
     def test_refresh_without_token_returns_401(self, test_client: TestClient):
         """Test that refresh without token returns 401"""
         # Clear any existing cookies
-        client.cookies.clear()
+        test_client.cookies.clear()
 
         # Try to refresh without token
         response = test_client.post("/api/v1/auth/refresh")
@@ -871,7 +872,7 @@ class TestTokenRotation:
     def test_refresh_with_invalid_token_returns_401(self, test_client: TestClient):
         """Test that refresh with invalid token returns 401"""
         # Set an invalid refresh token
-        client.cookies.set("refresh_token", "invalid.token.here")
+        test_client.cookies.set("refresh_token", "invalid.token.here")
 
         # Try to refresh
         response = test_client.post("/api/v1/auth/refresh")

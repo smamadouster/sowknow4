@@ -473,8 +473,7 @@ async def refresh_token(
         # Specific error code allows frontend to trigger re-login
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token expired",
-            code="TOKEN_EXPIRED",  # Frontend uses this to redirect to login
+            detail={"message": "Refresh token expired", "code": "TOKEN_EXPIRED"},
         )
     except TokenInvalidError:
         raise HTTPException(

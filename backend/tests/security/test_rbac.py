@@ -53,7 +53,7 @@ class TestAdminRouteAccess:
         db.refresh(admin)
 
         # Access admin stats
-        response = client.get(
+        response = test_client.get(
             "/api/v1/admin/stats",
             headers=get_auth_headers(admin)
         )
@@ -76,7 +76,7 @@ class TestAdminRouteAccess:
         db.refresh(user)
 
         # Try to access admin stats
-        response = client.get(
+        response = test_client.get(
             "/api/v1/admin/stats",
             headers=get_auth_headers(user)
         )
@@ -99,7 +99,7 @@ class TestAdminRouteAccess:
         db.refresh(superuser)
 
         # Try to access admin stats
-        response = client.get(
+        response = test_client.get(
             "/api/v1/admin/stats",
             headers=get_auth_headers(superuser)
         )
@@ -607,7 +607,7 @@ class TestAdminPasswordReset:
         db.refresh(target_user)
 
         # Admin resets user's password
-        response = client.post(
+        response = test_client.post(
             f"/api/v1/admin/users/{target_user.id}/reset-password",
             json={"new_password": "NewSecurePassword123!"},
             headers=self.get_auth_headers(admin)
@@ -646,7 +646,7 @@ class TestAdminPasswordReset:
         db.refresh(target_user)
 
         # Superuser tries to reset user's password
-        response = client.post(
+        response = test_client.post(
             f"/api/v1/admin/users/{target_user.id}/reset-password",
             json={"new_password": "NewSecurePassword123!"},
             headers=self.get_auth_headers(superuser)
@@ -680,7 +680,7 @@ class TestAdminPasswordReset:
         db.refresh(target_user)
 
         # Regular user tries to reset another user's password
-        response = client.post(
+        response = test_client.post(
             f"/api/v1/admin/users/{target_user.id}/reset-password",
             json={"new_password": "NewSecurePassword123!"},
             headers=self.get_auth_headers(user)
@@ -704,7 +704,7 @@ class TestAdminPasswordReset:
         db.refresh(target_user)
 
         # Try to reset password without authentication
-        response = client.post(
+        response = test_client.post(
             f"/api/v1/admin/users/{target_user.id}/reset-password",
             json={"new_password": "NewSecurePassword123!"}
         )
@@ -730,7 +730,7 @@ class TestAdminPasswordReset:
         fake_id = uuid.uuid4()
 
         # Try to reset password of non-existent user
-        response = client.post(
+        response = test_client.post(
             f"/api/v1/admin/users/{fake_id}/reset-password",
             json={"new_password": "NewSecurePassword123!"},
             headers=self.get_auth_headers(admin)

@@ -22,7 +22,7 @@ Lead: Orchestrator
 | B1: Stale role on token refresh — audit + verify fix | — | ✅ Done — fix already in place, 18/18 auth tests pass |
 | B2: context caching — confidential bypass + collection invalidation | `f9261e2` | ✅ Done — 32/32 cache tests pass, 406 passed / 5 skipped overall |
 | C1: PDF export — StreamingResponse + themes + excerpts + page numbers + branding | `e68efa6` | ✅ Done — 58/58 tests pass |
-| C1-bench: Collection performance benchmarks — real PostgreSQL container | pending | ✅ Done — 5/5 bench tests pass, all PRD targets met |
+| C1-bench: Collection performance benchmarks — real PostgreSQL container | `4a2c036` | ✅ Done — 5/5 bench tests pass, all PRD targets met |
 
 ### ✅ COMPLETED: C1-bench — Collection Performance Benchmarks
 **Result**: 5/5 benchmark tests pass. All PRD targets met with real PostgreSQL.

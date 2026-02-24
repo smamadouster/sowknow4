@@ -39,6 +39,9 @@ CACHE_KEY_PREFIX = "sowknow:openrouter:cache:"
 MINIMAX_CONTEXT_WINDOW = 128000  # MiniMax 2.5 supports 128K
 MAX_INPUT_TOKENS = 120000  # Leave buffer for response
 
+# Collection cache key tracking (for invalidation)
+COLLECTION_CACHE_KEYS_PREFIX = "sowknow:openrouter:collection_keys:"
+
 # Redis client (lazy initialization)
 _redis_client = None
 
@@ -198,6 +201,8 @@ class OpenRouterService:
         max_tokens: int = 4096,
         cache_key: Optional[str] = None,
         user_id: Optional[str] = None,
+        is_confidential: bool = False,
+        collection_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using OpenRouter (OpenAI-compatible API)
@@ -206,7 +211,9 @@ class OpenRouterService:
         - Non-streaming requests are cached in Redis for 1 hour
         - Cache key = SHA256(model + sorted messages) if not provided
         - Streaming requests bypass cache (not useful for streaming)
+        - Confidential/PII queries are NEVER cached (is_confidential=True)
         - Cache metrics tracked via cache_monitor service
+        - Collection-scoped keys tracked for bulk invalidation
 
         Args:
             messages: List of message dicts with role and content
@@ -215,6 +222,8 @@ class OpenRouterService:
             max_tokens: Maximum tokens to generate
             cache_key: Optional pre-computed cache key (auto-generated if None)
             user_id: Optional user ID for cache metrics tracking
+            is_confidential: When True, skip all caching (privacy guarantee)
+            collection_id: Optional collection ID for cache invalidation tracking
 
         Yields:
             Response text chunks if streaming, full content if not
@@ -243,8 +252,9 @@ class OpenRouterService:
             )
 
         # Generate cache key if not provided and caching is enabled
+        # PRIVACY: confidential/PII queries are NEVER cached
         effective_cache_key = None
-        if self._cache_enabled and not stream:
+        if self._cache_enabled and not stream and not is_confidential:
             effective_cache_key = cache_key or self._generate_cache_key(
                 self.model, truncated_messages
             )
@@ -341,6 +351,8 @@ class OpenRouterService:
                         usage = result.get("usage", {})
 
                         # Cache the response for future requests
+                        # PRIVACY: is_confidential check is already handled above —
+                        # effective_cache_key is None when is_confidential=True
                         if self._cache_enabled and effective_cache_key and content:
                             redis_client = _get_redis_client()
                             if redis_client:
@@ -353,6 +365,11 @@ class OpenRouterService:
                                     logger.info(
                                         f"OpenRouter cached response: key={effective_cache_key[:50]}..., ttl={CACHE_TTL_SECONDS}s"
                                     )
+                                    # Track key under collection for bulk invalidation
+                                    if collection_id:
+                                        tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
+                                        redis_client.sadd(tracking_key, effective_cache_key)
+                                        redis_client.expire(tracking_key, CACHE_TTL_SECONDS)
                                 except Exception as cache_error:
                                     logger.warning(
                                         f"Failed to cache response: {cache_error}"
@@ -387,6 +404,50 @@ class OpenRouterService:
         except httpx.HTTPError as e:
             logger.error(f"OpenRouter connection error: {str(e)}")
             yield f"Error: {str(e)}"
+
+    def invalidate_collection_cache(self, collection_id: str) -> int:
+        """Invalidate all cached responses associated with a collection.
+
+        Call this when a document in the collection is updated or deleted so
+        stale responses are not served from cache.
+
+        Redis key schema:
+          Tracking set : sowknow:openrouter:collection_keys:{collection_id}
+          Cache entries: sowknow:openrouter:cache:{sha256_hash}
+
+        Args:
+            collection_id: UUID string of the collection to invalidate
+
+        Returns:
+            Number of cache entries invalidated (0 if none or Redis unavailable)
+        """
+        if not self._cache_enabled:
+            return 0
+        redis_client = _get_redis_client()
+        if not redis_client:
+            return 0
+
+        tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
+        try:
+            cache_keys = redis_client.smembers(tracking_key)
+            if not cache_keys:
+                logger.debug(
+                    f"Cache invalidation: no keys tracked for collection {collection_id}"
+                )
+                return 0
+
+            keys_to_delete = list(cache_keys) + [tracking_key]
+            redis_client.delete(*keys_to_delete)
+            count = len(cache_keys)
+            logger.info(
+                f"Cache invalidation: removed {count} entries for collection {collection_id}"
+            )
+            return count
+        except Exception as e:
+            logger.warning(
+                f"Cache invalidation error for collection {collection_id}: {e}"
+            )
+            return 0
 
     async def health_check(self) -> Dict[str, Any]:
         """

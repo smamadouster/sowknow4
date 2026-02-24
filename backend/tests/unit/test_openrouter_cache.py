@@ -20,6 +20,7 @@ from app.services.openrouter_service import (
     _get_redis_client,
     CACHE_KEY_PREFIX,
     CACHE_TTL_SECONDS,
+    COLLECTION_CACHE_KEYS_PREFIX,
 )
 
 
@@ -580,3 +581,302 @@ class TestCacheTTL:
     def test_cache_key_prefix_is_correct(self):
         """Cache key prefix should be correct."""
         assert CACHE_KEY_PREFIX == "sowknow:openrouter:cache:"
+
+    def test_collection_cache_keys_prefix_is_correct(self):
+        """Collection tracking key prefix should be correct."""
+        assert COLLECTION_CACHE_KEYS_PREFIX == "sowknow:openrouter:collection_keys:"
+
+
+class TestConfidentialBypass:
+    """Tests ensuring confidential/PII queries are NEVER cached (privacy guarantee)."""
+
+    @pytest.mark.asyncio
+    async def test_confidential_query_does_not_read_cache(self):
+        """is_confidential=True must skip Redis GET entirely."""
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_redis = MagicMock()
+                mock_redis.get.return_value = "Should not be returned"
+                mock_redis_get.return_value = mock_redis
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [{"message": {"content": "Live response"}}],
+                }
+                mock_response.raise_for_status = MagicMock()
+
+                mock_cm = AsyncMock()
+                mock_cm.__aenter__.return_value.post = AsyncMock(
+                    return_value=mock_response
+                )
+                mock_client.return_value = mock_cm
+
+                service = OpenRouterService()
+                service._cache_enabled = True
+                service.api_key = "test-key"
+
+                messages = [{"role": "user", "content": "Confidential query"}]
+                result_chunks = []
+                async for chunk in service.chat_completion(
+                    messages, stream=False, is_confidential=True
+                ):
+                    if not chunk.startswith("__USAGE__"):
+                        result_chunks.append(chunk)
+
+                # Cache must never be read for confidential queries
+                mock_redis.get.assert_not_called()
+                # Must still return the live API response
+                assert "".join(result_chunks) == "Live response"
+
+    @pytest.mark.asyncio
+    async def test_confidential_query_does_not_write_cache(self):
+        """is_confidential=True must skip Redis SETEX (response not stored)."""
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_redis = MagicMock()
+                mock_redis.get.return_value = None
+                mock_redis_get.return_value = mock_redis
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [{"message": {"content": "Confidential answer"}}],
+                }
+                mock_response.raise_for_status = MagicMock()
+
+                mock_cm = AsyncMock()
+                mock_cm.__aenter__.return_value.post = AsyncMock(
+                    return_value=mock_response
+                )
+                mock_client.return_value = mock_cm
+
+                service = OpenRouterService()
+                service._cache_enabled = True
+                service.api_key = "test-key"
+
+                messages = [{"role": "user", "content": "Medical records query"}]
+                async for _ in service.chat_completion(
+                    messages, stream=False, is_confidential=True
+                ):
+                    pass
+
+                # Response must NOT be written to cache
+                mock_redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_confidential_query_does_not_record_cache_metrics(self):
+        """is_confidential=True must not record cache hit/miss metrics."""
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            with patch("app.services.cache_monitor.cache_monitor") as mock_monitor:
+                with patch("httpx.AsyncClient") as mock_client:
+                    mock_redis = MagicMock()
+                    mock_redis_get.return_value = mock_redis
+
+                    mock_response = MagicMock()
+                    mock_response.json.return_value = {
+                        "choices": [{"message": {"content": "Confidential"}}],
+                    }
+                    mock_response.raise_for_status = MagicMock()
+
+                    mock_cm = AsyncMock()
+                    mock_cm.__aenter__.return_value.post = AsyncMock(
+                        return_value=mock_response
+                    )
+                    mock_client.return_value = mock_cm
+
+                    service = OpenRouterService()
+                    service._cache_enabled = True
+                    service.api_key = "test-key"
+
+                    messages = [{"role": "user", "content": "Private data"}]
+                    async for _ in service.chat_completion(
+                        messages, stream=False, is_confidential=True
+                    ):
+                        pass
+
+                    # No cache metrics should be recorded for confidential queries
+                    mock_monitor.record_cache_hit.assert_not_called()
+                    mock_monitor.record_cache_miss.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_non_confidential_query_uses_cache_normally(self):
+        """is_confidential=False (default) must still use cache normally."""
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            mock_redis = MagicMock()
+            mock_redis.get.return_value = "Cached public response"
+            mock_redis_get.return_value = mock_redis
+
+            service = OpenRouterService()
+            service._cache_enabled = True
+            service.api_key = "test-key"
+
+            messages = [{"role": "user", "content": "Public query"}]
+            result_chunks = []
+            async for chunk in service.chat_completion(
+                messages, stream=False, is_confidential=False
+            ):
+                result_chunks.append(chunk)
+
+            mock_redis.get.assert_called_once()
+            assert "".join(result_chunks) == "Cached public response"
+
+
+class TestCacheInvalidation:
+    """Tests for collection-based cache invalidation."""
+
+    def test_invalidate_collection_cache_deletes_tracked_keys(self):
+        """invalidate_collection_cache() should delete all keys in collection set."""
+        collection_id = "col-abc-123"
+        tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
+        cached_keys = {
+            f"{CACHE_KEY_PREFIX}aabbccdd1",
+            f"{CACHE_KEY_PREFIX}aabbccdd2",
+        }
+
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            mock_redis = MagicMock()
+            mock_redis.smembers.return_value = cached_keys
+            mock_redis_get.return_value = mock_redis
+
+            service = OpenRouterService()
+            service._cache_enabled = True
+
+            count = service.invalidate_collection_cache(collection_id)
+
+            assert count == 2
+            mock_redis.smembers.assert_called_once_with(tracking_key)
+            # delete() should be called with all cache keys + the tracking key itself
+            call_args = mock_redis.delete.call_args[0]
+            assert tracking_key in call_args
+            for k in cached_keys:
+                assert k in call_args
+
+    def test_invalidate_collection_cache_returns_zero_when_no_keys(self):
+        """invalidate_collection_cache() should return 0 when no keys tracked."""
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            mock_redis = MagicMock()
+            mock_redis.smembers.return_value = set()
+            mock_redis_get.return_value = mock_redis
+
+            service = OpenRouterService()
+            service._cache_enabled = True
+
+            count = service.invalidate_collection_cache("col-empty")
+
+            assert count == 0
+            mock_redis.delete.assert_not_called()
+
+    def test_invalidate_collection_cache_returns_zero_when_cache_disabled(self):
+        """invalidate_collection_cache() should be a no-op when cache is disabled."""
+        service = OpenRouterService()
+        service._cache_enabled = False
+
+        count = service.invalidate_collection_cache("col-disabled")
+
+        assert count == 0
+
+    def test_invalidate_collection_cache_handles_redis_error(self):
+        """invalidate_collection_cache() should handle Redis errors gracefully."""
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            mock_redis = MagicMock()
+            mock_redis.smembers.side_effect = Exception("Redis connection lost")
+            mock_redis_get.return_value = mock_redis
+
+            service = OpenRouterService()
+            service._cache_enabled = True
+
+            # Should not raise, should return 0
+            count = service.invalidate_collection_cache("col-error")
+
+            assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_collection_id_tracks_cache_key_on_miss(self):
+        """collection_id parameter should track the cache key in Redis SET on cache miss."""
+        collection_id = "col-xyz-789"
+
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_redis = MagicMock()
+                mock_redis.get.return_value = None
+                mock_redis_get.return_value = mock_redis
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [{"message": {"content": "Collection response"}}],
+                }
+                mock_response.raise_for_status = MagicMock()
+
+                mock_cm = AsyncMock()
+                mock_cm.__aenter__.return_value.post = AsyncMock(
+                    return_value=mock_response
+                )
+                mock_client.return_value = mock_cm
+
+                service = OpenRouterService()
+                service._cache_enabled = True
+                service.api_key = "test-key"
+
+                messages = [{"role": "user", "content": "Collection query"}]
+                async for _ in service.chat_completion(
+                    messages, stream=False, collection_id=collection_id
+                ):
+                    pass
+
+                # sadd should be called with the tracking key and the cache key
+                tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
+                mock_redis.sadd.assert_called_once()
+                sadd_args = mock_redis.sadd.call_args[0]
+                assert sadd_args[0] == tracking_key
+                # The second arg is the cache key (starts with CACHE_KEY_PREFIX)
+                assert sadd_args[1].startswith(CACHE_KEY_PREFIX)
+                # TTL must be set on the tracking set
+                mock_redis.expire.assert_called_once_with(tracking_key, CACHE_TTL_SECONDS)
+
+    @pytest.mark.asyncio
+    async def test_no_collection_id_does_not_track_key(self):
+        """Without collection_id, sadd should not be called."""
+        with patch(
+            "app.services.openrouter_service._get_redis_client"
+        ) as mock_redis_get:
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_redis = MagicMock()
+                mock_redis.get.return_value = None
+                mock_redis_get.return_value = mock_redis
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "choices": [{"message": {"content": "Response"}}],
+                }
+                mock_response.raise_for_status = MagicMock()
+
+                mock_cm = AsyncMock()
+                mock_cm.__aenter__.return_value.post = AsyncMock(
+                    return_value=mock_response
+                )
+                mock_client.return_value = mock_cm
+
+                service = OpenRouterService()
+                service._cache_enabled = True
+                service.api_key = "test-key"
+
+                messages = [{"role": "user", "content": "Query without collection"}]
+                async for _ in service.chat_completion(messages, stream=False):
+                    pass
+
+                mock_redis.sadd.assert_not_called()

@@ -5,7 +5,7 @@ Lead: Orchestrator
 ---
 
 ## ═══════════════════════════════════════════════════
-## CURRENT STATUS — 2026-02-23 (context reset point)
+## CURRENT STATUS — 2026-02-24 (B2 session)
 ## ═══════════════════════════════════════════════════
 
 ### ✅ DONE THIS SESSION
@@ -13,7 +13,47 @@ Lead: Orchestrator
 |------|--------|--------|
 | P1-E1: backend mem 1024M→512M | `2215647` | ✅ Done |
 | P2-E2: search 3s timeout + semaphore(5) | `2215647` | ✅ Done |
+| A2-OOM: celery worker concurrency 2→1 | `60bd675` | ✅ Done |
+| A2: retry policy max_retries 3→2, countdown 30s fixed | `45e436f` | ✅ Done |
+| A2: recovery cap (max 3 attempts → ERROR) in anomaly_tasks | `45e436f` | ✅ Done |
+| A2: GET /api/v1/documents/{id}/status endpoint | `45e436f` | ✅ Done |
+| A2: 23 new tests (343 pass / 4 skip / 0 fail) | `45e436f` | ✅ Done |
 | Fix pre-existing test failures (35 total) | — | ✅ Done — 386 passed, 5 skipped |
+| B1: Stale role on token refresh — audit + verify fix | — | ✅ Done — fix already in place, 18/18 auth tests pass |
+| B2: context caching — confidential bypass + collection invalidation | `f9261e2` | ✅ Done — 32/32 cache tests pass, 406 passed / 5 skipped overall |
+
+### ✅ COMPLETED: B2 — Context Caching (LLM Cost Optimization)
+**Result**: 32/32 openrouter cache tests pass. Full unit suite: 406 passed / 5 skipped / 0 failed.
+
+**Pre-existing caching (already done before this session)**:
+- Redis-backed cache for `chat_completion()` non-streaming requests
+- SHA256 cache key: `sowknow:openrouter:cache:{hash}`
+- TTL: 3600s (1 hour)
+- Cache hit/miss logging + `cache_monitor` metrics integration
+- `check_cache()` pre-flight method for streaming SSE indicator (P1-D3)
+- 21 existing tests for key generation, hit/miss, streaming bypass, Redis failure
+
+**New additions this session (B2 gaps)**:
+- `is_confidential: bool = False` param on `chat_completion()`:
+  when True, all Redis read/write/metrics skipped — confidential/PII queries NEVER cached
+- `collection_id: Optional[str]` param: on cache write, key registered in Redis SET
+  `sowknow:openrouter:collection_keys:{collection_id}` with matching TTL
+- `invalidate_collection_cache(collection_id) -> int` method: retrieves tracked keys,
+  deletes them + the tracking SET atomically; returns count; graceful on Redis error
+- `COLLECTION_CACHE_KEYS_PREFIX = "sowknow:openrouter:collection_keys:"` constant
+- 11 new tests: 4 confidential-bypass + 6 invalidation + 1 prefix constant
+
+**Redis key schema**:
+```
+Cache entry  : sowknow:openrouter:cache:{sha256_64hex}          TTL=3600s
+Coll tracker : sowknow:openrouter:collection_keys:{collection_id}  TTL=3600s
+Token BL     : (existing, separate namespace, unchanged)
+```
+
+**What B2 does NOT cache (privacy enforcement)**:
+- `is_confidential=True` → always bypasses cache (caller sets this for confidential buckets)
+- Streaming requests (`stream=True`) → never cached (inherent: streaming is ephemeral)
+- When Redis is unavailable → graceful degradation, live API call proceeds
 
 ### ✅ COMPLETED: Fix 35 Pre-existing Test Failures
 **Result**: 386 passed / 5 skipped (0 failures) in unit test suite.

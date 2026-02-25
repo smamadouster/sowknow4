@@ -95,6 +95,12 @@ export default function LoginPage() {
           >
             {loading ? t('login_button') + '...' : t('login_button')}
           </button>
+
+          <div className="text-center">
+            <a href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+              {t('forgot_password')}
+            </a>
+          </div>
         </form>
 
         <div className="mt-6 text-center">

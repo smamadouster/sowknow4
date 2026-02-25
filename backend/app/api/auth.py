@@ -18,11 +18,14 @@ Token Blacklist:
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from typing import Any
 import uuid
 import os
+import secrets
+import hashlib
 from dotenv import load_dotenv
 import redis
 import json
@@ -586,10 +589,102 @@ async def logout(request: Request, response: Response):
 
 
 # =============================================================================
-# TELEGRAM AUTHENTICATION
+# FORGOT PASSWORD
 # =============================================================================
 
-from pydantic import BaseModel
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+@router.post("/forgot-password")
+# RATE_LIMIT: 3/hour per IP (prevent enumeration and abuse)
+async def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Request a password reset link.
+
+    SECURITY:
+    - Always returns the same generic message to prevent email enumeration
+    - Rate limited to 3 requests/hour per IP via Redis counter
+    - Generates a cryptographically secure token stored in Redis (1h TTL)
+    - No email is sent (admin-managed system — admin uses /admin/users/{id}/reset-password)
+    - All requests are logged for audit purposes
+
+    Args:
+        request: FastAPI Request (for IP-based rate limiting)
+        payload: JSON body with email field
+        db: Database session
+
+    Returns:
+        dict: Generic success message (same whether email exists or not)
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    RATE_LIMIT = 3
+    RATE_WINDOW = 3600  # 1 hour in seconds
+
+    # --- IP-based rate limiting via Redis (atomic SET NX EX + INCR) ---
+    if redis_client:
+        rate_key = f"forgot_pwd_rate:{client_ip}"
+        try:
+            # Atomic: initialize key with TTL only if it doesn't exist yet
+            redis_client.set(rate_key, 0, ex=RATE_WINDOW, nx=True)
+            count = redis_client.incr(rate_key)
+            if count > RATE_LIMIT:
+                ttl = redis_client.ttl(rate_key)
+                logger.warning(
+                    f"Forgot password rate limit exceeded from {client_ip}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Too many requests. Try again in {ttl} seconds.",
+                    headers={"Retry-After": str(ttl)},
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Rate limit check failed: {e}")
+
+    # --- Generate reset token (stored in Redis; no email sent) ---
+    email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    if user and user.is_active:
+        reset_token = _secrets.token_urlsafe(32)
+        if redis_client:
+            try:
+                redis_client.setex(
+                    f"pwd_reset:{reset_token}",
+                    RATE_WINDOW,
+                    str(user.id),
+                )
+            except Exception as e:
+                logger.error(f"Failed to store reset token: {e}")
+
+        logger.info(
+            f"Password reset requested for user {user.id} from {client_ip}. "
+            f"Token stored in Redis (admin action required for delivery)."
+        )
+    else:
+        # Log attempted reset for unknown / inactive email — don't reveal status
+        logger.info(
+            f"Forgot password request for unknown/inactive email from {client_ip}"
+        )
+
+    # Always return the same response to prevent user enumeration
+    return {
+        "message": (
+            "If this email is registered, the administrator has been notified "
+            "and will contact you with password reset instructions."
+        )
+    }
+
+
+# =============================================================================
+# TELEGRAM AUTHENTICATION
+# =============================================================================
 
 
 class TelegramAuthRequest(BaseModel):
@@ -655,8 +750,6 @@ async def telegram_auth(
 
     # Create deterministic but non-enumerable email
     # Use UUID-based hash to prevent enumeration
-    import hashlib
-
     telegram_id_hash = hashlib.sha256(
         str(auth_data.telegram_user_id).encode()
     ).hexdigest()[:16]
@@ -672,8 +765,6 @@ async def telegram_auth(
             full_name = auth_data.username or f"Telegram User {telegram_id_hash}"
 
         # Generate a random password for Telegram users
-        import secrets
-
         temp_password = secrets.token_urlsafe(32)
         hashed_password = get_password_hash(temp_password)
 

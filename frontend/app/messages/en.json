@@ -28,6 +28,7 @@
     "smart_folders": "Smart Folders",
     "settings": "Settings",
     "logout": "Logout",
+    "logout_confirm": "Are you sure you want to log out?",
     "login": "Login",
     "register": "Register"
   },

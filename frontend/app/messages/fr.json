@@ -28,6 +28,7 @@
     "smart_folders": "Dossiers Intelligents",
     "settings": "Paramètres",
     "logout": "Déconnexion",
+    "logout_confirm": "Êtes-vous sûr de vouloir vous déconnecter ?",
     "login": "Connexion",
     "register": "S'inscrire"
   },

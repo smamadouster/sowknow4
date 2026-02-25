@@ -23,7 +23,8 @@
     ],
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    "types": ["node", "react", "react-dom", "jest"]
   },
   "include": [
     "next-env.d.ts",

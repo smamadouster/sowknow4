@@ -279,6 +279,12 @@
     "admin_only": "Administrateur uniquement",
     "login_required": "Connexion requise"
   },
+  "offline": {
+    "title": "Vous êtes hors ligne",
+    "description": "Aucune connexion Internet détectée. Veuillez vérifier votre connexion et réessayer.",
+    "retry": "Réessayer",
+    "home": "Retour à l'accueil"
+  },
   "errors": {
     "generic": "Une erreur s'est produite",
     "network": "Erreur de connexion",

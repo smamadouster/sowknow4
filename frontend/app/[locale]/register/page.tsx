@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 
 export default function RegisterPage() {
   const t = useTranslations('auth');
   const router = useRouter();
+  const locale = useLocale();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -21,7 +22,7 @@ export default function RegisterPage() {
     setError('');
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError(t('passwords_do_not_match'));
       return;
     }
 
@@ -43,7 +44,7 @@ export default function RegisterPage() {
       });
 
       if (response.ok) {
-        router.push('/login?registered=true');
+        router.push(`/${locale}/login?registered=true`);
       } else {
         const data = await response.json();
         setError(data.detail || t('register_error'));
@@ -138,7 +139,7 @@ export default function RegisterPage() {
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
             {t('has_account')}{' '}
-            <a href="/login" className="text-blue-600 hover:underline">
+            <a href={`/${locale}/login`} className="text-blue-600 hover:underline">
               {t('login_button')}
             </a>
           </p>

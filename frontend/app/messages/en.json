@@ -29,6 +29,7 @@
     "settings": "Settings",
     "logout": "Logout",
     "logout_confirm": "Are you sure you want to log out?",
+    "logout_streaming_warning": "The AI is currently generating a response. Logging out will interrupt it.",
     "login": "Login",
     "register": "Register"
   },
@@ -56,6 +57,7 @@
     "forgot_password_error": "An error occurred. Please try again.",
     "forgot_password_rate_limit": "Too many attempts. Please wait before trying again.",
     "back_to_login": "Back to login",
+    "passwords_do_not_match": "Passwords do not match",
     "invalid_email": "Please enter a valid email address",
     "forgot_password_attempts_remaining": "{count} attempt(s) remaining"
   },

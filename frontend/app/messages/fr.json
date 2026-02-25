@@ -29,6 +29,7 @@
     "settings": "Paramètres",
     "logout": "Déconnexion",
     "logout_confirm": "Êtes-vous sûr de vouloir vous déconnecter ?",
+    "logout_streaming_warning": "L'IA génère actuellement une réponse. La déconnexion l'interrompra.",
     "login": "Connexion",
     "register": "S'inscrire"
   },
@@ -56,6 +57,7 @@
     "forgot_password_error": "Une erreur s'est produite. Veuillez réessayer.",
     "forgot_password_rate_limit": "Trop de tentatives. Veuillez patienter avant de réessayer.",
     "back_to_login": "Retour à la connexion",
+    "passwords_do_not_match": "Les mots de passe ne correspondent pas",
     "invalid_email": "Veuillez saisir une adresse e-mail valide",
     "forgot_password_attempts_remaining": "{count} tentative(s) restante(s)"
   },

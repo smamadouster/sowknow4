@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_ATTEMPTS = 3;
@@ -9,6 +9,7 @@ const MAX_ATTEMPTS = 3;
 export default function ForgotPasswordPage() {
   const t = useTranslations('auth');
   const tc = useTranslations('common');
+  const locale = useLocale();
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [error, setError] = useState('');
@@ -85,7 +86,7 @@ export default function ForgotPasswordPage() {
             </p>
           </div>
           <a
-            href="/login"
+            href={`/${locale}/login`}
             className="inline-block w-full bg-yellow-400 text-gray-900 py-3 rounded-lg font-medium hover:bg-yellow-500 focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2 transition-colors text-center"
           >
             {t('back_to_login')}
@@ -157,7 +158,7 @@ export default function ForgotPasswordPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <a href="/login" className="text-sm text-blue-600 hover:underline">
+          <a href={`/${locale}/login`} className="text-sm text-blue-600 hover:underline">
             {t('back_to_login')}
           </a>
         </div>

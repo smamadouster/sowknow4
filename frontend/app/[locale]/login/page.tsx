@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
+  const locale = useLocale();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -33,7 +34,7 @@ export default function LoginPage() {
       });
 
       if (response.ok) {
-        router.push('/dashboard');
+        router.push(`/${locale}/dashboard`);
       } else {
         const data = await response.json();
         setError(data.detail || t('login_error'));
@@ -97,7 +98,7 @@ export default function LoginPage() {
           </button>
 
           <div className="text-center">
-            <a href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+            <a href={`/${locale}/forgot-password`} className="text-sm text-blue-600 hover:underline">
               {t('forgot_password')}
             </a>
           </div>
@@ -106,7 +107,7 @@ export default function LoginPage() {
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
             {t('no_account')}{' '}
-            <a href="/register" className="text-blue-600 hover:underline">
+            <a href={`/${locale}/register`} className="text-blue-600 hover:underline">
               {t('register_button')}
             </a>
           </p>

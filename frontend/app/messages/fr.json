@@ -279,6 +279,25 @@
     "admin_only": "Administrateur uniquement",
     "login_required": "Connexion requise"
   },
+  "verify_email": {
+    "success_title": "Email vérifié",
+    "success_desc": "Votre adresse e-mail a été vérifiée avec succès. Vous pouvez maintenant vous connecter.",
+    "redirect_countdown": "Redirection vers la connexion dans {seconds}s...",
+    "go_to_login": "Aller à la connexion",
+    "expired_title": "Lien expiré",
+    "expired_desc": "Ce lien de vérification a expiré. Entrez votre e-mail pour en demander un nouveau.",
+    "your_email": "Votre adresse e-mail",
+    "resend_button": "Envoyer un nouveau lien",
+    "resend_success": "Si cet e-mail est enregistré et non vérifié, l'administrateur a été notifié et vous enverra un nouveau lien de vérification.",
+    "resend_error": "Une erreur s'est produite. Veuillez réessayer.",
+    "resend_rate_limit": "Trop de tentatives. Veuillez patienter avant de réessayer.",
+    "invalid_title": "Lien invalide",
+    "invalid_desc": "Ce lien de vérification est invalide. Veuillez contacter l'administrateur si le problème persiste.",
+    "network_error_title": "Erreur de connexion",
+    "network_error_desc": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+    "retry": "Réessayer",
+    "back_to_login": "Retour à la connexion"
+  },
   "offline": {
     "title": "Vous êtes hors ligne",
     "description": "Aucune connexion Internet détectée. Veuillez vérifier votre connexion et réessayer.",

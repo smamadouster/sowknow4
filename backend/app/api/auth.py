@@ -683,6 +683,141 @@ async def forgot_password(
 
 
 # =============================================================================
+# EMAIL VERIFICATION
+# =============================================================================
+
+EMAIL_VERIFY_TTL = 86400  # 24 hours
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
+@router.post("/verify-email/{token}")
+async def verify_email(token: str, db: Session = Depends(get_db)):
+    """
+    Verify a user's email address using the token from Redis.
+
+    SECURITY:
+    - Token is single-use: deleted from Redis on success
+    - Generic error message prevents token enumeration
+    - Token TTL: 24 hours
+
+    Returns:
+        dict: Success message
+    """
+    if not redis_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Verification service temporarily unavailable",
+        )
+
+    try:
+        user_id = redis_client.get(f"email_verify:{token}")
+    except Exception as e:
+        logger.error(f"Redis error during email verification: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Verification service temporarily unavailable",
+        )
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    if user.email_verified:
+        # Already verified — consume token and return success
+        try:
+            redis_client.delete(f"email_verify:{token}")
+        except Exception:
+            pass
+        return {"message": "Email already verified"}
+
+    user.email_verified = True
+    db.commit()
+
+    try:
+        redis_client.delete(f"email_verify:{token}")
+    except Exception as e:
+        logger.error(f"Failed to delete verification token: {e}")
+
+    logger.info(f"Email verified for user {user.id}")
+    return {"message": "Email verified successfully"}
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    request: Request,
+    payload: ResendVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a new email verification token (admin-managed delivery).
+
+    SECURITY:
+    - Rate limited to 3 requests/hour per IP
+    - Always returns generic response (prevents enumeration)
+    - Token stored in Redis (24h TTL); admin delivers it manually
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    RATE_LIMIT = 3
+    RATE_WINDOW = 3600
+
+    if redis_client:
+        rate_key = f"resend_verify_rate:{client_ip}"
+        try:
+            redis_client.set(rate_key, 0, ex=RATE_WINDOW, nx=True)
+            count = redis_client.incr(rate_key)
+            if count > RATE_LIMIT:
+                ttl = redis_client.ttl(rate_key)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Too many requests. Try again in {ttl} seconds.",
+                    headers={"Retry-After": str(ttl)},
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Rate limit check failed: {e}")
+
+    email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    if user and user.is_active and not user.email_verified:
+        verify_token = secrets.token_urlsafe(32)
+        if redis_client:
+            try:
+                redis_client.setex(
+                    f"email_verify:{verify_token}",
+                    EMAIL_VERIFY_TTL,
+                    str(user.id),
+                )
+            except Exception as e:
+                logger.error(f"Failed to store verification token: {e}")
+
+        logger.info(
+            f"Verification token generated for user {user.id} from {client_ip}. "
+            f"Token: {verify_token[:8]}... (admin action required for delivery)."
+        )
+
+    return {
+        "message": (
+            "If this email is registered and unverified, "
+            "the administrator has been notified."
+        )
+    }
+
+
+# =============================================================================
 # TELEGRAM AUTHENTICATION
 # =============================================================================
 

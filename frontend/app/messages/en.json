@@ -279,6 +279,25 @@
     "admin_only": "Admin Only",
     "login_required": "Login Required"
   },
+  "verify_email": {
+    "success_title": "Email Verified",
+    "success_desc": "Your email address has been verified successfully. You can now log in.",
+    "redirect_countdown": "Redirecting to login in {seconds}s...",
+    "go_to_login": "Go to Login",
+    "expired_title": "Link Expired",
+    "expired_desc": "This verification link has expired. Enter your email to request a new one.",
+    "your_email": "Your email address",
+    "resend_button": "Send new link",
+    "resend_success": "If this email is registered and unverified, the administrator has been notified and will send you a new verification link.",
+    "resend_error": "An error occurred. Please try again.",
+    "resend_rate_limit": "Too many attempts. Please wait before trying again.",
+    "invalid_title": "Invalid Link",
+    "invalid_desc": "This verification link is invalid. Please contact the administrator if the problem persists.",
+    "network_error_title": "Connection Error",
+    "network_error_desc": "Could not reach the server. Please check your connection and try again.",
+    "retry": "Try Again",
+    "back_to_login": "Back to Login"
+  },
   "offline": {
     "title": "You are offline",
     "description": "No internet connection detected. Please check your connection and try again.",

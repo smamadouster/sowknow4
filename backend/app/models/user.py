@@ -21,6 +21,7 @@ class User(Base, TimestampMixin):
     is_superuser = Column(Boolean, nullable=False, default=False)
     can_access_confidential = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    email_verified = Column(Boolean, nullable=False, default=False)
 
     # Relationships
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")

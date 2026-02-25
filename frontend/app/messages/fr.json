@@ -30,6 +30,7 @@
     "logout": "Déconnexion",
     "logout_confirm": "Êtes-vous sûr de vouloir vous déconnecter ?",
     "logout_streaming_warning": "L'IA génère actuellement une réponse. La déconnexion l'interrompra.",
+    "logout_upload_warning": "Des fichiers sont en cours de téléchargement. La déconnexion les annulera.",
     "login": "Connexion",
     "register": "S'inscrire"
   },

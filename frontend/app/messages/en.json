@@ -30,6 +30,7 @@
     "logout": "Logout",
     "logout_confirm": "Are you sure you want to log out?",
     "logout_streaming_warning": "The AI is currently generating a response. Logging out will interrupt it.",
+    "logout_upload_warning": "Files are currently uploading. Logging out will cancel them.",
     "login": "Login",
     "register": "Register"
   },

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { useTranslations } from 'next-intl';
-import { useAuthStore, canAccessConfidential } from '@/lib/store';
+import { useAuthStore, useUploadStore, canAccessConfidential } from '@/lib/store';
 
 interface Document {
   id: string;
@@ -35,6 +35,7 @@ export default function DocumentsPage() {
   const t = useTranslations('documents');
   const tCommon = useTranslations('common');
   const { user } = useAuthStore();
+  const { setIsUploading } = useUploadStore();
   const isAdmin = user?.role === 'admin';
   const canAccessConf = canAccessConfidential(user);
 
@@ -275,6 +276,7 @@ export default function DocumentsPage() {
 
     uploadingCount.current++;
     setUploading(true);
+    setIsUploading(true);
     const bucket = bucketFilter === 'all' ? 'public' : bucketFilter;
 
     for (const item of items) {
@@ -304,7 +306,10 @@ export default function DocumentsPage() {
     }, 3000);
 
     uploadingCount.current--;
-    if (uploadingCount.current === 0) setUploading(false);
+    if (uploadingCount.current === 0) {
+      setUploading(false);
+      setIsUploading(false);
+    }
   };
 
   // Remove file from queue

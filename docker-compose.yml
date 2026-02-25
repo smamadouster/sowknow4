@@ -169,13 +169,13 @@ services:
     deploy:
       resources:
         limits:
-          # 2048M is sufficient for a SINGLE worker process loading multilingual-e5-large
-          # (~1.3 GB) + Python overhead (~300 MB) = ~1.6 GB peak.
+          # 2560M provides headroom for multilingual-e5-large embedding model
+          # (~1.3 GB) + Python overhead (~300 MB) + PyTorch buffers (~500 MB) = ~2.1 GB peak.
           # CRITICAL: concurrency MUST stay at 1. With fork pool, each worker process
           # gets its own private copy of the model after fork (lazy load = no CoW sharing).
-          # Two workers × 1.6 GB = 3.2 GB > 2048 M → SIGKILL-9. One worker keeps peak
-          # below 2048 M and total container budget stays within the 6.4 GB VPS limit.
-          memory: 2048M
+          # Two workers × 2.1 GB = 4.2 GB > VPS budget → SIGKILL-9. One worker keeps peak
+          # below 2560 M and total container budget stays within the 6.4 GB VPS limit.
+          memory: 2560M
           cpus: '1.5'
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 -Q celery,document_processing,scheduled
     networks:

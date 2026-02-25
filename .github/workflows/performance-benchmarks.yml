@@ -1,0 +1,92 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run nightly at 03:00 UTC to detect performance regressions
+    - cron: '0 3 * * *'
+
+jobs:
+  benchmark:
+    name: Run Performance & Benchmark Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: sowknow_test
+          POSTGRES_USER: sowknow
+          POSTGRES_PASSWORD: testpassword
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-benchmark testcontainers[postgres] numpy
+
+      - name: Run performance benchmark tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://sowknow:testpassword@localhost:5432/sowknow_test
+          REDIS_URL: redis://localhost:6379/0
+          PYTHONPATH: .
+        run: |
+          python -m pytest tests/performance/ \
+            --benchmark-only \
+            --benchmark-json=benchmark-report.json \
+            --tb=short \
+            -v 2>&1 | tee benchmark-output.txt || true
+
+      - name: Run collection performance targets
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://sowknow:testpassword@localhost:5432/sowknow_test
+          REDIS_URL: redis://localhost:6379/0
+          PYTHONPATH: .
+        run: |
+          python -m pytest tests/performance/test_performance_targets.py \
+            tests/performance/test_collection_benchmarks.py \
+            --tb=short -v 2>&1 | tee perf-targets-output.txt || true
+
+      - name: Upload performance benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            backend/benchmark-report.json
+            backend/benchmark-output.txt
+            backend/perf-targets-output.txt
+          retention-days: 30

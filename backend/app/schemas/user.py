@@ -97,6 +97,7 @@ class UserPublic(BaseModel):
     email: str  # Use str instead of EmailStr to allow internal domains like .local
     full_name: Optional[str] = None
     role: UserRole
+    can_access_confidential: bool
 
     @field_validator('id', mode='before')
     @classmethod

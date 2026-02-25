@@ -179,8 +179,8 @@ class TestLLMProviderSelection:
         """Test that Ollama provider is defined"""
         assert LLMProvider.OLLAMA.value == "ollama"
 
-    def test_provider_in_chat_message(self):
-        """Test that provider is tracked in chat messages"""
+    def test_minimax_tracked_in_chat_message(self):
+        """Test that MiniMax provider is tracked in chat messages (replaces old Gemini stub)"""
         from app.models.chat import ChatMessage, MessageRole
 
         message = ChatMessage(
@@ -192,8 +192,8 @@ class TestLLMProviderSelection:
 
         assert message.llm_used == LLMProvider.MINIMAX
 
-    def test_provider_tracking_for_auditing(self):
-        """Test that provider is tracked for privacy auditing"""
+    def test_minimax_kimi_ollama_tracking_for_auditing(self):
+        """Test that all tri-LLM providers are tracked for privacy auditing (replaces old Gemini stub)"""
         # All LLM usage should be tracked for audit purposes
         assert hasattr(LLMProvider, "MINIMAX")
         assert hasattr(LLMProvider, "KIMI")

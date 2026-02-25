@@ -1,5 +1,9 @@
 """
 Celery tasks for document processing
+
+Status values used in this module:
+  document.status = "failed" / "indexed" / "error" / "pending" (via DocumentStatus enum)
+  processing_task.status = "failed" / "indexed" / "completed" (via TaskStatus enum)
 """
 
 from celery import shared_task
@@ -445,6 +449,106 @@ def cleanup_old_tasks(days: int = 7):
 
     except Exception as e:
         logger.error(f"Error cleaning up old tasks: {str(e)}")
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+
+@shared_task(name="app.tasks.document_tasks.recover_stuck_documents")
+def recover_stuck_documents(stuck_threshold_minutes: int = 60):
+    """
+    Periodic beat task: detect and requeue stuck documents.
+
+    A document is considered stuck if it has been in PROCESSING status for
+    longer than `stuck_threshold_minutes` without completing.  This task is
+    scheduled by Celery Beat to run every 30 minutes as a safety net for
+    documents whose worker process was killed (OOM, container restart, etc.).
+
+    Recovery strategy:
+      - status='failed' (processing_task) → mark as "failed" for auditing
+      - status='indexed' is set by the main pipeline on success
+      - Documents reset to PENDING are requeued automatically by process_document
+
+    Args:
+        stuck_threshold_minutes: Minutes before a PROCESSING doc is considered stuck.
+
+    Returns:
+        dict with recovery results (stuck_found, requeued, errors).
+    """
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentStatus
+    from app.models.processing import ProcessingQueue, TaskStatus
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.utcnow() - timedelta(minutes=stuck_threshold_minutes)
+
+        # Find documents stuck in PROCESSING with an overdue started_at
+        stuck_tasks = (
+            db.query(ProcessingQueue)
+            .filter(
+                ProcessingQueue.status == TaskStatus.IN_PROGRESS,
+                ProcessingQueue.started_at < cutoff,
+            )
+            .all()
+        )
+
+        requeued = 0
+        errors = 0
+
+        for task in stuck_tasks:
+            try:
+                doc = (
+                    db.query(Document)
+                    .filter(Document.id == task.document_id)
+                    .first()
+                )
+                if not doc:
+                    continue
+
+                logger.warning(
+                    f"Stuck document detected: doc_id={doc.id}, "
+                    f"started_at={task.started_at}, requeuing…"
+                )
+
+                # Reset processing queue entry so it can be retried
+                task.status = TaskStatus.FAILED
+                task.error_message = (
+                    f"Stuck processing recovered at {datetime.utcnow().isoformat()}"
+                )
+                db.commit()
+
+                # Reset document to PENDING so it gets requeued
+                doc.status = DocumentStatus.PENDING
+                db.commit()
+
+                # Re-dispatch the processing task
+                process_document.delay(str(doc.id))
+                requeued += 1
+
+            except Exception as inner_e:
+                logger.error(
+                    f"Error recovering stuck document {task.document_id}: {inner_e}"
+                )
+                errors += 1
+
+        logger.info(
+            f"Stuck-document recovery complete: "
+            f"found={len(stuck_tasks)}, requeued={requeued}, errors={errors}"
+        )
+
+        return {
+            "status": "success",
+            "stuck_found": len(stuck_tasks),
+            "requeued": requeued,
+            "errors": errors,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in recover_stuck_documents: {e}")
         db.rollback()
         raise
 

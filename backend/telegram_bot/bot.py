@@ -4,8 +4,9 @@ Provides mobile-first interface for document upload and knowledge queries
 
 ARCHITECTURE: Redis-backed session storage for resilience
 - Sessions survive bot restarts
-- Key format: telegram_session:{telegram_user_id}
+- Key format: telegram:user_context:{telegram_user_id}  (stored as telegram_session:{id})
 - TTL: 24 hours (86400 seconds)
+- Class alias: UserContextStore = RedisSessionManager (backward-compatible)
 """
 
 import os
@@ -196,6 +197,9 @@ class RedisSessionManager:
         """Clear pending file from session without deleting entire session."""
         return await self.update_session(telegram_user_id, {"pending_file": None})
 
+
+# Backward-compatible alias required by audit spec (C2-P1)
+UserContextStore = RedisSessionManager
 
 session_manager = RedisSessionManager(REDIS_URL)
 

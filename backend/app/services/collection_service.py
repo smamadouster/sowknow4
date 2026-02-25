@@ -3,6 +3,11 @@ Collection service for Smart Collections feature
 
 Manages creation, retrieval, and updates of Smart Collections, including
 intent parsing, document gathering, and AI summary generation.
+
+Caching: collection-scoped cache keys are tracked by openrouter_service so that
+all LLM responses for a collection can be bulk-invalidated when the collection
+is updated or deleted (see openrouter_service.invalidate_collection_cache).
+Cache key prefix: collection:{collection_id}:query:{hash}
 """
 import logging
 import uuid
@@ -10,6 +15,14 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
+
+# Redis-backed cache invalidation for collection LLM responses
+try:
+    from app.services.openrouter_service import openrouter_service as _openrouter_svc
+    _CACHE_KEY_PREFIX = "collection"
+    _cache_invalidation_enabled = True
+except ImportError:
+    _cache_invalidation_enabled = False
 
 from app.models.collection import (
     Collection,

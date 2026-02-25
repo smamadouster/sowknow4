@@ -1,5 +1,16 @@
 """
 Test configuration and fixtures for pytest
+
+Integration tests that require a real PostgreSQL instance with the pgvector
+extension use testcontainers (see tests/performance/conftest.py).  Those
+fixtures seed the database with 50 public documents and 10 confidential
+documents using 1024-dim normalised random embeddings so that pgvector
+similarity-search benchmarks run against realistic data volumes.
+
+For unit tests this file provides SQLite-backed fixtures.
+For performance benchmarks import from tests/performance/conftest.py which
+spins up a DockerContainer (testcontainers.postgres.PostgresContainer) with
+the pgvector/pgvector:pg16 image and enables the vector extension.
 """
 
 import pytest

@@ -96,6 +96,9 @@ class Document(Base, TimestampMixin):
     embedding_generated = Column(Boolean, default=False)
     chunk_count = Column(Integer, default=0)
 
+    # Ownership
+    uploaded_by = Column(GUIDType(as_uuid=True), nullable=True, index=True)
+
     # Additional metadata stored as JSON
     document_metadata = Column("metadata", JSONB, default=dict)
 

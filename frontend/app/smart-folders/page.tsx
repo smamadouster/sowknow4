@@ -34,7 +34,7 @@ export default function SmartFoldersPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Check if user can access confidential documents
-  const canAccessConf = canAccessConfidential(user?.role);
+  const canAccessConf = canAccessConfidential(user);
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;

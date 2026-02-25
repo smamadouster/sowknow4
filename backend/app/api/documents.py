@@ -22,6 +22,12 @@ import uuid
 import mimetypes
 from datetime import datetime
 
+try:
+    import magic as _magic
+    _magic_available = True
+except ImportError:
+    _magic_available = False
+
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
@@ -113,10 +119,60 @@ def get_file_extension(filename: str) -> str:
     return "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
 
-def get_mime_type(filename: str) -> str:
-    """Get MIME type for filename"""
+def get_mime_type(filename: str, content: bytes = b"") -> str:
+    """Get MIME type using content-based detection (magic bytes) with filename fallback"""
+    if content and _magic_available:
+        try:
+            detected = _magic.from_buffer(content, mime=True)
+            if detected and detected != "application/octet-stream":
+                return detected
+        except Exception:
+            pass
     mime_type, _ = mimetypes.guess_type(filename)
     return mime_type or "application/octet-stream"
+
+
+# Map of allowed extensions to their expected MIME type prefixes for validation
+_EXTENSION_MIME_PREFIXES: dict = {
+    ".pdf": ["application/pdf"],
+    ".docx": ["application/vnd.openxmlformats", "application/zip"],
+    ".doc": ["application/msword", "application/vnd.ms"],
+    ".pptx": ["application/vnd.openxmlformats", "application/zip"],
+    ".ppt": ["application/vnd.ms-powerpoint", "application/vnd.ms"],
+    ".xlsx": ["application/vnd.openxmlformats", "application/zip"],
+    ".xls": ["application/vnd.ms-excel", "application/vnd.ms"],
+    ".txt": ["text/"],
+    ".md": ["text/"],
+    ".json": ["application/json", "text/"],
+    ".jpg": ["image/jpeg"],
+    ".jpeg": ["image/jpeg"],
+    ".png": ["image/png"],
+    ".gif": ["image/gif"],
+    ".bmp": ["image/bmp", "image/x-bmp", "image/x-ms-bmp"],
+    ".heic": ["image/heic", "image/heif"],
+    ".mp4": ["video/mp4"],
+    ".avi": ["video/x-msvideo", "video/avi"],
+    ".mov": ["video/quicktime"],
+    ".mkv": ["video/x-matroska"],
+    ".epub": ["application/epub+zip", "application/zip"],
+}
+
+
+def validate_magic_bytes(filename: str, content: bytes) -> bool:
+    """Validate file content matches extension using magic bytes. Returns True if valid."""
+    if not content or not _magic_available:
+        return True  # Fallback: allow if we can't check
+
+    extension = get_file_extension(filename)
+    allowed_prefixes = _EXTENSION_MIME_PREFIXES.get(extension)
+    if not allowed_prefixes:
+        return True  # Unknown extension map — extension check already handles this
+
+    try:
+        detected_mime = _magic.from_buffer(content[:8192], mime=True)
+        return any(detected_mime.startswith(prefix) for prefix in allowed_prefixes)
+    except Exception:
+        return True  # Fail open on magic detection errors
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -211,6 +267,16 @@ async def upload_document(
             detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
         )
 
+    # Validate magic bytes — reject files where content doesn't match declared extension
+    if not validate_magic_bytes(file.filename, content):
+        logger.warning(
+            f"SECURITY: Magic byte mismatch for {file.filename} uploaded by {current_user.email}"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="File content does not match its extension. Upload rejected.",
+        )
+
     # Step 1: Calculate file hash for deduplication
     file_hash = deduplication_service.calculate_hash(content)
     logger.info(f"Calculated hash for {file.filename}: {file_hash[:16]}...")
@@ -247,8 +313,9 @@ async def upload_document(
         bucket=DocumentBucket(bucket),
         status=DocumentStatus.PENDING,  # Set to PENDING until successfully queued
         size=save_result["size"],
-        mime_type=get_mime_type(file.filename),
+        mime_type=get_mime_type(file.filename, content),
         language=language,
+        uploaded_by=current_user.id,
     )
 
     db.add(document)
@@ -348,6 +415,12 @@ async def process_single_file_upload(
                 f"File {file.filename} exceeds maximum size of {MAX_FILE_SIZE // (1024 * 1024)}MB",
             )
 
+        if not validate_magic_bytes(file.filename, content):
+            logger.warning(
+                f"SECURITY: Magic byte mismatch for {file.filename} in batch upload by {current_user.email}"
+            )
+            return None, f"File content does not match its extension: {file.filename}"
+
         file_hash = deduplication_service.calculate_hash(content)
 
         duplicate_doc = deduplication_service.is_duplicate(
@@ -375,8 +448,9 @@ async def process_single_file_upload(
             bucket=DocumentBucket(bucket),
             status=DocumentStatus.PENDING,
             size=save_result["size"],
-            mime_type=get_mime_type(file.filename),
+            mime_type=get_mime_type(file.filename, content),
             language=language,
+            uploaded_by=current_user.id,
         )
 
         db.add(document)
@@ -837,3 +911,43 @@ async def delete_document(
     db.commit()
 
     return {"message": "Document deleted successfully"}
+
+
+@router.get("/{document_id}/similar")
+async def get_similar_documents(
+    document_id: uuid.UUID,
+    limit: int = Query(default=6, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return documents similar to the given document, ranked by embedding cosine similarity.
+
+    SECURITY:
+    - Regular users only see results from the public bucket.
+    - Admin/SuperUser see results across all buckets.
+    - Returns 404 if the source document doesn't exist or is inaccessible.
+    - Returns an empty list (not an error) when the document has no embeddings yet.
+    """
+    from app.services.similarity_service import similarity_service
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Regular users cannot access confidential source documents
+    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
+        UserRole.ADMIN,
+        UserRole.SUPERUSER,
+    ]:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    results = await similarity_service.find_similar_to_document(
+        document_id=str(document_id),
+        user=current_user,
+        db=db,
+        limit=limit,
+    )
+
+    return {"similar": results, "total": len(results)}

@@ -44,7 +44,7 @@ def determine_llm_provider(has_confidential: bool) -> LLMProvider:
 @router.post("/sessions", response_model=ChatSessionResponse)
 @limiter.limit("20/minute")
 async def create_chat_session(
-    http_request: Request,
+    request: Request,
     session_data: ChatSessionCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

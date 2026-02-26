@@ -162,6 +162,22 @@ class MiniMaxService(BaseLLMService):
             result += chunk
         return result
 
+    async def health_check(self) -> dict:
+        """Check whether MiniMax API is reachable."""
+        if not self.api_key:
+            return {"service": "minimax", "status": "unhealthy", "reason": "MINIMAX_API_KEY not configured"}
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/v1/text/chatcompletion_v2",
+                    headers=self._get_headers(),
+                )
+                if response.status_code in (200, 400, 405):
+                    return {"service": "minimax", "status": "healthy", "model": self.model}
+                return {"service": "minimax", "status": "degraded", "http_status": response.status_code}
+        except Exception as e:
+            return {"service": "minimax", "status": "unhealthy", "reason": str(e)}
+
 
 # Global instance
 minimax_service = MiniMaxService()

@@ -67,8 +67,8 @@ async def create_audit_log(
 @router.post("", response_model=SearchResponse)
 @limiter.limit("30/minute")
 async def search_documents(
-    http_request: Request,
-    request: SearchRequest,
+    request: Request,
+    search_request: SearchRequest,
     cursor: Optional[str] = Query(None, description="Cursor for pagination (base64 encoded)"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -91,14 +91,14 @@ async def search_documents(
     - Max {MAX_CONCURRENT_SEARCHES} simultaneous searches; returns 429 when full.
     - Hard {SEARCH_TIMEOUT_SECONDS}s timeout; returns partial results with warning.
     """
-    if not request.query or not request.query.strip():
+    if not search_request.query or not search_request.query.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Search query cannot be empty")
 
     # Cursor overrides offset when provided (T09)
     if cursor:
         try:
             cursor_data = decode_cursor(cursor)
-            request.offset = cursor_data.get("offset", 0)
+            search_request.offset = cursor_data.get("offset", 0)
         except Exception:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
 
@@ -126,9 +126,9 @@ async def search_documents(
         try:
             # Perform hybrid search with built-in timeout
             result = await search_service.hybrid_search(
-                query=request.query,
-                limit=request.limit,
-                offset=request.offset,
+                query=search_request.query,
+                limit=search_request.limit,
+                offset=search_request.offset,
                 db=db,
                 user=current_user,
                 timeout=SEARCH_TIMEOUT_SECONDS,
@@ -143,7 +143,7 @@ async def search_documents(
             if has_confidential:
                 logger.info(
                     f"CONFIDENTIAL_SEARCH - User: {current_user.email} (ID: {current_user.id}, "
-                    f"Role: {current_user.role.value}) | Query: {request.query[:100]} | "
+                    f"Role: {current_user.role.value}) | Query: {search_request.query[:100]} | "
                     f"Results: {len(result['results'])} items"
                 )
                 await create_audit_log(
@@ -153,7 +153,7 @@ async def search_documents(
                     resource_type="search",
                     resource_id=None,
                     details={
-                        "query": request.query[:200],
+                        "query": search_request.query[:200],
                         "result_count": len(result["results"]),
                         "action": "confidential_search",
                         "partial": result.get("partial", False),
@@ -180,11 +180,11 @@ async def search_documents(
                 ))
 
             # Build next cursor when there may be more results
-            next_offset = request.offset + request.limit
-            next_cursor = encode_cursor({"offset": next_offset}) if len(search_results) == request.limit else None
+            next_offset = search_request.offset + search_request.limit
+            next_cursor = encode_cursor({"offset": next_offset}) if len(search_results) == search_request.limit else None
 
             return SearchResponse(
-                query=request.query,
+                query=search_request.query,
                 results=search_results,
                 total=result["total"],
                 llm_used=llm_used,

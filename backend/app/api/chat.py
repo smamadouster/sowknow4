@@ -32,8 +32,9 @@ def determine_llm_provider(has_confidential: bool) -> LLMProvider:
     """Determine which LLM to use based on document context.
 
     Routes confidential queries to OLLAMA (privacy guarantee).
-    Public queries use the llm_router fallback chain:
-        KIMI → MINIMAX → OPENROUTER → OLLAMA.
+    Public queries follow the llm_router fallback chain defined as:
+        "kimi" → "minimax" → "openrouter" → "ollama"
+    (see llm_router.fallback_chains["general_chat"]).
     """
     return LLMProvider.OLLAMA if has_confidential else LLMProvider.OPENROUTER
 

@@ -369,8 +369,12 @@ class OpenRouterService:
                                     # Track key under collection for bulk invalidation
                                     if collection_id:
                                         tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
-                                        redis_client.sadd(tracking_key, effective_cache_key)
-                                        redis_client.expire(tracking_key, CACHE_TTL_SECONDS)
+                                        redis_client.sadd(
+                                            tracking_key, effective_cache_key
+                                        )
+                                        redis_client.expire(
+                                            tracking_key, CACHE_TTL_SECONDS
+                                        )
                                 except Exception as cache_error:
                                     logger.warning(
                                         f"Failed to cache response: {cache_error}"

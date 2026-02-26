@@ -11,6 +11,13 @@ import logging
 import psutil
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
+
+try:
+    from prometheus_client import Histogram
+    _prometheus_available = True
+except ImportError:
+    Histogram = None  # type: ignore[assignment,misc]
+    _prometheus_available = False
 from dataclasses import dataclass, field
 from collections import defaultdict
 from threading import Lock
@@ -18,6 +25,19 @@ import redis
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Prometheus histogram for OCR confidence — labelled by engine method
+sowknow_ocr_confidence: Any = None
+if _prometheus_available and Histogram is not None:
+    try:
+        sowknow_ocr_confidence = Histogram(
+            "sowknow_ocr_confidence",
+            "OCR confidence score distribution by engine",
+            ["method"],  # labels: "tesseract", "paddle"
+            buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        )
+    except Exception:
+        pass  # Already registered in test environments
 
 
 @dataclass
@@ -75,6 +95,16 @@ class CostTracker:
             "output": 0.015,
         },
     }
+
+    # OCR pricing — PaddleOCR cloud reference rates (local usage is always free)
+    OCR_PRICING = {
+        "base":   0.001,  # $0.001/page — standard 1024×1024 mode
+        "large":  0.002,  # $0.002/page — high-res 1280×1280 mode
+        "gundam": 0.003,  # $0.003/page — multi-pass mode
+    }
+
+    # Local engines are always free (open-source, CPU-based)
+    LOCAL_OCR_ENGINES = {"paddleocr": 0.0, "paddle": 0.0, "tesseract": 0.0, "none": 0.0}
 
     def __init__(self, daily_budget_usd: float = 5.0):
         """
@@ -224,6 +254,49 @@ class CostTracker:
             "budget_remaining": self.get_remaining_budget(),
             "over_budget": self.is_over_budget(),
         }
+
+
+    def track_ocr_operation(
+        self,
+        method: str,
+        mode: str = "base",
+        pages: int = 1,
+    ) -> float:
+        """
+        Track an OCR operation and record its cost.
+
+        Args:
+            method: OCR engine used ("paddle", "paddleocr", "tesseract")
+            mode: Resolution mode ("base", "large", "gundam")
+            pages: Number of pages processed
+
+        Returns:
+            Cost in USD (0.0 for local engines)
+        """
+        cost = self._record_cost(method, mode, pages)
+        logger.debug(
+            f"OCR cost tracked: {method}/{mode} × {pages} page(s) = ${cost:.4f}"
+        )
+        return cost
+
+    def _record_cost(self, method: str, mode: str, pages: int) -> float:
+        """Record OCR cost and append to internal cost records."""
+        # Local engines are free
+        if method.lower() in self.LOCAL_OCR_ENGINES:
+            cost_per_page = 0.0
+        else:
+            cost_per_page = self.OCR_PRICING.get(mode, 0.001)
+        total = cost_per_page * pages
+
+        record = APICostRecord(
+            timestamp=datetime.now(),
+            service="ocr",
+            operation=f"{method}/{mode}",
+            cost_usd=total,
+        )
+        with self._lock:
+            self._cost_records.append(record)
+        return total
 
 
 class QueueMonitor:

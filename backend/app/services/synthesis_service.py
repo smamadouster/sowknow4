@@ -593,9 +593,9 @@ Extract the key points:"""
                 {
                     "document_id": str(doc.id),
                     "filename": doc.filename,
-                    "created_at": doc.created_at.isoformat()
-                    if doc.created_at
-                    else None,
+                    "created_at": (
+                        doc.created_at.isoformat() if doc.created_at else None
+                    ),
                     "mime_type": doc.mime_type,
                 }
             )

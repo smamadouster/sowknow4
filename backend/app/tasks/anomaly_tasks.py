@@ -1,6 +1,7 @@
 """
 Celery tasks for anomaly detection and scheduled reports
 """
+
 from celery import shared_task
 from app.celery_app import celery_app
 import logging
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(name="app.tasks.anomaly_tasks.daily_anomaly_report")
-def daily_anomaly_report():
+def daily_anomaly_report() -> dict:
     """
     Generate comprehensive daily anomaly report.
     Scheduled to run at 09:00 AM daily via Celery Beat.
@@ -63,17 +64,23 @@ def daily_anomaly_report():
 
             # Query documents with status='processing' and updated_at > 24 hours ago
             # Use .value to ensure proper enum string comparison
-            stuck_documents = db.query(Document).filter(
-                Document.status == DocumentStatus.PROCESSING.value,
-                Document.updated_at < cutoff_time
-            ).all()
+            stuck_documents = (
+                db.query(Document)
+                .filter(
+                    Document.status == DocumentStatus.PROCESSING.value,
+                    Document.updated_at < cutoff_time,
+                )
+                .all()
+            )
 
             for doc in stuck_documents:
                 # Get additional processing info if available
                 try:
-                    processing_task = db.query(ProcessingQueue).filter(
-                        ProcessingQueue.document_id == doc.id
-                    ).first()
+                    processing_task = (
+                        db.query(ProcessingQueue)
+                        .filter(ProcessingQueue.document_id == doc.id)
+                        .first()
+                    )
                 except Exception:
                     processing_task = None
 
@@ -87,23 +94,39 @@ def daily_anomaly_report():
                     "filename": doc.filename,
                     "bucket": doc.bucket.value if hasattr(doc, "bucket") else "unknown",
                     "status": doc.status.value,
-                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                    "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
+                    "created_at": (
+                        doc.created_at.isoformat() if doc.created_at else None
+                    ),
+                    "updated_at": (
+                        doc.updated_at.isoformat() if doc.updated_at else None
+                    ),
                     "stuck_duration_hours": round(duration_hours, 2),
-                    "last_task_type": processing_task.task_type.value if processing_task and hasattr(processing_task, 'task_type') else None,
-                    "error_message": processing_task.error_message if processing_task and hasattr(processing_task, 'error_message') else None
+                    "last_task_type": (
+                        processing_task.task_type.value
+                        if processing_task and hasattr(processing_task, "task_type")
+                        else None
+                    ),
+                    "error_message": (
+                        processing_task.error_message
+                        if processing_task and hasattr(processing_task, "error_message")
+                        else None
+                    ),
                 }
                 report["anomalies"].append(anomaly)
                 critical_count += 1
 
             if stuck_documents:
-                logger.warning(f"Found {len(stuck_documents)} documents stuck in processing for >24 hours")
+                logger.warning(
+                    f"Found {len(stuck_documents)} documents stuck in processing for >24 hours"
+                )
 
         finally:
             db.close()
 
     except ImportError as e:
-        logger.debug(f"Document models not available, skipping stuck document check: {e}")
+        logger.debug(
+            f"Document models not available, skipping stuck document check: {e}"
+        )
     except Exception as e:
         logger.error(f"Error checking stuck documents: {e}")
 
@@ -111,13 +134,15 @@ def daily_anomaly_report():
     try:
         cache_hit_rate = cache_monitor.get_hit_rate(days=1)
         if cache_hit_rate < 0.3 and cache_hit_rate > 0:  # Only if there's traffic
-            report["anomalies"].append({
-                "type": "low_cache_hit_rate",
-                "severity": "warning",
-                "hit_rate": round(cache_hit_rate, 4),
-                "threshold": 0.3,
-                "message": f"Cache hit rate below 30%: {cache_hit_rate:.1%}",
-            })
+            report["anomalies"].append(
+                {
+                    "type": "low_cache_hit_rate",
+                    "severity": "warning",
+                    "hit_rate": round(cache_hit_rate, 4),
+                    "threshold": 0.3,
+                    "message": f"Cache hit rate below 30%: {cache_hit_rate:.1%}",
+                }
+            )
             warning_count += 1
 
         report["cache_stats"] = cache_monitor.get_stats_summary(days=1)
@@ -131,13 +156,15 @@ def daily_anomaly_report():
         queue_depth = queue_monitor.get_queue_depth()
 
         if queue_depth > 100:
-            report["anomalies"].append({
-                "type": "queue_congestion",
-                "severity": "warning",
-                "queue_depth": queue_depth,
-                "threshold": 100,
-                "message": f"Queue depth exceeds 100: {queue_depth} tasks pending",
-            })
+            report["anomalies"].append(
+                {
+                    "type": "queue_congestion",
+                    "severity": "warning",
+                    "queue_depth": queue_depth,
+                    "threshold": 100,
+                    "message": f"Queue depth exceeds 100: {queue_depth} tasks pending",
+                }
+            )
             warning_count += 1
 
         report["queue_stats"] = {
@@ -154,24 +181,28 @@ def daily_anomaly_report():
         mem_stats = system_monitor.get_memory_usage()
 
         if mem_stats["percent"] > 80:
-            report["anomalies"].append({
-                "type": "high_memory_usage",
-                "severity": "warning",
-                "percent": mem_stats["percent"],
-                "threshold": 80,
-                "message": f"Memory usage above 80%: {mem_stats['percent']}%",
-            })
+            report["anomalies"].append(
+                {
+                    "type": "high_memory_usage",
+                    "severity": "warning",
+                    "percent": mem_stats["percent"],
+                    "threshold": 80,
+                    "message": f"Memory usage above 80%: {mem_stats['percent']}%",
+                }
+            )
             warning_count += 1
 
         disk_stats = system_monitor.get_disk_usage()
         if disk_stats.get("alert_high"):
-            report["anomalies"].append({
-                "type": "high_disk_usage",
-                "severity": "critical",
-                "percent": disk_stats.get("percent", 0),
-                "threshold": 85,
-                "message": f"Disk usage above 85%: {disk_stats.get('percent', 0)}%",
-            })
+            report["anomalies"].append(
+                {
+                    "type": "high_disk_usage",
+                    "severity": "critical",
+                    "percent": disk_stats.get("percent", 0),
+                    "threshold": 85,
+                    "message": f"Disk usage above 85%: {disk_stats.get('percent', 0)}%",
+                }
+            )
             critical_count += 1
 
         report["system_stats"] = {
@@ -189,23 +220,27 @@ def daily_anomaly_report():
         daily_budget = float(os.getenv("GEMINI_DAILY_BUDGET_USD", "5.0"))
 
         if daily_cost > daily_budget:
-            report["anomalies"].append({
-                "type": "budget_exceeded",
-                "severity": "critical",
-                "daily_cost_usd": round(daily_cost, 2),
-                "budget_usd": daily_budget,
-                "message": f"Daily API budget exceeded: ${daily_cost:.2f} > ${daily_budget}",
-            })
+            report["anomalies"].append(
+                {
+                    "type": "budget_exceeded",
+                    "severity": "critical",
+                    "daily_cost_usd": round(daily_cost, 2),
+                    "budget_usd": daily_budget,
+                    "message": f"Daily API budget exceeded: ${daily_cost:.2f} > ${daily_budget}",
+                }
+            )
             critical_count += 1
         elif daily_cost > daily_budget * 0.8:
-            report["anomalies"].append({
-                "type": "budget_warning",
-                "severity": "warning",
-                "daily_cost_usd": round(daily_cost, 2),
-                "budget_usd": daily_budget,
-                "percent_used": round((daily_cost / daily_budget) * 100, 1),
-                "message": f"API cost at 80% of budget: ${daily_cost:.2f} / ${daily_budget}",
-            })
+            report["anomalies"].append(
+                {
+                    "type": "budget_warning",
+                    "severity": "warning",
+                    "daily_cost_usd": round(daily_cost, 2),
+                    "budget_usd": daily_budget,
+                    "percent_used": round((daily_cost / daily_budget) * 100, 1),
+                    "message": f"API cost at 80% of budget: ${daily_cost:.2f} / ${daily_budget}",
+                }
+            )
             warning_count += 1
 
         report["cost_stats"] = cost_tracker.get_stats(days=7)
@@ -223,17 +258,61 @@ def daily_anomaly_report():
 
     # Log the report
     if critical_count > 0:
-        logger.error(f"Daily anomaly report: {critical_count} CRITICAL, {warning_count} WARNING issues found")
+        logger.error(
+            f"Daily anomaly report: {critical_count} CRITICAL, {warning_count} WARNING issues found"
+        )
     elif warning_count > 0:
         logger.warning(f"Daily anomaly report: {warning_count} WARNING issues found")
     else:
         logger.info("Daily anomaly report: No anomalies detected")
 
+    # Send external alert when there are actionable issues
+    if critical_count > 0 or warning_count > 0:
+        try:
+            import asyncio
+            from app.services.alert_service import alert_service
+
+            severity = "CRITICAL" if critical_count > 0 else "MEDIUM"
+            summary_lines = [
+                f"• CRITICAL: {critical_count}",
+                f"• WARNING: {warning_count}",
+                "",
+            ]
+            for anomaly in report["anomalies"][:5]:  # first 5
+                summary_lines.append(
+                    f"  [{anomaly.get('severity', '?')}] {anomaly.get('type', '?')}: "
+                    f"{anomaly.get('message', '')[:80]}"
+                )
+            if len(report["anomalies"]) > 5:
+                summary_lines.append(f"  … and {len(report['anomalies']) - 5} more")
+
+            coro = alert_service.send_anomaly_alert(
+                anomaly_type="Daily Anomaly Report",
+                details="\n".join(summary_lines),
+                severity=severity,
+                metadata={
+                    "critical": critical_count,
+                    "warning": warning_count,
+                    "total": len(report["anomalies"]),
+                    "generated_at": report["generated_at"],
+                },
+            )
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(coro)
+                else:
+                    loop.run_until_complete(coro)
+            except RuntimeError:
+                asyncio.run(coro)
+        except Exception as alert_err:
+            logger.warning(f"daily_anomaly_report: alert dispatch failed: {alert_err}")
+
     return report
 
 
 @shared_task(name="app.tasks.anomaly_tasks.system_health_check")
-def system_health_check():
+def system_health_check() -> dict:
     """
     Perform comprehensive system health checks.
 
@@ -253,42 +332,64 @@ def system_health_check():
     health_status = {
         "timestamp": datetime.now().isoformat(),
         "overall_status": "healthy",
-        "checks": {}
+        "checks": {},
     }
 
     try:
         # Check database connection
         try:
             from app.database import SessionLocal
+
             db = SessionLocal()
             try:
                 db.execute("SELECT 1")
-                health_status["checks"]["database"] = {"status": "healthy", "message": "Database accessible"}
+                health_status["checks"]["database"] = {
+                    "status": "healthy",
+                    "message": "Database accessible",
+                }
             finally:
                 db.close()
         except Exception as e:
-            health_status["checks"]["database"] = {"status": "unhealthy", "message": str(e)}
+            health_status["checks"]["database"] = {
+                "status": "unhealthy",
+                "message": str(e),
+            }
             health_status["overall_status"] = "degraded"
 
         # Check Redis connection
         try:
             r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
             r.ping()
-            health_status["checks"]["redis"] = {"status": "healthy", "message": "Redis accessible"}
+            health_status["checks"]["redis"] = {
+                "status": "healthy",
+                "message": "Redis accessible",
+            }
         except Exception as e:
-            health_status["checks"]["redis"] = {"status": "unhealthy", "message": str(e)}
+            health_status["checks"]["redis"] = {
+                "status": "unhealthy",
+                "message": str(e),
+            }
             health_status["overall_status"] = "degraded"
 
         # Check Ollama connection
         try:
-            ollama_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+            ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
             response = httpx.get(f"{ollama_url}/api/tags", timeout=5)
             if response.status_code == 200:
-                health_status["checks"]["ollama"] = {"status": "healthy", "message": "Ollama accessible"}
+                health_status["checks"]["ollama"] = {
+                    "status": "healthy",
+                    "message": "Ollama accessible",
+                }
             else:
-                health_status["checks"]["ollama"] = {"status": "degraded", "message": f"Status {response.status_code}"}
+                health_status["checks"]["ollama"] = {
+                    "status": "degraded",
+                    "message": f"Status {response.status_code}",
+                }
         except Exception as e:
-            health_status["checks"]["ollama"] = {"status": "unhealthy", "message": str(e)}
+            health_status["checks"]["ollama"] = {
+                "status": "unhealthy",
+                "message": str(e),
+            }
 
         # Check queue depth
         try:
@@ -311,7 +412,10 @@ def system_health_check():
                     "worker_status": worker_status,
                 }
         except Exception as e:
-            health_status["checks"]["queue_depth"] = {"status": "error", "message": str(e)}
+            health_status["checks"]["queue_depth"] = {
+                "status": "error",
+                "message": str(e),
+            }
 
         # Check system resources
         try:
@@ -335,7 +439,10 @@ def system_health_check():
                 health_status["overall_status"] = "degraded"
 
         except Exception as e:
-            health_status["checks"]["system_resources"] = {"status": "error", "message": str(e)}
+            health_status["checks"]["system_resources"] = {
+                "status": "error",
+                "message": str(e),
+            }
 
         # Check cache effectiveness
         try:
@@ -375,7 +482,7 @@ def system_health_check():
 
 
 @shared_task(name="app.tasks.anomaly_tasks.check_api_costs")
-def check_api_costs(daily_budget_threshold: float = 5.0):
+def check_api_costs(daily_budget_threshold: float = 5.0) -> dict:
     """
     Check daily API costs and alert if approaching threshold.
 
@@ -392,7 +499,9 @@ def check_api_costs(daily_budget_threshold: float = 5.0):
     alert_manager = get_alert_manager()
 
     # Get actual budget from environment
-    daily_budget = float(os.getenv("GEMINI_DAILY_BUDGET_USD", str(daily_budget_threshold)))
+    daily_budget = float(
+        os.getenv("GEMINI_DAILY_BUDGET_USD", str(daily_budget_threshold))
+    )
     daily_cost = cost_tracker.get_daily_cost()
 
     result = {
@@ -400,7 +509,9 @@ def check_api_costs(daily_budget_threshold: float = 5.0):
         "daily_cost_usd": round(daily_cost, 4),
         "daily_budget_usd": daily_budget,
         "remaining_budget": round(max(0, daily_budget - daily_cost), 4),
-        "percent_used": round((daily_cost / daily_budget) * 100, 1) if daily_budget > 0 else 0,
+        "percent_used": (
+            round((daily_cost / daily_budget) * 100, 1) if daily_budget > 0 else 0
+        ),
         "breakdown": cost_tracker.get_daily_cost_breakdown(),
         "over_budget": daily_cost > daily_budget,
     }
@@ -410,13 +521,15 @@ def check_api_costs(daily_budget_threshold: float = 5.0):
         alert_manager.check_alert("cost_over_budget", daily_cost)
         logger.warning(f"API cost over budget: ${daily_cost:.2f} > ${daily_budget:.2f}")
     elif daily_cost > daily_budget * 0.8:
-        logger.warning(f"API cost at 80% of budget: ${daily_cost:.2f} / ${daily_budget:.2f}")
+        logger.warning(
+            f"API cost at 80% of budget: ${daily_cost:.2f} / ${daily_budget:.2f}"
+        )
 
     return result
 
 
 @shared_task(name="app.tasks.anomaly_tasks.recover_stuck_documents")
-def recover_stuck_documents(max_processing_minutes: int = 15):
+def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
     """
     Find and recover documents stuck in 'processing' state for too long.
     This handles cases where a Celery worker crashed or was killed.
@@ -440,20 +553,28 @@ def recover_stuck_documents(max_processing_minutes: int = 15):
         cutoff_time = datetime.utcnow() - timedelta(minutes=max_processing_minutes)
 
         # Find documents stuck in processing state
-        stuck_documents = db.query(Document).filter(
-            Document.status == DocumentStatus.PROCESSING,
-            Document.updated_at < cutoff_time
-        ).all()
+        stuck_documents = (
+            db.query(Document)
+            .filter(
+                Document.status == DocumentStatus.PROCESSING,
+                Document.updated_at < cutoff_time,
+            )
+            .all()
+        )
 
         for doc in stuck_documents:
             try:
                 # Get processing task info
-                processing_task = db.query(ProcessingQueue).filter(
-                    ProcessingQueue.document_id == doc.id
-                ).first()
+                processing_task = (
+                    db.query(ProcessingQueue)
+                    .filter(ProcessingQueue.document_id == doc.id)
+                    .first()
+                )
 
                 # Check if this is a real stuck document or just slow processing
-                stuck_duration = (datetime.utcnow() - doc.updated_at).total_seconds() / 60
+                stuck_duration = (
+                    datetime.utcnow() - doc.updated_at
+                ).total_seconds() / 60
 
                 logger.warning(
                     f"Document {doc.id} ({doc.filename}) stuck in processing for "
@@ -493,10 +614,12 @@ def recover_stuck_documents(max_processing_minutes: int = 15):
                         f"Document {doc.id} permanently failed after "
                         f"{recovery_count} recovery attempts"
                     )
-                    failed.append({
-                        "document_id": str(doc.id),
-                        "error": f"Exhausted {MAX_RECOVERY_ATTEMPTS} recovery attempts",
-                    })
+                    failed.append(
+                        {
+                            "document_id": str(doc.id),
+                            "error": f"Exhausted {MAX_RECOVERY_ATTEMPTS} recovery attempts",
+                        }
+                    )
                     continue
 
                 # Reset document to pending state for reprocessing (use new dict copy)
@@ -511,7 +634,9 @@ def recover_stuck_documents(max_processing_minutes: int = 15):
 
                 if processing_task:
                     processing_task.status = TaskStatus.PENDING
-                    processing_task.error_message = f"Recovered from stuck state after {stuck_duration:.1f} minutes"
+                    processing_task.error_message = (
+                        f"Recovered from stuck state after {stuck_duration:.1f} minutes"
+                    )
                     processing_task.retry_count = 0  # Reset retry count
 
                 db.commit()
@@ -519,14 +644,18 @@ def recover_stuck_documents(max_processing_minutes: int = 15):
                 # Re-queue the document for processing
                 process_document.delay(str(doc.id))
 
-                recovered.append({
-                    "document_id": str(doc.id),
-                    "filename": doc.filename,
-                    "stuck_duration_minutes": round(stuck_duration, 1),
-                    "recovery_attempt": recovery_count,
-                })
+                recovered.append(
+                    {
+                        "document_id": str(doc.id),
+                        "filename": doc.filename,
+                        "stuck_duration_minutes": round(stuck_duration, 1),
+                        "recovery_attempt": recovery_count,
+                    }
+                )
 
-                logger.info(f"Re-queued stuck document {doc.id} for processing (attempt {recovery_count}/{MAX_RECOVERY_ATTEMPTS})")
+                logger.info(
+                    f"Re-queued stuck document {doc.id} for processing (attempt {recovery_count}/{MAX_RECOVERY_ATTEMPTS})"
+                )
 
             except Exception as e:
                 logger.error(f"Failed to recover document {doc.id}: {e}")
@@ -542,3 +671,27 @@ def recover_stuck_documents(max_processing_minutes: int = 15):
 
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# on_failure callback
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def on_daily_anomaly_report_failure(self, exc, task_id, args, kwargs, einfo) -> None:
+    """on_failure callback for the daily_anomaly_report task."""
+    logger.error(f"on_daily_anomaly_report_failure: task_id={task_id} exc={exc!r}")
+    try:
+        from app.tasks.base import base_task_failure_handler
+
+        base_task_failure_handler(
+            task_self=self,
+            exception=exc,
+            task_id=task_id,
+            args=args,
+            kwargs=kwargs,
+            traceback=einfo,
+            is_critical=False,
+        )
+    except Exception as cb_err:
+        logger.error(f"on_daily_anomaly_report_failure handler error: {cb_err}")

@@ -78,7 +78,7 @@ export function GraphVisualization({
   const [isDragging, setIsDragging] = useState(false);
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [simulatedNodes, setSimulatedNodes] = useState<(GraphNode & { x: number; y: number })[]>([]);
+  const [simulatedNodes, setSimulatedNodes] = useState<(GraphNode & { x: number; y: number; vx: number; vy: number })[]>([]);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const dragStartRef = useRef<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null);
@@ -111,8 +111,8 @@ export function GraphVisualization({
       setSimulatedNodes((nodes) => {
         const newNodes = nodes.map((node): SimulationState['nodes'][0] => ({
           ...node,
-          vx: (node as any).vx * 0.9, // Damping
-          vy: (node as any).vy * 0.9,
+          vx: node.vx * 0.9, // Damping
+          vy: node.vy * 0.9,
         }));
 
         // Repulsion between nodes

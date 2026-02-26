@@ -20,6 +20,7 @@ from app.models.knowledge_graph import (
     RelationType
 )
 from app.models.audit import AuditLog, AuditAction
+from app.models.failed_task import FailedCeleryTask
 
 __all__ = [
     "Base",
@@ -47,4 +48,5 @@ __all__ = [
     "RelationType",
     "AuditLog",
     "AuditAction",
+    "FailedCeleryTask",
 ]

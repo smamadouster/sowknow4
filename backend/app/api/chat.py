@@ -1,17 +1,18 @@
 """
 Chat API endpoints for AI-powered conversations with RAG
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status, APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import uuid4, UUID
 import json
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.api.deps import get_current_user
+from app.services.chat_service import chat_service
 from app.schemas.chat import (
     ChatSessionCreate,
     ChatSessionResponse,
@@ -55,7 +56,7 @@ async def create_chat_session(
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error creating session: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error creating session: {str(e)}")
 
 
 @router.get("/sessions", response_model=ChatSessionListResponse)
@@ -95,7 +96,7 @@ async def get_chat_session(
     ).first()
 
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     return ChatSessionResponse.model_validate(session)
 
@@ -121,7 +122,7 @@ async def send_message(
     ).first()
 
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     # Save user message
     user_message = ChatMessage(
@@ -134,28 +135,34 @@ async def send_message(
     db.commit()
 
     if stream:
-        # Return streaming response
-        from app.services.chat_service import generate_chat_response_stream
+        # Use a dedicated session for the streaming generator so the lifecycle
+        # is tied to the generator itself, not the request dependency scope.
+        stream_db = SessionLocal()
+
+        async def _stream_with_session():
+            try:
+                async for chunk in chat_service.generate_chat_response_stream(
+                    session_id=session_id,
+                    user_message=message_data.content,
+                    db=stream_db,
+                    current_user=current_user,
+                ):
+                    yield chunk
+            finally:
+                stream_db.close()
 
         return StreamingResponse(
-            generate_chat_response_stream(
-                session_id=session_id,
-                user_message=message_data.content,
-                db=db,
-                current_user=current_user
-            ),
-            media_type="text/event-stream"
+            _stream_with_session(),
+            media_type="text/event-stream",
         )
     else:
         # Return complete response
-        from app.services.chat_service import generate_chat_response
-
         try:
-            response_data = await generate_chat_response(
+            response_data = await chat_service.generate_chat_response(
                 session_id=session_id,
                 user_message=message_data.content,
                 db=db,
-                current_user=current_user
+                current_user=current_user,
             )
 
             # Save assistant message
@@ -176,7 +183,7 @@ async def send_message(
             return ChatMessageResponse.model_validate(assistant_message)
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error generating response: {str(e)}")
 
 
 @router.get("/sessions/{session_id}/messages", response_model=ChatMessageListResponse)
@@ -194,7 +201,7 @@ async def get_session_messages(
     ).first()
 
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     messages = db.query(ChatMessage).filter(
         ChatMessage.session_id == session_id
@@ -221,7 +228,7 @@ async def delete_chat_session(
     ).first()
 
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     db.delete(session)
     db.commit()

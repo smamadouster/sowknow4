@@ -1,0 +1,85 @@
+name: CI — Unit & E2E Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: |
+          pip install -r backend/requirements.txt
+        env:
+          DATABASE_URL: sqlite+pysqlite:///:memory:
+          REDIS_URL: redis://localhost:6379/0
+          APP_ENV: test
+
+      - name: Run unit tests
+        run: |
+          python3 -m pytest tests/unit/ -v --tb=short -q
+        env:
+          DATABASE_URL: sqlite+pysqlite:///:memory:
+          REDIS_URL: redis://localhost:6379/0
+          APP_ENV: test
+          JWT_SECRET: ci-test-jwt-secret-not-for-production
+          CELERY_MEMORY_WARNING_MB: "1400"
+          REPORTS_DIR: /tmp/sowknow_test_reports
+
+      - name: Code style — black
+        run: python3 -m black --check backend/app/tasks/ backend/app/services/
+
+      - name: Code style — flake8
+        run: python3 -m flake8 backend/app/tasks/ backend/app/services/ --max-line-length=120 --ignore=E501,W503
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run E2E tests (document processing pipeline)
+        run: |
+          python3 -m pytest tests/e2e/test_document_processing.py -v -m e2e --tb=short
+        env:
+          DATABASE_URL: sqlite+pysqlite:///:memory:
+          REDIS_URL: redis://localhost:6379/0
+          APP_ENV: test
+          JWT_SECRET: ci-test-jwt-secret-not-for-production
+
+      - name: Run integration tests (batch upload)
+        run: |
+          python3 -m pytest tests/integration/ -v --tb=short
+        env:
+          DATABASE_URL: sqlite+pysqlite:///:memory:
+          REDIS_URL: redis://localhost:6379/0
+          APP_ENV: test
+          JWT_SECRET: ci-test-jwt-secret-not-for-production

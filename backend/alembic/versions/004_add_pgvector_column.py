@@ -30,6 +30,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # migrate metadata embedding to vector column — backfills JSONB embeddings into pgvector
     # Ensure pgvector extension is available
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 

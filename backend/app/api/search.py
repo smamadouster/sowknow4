@@ -3,7 +3,7 @@ Search API endpoints for hybrid semantic and keyword search
 """
 import asyncio
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status, APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -86,7 +86,7 @@ async def search_documents(
     - Hard {SEARCH_TIMEOUT_SECONDS}s timeout; returns partial results with warning.
     """
     if not request.query or not request.query.strip():
-        raise HTTPException(status_code=400, detail="Search query cannot be empty")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Search query cannot be empty")
 
     # -----------------------------------------------------------------------
     # Concurrency check — non-blocking.  If all slots are taken, reject with
@@ -98,7 +98,7 @@ async def search_documents(
             f"Rejecting request from user {current_user.email}."
         )
         return JSONResponse(
-            status_code=429,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             content={
                 "detail": (
                     f"Search capacity reached ({MAX_CONCURRENT_SEARCHES} concurrent "
@@ -175,7 +175,7 @@ async def search_documents(
             )
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Search error: {str(e)}")
 
 
 @router.get("/suggest")
@@ -212,4 +212,4 @@ async def search_suggestions(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Suggestion error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Suggestion error: {str(e)}")

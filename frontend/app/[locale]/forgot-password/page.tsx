@@ -107,16 +107,17 @@ export default function ForgotPasswordPage() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+            <div role="alert" id="fp-error" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="fp-email" className="block text-sm font-medium text-gray-700 mb-2">
               {t('email')}
             </label>
             <input
+              id="fp-email"
               type="email"
               value={email}
               onChange={(e) => {
@@ -126,13 +127,16 @@ export default function ForgotPasswordPage() {
               onBlur={(e) => validateEmail(e.target.value)}
               disabled={rateLimited}
               required
+              aria-describedby={[error ? 'fp-error' : '', emailError ? 'fp-email-error' : ''].filter(Boolean).join(' ') || undefined}
+              aria-invalid={!!emailError}
               className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-colors ${
                 emailError ? 'border-red-400 bg-red-50' : 'border-gray-300'
               } ${rateLimited ? 'opacity-50 cursor-not-allowed' : ''}`}
               placeholder="email@example.com"
+              autoComplete="email"
             />
             {emailError && (
-              <p className="text-red-600 text-xs mt-1">{emailError}</p>
+              <p id="fp-email-error" className="text-red-600 text-xs mt-1" role="alert">{emailError}</p>
             )}
           </div>
 
@@ -145,10 +149,11 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={loading || rateLimited}
+            aria-busy={loading}
             className="w-full bg-yellow-400 text-gray-900 py-3 rounded-lg font-medium hover:bg-yellow-500 focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {loading && (
-              <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-4 w-4 text-gray-700" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>

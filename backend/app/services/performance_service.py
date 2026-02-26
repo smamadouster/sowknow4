@@ -306,11 +306,11 @@ class PerformanceTuningService:
             "period_days": days,
             "total_cost_usd": round(total_cost, 4),
             "cache_savings_usd": round(cache_savings, 4),
-            "savings_percentage": round(
-                (cache_savings / savings_without_cache * 100), 1
-            )
-            if savings_without_cache > 0
-            else 0,
+            "savings_percentage": (
+                round((cache_savings / savings_without_cache * 100), 1)
+                if savings_without_cache > 0
+                else 0
+            ),
             "breakdown": {
                 "input_tokens": total_tokens - cached_tokens,
                 "cached_tokens": cached_tokens,

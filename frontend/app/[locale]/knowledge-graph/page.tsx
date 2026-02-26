@@ -10,7 +10,9 @@
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { GraphVisualization } from '@/components/knowledge-graph/GraphVisualization';
+import type { GraphNode } from '@/components/knowledge-graph/GraphVisualization';
 import { EntityList } from '@/components/knowledge-graph/EntityList';
+import type { Entity } from '@/components/knowledge-graph/EntityList';
 import { EntityDetail } from '@/components/knowledge-graph/EntityDetail';
 import { useTranslations } from 'next-intl';
 
@@ -63,11 +65,11 @@ export default function KnowledgeGraphPage() {
     }
   };
 
-  const handleNodeClick = (node: any) => {
+  const handleNodeClick = (node: GraphNode) => {
     setSelectedNodeId(node.id);
   };
 
-  const handleEntitySelect = (entity: any) => {
+  const handleEntitySelect = (entity: Entity) => {
     setSelectedNodeId(entity.id);
     setView('graph');
   };
@@ -254,6 +256,14 @@ export default function KnowledgeGraphPage() {
   );
 }
 
+interface TimelineEvent {
+  id: string;
+  date: string;
+  title: string;
+  description?: string;
+  type?: string;
+}
+
 /**
  * Timeline View Component
  */
@@ -261,7 +271,7 @@ function TimelineView() {
   const t = useTranslations('knowledge_graph');
   const tCommon = useTranslations('common');
 
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState('');
@@ -290,7 +300,7 @@ function TimelineView() {
     try {
       const response = await api.getTimeline(startDate, endDate);
       if (response.data) {
-        setEvents((response.data as any).events || []);
+        setEvents((response.data as { events: TimelineEvent[] }).events || []);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error_loading'));

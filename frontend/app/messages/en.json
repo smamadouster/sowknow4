@@ -32,7 +32,12 @@
     "logout_streaming_warning": "The AI is currently generating a response. Logging out will interrupt it.",
     "logout_upload_warning": "Files are currently uploading. Logging out will cancel them.",
     "login": "Login",
-    "register": "Register"
+    "register": "Register",
+    "skip_to_content": "Skip to main content",
+    "toggle_navigation": "Toggle navigation",
+    "main_navigation": "Main navigation",
+    "close_menu": "Close menu",
+    "knowledge_graph": "Knowledge Graph"
   },
   "auth": {
     "login_title": "Login to SOWKNOW",
@@ -73,7 +78,12 @@
     "anomalies": "Anomalies",
     "no_anomalies": "No anomalies detected",
     "anomalies_found": "{count} anomaly(ies) detected",
-    "view_details": "View Details"
+    "view_details": "View Details",
+    "document_distribution": "Document Distribution",
+    "public": "Public",
+    "confidential": "Confidential",
+    "queue_breakdown": "Queue Status Breakdown",
+    "uploads_trend": "Uploads — Last 7 Days"
   },
   "documents": {
     "title": "Documents",
@@ -170,7 +180,9 @@
     "sessions_title": "Conversations",
     "error_loading": "Error loading",
     "error_sending": "Error sending",
-    "streaming_error": "Streaming error"
+    "streaming_error": "Streaming error",
+    "delete_session": "Delete conversation",
+    "messages_region": "Conversation messages"
   },
   "collections": {
     "title": "Smart Collections",

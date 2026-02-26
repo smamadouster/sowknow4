@@ -4,6 +4,7 @@ PII (Personally Identifiable Information) Detection Service
 Detects and redacts sensitive information to prevent PII from being sent to cloud APIs.
 Routes confidential documents to local Ollama when PII is detected.
 """
+
 import re
 import logging
 from typing import List, Dict, Tuple, Optional, Any
@@ -21,96 +22,93 @@ class PIIDetectionService:
 
     # Compiled regex patterns for PII detection
     PATTERNS = {
-        'email': re.compile(
-            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-            re.IGNORECASE
+        "email": re.compile(
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", re.IGNORECASE
         ),
-        'ssn': re.compile(
-            r'\b\d{3}-\d{2}-\d{4}\b',  # US SSN pattern (more specific with dashes)
+        "ssn": re.compile(
+            r"\b\d{3}-\d{2}-\d{4}\b",  # US SSN pattern (more specific with dashes)
         ),
-        'ssn_french': re.compile(
-            r'\b[12]\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}\s?\d{2}\b',  # French INSEE/SSN
-            re.IGNORECASE
+        "ssn_french": re.compile(
+            r"\b[12]\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}\s?\d{2}\b",  # French INSEE/SSN
+            re.IGNORECASE,
         ),
-        'phone': re.compile(
-            r'(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}\b',  # French phone numbers
-            re.IGNORECASE
+        "phone": re.compile(
+            r"(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}\b",  # French phone numbers
+            re.IGNORECASE,
         ),
-        'ip_address': re.compile(
-            r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b',
-            re.IGNORECASE
+        "ip_address": re.compile(
+            r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
+            re.IGNORECASE,
         ),
-        'iban': re.compile(
-            r'\b[A-Z]{2}[0-9]{2}(?:\s?[A-Z0-9]){11,35}\b',  # IBAN with optional spaces
-            re.IGNORECASE
+        "iban": re.compile(
+            r"\b[A-Z]{2}[0-9]{2}(?:\s?[A-Z0-9]){11,35}\b",  # IBAN with optional spaces
+            re.IGNORECASE,
         ),
-        'phone_intl': re.compile(
-            r'(?:(?:\+|00)[1-9]\d{0,2})?[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}',  # International
-            re.IGNORECASE
+        "phone_intl": re.compile(
+            r"(?:(?:\+|00)[1-9]\d{0,2})?[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}",  # International
+            re.IGNORECASE,
         ),
-        'credit_card': re.compile(
-            r'\b(?:\d[ -]*?){13,16}\b',  # Credit card pattern (13-16 digits)
-            re.IGNORECASE
+        "credit_card": re.compile(
+            r"\b(?:\d[ -]*?){13,16}\b",  # Credit card pattern (13-16 digits)
+            re.IGNORECASE,
         ),
-        'url_with_params': re.compile(
+        "url_with_params": re.compile(
             r'https?://[^\s<>"]+?[?&][^\s<>"]+=[^\s<>"]+',  # URLs with query parameters
-            re.IGNORECASE
+            re.IGNORECASE,
         ),
     }
 
     # Patterns that might indicate PII (lower confidence)
     SUSPICIOUS_PATTERNS = {
-        'address_indicator': re.compile(
+        "address_indicator": re.compile(
             # Matches "123 rue de" (French) or "123 Main Street" (English)
-            r'\b\d+\s+\w+\s+(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\b'
-            r'|\b(?:\d+\s+)?(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\s+[A-Za-z]+',
-            re.IGNORECASE
+            r"\b\d+\s+\w+\s+(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\b"
+            r"|\b(?:\d+\s+)?(?:street|avenue|boulevard|road|lane|rue|av|bd|chemin|place|allée|circuit|impasse|square)\s+[A-Za-z]+",
+            re.IGNORECASE,
         ),
-        'full_address': re.compile(
-            r'\b\d{1,5}\s+(?:rue|avenue|boulevard|road|lane|chemin|place|allée|circuit|impasse|square|street|avenue|blvd|dr|circle|court)[\s,]+[A-Z][a-z]+[\s,]+\d{5}?\b',
-            re.IGNORECASE
+        "full_address": re.compile(
+            r"\b\d{1,5}\s+(?:rue|avenue|boulevard|road|lane|chemin|place|allée|circuit|impasse|square|street|avenue|blvd|dr|circle|court)[\s,]+[A-Z][a-z]+[\s,]+\d{5}?\b",
+            re.IGNORECASE,
         ),
-        'french_postal_code': re.compile(
-            r'\b\d{5}\b(?:\s+(?:Paris|Lyon|Marseille|Bordeaux|Toulouse|Nice|Nantes|Strasbourg|Montpellier|Lille|Rennes|Reims|Le\s+Havre|Grenoble|Dijon|Angers|Nîmes|Villeurbanne|Le\s+Mans|Clermont-Ferrand|Aix-en-Provence|Brest|Limoges|Tours|Orléans|Caen|Mulhouse|Poitiers|Pau|Souel|Quimper|Créteil|Versailles))?',
-            re.IGNORECASE
+        "french_postal_code": re.compile(
+            r"\b\d{5}\b(?:\s+(?:Paris|Lyon|Marseille|Bordeaux|Toulouse|Nice|Nantes|Strasbourg|Montpellier|Lille|Rennes|Reims|Le\s+Havre|Grenoble|Dijon|Angers|Nîmes|Villeurbanne|Le\s+Mans|Clermont-Ferrand|Aix-en-Provence|Brest|Limoges|Tours|Orléans|Caen|Mulhouse|Poitiers|Pau|Souel|Quimper|Créteil|Versailles))?",
+            re.IGNORECASE,
         ),
-        'name_indicator': re.compile(
-            r'\b(?:Mr|Mrs|Ms|Dr|Pr|M|Mme|Mlle)\.?\s+[A-Z][a-z]+',
-            re.IGNORECASE
+        "name_indicator": re.compile(
+            r"\b(?:Mr|Mrs|Ms|Dr|Pr|M|Mme|Mlle)\.?\s+[A-Z][a-z]+", re.IGNORECASE
         ),
-        'birth_date': re.compile(
-            r'\b(?:born|naissance|né|née|birthday|birth|date of birth)[:\s]+(?:\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{2,4}[-/]\d{1,2}[-/]\d{1,2})',
-            re.IGNORECASE
+        "birth_date": re.compile(
+            r"\b(?:born|naissance|né|née|birthday|birth|date of birth)[:\s]+(?:\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{2,4}[-/]\d{1,2}[-/]\d{1,2})",
+            re.IGNORECASE,
         ),
-        'passport': re.compile(
-            r'\b(?:passport|passeport)\s*(?:card|document)?[:\s]?\s*[A-Z0-9]{6,12}',
-            re.IGNORECASE
+        "passport": re.compile(
+            r"\b(?:passport|passeport)\s*(?:card|document)?[:\s]?\s*[A-Z0-9]{6,12}",
+            re.IGNORECASE,
         ),
-        'passport_number': re.compile(
-            r'\b[A-Z]{1,2}\d{6,9}\b',  # US/UK passport format
-            re.IGNORECASE
+        "passport_number": re.compile(
+            r"\b[A-Z]{1,2}\d{6,9}\b", re.IGNORECASE  # US/UK passport format
         ),
-        'french_national_id': re.compile(
-            r'\b\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}\s?[A-Z]{2}\b',  # French CNI
-            re.IGNORECASE
+        "french_national_id": re.compile(
+            r"\b\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}\s?[A-Z]{2}\b",  # French CNI
+            re.IGNORECASE,
         ),
-        'license': re.compile(
-            r'\b(?:driver\'s|driving|permis)\s*(?:license|licence)\s*(?:number|no|#)?[:\s]*[A-Z0-9][A-Z0-9\-]{4,14}',
-            re.IGNORECASE
+        "license": re.compile(
+            r"\b(?:driver\'s|driving|permis)\s*(?:license|licence)\s*(?:number|no|#)?[:\s]*[A-Z0-9][A-Z0-9\-]{4,14}",
+            re.IGNORECASE,
         ),
     }
 
     # Redaction placeholders
     REDACTION_PLACEHOLDERS = {
-        'email': '[EMAIL_REDACTED]',
-        'phone': '[PHONE_REDACTED]',
-        'phone_intl': '[PHONE_REDACTED]',
-        'ssn': '[SSN_REDACTED]',
-        'ssn_french': '[SSN_REDACTED]',
-        'credit_card': '[CARD_REDACTED]',
-        'iban': '[IBAN_REDACTED]',
-        'ip_address': '[IP_REDACTED]',
-        'url_with_params': '[URL_REDACTED]',
+        "email": "[EMAIL_REDACTED]",
+        "phone": "[PHONE_REDACTED]",
+        "phone_intl": "[PHONE_REDACTED]",
+        "ssn": "[SSN_REDACTED]",
+        "ssn_french": "[SSN_REDACTED]",
+        "credit_card": "[CARD_REDACTED]",
+        "iban": "[IBAN_REDACTED]",
+        "ip_address": "[IP_REDACTED]",
+        "url_with_params": "[URL_REDACTED]",
     }
 
     def __init__(self, confidence_threshold: int = 1):
@@ -142,7 +140,7 @@ class PIIDetectionService:
             matches = pattern.findall(text)
             if matches:
                 # For credit cards, verify it's not just any long number
-                if pattern_name == 'credit_card':
+                if pattern_name == "credit_card":
                     for match in matches:
                         if self._is_valid_credit_card(match):
                             pii_count += 1
@@ -151,7 +149,9 @@ class PIIDetectionService:
                                 return True
                 else:
                     pii_count += len(matches)
-                    logger.debug(f"PII detected: {pattern_name} ({len(matches)} matches) in text")
+                    logger.debug(
+                        f"PII detected: {pattern_name} ({len(matches)} matches) in text"
+                    )
                     if pii_count >= self.confidence_threshold:
                         return True
 
@@ -188,7 +188,9 @@ class PIIDetectionService:
         for pattern_name, pattern in self.PATTERNS.items():
             matches = pattern.findall(redacted_text)
             if matches:
-                placeholder = self.REDACTION_PLACEHOLDERS.get(pattern_name, '[REDACTED]')
+                placeholder = self.REDACTION_PLACEHOLDERS.get(
+                    pattern_name, "[REDACTED]"
+                )
                 redacted_text = pattern.sub(placeholder, redacted_text)
                 stats[pattern_name] = len(matches)
                 logger.debug(f"Redacted {len(matches)} instances of {pattern_name}")
@@ -197,9 +199,9 @@ class PIIDetectionService:
         for pattern_name, pattern in self.SUSPICIOUS_PATTERNS.items():
             matches = pattern.findall(redacted_text)
             if matches:
-                placeholder = '[SUSPICIOUS_REDACTED]'
+                placeholder = "[SUSPICIOUS_REDACTED]"
                 redacted_text = pattern.sub(placeholder, redacted_text)
-                stats[f'suspicious_{pattern_name}'] = len(matches)
+                stats[f"suspicious_{pattern_name}"] = len(matches)
 
         return redacted_text, stats
 
@@ -215,10 +217,10 @@ class PIIDetectionService:
         """
         if not text:
             return {
-                'has_pii': False,
-                'confidence': 0,
-                'detected_types': [],
-                'details': {}
+                "has_pii": False,
+                "confidence": 0,
+                "detected_types": [],
+                "details": {},
             }
 
         detected_types = []
@@ -230,8 +232,10 @@ class PIIDetectionService:
             matches = pattern.findall(text)
             if matches:
                 # Verify credit cards
-                if pattern_name == 'credit_card':
-                    valid_matches = [m for m in matches if self._is_valid_credit_card(m)]
+                if pattern_name == "credit_card":
+                    valid_matches = [
+                        m for m in matches if self._is_valid_credit_card(m)
+                    ]
                     if valid_matches:
                         detected_types.append(pattern_name)
                         details[pattern_name] = len(valid_matches)
@@ -249,16 +253,16 @@ class PIIDetectionService:
                 confidence_score += 0.5
 
         if suspicious_found:
-            details['suspicious_patterns'] = suspicious_found
+            details["suspicious_patterns"] = suspicious_found
 
         has_pii = confidence_score >= self.confidence_threshold
 
         return {
-            'has_pii': has_pii,
-            'confidence': confidence_score,
-            'detected_types': detected_types,
-            'suspicious_patterns': suspicious_found,
-            'details': details
+            "has_pii": has_pii,
+            "confidence": confidence_score,
+            "detected_types": detected_types,
+            "suspicious_patterns": suspicious_found,
+            "details": details,
         }
 
     def _is_valid_credit_card(self, number: str) -> bool:
@@ -272,7 +276,7 @@ class PIIDetectionService:
             True if valid credit card number
         """
         # Remove spaces and dashes
-        num = re.sub(r'[^\d]', '', number)
+        num = re.sub(r"[^\d]", "", number)
 
         # Must be 13-16 digits
         if not 13 <= len(num) <= 16:

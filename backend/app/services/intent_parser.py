@@ -4,6 +4,7 @@ Intent Parser Service for Smart Collections
 Uses MiniMax to extract structured intent from natural language queries,
 including keywords, date ranges, entities, and document types.
 """
+
 import os
 import logging
 import json
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class DocumentType(Enum):
     """Document types that can be filtered"""
+
     PDF = "pdf"
     IMAGE = "image"
     DOCX = "docx"
@@ -33,6 +35,7 @@ class DocumentType(Enum):
 
 class DateRange(Enum):
     """Predefined date range types"""
+
     TODAY = "today"
     YESTERDAY = "yesterday"
     THIS_WEEK = "this_week"
@@ -56,7 +59,7 @@ class ParsedIntent:
         document_types: List[str] = None,
         collection_name: Optional[str] = None,
         confidence: float = 0.0,
-        raw_response: str = ""
+        raw_response: str = "",
     ):
         self.query = query
         self.keywords = keywords or []
@@ -76,15 +79,12 @@ class ParsedIntent:
             "entities": self.entities,
             "document_types": self.document_types,
             "collection_name": self.collection_name,
-            "confidence": self.confidence
+            "confidence": self.confidence,
         }
 
     def to_search_filter(self) -> Dict[str, Any]:
         """Convert to search filter for document queries"""
-        filter_dict = {
-            "keywords": self.keywords,
-            "document_types": self.document_types
-        }
+        filter_dict = {"keywords": self.keywords, "document_types": self.document_types}
 
         # Add date range if present
         if self.date_range:
@@ -127,27 +127,34 @@ class ParsedIntent:
                 end = start.replace(month=start.month + 1, day=1)
         elif range_type == DateRange.LAST_MONTH.value:
             # First day of this month
-            this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            this_month_start = now.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
             end = this_month_start
             # First day of last month
             if this_month_start.month == 1:
-                start = this_month_start.replace(year=this_month_start.year - 1, month=12, day=1)
+                start = this_month_start.replace(
+                    year=this_month_start.year - 1, month=12, day=1
+                )
             else:
-                start = this_month_start.replace(month=this_month_start.month - 1, day=1)
+                start = this_month_start.replace(
+                    month=this_month_start.month - 1, day=1
+                )
         elif range_type == DateRange.THIS_YEAR.value:
-            start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            start = now.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
             end = start.replace(year=start.year + 1)
         elif range_type == DateRange.LAST_YEAR.value:
-            this_year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            this_year_start = now.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
             end = this_year_start
             start = this_year_start.replace(year=this_year_start.year - 1)
         else:
             return None
 
-        return {
-            "start": start.isoformat(),
-            "end": end.isoformat()
-        }
+        return {"start": start.isoformat(), "end": end.isoformat()}
 
 
 class IntentParserService:
@@ -156,22 +163,24 @@ class IntentParserService:
     def __init__(self):
         self.minimax_service = minimax_service
         self._intent_prompt_template = self._get_intent_prompt_template()
-        
+
         # Lazy imports for routing
         self._ollama_service = None
         self._openrouter_service = None
-    
+
     def _get_ollama_service(self):
         """Lazy load Ollama service"""
         if self._ollama_service is None:
             from app.services.ollama_service import ollama_service
+
             self._ollama_service = ollama_service
         return self._ollama_service
-    
+
     def _get_openrouter_service(self):
         """Lazy load OpenRouter service"""
         if self._openrouter_service is None:
             from app.services.openrouter_service import openrouter_service
+
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
@@ -286,21 +295,42 @@ Now parse the user's query:"""
 
         # Extract keywords - remove common words and keep meaningful terms
         stop_words = {
-            "show", "me", "all", "the", "a", "an", "from", "to", "with", "about",
-            "related", "and", "or", "for", "in", "at", "on", "recent", "latest"
+            "show",
+            "me",
+            "all",
+            "the",
+            "a",
+            "an",
+            "from",
+            "to",
+            "with",
+            "about",
+            "related",
+            "and",
+            "or",
+            "for",
+            "in",
+            "at",
+            "on",
+            "recent",
+            "latest",
         }
 
-        words = re.findall(r'\b\w+\b', query)
+        words = re.findall(r"\b\w+\b", query)
         keywords = [w for w in words if w.lower() not in stop_words and len(w) > 2]
 
         # Document type detection
         if any(word in query_lower for word in ["pdf", "document"]):
             document_types.append("pdf")
-        if any(word in query_lower for word in ["photo", "image", "picture", "jpg", "png"]):
+        if any(
+            word in query_lower for word in ["photo", "image", "picture", "jpg", "png"]
+        ):
             document_types.append("image")
         if any(word in query_lower for word in ["spreadsheet", "excel", "xls"]):
             document_types.append("spreadsheet")
-        if any(word in query_lower for word in ["presentation", "powerpoint", "slides"]):
+        if any(
+            word in query_lower for word in ["presentation", "powerpoint", "slides"]
+        ):
             document_types.append("presentation")
 
         if len(document_types) > 1:
@@ -327,7 +357,7 @@ Now parse the user's query:"""
             date_range = {"type": "this_month"}
 
         # Year-specific parsing (e.g., "2023", "from 2020")
-        year_match = re.search(r'\b(20\d{2})\b', query)
+        year_match = re.search(r"\b(20\d{2})\b", query)
         if year_match:
             year = int(year_match.group(1))
             now = datetime.utcnow()
@@ -338,10 +368,7 @@ Now parse the user's query:"""
             else:
                 date_range = {
                     "type": "custom",
-                    "custom": {
-                        "start": f"{year}-01-01",
-                        "end": f"{year}-12-31"
-                    }
+                    "custom": {"start": f"{year}-01-01", "end": f"{year}-12-31"},
                 }
 
         # Generate collection name from keywords
@@ -358,14 +385,11 @@ Now parse the user's query:"""
             document_types=document_types,
             collection_name=collection_name,
             confidence=0.6,  # Lower confidence for fallback
-            raw_response="fallback_parsing"
+            raw_response="fallback_parsing",
         )
 
     async def parse_intent(
-        self,
-        query: str,
-        user_language: str = "en",
-        use_ollama: bool = False
+        self, query: str, user_language: str = "en", use_ollama: bool = False
     ) -> ParsedIntent:
         """
         Parse natural language query into structured intent
@@ -383,7 +407,7 @@ Now parse the user's query:"""
                 query="",
                 keywords=[],
                 collection_name="Empty Collection",
-                confidence=0.0
+                confidence=0.0,
             )
 
         try:
@@ -392,8 +416,11 @@ Now parse the user's query:"""
             prompt = f"{context}\n\n{self._intent_prompt_template}\n\nQuery: {query}"
 
             messages = [
-                {"role": "system", "content": "You are a precise JSON-only intent parser. Respond only with valid JSON, no explanations or markdown."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a precise JSON-only intent parser. Respond only with valid JSON, no explanations or markdown.",
+                },
+                {"role": "user", "content": prompt},
             ]
 
             # Route to appropriate LLM based on confidentiality
@@ -401,22 +428,24 @@ Now parse the user's query:"""
             if use_ollama:
                 llm_service = self._get_ollama_service()
                 async for chunk in llm_service.chat_completion(
-                    messages=messages,
-                    stream=False,
-                    temperature=0.3,
-                    num_predict=1024
+                    messages=messages, stream=False, temperature=0.3, num_predict=1024
                 ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    if (
+                        chunk
+                        and not chunk.startswith("Error:")
+                        and not chunk.startswith("__USAGE__")
+                    ):
                         response_parts.append(chunk)
             else:
                 llm_service = self._get_openrouter_service()
                 async for chunk in llm_service.chat_completion(
-                    messages=messages,
-                    stream=False,
-                    temperature=0.3,
-                    max_tokens=1024
+                    messages=messages, stream=False, temperature=0.3, max_tokens=1024
                 ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    if (
+                        chunk
+                        and not chunk.startswith("Error:")
+                        and not chunk.startswith("__USAGE__")
+                    ):
                         response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
@@ -434,12 +463,16 @@ Now parse the user's query:"""
                     date_range=intent_data.get("date_range", {"type": "all_time"}),
                     entities=intent_data.get("entities", []),
                     document_types=intent_data.get("document_types", ["all"]),
-                    collection_name=intent_data.get("collection_name", self._generate_fallback_name(query)),
+                    collection_name=intent_data.get(
+                        "collection_name", self._generate_fallback_name(query)
+                    ),
                     confidence=0.9,  # High confidence for LLM-parsed intent
-                    raw_response=json_text
+                    raw_response=json_text,
                 )
             else:
-                logger.warning(f"Failed to extract JSON from LLM response: {response_text}")
+                logger.warning(
+                    f"Failed to extract JSON from LLM response: {response_text}"
+                )
                 return self._fallback_parse(query)
 
         except json.JSONDecodeError as e:
@@ -492,9 +525,7 @@ Now parse the user's query:"""
         return " ".join(meaningful).title() if meaningful else "My Collection"
 
     async def parse_batch_intents(
-        self,
-        queries: List[str],
-        user_language: str = "en"
+        self, queries: List[str], user_language: str = "en"
     ) -> List[ParsedIntent]:
         """
         Parse multiple queries in batch

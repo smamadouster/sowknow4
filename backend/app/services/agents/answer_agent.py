@@ -4,6 +4,7 @@ Answer Agent for Multi-Agent Search System
 Synthesizes verified research into clear, accurate, and
 well-sourced answers for the user.
 """
+
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AnswerRequest:
     """Request for answer generation"""
+
     query: str
     research_findings: List[Dict[str, Any]]
     verification_results: List[Dict[str, Any]]
@@ -28,6 +30,7 @@ class AnswerRequest:
 @dataclass
 class AnswerResult:
     """Result of answer generation"""
+
     query: str
     answer: str
     key_points: List[str]
@@ -67,8 +70,7 @@ class AnswerAgent:
         if not findings:
             return False
         return any(
-            finding.get("document_bucket") == "confidential"
-            for finding in findings
+            finding.get("document_bucket") == "confidential" for finding in findings
         )
 
     def _get_llm_service(self, findings: List[Dict[str, Any]]):
@@ -78,10 +80,7 @@ class AnswerAgent:
             return self.ollama_service
         return self.minimax_service
 
-    async def generate_answer(
-        self,
-        request: AnswerRequest
-    ) -> AnswerResult:
+    async def generate_answer(self, request: AnswerRequest) -> AnswerResult:
         """
         Generate a comprehensive answer from research
 
@@ -96,7 +95,9 @@ class AnswerAgent:
         self._use_ollama = self._has_confidential_documents(all_findings)
         if self._use_ollama:
             logger.info("AnswerAgent: Using Ollama for confidential documents")
-        self._llm_service = self.ollama_service if self._use_ollama else self.minimax_service
+        self._llm_service = (
+            self.ollama_service if self._use_ollama else self.minimax_service
+        )
 
         try:
             # Step 1: Analyze what type of answer is needed
@@ -104,9 +105,7 @@ class AnswerAgent:
 
             # Step 2: Build context for generation
             generation_context = await self._build_generation_context(
-                request.research_findings,
-                request.verification_results,
-                request.context
+                request.research_findings, request.verification_results, request.context
             )
 
             # Step 3: Generate the answer
@@ -114,7 +113,7 @@ class AnswerAgent:
                 request.query,
                 generation_context,
                 request.answer_style,
-                request.language
+                request.language,
             )
 
             # Step 4: Extract key points
@@ -125,21 +124,17 @@ class AnswerAgent:
 
             # Step 6: Generate caveats
             caveats = await self._generate_caveats(
-                request.verification_results,
-                generation_context
+                request.verification_results, generation_context
             )
 
             # Step 7: Suggest follow-up questions
             followup = await self._suggest_followup_questions(
-                request.query,
-                answer,
-                generation_context
+                request.query, answer, generation_context
             )
 
             # Step 8: Calculate confidence
             confidence = self._calculate_answer_confidence(
-                request.verification_results,
-                generation_context
+                request.verification_results, generation_context
             )
 
             # Determine which LLM was used
@@ -153,7 +148,7 @@ class AnswerAgent:
                 confidence=confidence,
                 caveats=caveats,
                 followup_suggestions=followup,
-                llm_used=llm_used
+                llm_used=llm_used,
             )
 
         except Exception as e:
@@ -166,7 +161,7 @@ class AnswerAgent:
                 confidence=0.0,
                 caveats=["An error occurred during answer generation"],
                 followup_suggestions=[],
-                llm_used="error"
+                llm_used="error",
             )
 
     async def _determine_answer_type(self, query: str) -> str:
@@ -184,22 +179,31 @@ Return just the type name."""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Query: {query}"}
+            {"role": "user", "content": f"Query: {query}"},
         ]
 
         try:
             response = []
             async for chunk in self._llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=256
+                messages=messages, stream=False, temperature=0.3, max_tokens=256
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             result = "".join(response).strip().lower()
-            valid_types = ["factual", "how_to", "explanation", "comparison", "opinion", "timeline", "list"]
+            valid_types = [
+                "factual",
+                "how_to",
+                "explanation",
+                "comparison",
+                "opinion",
+                "timeline",
+                "list",
+            ]
             for vt in valid_types:
                 if vt in result:
                     return vt
@@ -213,7 +217,7 @@ Return just the type name."""
         self,
         findings: List[Dict[str, Any]],
         verification: List[Dict[str, Any]],
-        context: Optional[Dict[str, Any]]
+        context: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Build context for answer generation"""
         gen_context = {
@@ -222,7 +226,7 @@ Return just the type name."""
             "contradicted_info": [],
             "high_confidence_findings": [],
             "entities": [],
-            "themes": []
+            "themes": [],
         }
 
         # Process verification results
@@ -230,7 +234,7 @@ Return just the type name."""
             claim_data = {
                 "claim": v.get("claim"),
                 "confidence": v.get("confidence", 0.5),
-                "reliability": v.get("reliability_score", 0.5)
+                "reliability": v.get("reliability_score", 0.5),
             }
 
             if v.get("is_verified") is True:
@@ -254,17 +258,13 @@ Return just the type name."""
         return gen_context
 
     async def _generate_answer_content(
-        self,
-        query: str,
-        context: Dict[str, Any],
-        style: str,
-        language: str
+        self, query: str, context: Dict[str, Any], style: str, language: str
     ) -> str:
         """Generate the actual answer content"""
         style_instructions = {
             "comprehensive": "Provide a detailed, thorough answer with multiple sections",
             "concise": "Provide a brief, focused answer with only essential information",
-            "conversational": "Provide a friendly, conversational answer"
+            "conversational": "Provide a friendly, conversational answer",
         }
 
         system_prompt = f"""You are the Answer Agent for SOWKNOW. Generate clear, accurate answers based on research.
@@ -290,7 +290,9 @@ Structure your answer with:
         if context.get("verified_claims"):
             research_parts.append("Verified Information:")
             for claim in context["verified_claims"][:5]:
-                research_parts.append(f"- {claim['claim']} (confidence: {claim['confidence']:.2f})")
+                research_parts.append(
+                    f"- {claim['claim']} (confidence: {claim['confidence']:.2f})"
+                )
 
         if context.get("high_confidence_findings"):
             research_parts.append("\nKey Sources:")
@@ -299,7 +301,9 @@ Structure your answer with:
                 research_parts.append(f"- {filename}")
 
         if context.get("contradicted_info"):
-            research_parts.append("\nNote: Some sources may contradict on certain points.")
+            research_parts.append(
+                "\nNote: Some sources may contradict on certain points."
+            )
 
         research_text = "\n".join(research_parts)
 
@@ -312,25 +316,28 @@ Please provide a comprehensive answer:"""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
             response = []
             async for chunk in self._llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.7,
-                max_tokens=3072
+                messages=messages, stream=False, temperature=0.7, max_tokens=3072
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             return "".join(response).strip()
 
         except Exception as e:
             logger.error(f"Answer content generation error: {e}")
-            return "I apologize, but I encountered an error while generating the answer."
+            return (
+                "I apologize, but I encountered an error while generating the answer."
+            )
 
     async def _extract_key_points(self, answer: str) -> List[str]:
         """Extract key points from the answer"""
@@ -339,21 +346,23 @@ Return as a JSON array of strings."""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Answer:\n{answer[:3000]}"}
+            {"role": "user", "content": f"Answer:\n{answer[:3000]}"},
         ]
 
         try:
             response = []
             async for chunk in self._llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.5,
-                max_tokens=512
+                messages=messages, stream=False, temperature=0.5, max_tokens=512
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             import json
+
             result = json.loads("".join(response).strip())
             if isinstance(result, list):
                 return result
@@ -363,7 +372,8 @@ Return as a JSON array of strings."""
 
         # Fallback: split by sentences
         import re
-        sentences = re.split(r'[.!?]+', answer)
+
+        sentences = re.split(r"[.!?]+", answer)
         return [s.strip() for s in sentences if s.strip()][:5]
 
     def _prepare_sources(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -375,24 +385,26 @@ Return as a JSON array of strings."""
             doc_id = finding.get("document_id")
             if doc_id and doc_id not in seen:
                 seen.add(doc_id)
-                sources.append({
-                    "document_id": doc_id,
-                    "filename": finding.get("filename", "Unknown"),
-                    "relevance": finding.get("score", 0)
-                })
+                sources.append(
+                    {
+                        "document_id": doc_id,
+                        "filename": finding.get("filename", "Unknown"),
+                        "relevance": finding.get("score", 0),
+                    }
+                )
 
         return sources[:10]  # Limit to top 10
 
     async def _generate_caveats(
-        self,
-        verification: List[Dict[str, Any]],
-        context: Dict[str, Any]
+        self, verification: List[Dict[str, Any]], context: Dict[str, Any]
     ) -> List[str]:
         """Generate appropriate caveats"""
         caveats = []
 
         # Check for unverified claims
-        unverified_count = len([v for v in verification if v.get("is_verified") is False])
+        unverified_count = len(
+            [v for v in verification if v.get("is_verified") is False]
+        )
         if unverified_count > 0:
             caveats.append(f"{unverified_count} claim(s) could not be fully verified")
 
@@ -403,17 +415,18 @@ Return as a JSON array of strings."""
         # Check reliability
         avg_reliability = 0.0
         if verification:
-            avg_reliability = sum(v.get("reliability_score", 0.5) for v in verification) / len(verification)
+            avg_reliability = sum(
+                v.get("reliability_score", 0.5) for v in verification
+            ) / len(verification)
             if avg_reliability < 0.5:
-                caveats.append("Source reliability is moderate - verify important details")
+                caveats.append(
+                    "Source reliability is moderate - verify important details"
+                )
 
         return caveats if caveats else ["Information based on available sources"]
 
     async def _suggest_followup_questions(
-        self,
-        query: str,
-        answer: str,
-        context: Dict[str, Any]
+        self, query: str, answer: str, context: Dict[str, Any]
     ) -> List[str]:
         """Suggest relevant follow-up questions"""
         system_prompt = """Based on the original question and answer, suggest 3-5 relevant follow-up questions.
@@ -427,21 +440,23 @@ Suggest follow-up questions:"""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
             response = []
             async for chunk in self._llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.7,
-                max_tokens=512
+                messages=messages, stream=False, temperature=0.7, max_tokens=512
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response.append(chunk)
 
             import json
+
             result = json.loads("".join(response).strip())
             if isinstance(result, list):
                 return result
@@ -453,23 +468,25 @@ Suggest follow-up questions:"""
         return [
             "Can you provide more details about this?",
             "What are the main sources for this information?",
-            "How has this changed over time?"
+            "How has this changed over time?",
         ]
 
     def _calculate_answer_confidence(
-        self,
-        verification: List[Dict[str, Any]],
-        context: Dict[str, Any]
+        self, verification: List[Dict[str, Any]], context: Dict[str, Any]
     ) -> float:
         """Calculate overall confidence in the answer"""
         if not verification:
             return 0.5
 
         # Average verification confidence
-        avg_confidence = sum(v.get("confidence", 0.5) for v in verification) / len(verification)
+        avg_confidence = sum(v.get("confidence", 0.5) for v in verification) / len(
+            verification
+        )
 
         # Adjust for reliability
-        avg_reliability = sum(v.get("reliability_score", 0.5) for v in verification) / len(verification)
+        avg_reliability = sum(
+            v.get("reliability_score", 0.5) for v in verification
+        ) / len(verification)
 
         # Combine
         confidence = (avg_confidence * 0.6) + (avg_reliability * 0.4)

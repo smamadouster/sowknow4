@@ -6,6 +6,7 @@ import os
 import json
 import logging
 from fastapi import (
+    status,
     APIRouter,
     Depends,
     HTTPException,
@@ -211,12 +212,12 @@ async def upload_document(
     is_bot = False
     if x_bot_api_key:
         if not BOT_API_KEY:
-            raise HTTPException(status_code=401, detail="Bot API key not configured")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bot API key not configured")
         if x_bot_api_key != BOT_API_KEY:
             logger.warning(
                 f"Invalid Bot API Key. Received length: {len(x_bot_api_key)}, Expected length: {len(BOT_API_KEY)}"
             )
-            raise HTTPException(status_code=401, detail="Invalid Bot API Key")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
         is_bot = True
         logger.info(f"Valid bot API key provided for user: {current_user.email}")
 
@@ -229,7 +230,7 @@ async def upload_document(
                 f"(role: {current_user.role.value}). Admin or Super User role required."
             )
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: Admin or Super User role required for confidential bucket uploads",
             )
         logger.info(
@@ -243,17 +244,17 @@ async def upload_document(
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(
-            status_code=400, detail="Invalid bucket. Use 'public' or 'confidential'"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket. Use 'public' or 'confidential'"
         )
 
     # Validate file
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided")
 
     file_extension = get_file_extension(file.filename)
     if file_extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
         )
 
@@ -263,7 +264,7 @@ async def upload_document(
     # Check file size
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
         )
 
@@ -273,7 +274,7 @@ async def upload_document(
             f"SECURITY: Magic byte mismatch for {file.filename} uploaded by {current_user.email}"
         )
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match its extension. Upload rejected.",
         )
 
@@ -390,13 +391,17 @@ async def upload_document(
         db.commit()
 
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document saved but failed to queue for processing: {str(e)}",
         )
 
 
 async def process_single_file_upload(
-    file: UploadFile, bucket: str, current_user: User, db: Session
+    file: UploadFile,
+    bucket: str,
+    current_user: User,
+    db: Session,
+    batch_id: Optional[str] = None,
 ) -> tuple[Optional[DocumentUploadResponse], Optional[str]]:
     """Helper function to process a single file upload within a batch."""
     try:
@@ -451,6 +456,7 @@ async def process_single_file_upload(
             mime_type=get_mime_type(file.filename, content),
             language=language,
             uploaded_by=current_user.id,
+            batch_id=batch_id,
         )
 
         db.add(document)
@@ -509,7 +515,10 @@ async def process_single_file_upload(
         return None, f"Error processing file {file.filename}: {str(e)}"
 
 
-@router.post("/upload-batch", response_model=BatchUploadResponse)
+MAX_FILES_PER_BATCH = 20
+
+
+@router.post("/upload-batch", response_model=BatchUploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_batch_documents(
     files: List[UploadFile] = File(...),
     bucket: str = Form("public"),
@@ -535,10 +544,10 @@ async def upload_batch_documents(
     is_bot = False
     if x_bot_api_key:
         if not BOT_API_KEY:
-            raise HTTPException(status_code=401, detail="Bot API key not configured")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bot API key not configured")
         if x_bot_api_key != BOT_API_KEY:
             logger.warning(f"Invalid Bot API Key")
-            raise HTTPException(status_code=401, detail="Invalid Bot API Key")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
         is_bot = True
 
     if bucket == "confidential":
@@ -548,7 +557,7 @@ async def upload_batch_documents(
                 f"(role: {current_user.role.value})"
             )
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: Admin or Super User role required for confidential bucket uploads",
             )
     else:
@@ -558,11 +567,17 @@ async def upload_batch_documents(
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(
-            status_code=400, detail="Invalid bucket. Use 'public' or 'confidential'"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket. Use 'public' or 'confidential'"
         )
 
     if not files:
-        raise HTTPException(status_code=400, detail="No files provided")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No files provided")
+
+    if len(files) > MAX_FILES_PER_BATCH:  # max 20 files per batch
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many files: maximum {MAX_FILES_PER_BATCH} files per batch upload",
+        )
 
     total_size = 0
     file_sizes = {}
@@ -584,7 +599,7 @@ async def upload_batch_documents(
             f"exceeds limit of {MAX_BATCH_SIZE} bytes ({MAX_BATCH_SIZE / (1024 * 1024)}MB)"
         )
         raise HTTPException(
-            status_code=413,
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=(
                 f"Batch total size exceeds limit. "
                 f"Received: {total_size / (1024 * 1024):.2f}MB, "
@@ -598,9 +613,12 @@ async def upload_batch_documents(
     successful_count = 0
     failed_count = 0
 
+    # Generate a unique batch ID that groups all uploads in this request
+    batch_id = str(uuid.uuid4())
+
     for file in files:
         doc_response, error = await process_single_file_upload(
-            file=file, bucket=bucket, current_user=current_user, db=db
+            file=file, bucket=bucket, current_user=current_user, db=db, batch_id=batch_id
         )
 
         if doc_response:
@@ -611,6 +629,7 @@ async def upload_batch_documents(
             failed_count += 1
 
     return BatchUploadResponse(
+        batch_id=batch_id,
         total_files=len(files),
         successful=successful_count,
         failed=failed_count,
@@ -620,6 +639,54 @@ async def upload_batch_documents(
         batch_limit_exceeded=False,
         message=f"Batch upload completed: {successful_count} successful, {failed_count} failed",
     )
+
+
+@router.get("/batch/{batch_id}/status")
+async def get_batch_status(
+    batch_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get processing status for all documents in a batch upload.
+
+    Returns aggregate progress and per-document statuses.
+    """
+    documents = (
+        db.query(Document)
+        .filter(
+            Document.batch_id == batch_id,
+            Document.uploaded_by == current_user.id,
+        )
+        .all()
+    )
+
+    if not documents:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
+
+    from collections import Counter
+
+    status_counts: Counter = Counter(doc.status.value for doc in documents)
+    total = len(documents)
+    completed = status_counts.get("indexed", 0)
+    progress = round(completed / total * 100, 1) if total else 0.0
+
+    return {
+        "batch_id": batch_id,
+        "total_documents": total,
+        "completed": completed,
+        "processing": status_counts.get("processing", 0) + status_counts.get("pending", 0),
+        "failed": status_counts.get("error", 0),
+        "progress_percentage": progress,
+        "documents": [
+            {
+                "id": str(doc.id),
+                "filename": doc.filename,
+                "status": doc.status.value,
+            }
+            for doc in documents
+        ],
+    }
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -712,14 +779,14 @@ async def get_document(
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Check access permission - return 404 for confidential docs to prevent enumeration
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
     ]:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Log confidential document access
     if document.bucket == DocumentBucket.CONFIDENTIAL:
@@ -752,14 +819,14 @@ async def get_document_status(
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Confidential visibility: same rule as get_document
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
     ]:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Pull processing details from ProcessingQueue if available
     processing_task = (
@@ -816,14 +883,14 @@ async def download_document(
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Check access permission - return 404 for confidential docs to prevent enumeration
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
     ]:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Log confidential document access
     if document.bucket == DocumentBucket.CONFIDENTIAL:
@@ -842,7 +909,7 @@ async def download_document(
     )
 
     if not file_content:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     return Response(
         content=file_content,
@@ -868,7 +935,7 @@ async def update_document(
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Update fields
     if updates.filename is not None:
@@ -899,7 +966,7 @@ async def delete_document(
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Delete file from storage
     storage_service.delete_file(
@@ -934,14 +1001,14 @@ async def get_similar_documents(
     document = db.query(Document).filter(Document.id == document_id).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Regular users cannot access confidential source documents
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
     ]:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     results = await similarity_service.find_similar_to_document(
         document_id=str(document_id),
@@ -951,3 +1018,86 @@ async def get_similar_documents(
     )
 
     return {"similar": results, "total": len(results)}
+
+
+# ---------------------------------------------------------------------------
+# Document Reprocessing
+# ---------------------------------------------------------------------------
+
+@router.post("/{document_id}/reprocess")
+async def reprocess_document(
+    document_id: uuid.UUID,
+    force: bool = False,
+    regenerate_embeddings: bool = True,
+    reason: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Reprocess a document (e.g., after fixing errors or upgrading models).
+
+    Args:
+        document_id:           Document UUID.
+        force:                 Allow reprocessing even if status=INDEXED.
+        regenerate_embeddings: Whether to regenerate embeddings (default True).
+        reason:                Optional reason string stored in metadata.
+
+    Returns:
+        {
+            "document_id": str,
+            "status": "PENDING",
+            "task_id": str,
+            "message": str
+        }
+    """
+    from app.tasks.document_tasks import process_document
+    from app.tasks.embedding_tasks import recompute_embeddings_for_document
+
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # Confidential docs: only admin/superuser can trigger reprocessing
+    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
+        UserRole.ADMIN,
+        UserRole.SUPERUSER,
+    ]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    if document.status == DocumentStatus.INDEXED and not force:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document already indexed. Pass force=true to reprocess.",
+        )
+
+    if document.status == DocumentStatus.PROCESSING:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document is currently being processed. Wait for it to finish.",
+        )
+
+    # Update document status and metadata
+    document.status = DocumentStatus.PENDING
+    meta = document.document_metadata or {}
+    meta["reprocessed_at"] = datetime.utcnow().isoformat()
+    meta["reprocess_reason"] = reason or "manual"
+    meta["reprocess_by"] = str(current_user.id)
+    document.document_metadata = meta
+    db.commit()
+
+    # Queue appropriate task
+    if regenerate_embeddings:
+        task = recompute_embeddings_for_document.delay(str(document_id))
+    else:
+        task = process_document.delay(str(document_id), "full_pipeline")
+
+    return {
+        "document_id": str(document_id),
+        "status": "pending",
+        "task_id": task.id,
+        "message": "Reprocessing queued successfully",
+    }

@@ -69,7 +69,7 @@ export function EntityList({ entityType, onSelectEntity, selectedEntityId }: Ent
     try {
       const response = await api.getEntities(entityType, page, 50, search || undefined);
       if (response.data) {
-        const data = response.data as any;
+        const data = response.data as { entities: Entity[]; total: number };
         setEntities(data.entities || []);
         setTotal(data.total || 0);
       }

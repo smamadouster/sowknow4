@@ -6,7 +6,7 @@ creating professional PDF reports from collections.
 """
 import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status, APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from uuid import UUID
@@ -73,7 +73,7 @@ async def generate_smart_folder(
     # Check confidential access
     if request.include_confidential and not current_user.can_access_confidential:
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to access confidential documents"
         )
 
@@ -112,9 +112,9 @@ async def generate_smart_folder(
 
         return SmartFolderResponse(**result)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Generation error: {str(e)}")
 
 
 @router.post("/reports/generate", response_model=CollectionReportResponse)
@@ -181,9 +181,9 @@ async def generate_collection_report(
         )
 
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Report generation error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Report generation error: {str(e)}")
 
 
 from datetime import datetime
@@ -240,4 +240,4 @@ async def get_report(
     """Get a previously generated report"""
     # In a real implementation, this would fetch from a reports table
     # For now, return a placeholder
-    raise HTTPException(status_code=501, detail="Report history not yet implemented")
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Report history not yet implemented")

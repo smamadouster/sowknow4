@@ -18,7 +18,6 @@ Token Blacklist:
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from typing import Any
@@ -35,6 +34,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserPublic, UserInDB
 from app.schemas.token import Token, LoginResponse
+from app.schemas.auth import ForgotPasswordRequest, ResendVerificationRequest, TelegramAuthRequest
 from app.utils.security import (
     verify_password,
     get_password_hash,
@@ -592,10 +592,6 @@ async def logout(request: Request, response: Response):
 # FORGOT PASSWORD
 # =============================================================================
 
-class ForgotPasswordRequest(BaseModel):
-    email: str
-
-
 @router.post("/forgot-password")
 # RATE_LIMIT: 3/hour per IP (prevent enumeration and abuse)
 async def forgot_password(
@@ -687,10 +683,6 @@ async def forgot_password(
 # =============================================================================
 
 EMAIL_VERIFY_TTL = 86400  # 24 hours
-
-
-class ResendVerificationRequest(BaseModel):
-    email: str
 
 
 @router.post("/verify-email/{token}")
@@ -820,14 +812,6 @@ async def resend_verification(
 # =============================================================================
 # TELEGRAM AUTHENTICATION
 # =============================================================================
-
-
-class TelegramAuthRequest(BaseModel):
-    telegram_user_id: int
-    username: str = None
-    first_name: str = None
-    last_name: str = None
-    language_code: str = "en"
 
 
 @router.post("/telegram", response_model=LoginResponse)

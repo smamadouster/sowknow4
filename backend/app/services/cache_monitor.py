@@ -4,6 +4,7 @@ Cache Monitor for tracking Gemini Flash context caching performance.
 This module provides comprehensive monitoring of cache hit/miss rates,
 token savings, and daily statistics for cost optimization tracking.
 """
+
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -80,7 +81,7 @@ class DailyCacheStats:
             "misses": self._misses,
             "tokens_saved": self._tokens_saved,
             "queries": self._queries,
-            "hit_rate": round(self.hit_rate, 4)
+            "hit_rate": round(self.hit_rate, 4),
         }
 
 
@@ -107,9 +108,7 @@ class CacheMonitor:
         # Initialize today's stats
         self._get_or_create_today_stats()
 
-        logger.info(
-            f"CacheMonitor initialized with {retention_days} days retention"
-        )
+        logger.info(f"CacheMonitor initialized with {retention_days} days retention")
 
     def _get_or_create_today_stats(self) -> DailyCacheStats:
         """Get or create stats for today."""
@@ -131,10 +130,7 @@ class CacheMonitor:
                 logger.debug(f"Cleaned up cache stats for {date}")
 
     def record_cache_hit(
-        self,
-        cache_key: str,
-        tokens_saved: int,
-        user_id: Optional[str] = None
+        self, cache_key: str, tokens_saved: int, user_id: Optional[str] = None
     ) -> None:
         """
         Record a cache hit event.
@@ -162,11 +158,7 @@ class CacheMonitor:
             f"user_id={user_id}"
         )
 
-    def record_cache_miss(
-        self,
-        cache_key: str,
-        user_id: Optional[str] = None
-    ) -> None:
+    def record_cache_miss(self, cache_key: str, user_id: Optional[str] = None) -> None:
         """
         Record a cache miss event.
 
@@ -180,9 +172,7 @@ class CacheMonitor:
 
         self._cache_keys_seen.add(cache_key)
 
-        logger.debug(
-            f"Cache miss: key='{cache_key[:50]}...', user_id={user_id}"
-        )
+        logger.debug(f"Cache miss: key='{cache_key[:50]}...', user_id={user_id}")
 
     def get_hit_rate(self, days: int = 1) -> float:
         """
@@ -250,10 +240,7 @@ class CacheMonitor:
 
         with self._lock:
             # Sort dates in descending order (newest first)
-            sorted_dates = sorted(
-                self._daily_stats.keys(),
-                reverse=True
-            )
+            sorted_dates = sorted(self._daily_stats.keys(), reverse=True)
 
             for date in sorted_dates:
                 if date >= cutoff_date:
@@ -282,7 +269,7 @@ class CacheMonitor:
             "total_tokens_saved": total_tokens_saved,
             "total_queries": total_queries,
             "unique_cache_keys": unique_keys,
-            "generated_at": datetime.now().isoformat()
+            "generated_at": datetime.now().isoformat(),
         }
 
         logger.info(

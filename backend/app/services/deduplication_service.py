@@ -4,6 +4,7 @@ Deduplication Service for Document Uploads
 Hash-based duplicate detection to prevent re-uploading identical files.
 Supports SHA256 hashing with metadata tracking for file integrity.
 """
+
 import logging
 import hashlib
 from typing import Dict, Optional, Set
@@ -20,7 +21,13 @@ logger = logging.getLogger(__name__)
 class FileHash:
     """File hash record for tracking uploads"""
 
-    def __init__(self, sha256_hash: str, filename: str, size: int, document_id: Optional[str] = None):
+    def __init__(
+        self,
+        sha256_hash: str,
+        filename: str,
+        size: int,
+        document_id: Optional[str] = None,
+    ):
         self.sha256_hash = sha256_hash
         self.filename = filename
         self.size = size
@@ -65,11 +72,7 @@ class DeduplicationService:
         return sha256.hexdigest()
 
     def is_duplicate(
-        self,
-        file_hash: str,
-        filename: str,
-        size: int,
-        db: Session
+        self, file_hash: str, filename: str, size: int, db: Session
     ) -> Optional[Document]:
         """
         Check if file has already been uploaded
@@ -90,21 +93,25 @@ class DeduplicationService:
             if cached.size == size:
                 logger.debug(f"Duplicate found in cache: {filename}")
                 # Fetch the actual document
-                doc = db.query(Document).filter(
-                    Document.id == cached.document_id
-                ).first()
+                doc = (
+                    db.query(Document).filter(Document.id == cached.document_id).first()
+                )
                 return doc
 
         # Check database using metadata
         # We store hash in document metadata for fast lookup
-        doc = db.query(Document).filter(
-            Document.document_metadata["sha256_hash"].astext == file_hash
-        ).first()
+        doc = (
+            db.query(Document)
+            .filter(Document.document_metadata["sha256_hash"].astext == file_hash)
+            .first()
+        )
 
         if doc:
             # Verify size matches
             if doc.size == size:
-                logger.info(f"Duplicate found in database: {filename} -> {doc.filename}")
+                logger.info(
+                    f"Duplicate found in database: {filename} -> {doc.filename}"
+                )
                 # Add to cache
                 self._add_to_cache(file_hash, filename, size, str(doc.id))
                 return doc
@@ -112,13 +119,8 @@ class DeduplicationService:
         return None
 
     def register_upload(
-        self,
-        file_hash: str,
-        filename: str,
-        size: int,
-        document_id: str,
-        db: Session
-    ):
+        self, file_hash: str, filename: str, size: int, document_id: str, db: Session
+    ) -> None:
         """
         Register a new file upload to prevent future duplicates
 
@@ -154,10 +156,7 @@ class DeduplicationService:
         self.hash_cache[file_hash] = FileHash(file_hash, filename, size, document_id)
 
     def find_similar_files(
-        self,
-        filename: str,
-        db: Session,
-        threshold: float = 0.8
+        self, filename: str, db: Session, threshold: float = 0.8
     ) -> list[Document]:
         """
         Find files with similar names (potential duplicates)
@@ -177,7 +176,9 @@ class DeduplicationService:
 
         similar = []
         for doc in all_docs:
-            similarity = SequenceMatcher(None, filename.lower(), doc.filename.lower()).ratio()
+            similarity = SequenceMatcher(
+                None, filename.lower(), doc.filename.lower()
+            ).ratio()
             if similarity >= threshold:
                 similar.append((doc, similarity))
 
@@ -199,29 +200,33 @@ class DeduplicationService:
         # Group documents by size (quick filter)
         from sqlalchemy import func
 
-        size_groups = db.query(
-            Document.size,
-            func.count(Document.id).label('count')
-        ).group_by(Document.size).having(
-            func.count(Document.id) > 1
-        ).all()
+        size_groups = (
+            db.query(Document.size, func.count(Document.id).label("count"))
+            .group_by(Document.size)
+            .having(func.count(Document.id) > 1)
+            .all()
+        )
 
         potential_duplicates = []
         for size, count in size_groups:
             docs = db.query(Document).filter(Document.size == size).all()
             if len(docs) > 1:
-                potential_duplicates.append({
-                    "size": size,
-                    "count": len(docs),
-                    "filenames": [doc.filename for doc in docs]
-                })
+                potential_duplicates.append(
+                    {
+                        "size": size,
+                        "count": len(docs),
+                        "filenames": [doc.filename for doc in docs],
+                    }
+                )
 
         # Calculate full hash duplicates
         hash_duplicates = []
         # Get documents with hashes in metadata
-        docs_with_hashes = db.query(Document).filter(
-            Document.document_metadata["sha256_hash"].astext != None
-        ).all()
+        docs_with_hashes = (
+            db.query(Document)
+            .filter(Document.document_metadata["sha256_hash"].astext != None)
+            .all()
+        )
 
         hash_map: Dict[str, List[Document]] = {}
         for doc in docs_with_hashes:
@@ -233,19 +238,21 @@ class DeduplicationService:
 
         for file_hash, docs in hash_map.items():
             if len(docs) > 1:
-                hash_duplicates.append({
-                    "hash": file_hash[:16] + "...",
-                    "count": len(docs),
-                    "filenames": [doc.filename for doc in docs],
-                    "document_ids": [str(doc.id) for doc in docs]
-                })
+                hash_duplicates.append(
+                    {
+                        "hash": file_hash[:16] + "...",
+                        "count": len(docs),
+                        "filenames": [doc.filename for doc in docs],
+                        "document_ids": [str(doc.id) for doc in docs],
+                    }
+                )
 
         return {
             "size_groups": len(potential_duplicates),
             "hash_duplicates": len(hash_duplicates),
             "potential_duplicates": potential_duplicates[:20],
             "hash_duplicate_groups": hash_duplicates[:20],
-            "total_duplicates": sum(g["count"] - 1 for g in hash_duplicates)
+            "total_duplicates": sum(g["count"] - 1 for g in hash_duplicates),
         }
 
     def cleanup_duplicates(self, db: Session, dry_run: bool = True) -> Dict[str, any]:
@@ -267,9 +274,12 @@ class DeduplicationService:
         for group in duplicate_groups.get("hash_duplicate_groups", []):
             # Sort by created_at, keep oldest
             doc_ids = group["document_ids"]
-            docs = db.query(Document).filter(Document.id.in_(doc_ids)).order_by(
-                Document.created_at.asc()
-            ).all()
+            docs = (
+                db.query(Document)
+                .filter(Document.id.in_(doc_ids))
+                .order_by(Document.created_at.asc())
+                .all()
+            )
 
             if len(docs) <= 1:
                 continue
@@ -295,7 +305,7 @@ class DeduplicationService:
             "kept_count": kept_count,
             "removed_count": removed_count,
             "space_freed": space_freed,
-            "dry_run": dry_run
+            "dry_run": dry_run,
         }
 
 

@@ -4,10 +4,11 @@ Hybrid search service combining vector and keyword search
 
 import asyncio
 import logging
+import re
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.orm import Session
-from sqlalchemy import text, func, or_, and_
+from sqlalchemy import text, func, desc
 
 from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.models.user import User, UserRole
@@ -202,7 +203,11 @@ class HybridSearchService:
         user: User = None,
     ) -> List[SearchResult]:
         """
-        Perform keyword full-text search using PostgreSQL
+        Perform keyword full-text search using PostgreSQL tsvector.
+
+        Uses the GIN-indexed search_vector column with ts_rank_cd scoring and
+        per-row language stemming.  Falls back to an empty list when
+        search_vector has not been populated yet (e.g. before migration 009).
 
         Args:
             query: Search query text
@@ -212,84 +217,73 @@ class HybridSearchService:
             user: Current user for access control
 
         Returns:
-            List of search results
+            List of search results ordered by ts_rank_cd descending
         """
-        # Get user bucket filter
         bucket_filter = (
             self._get_user_bucket_filter(user)
             if user
             else [DocumentBucket.PUBLIC.value]
         )
 
-        # Build query for full-text search
-        query_parts = query.split()
-        where_conditions = []
+        # plainto_tsquery converts free-form text to a tsquery (automatic AND,
+        # stemming, stop-word removal) — safe with parameterised input.
+        # Using the per-row search_language regconfig ensures correct stemming
+        # for each document's language (french, english, etc.).
+        sql_query = text("""
+            SELECT
+                dc.id          AS chunk_id,
+                dc.document_id,
+                d.filename     AS document_name,
+                d.bucket       AS document_bucket,
+                dc.chunk_text,
+                dc.chunk_index,
+                dc.page_number,
+                ts_rank_cd(
+                    dc.search_vector,
+                    plainto_tsquery(
+                        COALESCE(dc.search_language, 'french')::regconfig,
+                        :query
+                    ),
+                    32
+                ) AS rank
+            FROM sowknow.document_chunks dc
+            JOIN sowknow.documents d ON dc.document_id = d.id
+            WHERE d.bucket = ANY(:buckets)
+              AND dc.search_vector IS NOT NULL
+              AND dc.search_vector @@ plainto_tsquery(
+                      COALESCE(dc.search_language, 'french')::regconfig,
+                      :query
+                  )
+            ORDER BY rank DESC
+            LIMIT :limit OFFSET :offset
+        """)
 
-        # Search in document filename
-        for part in query_parts:
-            where_conditions.append(Document.filename.ilike(f"%{part}%"))
-
-        # Search in chunk text
-        for part in query_parts:
-            where_conditions.append(DocumentChunk.chunk_text.ilike(f"%{part}%"))
-
-        # Base query
-        q = (
-            db.query(
-                DocumentChunk.id,
-                DocumentChunk.document_id,
-                Document.filename,
-                Document.bucket,
-                DocumentChunk.chunk_text,
-                DocumentChunk.chunk_index,
-                DocumentChunk.page_number,
-            )
-            .join(Document, DocumentChunk.document_id == Document.id)
-            .filter(Document.bucket.in_(bucket_filter))
+        result = db.execute(
+            sql_query,
+            {
+                "query": query,
+                "buckets": bucket_filter,
+                "limit": limit,
+                "offset": offset,
+            },
         )
 
-        # Apply search conditions
-        if where_conditions:
-            q = q.filter(or_(*where_conditions))
-
-        # Order by creation date (newest first)
-        q = q.order_by(Document.created_at.desc())
-
-        # Apply pagination
-        q = q.limit(limit).offset(offset)
-
-        results = q.all()
-
         search_results = []
-        for row in results:
-            # Calculate simple keyword score based on query term frequency
-            chunk_text_lower = row.chunk_text.lower()
-            filename_lower = row.filename.lower()
-            query_lower = query.lower()
-
-            # Count occurrences
-            score = 0.0
-            for part in query_parts:
-                if part.lower() in chunk_text_lower:
-                    score += 0.1
-                if part.lower() in filename_lower:
-                    score += 0.05
-
-            # Normalize score
-            score = min(score, 1.0)
-
+        for row in result:
             search_results.append(
                 SearchResult(
-                    chunk_id=str(row.id),
+                    chunk_id=str(row.chunk_id),
                     document_id=str(row.document_id),
-                    document_name=row.filename,
-                    document_bucket=row.bucket.value,
+                    document_name=row.document_name,
+                    document_bucket=row.document_bucket,
                     chunk_text=row.chunk_text,
                     chunk_index=row.chunk_index,
                     page_number=row.page_number,
                     semantic_score=0.0,
-                    keyword_score=score,
-                    final_score=score,  # Will be recalculated
+                    keyword_score=float(row.rank),
+                    final_score=float(
+                        row.rank
+                    ),  # Will be recalculated by hybrid_search
                 )
             )
 
@@ -334,10 +328,14 @@ class HybridSearchService:
 
         # Run both searches concurrently; return partial results on timeout
         semantic_task = asyncio.create_task(
-            self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
+            self.semantic_search(
+                query=query, limit=limit * 2, offset=0, db=db, user=user
+            )
         )
         keyword_task = asyncio.create_task(
-            self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
+            self.keyword_search(
+                query=query, limit=limit * 2, offset=0, db=db, user=user
+            )
         )
 
         done, pending = await asyncio.wait(
@@ -444,6 +442,186 @@ class HybridSearchService:
             "partial": is_partial,
             "warning": warning,
         }
+
+
+    # ──────────────────────────────────────────────────────────────────────
+    # ORM-style helper methods for tsvector full-text search
+    # These companion methods expose the same full-text search logic via
+    # SQLAlchemy ORM expressions instead of raw SQL strings.
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _sanitize_tsquery(self, query: str) -> str:
+        """Strip characters that have special meaning in tsquery syntax.
+
+        Removes: & | ! ( ) < > :
+        Returns a cleaned, whitespace-normalised string safe to pass to
+        plainto_tsquery / phraseto_tsquery.
+        """
+        sanitized = re.sub(r"[&|!()<>:]+", " ", query).strip()
+        return " ".join(sanitized.split())
+
+    def _keyword_search(
+        self,
+        query: str,
+        db: Session,
+        user: User,
+        limit: int = 50,
+        language: str = "french",
+    ) -> List:
+        """ORM-style tsvector keyword search.
+
+        Applies RBAC bucket filtering and a visibility filter: 'public'
+        documents are always accessible; confidential documents require
+        elevated role.
+
+        Note: for multi-tenant deployments add a filter for
+        organization_id == user.organization_id to scope results.
+
+        Args:
+            query:    Raw search string (will be sanitized).
+            db:       Active SQLAlchemy session.
+            user:     Authenticated user for RBAC filtering.
+            limit:    Maximum rows to return.
+            language: Default text-search config (per-row config is preferred).
+
+        Returns:
+            List of (DocumentChunk, Document, rank) tuples ordered by rank DESC.
+        """
+        sanitized_query = self._sanitize_tsquery(query)
+        if not sanitized_query:
+            return []
+
+        tsquery = func.plainto_tsquery(language, sanitized_query)
+
+        rank_expr = func.ts_rank_cd(
+            DocumentChunk.search_vector,
+            tsquery,
+            32  # normalization: divide rank by document length + unique words
+        )
+
+        # visibility filter: 'public' bucket for Users; all buckets for Admin/SuperUser
+        # TODO: add organization_id == user.organization_id filter for multi-tenant
+        buckets = (
+            self._get_user_bucket_filter(user)
+            if user
+            else [DocumentBucket.PUBLIC.value]
+        )
+
+        return (
+            db.query(DocumentChunk, Document, rank_expr.label("rank"))
+            .join(Document, DocumentChunk.document_id == Document.id)
+            .filter(Document.bucket.in_(buckets))
+            .filter(DocumentChunk.search_vector.op("@@")(tsquery))
+            .order_by(desc(rank_expr))
+            .limit(limit)
+            .all()
+        )
+
+    def _keyword_search_with_metadata(
+        self,
+        query: str,
+        db: Session,
+        user: User,
+        limit: int = 50,
+        language: str = "french",
+    ) -> List:
+        """Keyword search across both chunk_text and JSONB metadata fields.
+
+        Uses func.greatest to combine the tsvector rank from the chunk body and
+        the tsvector rank derived from title/source metadata, returning the
+        highest of the two scores per row.
+
+        Args:
+            query:    Raw search string.
+            db:       Active SQLAlchemy session.
+            user:     Authenticated user for RBAC filtering.
+            limit:    Maximum rows to return.
+            language: Default text-search config.
+
+        Returns:
+            List of (DocumentChunk, Document, combined_rank) tuples.
+        """
+        sanitized_query = self._sanitize_tsquery(query)
+        if not sanitized_query:
+            return []
+
+        tsquery = func.plainto_tsquery(language, sanitized_query)
+
+        text_rank = func.ts_rank_cd(
+            DocumentChunk.search_vector,
+            tsquery,
+            32  # normalization flag
+        )
+        meta_rank = func.ts_rank_cd(
+            func.to_tsvector(
+                language,
+                func.coalesce(
+                    DocumentChunk.document_metadata["title"].astext, ""
+                )
+                + " "
+                + func.coalesce(
+                    DocumentChunk.document_metadata["source"].astext, ""
+                ),
+            ),
+            tsquery,
+        )
+        combined_rank = func.greatest(text_rank, meta_rank)
+
+        buckets = (
+            self._get_user_bucket_filter(user)
+            if user
+            else [DocumentBucket.PUBLIC.value]
+        )
+
+        return (
+            db.query(DocumentChunk, Document, combined_rank.label("rank"))
+            .join(Document, DocumentChunk.document_id == Document.id)
+            .filter(Document.bucket.in_(buckets))
+            .filter(DocumentChunk.search_vector.op("@@")(tsquery))
+            .order_by(desc(combined_rank))
+            .limit(limit)
+            .all()
+        )
+
+    def _get_highlighted_text(
+        self,
+        db: Session,
+        chunk_text: str,
+        query: str,
+        language: str = "french",
+    ) -> str:
+        """Return an HTML snippet with query terms wrapped in <mark> tags.
+
+        Uses PostgreSQL ts_headline with custom StartSel=<mark> / StopSel=</mark>
+        to produce browser-renderable highlights.
+
+        Args:
+            db:         Active SQLAlchemy session.
+            chunk_text: Raw text to highlight.
+            query:      Search query string.
+            language:   PostgreSQL text-search configuration name.
+
+        Returns:
+            HTML string with matching terms highlighted; falls back to raw
+            chunk_text if ts_headline fails.
+        """
+        try:
+            result = db.execute(
+                text(
+                    """
+                    SELECT ts_headline(
+                        :lang::regconfig,
+                        :content,
+                        plainto_tsquery(:lang::regconfig, :query),
+                        'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15'
+                    )
+                    """
+                ),
+                {"lang": language, "content": chunk_text, "query": query},
+            ).scalar()
+            return result or chunk_text
+        except Exception:
+            return chunk_text
 
 
 # Global search service instance

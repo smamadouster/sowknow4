@@ -9,6 +9,7 @@ LLM Routing Role:
 API: Moonshot AI OpenAI-compatible endpoint
 Auth: KIMI_API_KEY environment variable
 """
+
 import os
 import logging
 import json
@@ -75,10 +76,12 @@ class KimiService:
             if total_tokens + msg_tokens > max_tokens:
                 available = max_tokens - total_tokens
                 if available > 100:
-                    truncated.append({
-                        "role": msg.get("role", "user"),
-                        "content": content[: available * 4] + "... [truncated]",
-                    })
+                    truncated.append(
+                        {
+                            "role": msg.get("role", "user"),
+                            "content": content[: available * 4] + "... [truncated]",
+                        }
+                    )
                 break
 
             truncated.append(msg)
@@ -173,10 +176,7 @@ class KimiService:
                                     break
                                 try:
                                     data = json.loads(data_str)
-                                    if (
-                                        "choices" in data
-                                        and len(data["choices"]) > 0
-                                    ):
+                                    if "choices" in data and len(data["choices"]) > 0:
                                         delta = data["choices"][0].get("delta", {})
                                         content = delta.get("content", "")
                                         if content:
@@ -194,9 +194,7 @@ class KimiService:
 
                     if "choices" in result and len(result["choices"]) > 0:
                         content = (
-                            result["choices"][0]
-                            .get("message", {})
-                            .get("content", "")
+                            result["choices"][0].get("message", {}).get("content", "")
                         )
                         usage = result.get("usage", {})
 
@@ -220,9 +218,7 @@ class KimiService:
                 logger.warning("Kimi rate limit hit (429), will retry with backoff")
                 raise  # Let tenacity retry
 
-            logger.error(
-                f"Kimi API error {e.response.status_code}: {error_body}"
-            )
+            logger.error(f"Kimi API error {e.response.status_code}: {error_body}")
             yield f"Error: Kimi API returned {e.response.status_code}"
 
         except httpx.HTTPError as e:

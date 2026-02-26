@@ -31,7 +31,7 @@ def create_audit_log(
     resource_type: str,
     resource_id: Optional[str] = None,
     details: Optional[dict] = None,
-):
+) -> None:
     """Helper function to create audit log entries for confidential access"""
     try:
         audit_entry = AuditLog(

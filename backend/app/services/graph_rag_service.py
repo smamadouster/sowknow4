@@ -5,6 +5,7 @@ Enhances search results by incorporating entity relationships and
 context from the knowledge graph. Uses graph structure to improve
 relevance and discover related information.
 """
+
 import logging
 from typing import List, Dict, Any, Optional, Set, Tuple
 from collections import defaultdict
@@ -16,7 +17,7 @@ from app.models.knowledge_graph import (
     EntityRelationship,
     EntityMention,
     EntityType,
-    RelationType
+    RelationType,
 )
 from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.services.minimax_service import minimax_service
@@ -31,23 +32,23 @@ class GraphRAGService:
         self.minimax_service = minimax_service
         self._ollama_service = None
         self._openrouter_service = None
-    
+
     def _get_ollama_service(self):
         if self._ollama_service is None:
             from app.services.ollama_service import ollama_service
+
             self._ollama_service = ollama_service
         return self._ollama_service
-    
+
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
             from app.services.openrouter_service import openrouter_service
+
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
     def _extract_bucket_from_results(
-        self,
-        results: List[Dict[str, Any]],
-        db: Session
+        self, results: List[Dict[str, Any]], db: Session
     ) -> DocumentBucket:
         """Extract document bucket from search results"""
         try:
@@ -67,7 +68,7 @@ class GraphRAGService:
         initial_results: List[Dict[str, Any]],
         db: Session,
         top_k_entities: int = 10,
-        expansion_depth: int = 2
+        expansion_depth: int = 2,
     ) -> Dict[str, Any]:
         """
         Enhance search results using knowledge graph
@@ -88,9 +89,7 @@ class GraphRAGService:
 
             # Find relevant entities from search results
             result_entities = await self._find_entities_in_results(
-                initial_results,
-                db,
-                limit=top_k_entities
+                initial_results, db, limit=top_k_entities
             )
 
             # Combine query and result entities
@@ -102,29 +101,22 @@ class GraphRAGService:
                     "results": initial_results,
                     "graph_context": None,
                     "related_entities": [],
-                    "explanation": "No relevant entities found in knowledge graph"
+                    "explanation": "No relevant entities found in knowledge graph",
                 }
 
             # Expand to find related entities
             expanded_entities = await self._expand_entities(
-                all_relevant_entities,
-                db,
-                max_depth=expansion_depth
+                all_relevant_entities, db, max_depth=expansion_depth
             )
 
             # Build graph context
             graph_context = await self._build_graph_context(
-                all_relevant_entities,
-                expanded_entities,
-                db
+                all_relevant_entities, expanded_entities, db
             )
 
             # Rank and augment results
             enhanced_results = await self._rank_results_with_graph(
-                initial_results,
-                all_relevant_entities,
-                expanded_entities,
-                db
+                initial_results, all_relevant_entities, expanded_entities, db
             )
 
             return {
@@ -133,7 +125,7 @@ class GraphRAGService:
                 "graph_context": graph_context,
                 "related_entities": expanded_entities[:20],
                 "entity_count": len(all_relevant_entities),
-                "explanation": f"Enhanced with {len(all_relevant_entities)} entities and {len(expanded_entities)} related concepts"
+                "explanation": f"Enhanced with {len(all_relevant_entities)} entities and {len(expanded_entities)} related concepts",
             }
 
         except Exception as e:
@@ -142,22 +134,18 @@ class GraphRAGService:
                 "query": query,
                 "results": initial_results,
                 "graph_context": None,
-                "error": str(e)
+                "error": str(e),
             }
 
-    async def _extract_query_entities(
-        self,
-        query: str,
-        db: Session
-    ) -> List[str]:
+    async def _extract_query_entities(self, query: str, db: Session) -> List[str]:
         """Extract entity names from the query"""
         # Simple extraction: find entities mentioned in query
         entities = []
 
         # Get all entities and check if their names appear in query
-        all_entities = db.query(Entity).filter(
-            Entity.document_count > 0
-        ).limit(100).all()
+        all_entities = (
+            db.query(Entity).filter(Entity.document_count > 0).limit(100).all()
+        )
 
         query_lower = query.lower()
         for entity in all_entities:
@@ -167,10 +155,7 @@ class GraphRAGService:
         return entities
 
     async def _find_entities_in_results(
-        self,
-        results: List[Dict[str, Any]],
-        db: Session,
-        limit: int = 10
+        self, results: List[Dict[str, Any]], db: Session, limit: int = 10
     ) -> List[str]:
         """Find entities mentioned in search results"""
         entity_scores = defaultdict(int)
@@ -181,22 +166,25 @@ class GraphRAGService:
                 continue
 
             # Get entity mentions for this document
-            mentions = db.query(EntityMention).filter(
-                EntityMention.document_id == document_id
-            ).all()
+            mentions = (
+                db.query(EntityMention)
+                .filter(EntityMention.document_id == document_id)
+                .all()
+            )
 
             for mention in mentions:
-                entity_scores[mention.entity_id] += result.get("score", 1) * mention.confidence_score / 100
+                entity_scores[mention.entity_id] += (
+                    result.get("score", 1) * mention.confidence_score / 100
+                )
 
         # Sort by score and return top entity IDs
-        sorted_entities = sorted(entity_scores.items(), key=lambda x: x[1], reverse=True)
+        sorted_entities = sorted(
+            entity_scores.items(), key=lambda x: x[1], reverse=True
+        )
         return [entity_id for entity_id, _ in sorted_entities[:limit]]
 
     async def _expand_entities(
-        self,
-        entity_ids: List[str],
-        db: Session,
-        max_depth: int = 2
+        self, entity_ids: List[str], db: Session, max_depth: int = 2
     ) -> List[Dict[str, Any]]:
         """Expand to find related entities through graph traversal"""
         visited = set(entity_ids)
@@ -210,9 +198,11 @@ class GraphRAGService:
                 continue
 
             # Get outgoing relationships
-            outgoing = db.query(EntityRelationship).filter(
-                EntityRelationship.source_id == current_id
-            ).all()
+            outgoing = (
+                db.query(EntityRelationship)
+                .filter(EntityRelationship.source_id == current_id)
+                .all()
+            )
 
             for rel in outgoing:
                 target_id = str(rel.target_id)
@@ -221,20 +211,24 @@ class GraphRAGService:
 
                     target = db.query(Entity).get(target_id)
                     if target:
-                        related_entities.append({
-                            "id": target_id,
-                            "name": target.name,
-                            "type": target.entity_type.value,
-                            "relation": rel.relation_type.value,
-                            "depth": depth + 1,
-                            "confidence": rel.confidence_score
-                        })
+                        related_entities.append(
+                            {
+                                "id": target_id,
+                                "name": target.name,
+                                "type": target.entity_type.value,
+                                "relation": rel.relation_type.value,
+                                "depth": depth + 1,
+                                "confidence": rel.confidence_score,
+                            }
+                        )
                         queue.append((target_id, depth + 1))
 
             # Get incoming relationships
-            incoming = db.query(EntityRelationship).filter(
-                EntityRelationship.target_id == current_id
-            ).all()
+            incoming = (
+                db.query(EntityRelationship)
+                .filter(EntityRelationship.target_id == current_id)
+                .all()
+            )
 
             for rel in incoming:
                 source_id = str(rel.source_id)
@@ -243,14 +237,16 @@ class GraphRAGService:
 
                     source = db.query(Entity).get(source_id)
                     if source:
-                        related_entities.append({
-                            "id": source_id,
-                            "name": source.name,
-                            "type": source.entity_type.value,
-                            "relation": f"incoming_{rel.relation_type.value}",
-                            "depth": depth + 1,
-                            "confidence": rel.confidence_score
-                        })
+                        related_entities.append(
+                            {
+                                "id": source_id,
+                                "name": source.name,
+                                "type": source.entity_type.value,
+                                "relation": f"incoming_{rel.relation_type.value}",
+                                "depth": depth + 1,
+                                "confidence": rel.confidence_score,
+                            }
+                        )
                         queue.append((source_id, depth + 1))
 
         # Sort by depth and confidence
@@ -261,55 +257,63 @@ class GraphRAGService:
         self,
         core_entities: List[str],
         related_entities: List[Dict[str, Any]],
-        db: Session
+        db: Session,
     ) -> Dict[str, Any]:
         """Build context string from graph structure"""
-        context = {
-            "core_entities": [],
-            "relationships": [],
-            "paths": []
-        }
+        context = {"core_entities": [], "relationships": [], "paths": []}
 
         # Get details of core entities
         for entity_id in core_entities:
             entity = db.query(Entity).get(entity_id)
             if entity:
-                context["core_entities"].append({
-                    "id": entity_id,
-                    "name": entity.name,
-                    "type": entity.entity_type.value,
-                    "aliases": entity.aliases,
-                    "attributes": entity.attributes
-                })
+                context["core_entities"].append(
+                    {
+                        "id": entity_id,
+                        "name": entity.name,
+                        "type": entity.entity_type.value,
+                        "aliases": entity.aliases,
+                        "attributes": entity.attributes,
+                    }
+                )
 
         # Get relationships between core entities
         for i, id1 in enumerate(core_entities):
-            for id2 in core_entities[i+1:]:
-                rel = db.query(EntityRelationship).filter(
-                    and_(
-                        EntityRelationship.source_id == id1,
-                        EntityRelationship.target_id == id2
+            for id2 in core_entities[i + 1 :]:
+                rel = (
+                    db.query(EntityRelationship)
+                    .filter(
+                        and_(
+                            EntityRelationship.source_id == id1,
+                            EntityRelationship.target_id == id2,
+                        )
                     )
-                ).first()
+                    .first()
+                )
 
                 if not rel:
-                    rel = db.query(EntityRelationship).filter(
-                        and_(
-                            EntityRelationship.source_id == id2,
-                            EntityRelationship.target_id == id1
+                    rel = (
+                        db.query(EntityRelationship)
+                        .filter(
+                            and_(
+                                EntityRelationship.source_id == id2,
+                                EntityRelationship.target_id == id1,
+                            )
                         )
-                    ).first()
+                        .first()
+                    )
 
                 if rel:
                     e1 = db.query(Entity).get(id1)
                     e2 = db.query(Entity).get(id2)
                     if e1 and e2:
-                        context["relationships"].append({
-                            "from": e1.name,
-                            "to": e2.name,
-                            "type": rel.relation_type.value,
-                            "confidence": rel.confidence_score
-                        })
+                        context["relationships"].append(
+                            {
+                                "from": e1.name,
+                                "to": e2.name,
+                                "type": rel.relation_type.value,
+                                "confidence": rel.confidence_score,
+                            }
+                        )
 
         return context
 
@@ -318,7 +322,7 @@ class GraphRAGService:
         initial_results: List[Dict[str, Any]],
         core_entities: List[str],
         related_entities: List[Dict[str, Any]],
-        db: Session
+        db: Session,
     ) -> List[Dict[str, Any]]:
         """Re-rank search results based on graph relevance"""
         all_entity_ids = set(core_entities + [e["id"] for e in related_entities])
@@ -329,12 +333,16 @@ class GraphRAGService:
 
             if document_id:
                 # Get entity mentions for this document
-                mentions = db.query(EntityMention).filter(
-                    and_(
-                        EntityMention.document_id == document_id,
-                        EntityMention.entity_id.in_(all_entity_ids)
+                mentions = (
+                    db.query(EntityMention)
+                    .filter(
+                        and_(
+                            EntityMention.document_id == document_id,
+                            EntityMention.entity_id.in_(all_entity_ids),
+                        )
                     )
-                ).all()
+                    .all()
+                )
 
                 for mention in mentions:
                     # Boost score based on entity relevance
@@ -345,7 +353,9 @@ class GraphRAGService:
                         for re in related_entities:
                             if re["id"] == mention.entity_id:
                                 depth_factor = 1.0 / (re["depth"] + 1)
-                                graph_boost += 0.05 * depth_factor * (re["confidence"] / 100)
+                                graph_boost += (
+                                    0.05 * depth_factor * (re["confidence"] / 100)
+                                )
                                 break
 
             # Apply graph boost
@@ -363,7 +373,7 @@ class GraphRAGService:
         enhanced_results: Dict[str, Any],
         db: Session,
         stream: bool = True,
-        bucket: Optional[DocumentBucket] = None
+        bucket: Optional[DocumentBucket] = None,
     ) -> Any:
         """
         Generate an answer using graph-aware context
@@ -383,10 +393,10 @@ class GraphRAGService:
             if bucket is None:
                 results = enhanced_results.get("results", [])
                 bucket = self._extract_bucket_from_results(results, db)
-            
+
             # Determine LLM routing based on bucket
             use_ollama = bucket == DocumentBucket.CONFIDENTIAL
-            
+
             # Build context from graph
             graph_context = enhanced_results.get("graph_context", {})
             related_entities = enhanced_results.get("related_entities", [])
@@ -446,28 +456,30 @@ Key Principles:
 
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_prompt},
             ]
 
             # Get appropriate LLM service based on bucket
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            llm_service = (
+                self._get_ollama_service()
+                if use_ollama
+                else self._get_openrouter_service()
+            )
 
             if stream:
                 return llm_service.chat_completion(
-                    messages=messages,
-                    stream=True,
-                    temperature=0.7,
-                    max_tokens=2048
+                    messages=messages, stream=True, temperature=0.7, max_tokens=2048
                 )
             else:
                 response = []
                 async for chunk in llm_service.chat_completion(
-                    messages=messages,
-                    stream=False,
-                    temperature=0.7,
-                    max_tokens=2048
+                    messages=messages, stream=False, temperature=0.7, max_tokens=2048
                 ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    if (
+                        chunk
+                        and not chunk.startswith("Error:")
+                        and not chunk.startswith("__USAGE__")
+                    ):
                         response.append(chunk)
                 return "".join(response)
 
@@ -480,7 +492,7 @@ Key Principles:
         source_entity_name: str,
         target_entity_name: str,
         db: Session,
-        max_path_length: int = 4
+        max_path_length: int = 4,
     ) -> List[Dict[str, Any]]:
         """
         Find paths between two entities in the knowledge graph
@@ -497,13 +509,17 @@ Key Principles:
         from collections import deque
 
         # Find entities
-        source = db.query(Entity).filter(
-            Entity.name.ilike(f"%{source_entity_name}%")
-        ).first()
+        source = (
+            db.query(Entity)
+            .filter(Entity.name.ilike(f"%{source_entity_name}%"))
+            .first()
+        )
 
-        target = db.query(Entity).filter(
-            Entity.name.ilike(f"%{target_entity_name}%")
-        ).first()
+        target = (
+            db.query(Entity)
+            .filter(Entity.name.ilike(f"%{target_entity_name}%"))
+            .first()
+        )
 
         if not source or not target:
             return []
@@ -524,36 +540,45 @@ Key Principles:
                 continue
 
             # Get neighbors
-            relationships = db.query(EntityRelationship).filter(
-                or_(
-                    EntityRelationship.source_id == current_id,
-                    EntityRelationship.target_id == current_id
+            relationships = (
+                db.query(EntityRelationship)
+                .filter(
+                    or_(
+                        EntityRelationship.source_id == current_id,
+                        EntityRelationship.target_id == current_id,
+                    )
                 )
-            ).all()
+                .all()
+            )
 
             for rel in relationships:
-                next_id = rel.target_id if rel.source_id == current_id else rel.source_id
+                next_id = (
+                    rel.target_id if rel.source_id == current_id else rel.source_id
+                )
                 next_id_str = str(next_id)
 
                 if next_id_str not in visited:
                     visited.add(next_id_str)
                     entity = db.query(Entity).get(next_id)
                     if entity:
-                        new_path = path + [{
-                            "entity": entity.name,
-                            "entity_type": entity.entity_type.value,
-                            "relation": rel.relation_type.value,
-                            "direction": "outgoing" if rel.source_id == current_id else "incoming"
-                        }]
+                        new_path = path + [
+                            {
+                                "entity": entity.name,
+                                "entity_type": entity.entity_type.value,
+                                "relation": rel.relation_type.value,
+                                "direction": (
+                                    "outgoing"
+                                    if rel.source_id == current_id
+                                    else "incoming"
+                                ),
+                            }
+                        ]
                         queue.append((next_id, new_path))
 
         return paths
 
     async def get_entity_neighborhood(
-        self,
-        entity_name: str,
-        db: Session,
-        radius: int = 2
+        self, entity_name: str, db: Session, radius: int = 2
     ) -> Dict[str, Any]:
         """
         Get the neighborhood around an entity
@@ -566,14 +591,14 @@ Key Principles:
         Returns:
             Neighborhood graph data
         """
-        entity = db.query(Entity).filter(
-            Entity.name.ilike(f"%{entity_name}%")
-        ).first()
+        entity = db.query(Entity).filter(Entity.name.ilike(f"%{entity_name}%")).first()
 
         if not entity:
             return {"error": "Entity not found"}
 
-        nodes = {str(entity.id): {"name": entity.name, "type": entity.entity_type.value}}
+        nodes = {
+            str(entity.id): {"name": entity.name, "type": entity.entity_type.value}
+        }
         edges = []
 
         # Expand outward
@@ -585,9 +610,11 @@ Key Principles:
 
             for node_id in current_frontier:
                 # Get outgoing relationships
-                outgoing = db.query(EntityRelationship).filter(
-                    EntityRelationship.source_id == node_id
-                ).all()
+                outgoing = (
+                    db.query(EntityRelationship)
+                    .filter(EntityRelationship.source_id == node_id)
+                    .all()
+                )
 
                 for rel in outgoing:
                     target_id = str(rel.target_id)
@@ -596,19 +623,26 @@ Key Principles:
                     if target and target_id not in visited:
                         visited.add(target_id)
                         next_frontier.append(target_id)
-                        nodes[target_id] = {"name": target.name, "type": target.entity_type.value}
+                        nodes[target_id] = {
+                            "name": target.name,
+                            "type": target.entity_type.value,
+                        }
 
-                    edges.append({
-                        "source": node_id,
-                        "target": target_id,
-                        "type": rel.relation_type.value,
-                        "weight": rel.document_count
-                    })
+                    edges.append(
+                        {
+                            "source": node_id,
+                            "target": target_id,
+                            "type": rel.relation_type.value,
+                            "weight": rel.document_count,
+                        }
+                    )
 
                 # Get incoming relationships
-                incoming = db.query(EntityRelationship).filter(
-                    EntityRelationship.target_id == node_id
-                ).all()
+                incoming = (
+                    db.query(EntityRelationship)
+                    .filter(EntityRelationship.target_id == node_id)
+                    .all()
+                )
 
                 for rel in incoming:
                     source_id = str(rel.source_id)
@@ -617,14 +651,19 @@ Key Principles:
                     if source and source_id not in visited:
                         visited.add(source_id)
                         next_frontier.append(source_id)
-                        nodes[source_id] = {"name": source.name, "type": source.entity_type.value}
+                        nodes[source_id] = {
+                            "name": source.name,
+                            "type": source.entity_type.value,
+                        }
 
-                    edges.append({
-                        "source": source_id,
-                        "target": node_id,
-                        "type": rel.relation_type.value,
-                        "weight": rel.document_count
-                    })
+                    edges.append(
+                        {
+                            "source": source_id,
+                            "target": node_id,
+                            "type": rel.relation_type.value,
+                            "weight": rel.document_count,
+                        }
+                    )
 
             current_frontier = next_frontier
 
@@ -635,7 +674,7 @@ Key Principles:
             "edges": edges,
             "node_count": len(nodes),
             "edge_count": len(edges),
-            "radius": radius
+            "radius": radius,
         }
 
 

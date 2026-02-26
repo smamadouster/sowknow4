@@ -9,6 +9,7 @@ all LLM responses for a collection can be bulk-invalidated when the collection
 is updated or deleted (see openrouter_service.invalidate_collection_cache).
 Cache key prefix: collection:{collection_id}:query:{hash}
 """
+
 import logging
 import uuid
 from typing import List, Optional, Dict, Any
@@ -19,6 +20,7 @@ from sqlalchemy import and_, or_, desc
 # Redis-backed cache invalidation for collection LLM responses
 try:
     from app.services.openrouter_service import openrouter_service as _openrouter_svc
+
     _CACHE_KEY_PREFIX = "collection"
     _cache_invalidation_enabled = True
 except ImportError:
@@ -29,16 +31,16 @@ from app.models.collection import (
     CollectionItem,
     CollectionChatSession,
     CollectionVisibility,
-    CollectionType
+    CollectionType,
 )
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
 from app.models.chat import ChatSession, LLMProvider
-from app.schemas.collection import (
-    CollectionCreate,
-    CollectionUpdate
+from app.schemas.collection import CollectionCreate, CollectionUpdate
+from app.services.intent_parser import (
+    intent_parser_service,
+    ParsedIntent as ParsedIntentModel,
 )
-from app.services.intent_parser import intent_parser_service, ParsedIntent as ParsedIntentModel
 from app.services.search_service import search_service
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
@@ -61,16 +63,13 @@ class CollectionService:
             return [
                 CollectionVisibility.PRIVATE,
                 CollectionVisibility.SHARED,
-                CollectionVisibility.PUBLIC
+                CollectionVisibility.PUBLIC,
             ]
         else:
             return [CollectionVisibility.PUBLIC]
 
     async def create_collection(
-        self,
-        collection_data: CollectionCreate,
-        user: User,
-        db: Session
+        self, collection_data: CollectionCreate, user: User, db: Session
     ) -> Collection:
         """
         Create a new Smart Collection from natural language query
@@ -84,20 +83,21 @@ class CollectionService:
             Created Collection object
         """
         # Determine if user has access to confidential documents (for LLM routing)
-        use_ollama = hasattr(user, 'role') and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
-        
+        use_ollama = hasattr(user, "role") and user.role in [
+            UserRole.ADMIN,
+            UserRole.SUPERUSER,
+        ]
+
         # Parse intent from natural language query
         parsed_intent = await self.intent_parser.parse_intent(
             query=collection_data.query,
             user_language="en",  # TODO: Get from user profile
-            use_ollama=use_ollama
+            use_ollama=use_ollama,
         )
 
         # Gather documents based on parsed intent
         documents = await self._gather_documents_for_intent(
-            intent=parsed_intent,
-            user=user,
-            db=db
+            intent=parsed_intent, user=user, db=db
         )
 
         # Generate AI summary if documents found
@@ -110,7 +110,7 @@ class CollectionService:
                 collection_name=parsed_intent.collection_name or collection_data.name,
                 query=collection_data.query,
                 documents=documents[:10],  # Summarize top 10
-                parsed_intent=parsed_intent
+                parsed_intent=parsed_intent,
             )
 
         # Create collection
@@ -129,7 +129,7 @@ class CollectionService:
             document_count=len(documents),
             last_refreshed_at=datetime.utcnow().isoformat(),
             is_pinned=False,
-            is_favorite=False
+            is_favorite=False,
         )
 
         db.add(collection)
@@ -146,21 +146,20 @@ class CollectionService:
                 relevance_score=relevance,
                 order_index=idx,
                 added_by="ai",
-                added_reason=f"Matched query: {collection_data.query}"
+                added_reason=f"Matched query: {collection_data.query}",
             )
             db.add(item)
 
         db.commit()
         db.refresh(collection)
 
-        logger.info(f"Created collection '{collection.name}' with {len(documents)} documents for user {user.email}")
+        logger.info(
+            f"Created collection '{collection.name}' with {len(documents)} documents for user {user.email}"
+        )
         return collection
 
     async def preview_collection(
-        self,
-        query: str,
-        user: User,
-        db: Session
+        self, query: str, user: User, db: Session
     ) -> Dict[str, Any]:
         """
         Preview a collection without saving it
@@ -174,19 +173,19 @@ class CollectionService:
             Preview data with intent and documents
         """
         # Determine if user has access to confidential documents (for LLM routing)
-        use_ollama = hasattr(user, 'role') and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
-        
+        use_ollama = hasattr(user, "role") and user.role in [
+            UserRole.ADMIN,
+            UserRole.SUPERUSER,
+        ]
+
         # Parse intent
         parsed_intent = await self.intent_parser.parse_intent(
-            query=query,
-            use_ollama=use_ollama
+            query=query, use_ollama=use_ollama
         )
 
         # Gather documents
         documents = await self._gather_documents_for_intent(
-            intent=parsed_intent,
-            user=user,
-            db=db
+            intent=parsed_intent, user=user, db=db
         )
 
         # Generate quick summary
@@ -196,7 +195,7 @@ class CollectionService:
                 collection_name=parsed_intent.collection_name or "Preview",
                 query=query,
                 documents=documents[:5],
-                parsed_intent=parsed_intent
+                parsed_intent=parsed_intent,
             )
 
         return {
@@ -205,13 +204,13 @@ class CollectionService:
                 {
                     "id": str(doc.id),
                     "filename": doc.filename,
-                    "created_at": doc.created_at.isoformat()
+                    "created_at": doc.created_at.isoformat(),
                 }
                 for doc in documents[:20]
             ],
             "estimated_count": len(documents),
             "ai_summary": ai_summary,
-            "suggested_name": parsed_intent.collection_name or query[:50]
+            "suggested_name": parsed_intent.collection_name or query[:50],
         }
 
     async def refresh_collection(
@@ -219,7 +218,7 @@ class CollectionService:
         collection_id: uuid.UUID,
         user: User,
         db: Session,
-        update_summary: bool = True
+        update_summary: bool = True,
     ) -> Collection:
         """
         Refresh collection documents based on original query
@@ -233,30 +232,29 @@ class CollectionService:
         Returns:
             Updated Collection
         """
-        collection = db.query(Collection).filter(
-            and_(
-                Collection.id == collection_id,
-                Collection.user_id == user.id
-            )
-        ).first()
+        collection = (
+            db.query(Collection)
+            .filter(and_(Collection.id == collection_id, Collection.user_id == user.id))
+            .first()
+        )
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
         # Determine if user has access to confidential documents (for LLM routing)
-        use_ollama = hasattr(user, 'role') and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
-        
+        use_ollama = hasattr(user, "role") and user.role in [
+            UserRole.ADMIN,
+            UserRole.SUPERUSER,
+        ]
+
         # Re-parse intent from stored query
         parsed_intent = await self.intent_parser.parse_intent(
-            query=collection.query,
-            use_ollama=use_ollama
+            query=collection.query, use_ollama=use_ollama
         )
 
         # Gather documents
         documents = await self._gather_documents_for_intent(
-            intent=parsed_intent,
-            user=user,
-            db=db
+            intent=parsed_intent, user=user, db=db
         )
 
         # Remove existing items
@@ -274,7 +272,7 @@ class CollectionService:
                 relevance_score=relevance,
                 order_index=idx,
                 added_by="ai",
-                added_reason="Refreshed collection"
+                added_reason="Refreshed collection",
             )
             db.add(item)
 
@@ -284,7 +282,7 @@ class CollectionService:
                 collection_name=collection.name,
                 query=collection.query,
                 documents=documents[:10],
-                parsed_intent=parsed_intent
+                parsed_intent=parsed_intent,
             )
 
         # Update metadata
@@ -296,14 +294,13 @@ class CollectionService:
         db.commit()
         db.refresh(collection)
 
-        logger.info(f"Refreshed collection '{collection.name}' with {len(documents)} documents")
+        logger.info(
+            f"Refreshed collection '{collection.name}' with {len(documents)} documents"
+        )
         return collection
 
     async def _gather_documents_for_intent(
-        self,
-        intent: ParsedIntentModel,
-        user: User,
-        db: Session
+        self, intent: ParsedIntentModel, user: User, db: Session
     ) -> List[Document]:
         """
         Gather documents based on parsed intent
@@ -317,9 +314,7 @@ class CollectionService:
             List of matching documents
         """
         # Build base query
-        query = db.query(Document).filter(
-            Document.status == DocumentStatus.INDEXED
-        )
+        query = db.query(Document).filter(Document.status == DocumentStatus.INDEXED)
 
         # Apply bucket filter based on user role
         if user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
@@ -331,12 +326,18 @@ class CollectionService:
             mime_type_map = {
                 "pdf": ["application/pdf"],
                 "image": ["image/jpeg", "image/png", "image/gif", "image/webp"],
-                "docx": ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+                "docx": [
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ],
                 "txt": ["text/plain"],
                 "md": ["text/markdown"],
                 "json": ["application/json"],
-                "spreadsheet": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
-                "presentation": ["application/vnd.openxmlformats-officedocument.presentationml.presentation"]
+                "spreadsheet": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "presentation": [
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                ],
             }
 
             mime_types = []
@@ -351,18 +352,34 @@ class CollectionService:
         if intent.date_range:
             resolved_range = intent._resolve_date_range()
             if resolved_range:
-                start_val = resolved_range.get("start") if isinstance(resolved_range, dict) else None
-                end_val = resolved_range.get("end") if isinstance(resolved_range, dict) else None
+                start_val = (
+                    resolved_range.get("start")
+                    if isinstance(resolved_range, dict)
+                    else None
+                )
+                end_val = (
+                    resolved_range.get("end")
+                    if isinstance(resolved_range, dict)
+                    else None
+                )
                 try:
-                    start_date = datetime.fromisoformat(start_val) if isinstance(start_val, str) else (start_val if isinstance(start_val, datetime) else None)
-                    end_date = datetime.fromisoformat(end_val) if isinstance(end_val, str) else (end_val if isinstance(end_val, datetime) else None)
+                    start_date = (
+                        datetime.fromisoformat(start_val)
+                        if isinstance(start_val, str)
+                        else (start_val if isinstance(start_val, datetime) else None)
+                    )
+                    end_date = (
+                        datetime.fromisoformat(end_val)
+                        if isinstance(end_val, str)
+                        else (end_val if isinstance(end_val, datetime) else None)
+                    )
                 except (TypeError, ValueError):
                     start_date = end_date = None
                 if start_date and end_date:
                     query = query.filter(
                         and_(
                             Document.created_at >= start_date,
-                            Document.created_at < end_date
+                            Document.created_at < end_date,
                         )
                     )
 
@@ -371,11 +388,7 @@ class CollectionService:
             # Use hybrid search for better results
             search_query = " ".join(intent.keywords)
             search_result = await self.search_service.hybrid_search(
-                query=search_query,
-                limit=100,
-                offset=0,
-                db=db,
-                user=user
+                query=search_query, limit=100, offset=0, db=db, user=user
             )
 
             # Extract unique document IDs from search results
@@ -390,9 +403,7 @@ class CollectionService:
         return documents
 
     def _calculate_relevance(
-        self,
-        document: Document,
-        intent: ParsedIntentModel
+        self, document: Document, intent: ParsedIntentModel
     ) -> int:
         """Calculate relevance score for document"""
         score = 50  # Base score
@@ -411,7 +422,7 @@ class CollectionService:
         collection_name: str,
         query: str,
         documents: List[Document],
-        parsed_intent: ParsedIntentModel
+        parsed_intent: ParsedIntentModel,
     ) -> str:
         """
         Generate AI summary for collection with privacy-preserving LLM routing
@@ -429,22 +440,29 @@ class CollectionService:
         """
         # Check for confidential documents - PRIVACY FIRST
         has_confidential = any(
-            doc.bucket == DocumentBucket.CONFIDENTIAL
-            for doc in documents
+            doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents
         )
 
         # Build document list for AI (filenames only for privacy)
-        doc_list = "\n".join([
-            f"- {doc.filename} (created: {doc.created_at.strftime('%Y-%m-%d')})"
-            for doc in documents
-        ])
+        doc_list = "\n".join(
+            [
+                f"- {doc.filename} (created: {doc.created_at.strftime('%Y-%m-%d')})"
+                for doc in documents
+            ]
+        )
 
-        entities_str = ', '.join([e['name'] for e in parsed_intent.entities]) if parsed_intent.entities else 'None'
+        entities_str = (
+            ", ".join([e["name"] for e in parsed_intent.entities])
+            if parsed_intent.entities
+            else "None"
+        )
 
         try:
             if has_confidential:
                 # Use Ollama for confidential collections - keeps data local
-                logger.info(f"Collection summary using Ollama (confidential documents detected) for: {collection_name}")
+                logger.info(
+                    f"Collection summary using Ollama (confidential documents detected) for: {collection_name}"
+                )
 
                 prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
 
@@ -460,12 +478,14 @@ Generate a concise summary describing what this collection contains and its key 
                 response = await self.ollama_service.generate(
                     prompt=prompt,
                     system="You are a helpful assistant that summarizes document collections concisely.",
-                    temperature=0.5
+                    temperature=0.5,
                 )
                 return response.strip()
             else:
                 # Use OpenRouter (MiniMax) for public collections - cost optimized
-                logger.info(f"Collection summary using OpenRouter (public documents only) for: {collection_name}")
+                logger.info(
+                    f"Collection summary using OpenRouter (public documents only) for: {collection_name}"
+                )
 
                 prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
 
@@ -479,20 +499,25 @@ Entities found: {entities_str}
 Generate a concise summary describing what this collection contains and its key themes."""
 
                 messages = [
-                    {"role": "system", "content": "You are a helpful assistant that summarizes document collections concisely."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that summarizes document collections concisely.",
+                    },
+                    {"role": "user", "content": prompt},
                 ]
 
                 response_parts = []
                 # Use OpenRouter to route to MiniMax/Kimi for public documents
                 from app.services.openrouter_service import openrouter_service
+
                 async for chunk in openrouter_service.chat_completion(
-                    messages=messages,
-                    stream=False,
-                    temperature=0.5,
-                    max_tokens=500
+                    messages=messages, stream=False, temperature=0.5, max_tokens=500
                 ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    if (
+                        chunk
+                        and not chunk.startswith("Error:")
+                        and not chunk.startswith("__USAGE__")
+                    ):
                         response_parts.append(chunk)
 
                 return "".join(response_parts).strip()
@@ -501,20 +526,20 @@ Generate a concise summary describing what this collection contains and its key 
             logger.error(f"Failed to generate collection summary: {e}")
             return f"Collection of {len(documents)} documents related to: {query}"
 
-    def get_collection_stats(
-        self,
-        user: User,
-        db: Session
-    ) -> Dict[str, Any]:
+    def get_collection_stats(self, user: User, db: Session) -> Dict[str, Any]:
         """Get statistics about user's collections"""
         visibility_filter = self._get_user_visibility_filter(user)
 
-        collections = db.query(Collection).filter(
-            or_(
-                Collection.user_id == user.id,
-                Collection.visibility.in_(visibility_filter)
+        collections = (
+            db.query(Collection)
+            .filter(
+                or_(
+                    Collection.user_id == user.id,
+                    Collection.visibility.in_(visibility_filter),
+                )
             )
-        ).all()
+            .all()
+        )
 
         total_docs = sum(c.document_count for c in collections)
         avg_docs = total_docs / len(collections) if collections else 0
@@ -522,7 +547,9 @@ Generate a concise summary describing what this collection contains and its key 
         # Count by type
         by_type = {}
         for c in collections:
-            by_type[c.collection_type.value] = by_type.get(c.collection_type.value, 0) + 1
+            by_type[c.collection_type.value] = (
+                by_type.get(c.collection_type.value, 0) + 1
+            )
 
         # Recent activity (last 5 updated)
         recent = sorted(collections, key=lambda x: x.updated_at, reverse=True)[:5]
@@ -538,10 +565,10 @@ Generate a concise summary describing what this collection contains and its key 
                 {
                     "id": str(c.id),
                     "name": c.name,
-                    "updated_at": c.updated_at.isoformat()
+                    "updated_at": c.updated_at.isoformat(),
                 }
                 for c in recent
-            ]
+            ],
         }
 
 

@@ -2,7 +2,7 @@
 Admin API endpoints for user management, dashboard, stats, and audit logging
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import status, APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, desc
 from datetime import datetime, timedelta
@@ -155,7 +155,7 @@ async def get_user_details(
 
     if not user:
         # Use generic error message to prevent user enumeration
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Log the admin action
     create_audit_log(
@@ -170,7 +170,7 @@ async def get_user_details(
     return UserManagementResponse.model_validate(user)
 
 
-@router.post("/users", response_model=UserPublic, status_code=201)
+@router.post("/users", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_data: UserCreateByAdmin,
     current_user: User = Depends(require_admin_only),
@@ -189,7 +189,7 @@ async def create_user(
     if existing_user:
         # Generic error message to prevent user enumeration
         raise HTTPException(
-            status_code=400, detail="User with this email already exists"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists"
         )
 
     # Hash the password
@@ -245,11 +245,11 @@ async def update_user(
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Prevent self-modification of critical fields
     if user.id == current_user.id and updates.role is not None:
-        raise HTTPException(status_code=400, detail="Cannot modify your own role")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify your own role")
 
     # Track changes for audit log
     changes = {}
@@ -265,7 +265,7 @@ async def update_user(
             )
             if admin_count <= 1:
                 raise HTTPException(
-                    status_code=400,
+                    status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot change role: At least one admin must remain",
                 )
 
@@ -330,11 +330,11 @@ async def delete_user(
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Prevent self-deletion
     if user.id == current_user.id:
-        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
 
     # Check if this would leave no admins
     if user.role == UserRole.ADMIN:
@@ -343,7 +343,7 @@ async def delete_user(
         )
         if admin_count <= 1:
             raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete user: At least one admin must remain",
             )
 
@@ -390,7 +390,7 @@ async def reset_user_password(
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Hash the new password
     hashed_password = get_password_hash(password_data.new_password)
@@ -828,7 +828,7 @@ async def get_dashboard(
     try:
         import httpx
 
-        ollama_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
         response = httpx.get(f"{ollama_url}/api/tags", timeout=2)
         if response.status_code == 200:
             health_status["ollama"] = "healthy"
@@ -849,3 +849,154 @@ async def get_dashboard(
         system_health=health_status,
         last_updated=datetime.utcnow(),
     )
+
+
+# ============================================================================
+# DEAD LETTER QUEUE ENDPOINTS (Admin Only)
+# ============================================================================
+
+
+@router.get("/failed-tasks")  # admin: list failed tasks in the Dead Letter Queue
+async def list_failed_tasks(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
+    task_name: Optional[str] = Query(None, description="Filter by task name"),
+    current_user: User = Depends(require_admin_only),
+    db: Session = Depends(get_db),
+):
+    """
+    List permanently failed Celery tasks stored in the Dead Letter Queue.
+
+    Admin only. Returns paginated results ordered by failure time (newest first).
+    """
+    from app.models.failed_task import FailedCeleryTask
+    from sqlalchemy import desc
+
+    query = db.query(FailedCeleryTask)
+    if task_name:
+        query = query.filter(FailedCeleryTask.task_name.ilike(f"%{task_name}%"))
+
+    total = query.count()
+    items = (
+        query.order_by(desc(FailedCeleryTask.failed_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": str(item.id),
+                "task_name": item.task_name,
+                "task_id": item.task_id,
+                "exception_type": item.exception_type,
+                "exception_message": item.exception_message,
+                "retry_count": item.retry_count,
+                "failed_at": item.failed_at.isoformat() if item.failed_at else None,
+                "metadata": item.task_metadata,
+            }
+            for item in items
+        ],
+    }
+
+
+@router.get("/failed-tasks/{task_id}")
+async def get_failed_task(
+    task_id: str,
+    current_user: User = Depends(require_admin_only),
+    db: Session = Depends(get_db),
+):
+    """Get a single failed task with full traceback (Admin only)."""
+    from app.models.failed_task import FailedCeleryTask
+
+    item = (
+        db.query(FailedCeleryTask)
+        .filter(FailedCeleryTask.task_id == task_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Failed task not found")
+
+    return {
+        "id": str(item.id),
+        "task_name": item.task_name,
+        "task_id": item.task_id,
+        "args": item.args,
+        "kwargs": item.kwargs,
+        "exception_type": item.exception_type,
+        "exception_message": item.exception_message,
+        "traceback": item.traceback,
+        "retry_count": item.retry_count,
+        "failed_at": item.failed_at.isoformat() if item.failed_at else None,
+        "metadata": item.task_metadata,
+    }
+
+
+@router.delete("/failed-tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_failed_task(
+    task_id: str,
+    current_user: User = Depends(require_admin_only),
+    db: Session = Depends(get_db),
+):
+    """Delete a single failed task from the DLQ (Admin only)."""
+    from app.models.failed_task import FailedCeleryTask
+
+    item = (
+        db.query(FailedCeleryTask)
+        .filter(FailedCeleryTask.task_id == task_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Failed task not found")
+
+    db.delete(item)
+    db.commit()
+
+
+# ============================================================================
+# ALERT TEST ENDPOINT (Admin Only)
+# ============================================================================
+
+
+@router.post("/test-alert")
+async def test_alert(
+    severity: str = "HIGH",
+    current_user: User = Depends(require_admin_only),
+):
+    """
+    Send a test alert to all configured notification channels.
+
+    Useful for verifying Telegram bot token and admin chat ID are correct.
+    Severity must be one of: CRITICAL, HIGH, MEDIUM, LOW, INFO.
+    """
+    from app.services.alert_service import alert_service
+
+    valid = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}
+    if severity.upper() not in valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid severity. Must be one of: {', '.join(sorted(valid))}",
+        )
+
+    results = await alert_service.send_alert(
+        message="This is a test alert sent from the SOWKNOW admin panel.",
+        severity=severity.upper(),
+        title="Test Alert",
+        metadata={
+            "triggered_by": str(current_user.email),
+            "admin_id": str(current_user.id),
+        },
+    )
+
+    return {
+        "status": "sent",
+        "severity": severity.upper(),
+        "channels_attempted": list(results.keys()),
+        "results": results,
+        "telegram_configured": alert_service.telegram_configured,
+        "email_configured": alert_service.email_configured,
+    }

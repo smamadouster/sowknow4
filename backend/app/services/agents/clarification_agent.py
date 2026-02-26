@@ -4,6 +4,7 @@ Clarification Agent for Multi-Agent Search System
 Clarifies ambiguous user queries by asking targeted questions
 to understand intent, context, and scope.
 """
+
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ClarificationRequest:
     """Request for clarification"""
+
     query: str
     context: Optional[str] = None
     conversation_history: Optional[List[Dict[str, str]]] = None
@@ -32,6 +34,7 @@ class ClarificationRequest:
 @dataclass
 class ClarificationResult:
     """Result of clarification analysis"""
+
     is_clear: bool
     confidence: float
     clarified_query: Optional[str] = None
@@ -68,9 +71,7 @@ class ClarificationAgent:
         """Check if any sources contain confidential documents."""
         if not sources:
             return False
-        return any(
-            s.get("document_bucket") == "confidential" for s in sources
-        )
+        return any(s.get("document_bucket") == "confidential" for s in sources)
 
     def _get_llm_service(self, request: "ClarificationRequest"):
         """Select LLM based on document confidentiality.
@@ -80,7 +81,10 @@ class ClarificationAgent:
         2. request.has_confidential explicitly set to True → Ollama
         3. Otherwise → MiniMax (public / general-chat)
         """
-        if self._has_confidential_documents(request.sources) or request.has_confidential:
+        if (
+            self._has_confidential_documents(request.sources)
+            or request.has_confidential
+        ):
             logger.info("ClarificationAgent: Using Ollama for confidential context")
             return self.ollama_service
         return self.minimax_service
@@ -133,24 +137,26 @@ Return a JSON object with:
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
             response_parts = []
             async for chunk in llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=1024
+                messages=messages, stream=False, temperature=0.3, max_tokens=1024
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
 
             # Parse JSON response
             import json
+
             try:
                 result_data = json.loads(self._extract_json(response_text))
 
@@ -161,7 +167,7 @@ Return a JSON object with:
                     questions=result_data.get("questions", []),
                     assumptions=result_data.get("assumptions", []),
                     suggested_filters=result_data.get("suggested_filters", {}),
-                    reasoning=result_data.get("reasoning", "")
+                    reasoning=result_data.get("reasoning", ""),
                 )
 
             except json.JSONDecodeError as e:
@@ -176,10 +182,12 @@ Return a JSON object with:
                 is_clear=True,
                 confidence=0.5,
                 clarified_query=request.query,
-                reasoning="Error during clarification, proceeding with original query"
+                reasoning="Error during clarification, proceeding with original query",
             )
 
-    def _fallback_clarification(self, request: ClarificationRequest) -> ClarificationResult:
+    def _fallback_clarification(
+        self, request: ClarificationRequest
+    ) -> ClarificationResult:
         """Fallback clarification using rule-based analysis"""
         query = request.query.lower()
         questions = []
@@ -218,7 +226,9 @@ Return a JSON object with:
 
         if not is_clear:
             if word_count < 4:
-                questions.append("Could you provide more details about what you're looking for?")
+                questions.append(
+                    "Could you provide more details about what you're looking for?"
+                )
             if not has_question_word:
                 questions.append("What specific question are you trying to answer?")
 
@@ -229,7 +239,7 @@ Return a JSON object with:
             questions=questions,
             assumptions=assumptions,
             suggested_filters=suggested_filters,
-            reasoning="Rule-based fallback analysis"
+            reasoning="Rule-based fallback analysis",
         )
 
     def _extract_json(self, text: str) -> str:
@@ -265,10 +275,7 @@ Return a JSON object with:
         return text
 
     async def suggest_search_improvements(
-        self,
-        query: str,
-        results: List[Dict[str, Any]],
-        result_count: int
+        self, query: str, results: List[Dict[str, Any]], result_count: int
     ) -> List[str]:
         """
         Suggest ways to improve the search based on results
@@ -295,7 +302,9 @@ Return a JSON object with:
             avg_score = sum(scores) / len(scores) if scores else 0
 
             if avg_score < 0.5:
-                suggestions.append("Results have low relevance. Try rephrasing your query.")
+                suggestions.append(
+                    "Results have low relevance. Try rephrasing your query."
+                )
                 suggestions.append("Consider adding specific entities or dates")
 
         # Check query characteristics
@@ -303,7 +312,20 @@ Return a JSON object with:
         if len(query.split()) < 3:
             suggestions.append("Add more context to your query for better results")
 
-        if not any(kw in query_lower for kw in ["what", "how", "why", "when", "where", "who", "find", "search", "look for"]):
+        if not any(
+            kw in query_lower
+            for kw in [
+                "what",
+                "how",
+                "why",
+                "when",
+                "where",
+                "who",
+                "find",
+                "search",
+                "look for",
+            ]
+        ):
             suggestions.append("Try framing your query as a question")
 
         return suggestions

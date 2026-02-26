@@ -4,7 +4,7 @@ Knowledge Graph API endpoints for Phase 3
 Provides endpoints for entity extraction, relationship mapping, timeline
 construction, and graph visualization data.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status, APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
@@ -40,7 +40,7 @@ async def extract_entities_from_document(
     ).first()
 
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Get document chunks
     chunks = db.query(DocumentChunk).filter(
@@ -48,7 +48,7 @@ async def extract_entities_from_document(
     ).all()
 
     if not chunks:
-        raise HTTPException(status_code=400, detail="Document has no extracted text")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document has no extracted text")
 
     # Extract entities
     result = await entity_extraction_service.extract_entities_from_document(
@@ -82,7 +82,7 @@ async def list_entities(
             entity_type_enum = EntityType(entity_type)
             query = query.filter(Entity.entity_type == entity_type_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid entity type: {entity_type}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid entity type: {entity_type}")
 
     # Apply search filter
     if search:
@@ -129,7 +129,7 @@ async def get_entity_details(
     entity = db.query(Entity).filter(Entity.id == entity_id).first()
 
     if not entity:
-        raise HTTPException(status_code=404, detail="Entity not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found")
 
     # Get relationships
     outgoing = db.query(EntityRelationship).filter(
@@ -274,7 +274,7 @@ async def get_shortest_path(
     )
 
     if path is None:
-        raise HTTPException(status_code=404, detail="No path found between entities")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No path found between entities")
 
     return {"path": path}
 
@@ -297,7 +297,7 @@ async def get_timeline(
             start = date.fromisoformat(start_date)
             end = date.fromisoformat(end_date)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date format. Use YYYY-MM-DD")
     else:
         # Default to last 30 days
         from datetime import date, timedelta

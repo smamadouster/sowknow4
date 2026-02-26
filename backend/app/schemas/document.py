@@ -125,6 +125,7 @@ class DocumentStatusResponse(BaseModel):
 
 # Batch Upload Schemas
 class BatchUploadResponse(BaseModel):
+    batch_id: Optional[str] = None
     total_files: int
     successful: int
     failed: int
@@ -133,3 +134,22 @@ class BatchUploadResponse(BaseModel):
     total_size_bytes: int
     batch_limit_exceeded: bool = False
     message: str = "Batch upload processed"
+
+
+class BatchStatusResponse(BaseModel):
+    """Response for GET /documents/batch/{batch_id}/status."""
+
+    batch_id: str
+    total_documents: int
+    completed: int
+    processing: int
+    failed: int
+    progress_percentage: float
+
+
+class ReprocessRequest(BaseModel):
+    """Request body for POST /documents/{document_id}/reprocess."""
+
+    force: bool = False
+    regenerate_embeddings: bool = True
+    reason: Optional[str] = None

@@ -4,6 +4,7 @@ Structured logging service for SOWKNOW.
 Provides JSON-formatted structured logging for log aggregation systems
 like ELK Stack, Loki, or simple file-based collection.
 """
+
 import logging
 import json
 import sys
@@ -11,6 +12,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
 
 
@@ -21,7 +23,9 @@ class StructuredFormatter(logging.Formatter):
     Format compatible with ELK, Loki, and other log aggregators.
     """
 
-    def __init__(self, service_name: str = "sowknow-api", environment: str = "development"):
+    def __init__(
+        self, service_name: str = "sowknow-api", environment: str = "development"
+    ):
         super().__init__()
         self.service_name = service_name
         self.environment = environment
@@ -51,7 +55,9 @@ class StructuredFormatter(logging.Formatter):
             log_data["exception"] = {
                 "type": record.exc_info[0].__name__ if record.exc_info[0] else None,
                 "message": str(record.exc_info[1]) if record.exc_info[1] else None,
-                "traceback": self.formatException(record.exc_info) if record.exc_info else None,
+                "traceback": (
+                    self.formatException(record.exc_info) if record.exc_info else None
+                ),
             }
 
         # Add stack trace if available
@@ -79,11 +85,28 @@ class StructuredFormatter(logging.Formatter):
         # Add custom fields from record
         for key, value in record.__dict__.items():
             if key not in {
-                'name', 'msg', 'args', 'levelname', 'levelno', 'pathname',
-                'filename', 'module', 'lineno', 'funcName', 'created',
-                'msecs', 'relativeCreated', 'thread', 'threadName',
-                'processName', 'process', 'getMessage', 'exc_info',
-                'exc_text', 'stack_info', 'getMessage'
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "getMessage",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "getMessage",
             }:
                 log_data[key] = value
 
@@ -102,7 +125,7 @@ class RequestContext:
     _context = {}
 
     @classmethod
-    def set(cls, **kwargs):
+    def set(cls, **kwargs) -> None:
         """Set context values."""
         cls._context.update(kwargs)
 
@@ -112,7 +135,7 @@ class RequestContext:
         return cls._context.copy()
 
     @classmethod
-    def clear(cls):
+    def clear(cls) -> None:
         """Clear context."""
         cls._context.clear()
 
@@ -175,10 +198,7 @@ def setup_structured_logging(
     root_logger.handlers.clear()
 
     # Create formatter
-    formatter = StructuredFormatter(
-        service_name=service_name,
-        environment=environment
-    )
+    formatter = StructuredFormatter(service_name=service_name, environment=environment)
 
     # Add context filter
     context_filter = RequestContextFilter()
@@ -250,7 +270,7 @@ class RequestLogger:
         method: str,
         user_id: Optional[str] = None,
         request_id: Optional[str] = None,
-    ):
+    ) -> Iterator[None]:
         """
         Log HTTP request with timing.
 
@@ -312,7 +332,7 @@ class QueryLogger:
         self,
         query_type: str,
         table: Optional[str] = None,
-    ):
+    ) -> Iterator[None]:
         """
         Log database query with timing.
 

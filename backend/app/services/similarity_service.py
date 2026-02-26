@@ -4,6 +4,7 @@ Similarity Grouping Service for Document Clustering
 Groups similar documents together using embedding similarity.
 Useful for finding document groups like "all IDs", "all balance sheets", etc.
 """
+
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict
@@ -29,7 +30,7 @@ class SimilarityGroup:
         description: str,
         document_ids: List[str],
         similarity_score: float,
-        common_patterns: List[str]
+        common_patterns: List[str],
     ):
         self.group_id = group_id
         self.name = name
@@ -39,6 +40,7 @@ class SimilarityGroup:
         self.common_patterns = common_patterns
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize this similarity group to a JSON-compatible dict."""
         return {
             "group_id": self.group_id,
             "name": self.name,
@@ -46,7 +48,7 @@ class SimilarityGroup:
             "document_count": len(self.document_ids),
             "document_ids": self.document_ids,
             "similarity_score": round(self.similarity_score, 3),
-            "common_patterns": self.common_patterns
+            "common_patterns": self.common_patterns,
         }
 
 
@@ -62,7 +64,7 @@ class SimilarityGroupingService:
         db: Session,
         min_group_size: int = 2,
         max_groups: int = 20,
-        similarity_threshold: float = 0.75
+        similarity_threshold: float = 0.75,
     ) -> List[SimilarityGroup]:
         """
         Find groups of similar documents for the user
@@ -80,9 +82,7 @@ class SimilarityGroupingService:
         # Get user-accessible documents
         from app.models.document import DocumentBucket, DocumentStatus
 
-        query = db.query(Document).filter(
-            Document.status == DocumentStatus.INDEXED
-        )
+        query = db.query(Document).filter(Document.status == DocumentStatus.INDEXED)
 
         # Apply bucket filter based on user role
         if user.role == UserRole.USER:
@@ -96,21 +96,25 @@ class SimilarityGroupingService:
         # Extract document embeddings
         doc_embeddings = []
         for doc in documents:
-            chunks = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == doc.id
-            ).all()
+            chunks = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == doc.id)
+                .all()
+            )
 
             if chunks:
                 # Get first chunk embedding as representative
                 # (in production, average all chunk embeddings)
                 for chunk in chunks:
                     if chunk.embedding:
-                        doc_embeddings.append({
-                            "id": str(doc.id),
-                            "filename": doc.filename,
-                            "mime_type": doc.mime_type,
-                            "embedding": np.array(chunk.embedding)
-                        })
+                        doc_embeddings.append(
+                            {
+                                "id": str(doc.id),
+                                "filename": doc.filename,
+                                "mime_type": doc.mime_type,
+                                "embedding": np.array(chunk.embedding),
+                            }
+                        )
                         break
 
         if len(doc_embeddings) < min_group_size:
@@ -118,23 +122,23 @@ class SimilarityGroupingService:
 
         # Compute similarity matrix
         groups = await self._cluster_by_similarity(
-            doc_embeddings,
-            min_group_size,
-            similarity_threshold
+            doc_embeddings, min_group_size, similarity_threshold
         )
 
         # Name the groups based on common patterns
         named_groups = []
         for i, group in enumerate(groups[:max_groups]):
             group_info = await self._analyze_group(group, db)
-            named_groups.append(SimilarityGroup(
-                group_id=f"group_{i}",
-                name=group_info["name"],
-                description=group_info["description"],
-                document_ids=group,
-                similarity_score=group_info["avg_similarity"],
-                common_patterns=group_info["patterns"]
-            ))
+            named_groups.append(
+                SimilarityGroup(
+                    group_id=f"group_{i}",
+                    name=group_info["name"],
+                    description=group_info["description"],
+                    document_ids=group,
+                    similarity_score=group_info["avg_similarity"],
+                    common_patterns=group_info["patterns"],
+                )
+            )
 
         return named_groups
 
@@ -142,7 +146,7 @@ class SimilarityGroupingService:
         self,
         doc_embeddings: List[Dict[str, Any]],
         min_group_size: int,
-        threshold: float
+        threshold: float,
     ) -> List[List[str]]:
         """Cluster documents by similarity using simple approach"""
         # Compute pairwise cosine similarity
@@ -187,30 +191,23 @@ class SimilarityGroupingService:
                         stack.append(j)
 
             if len(cluster) >= min_group_size:
-                clusters.append([
-                    doc_embeddings[idx]["id"]
-                    for idx in cluster
-                ])
+                clusters.append([doc_embeddings[idx]["id"] for idx in cluster])
 
         return clusters
 
     async def _analyze_group(
-        self,
-        document_ids: List[str],
-        db: Session
+        self, document_ids: List[str], db: Session
     ) -> Dict[str, Any]:
         """Analyze a group to determine its theme and patterns"""
         # Get documents
-        documents = db.query(Document).filter(
-            Document.id.in_(document_ids)
-        ).all()
+        documents = db.query(Document).filter(Document.id.in_(document_ids)).all()
 
         if not documents:
             return {
                 "name": "Unknown Group",
                 "description": "No documents found",
                 "avg_similarity": 0.0,
-                "patterns": []
+                "patterns": [],
             }
 
         # Extract filename patterns
@@ -232,7 +229,7 @@ class SimilarityGroupingService:
             "name": group_name,
             "description": description,
             "avg_similarity": 0.85,  # Placeholder - would compute from actual similarities
-            "patterns": common_patterns
+            "patterns": common_patterns,
         }
 
     def _extract_common_patterns(self, filenames: List[str]) -> List[str]:
@@ -253,7 +250,7 @@ class SimilarityGroupingService:
             "certificate": ["certificate", "certificat", "attestation"],
             "insurance": ["insurance", "assurance"],
             "tax": ["tax", "impôt", "fiscal"],
-            "bank": ["bank", "banque", "account", "compte"]
+            "bank": ["bank", "banque", "account", "compte"],
         }
 
         for doc_type, keywords in doc_types.items():
@@ -263,9 +260,10 @@ class SimilarityGroupingService:
 
         # Extract number patterns (years, IDs)
         import re
+
         years = []
         for f in lower_filenames:
-            year_match = re.search(r'20[12][0-9]', f)
+            year_match = re.search(r"20[12][0-9]", f)
             if year_match:
                 years.append(year_match.group())
 
@@ -277,17 +275,14 @@ class SimilarityGroupingService:
         return patterns[:5]
 
     def _generate_group_name(
-        self,
-        filenames: List[str],
-        mime_types: List[str],
-        patterns: List[str]
+        self, filenames: List[str], mime_types: List[str], patterns: List[str]
     ) -> str:
         """Generate a descriptive name for the group"""
         if not patterns:
             # Use first filename as base
             base = filenames[0]
             # Remove extension and truncate
-            name = base.rsplit('.', 1)[0]
+            name = base.rsplit(".", 1)[0]
             return f"{name} ({len(filenames)} documents)"[:50]
 
         # Build name from patterns
@@ -313,11 +308,7 @@ class SimilarityGroupingService:
         return f"{base_name} ({len(filenames)})"[:50]
 
     async def find_similar_to_document(
-        self,
-        document_id: str,
-        user: User,
-        db: Session,
-        limit: int = 10
+        self, document_id: str, user: User, db: Session, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Find documents similar to a specific document
@@ -334,9 +325,11 @@ class SimilarityGroupingService:
         from app.models.document import DocumentBucket, DocumentStatus
 
         # Get reference document chunks
-        ref_chunks = db.query(DocumentChunk).filter(
-            DocumentChunk.document_id == document_id
-        ).all()
+        ref_chunks = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == document_id)
+            .all()
+        )
 
         if not ref_chunks:
             return []
@@ -357,10 +350,7 @@ class SimilarityGroupingService:
 
         # Get candidate documents
         query = db.query(Document).filter(
-            and_(
-                Document.id != document_id,
-                Document.status == DocumentStatus.INDEXED
-            )
+            and_(Document.id != document_id, Document.status == DocumentStatus.INDEXED)
         )
 
         # Apply bucket filter
@@ -372,9 +362,11 @@ class SimilarityGroupingService:
         # Compute similarities
         similarities = []
         for doc in candidates:
-            chunks = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == doc.id
-            ).first()
+            chunks = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == doc.id)
+                .first()
+            )
 
             if chunks and chunks.embedding:
                 doc_embedding = np.array(chunks.embedding)
@@ -382,12 +374,14 @@ class SimilarityGroupingService:
                     np.linalg.norm(ref_embedding) * np.linalg.norm(doc_embedding)
                 )
 
-                similarities.append({
-                    "id": str(doc.id),
-                    "filename": doc.filename,
-                    "similarity_score": round(float(similarity), 4),
-                    "created_at": doc.created_at.isoformat()
-                })
+                similarities.append(
+                    {
+                        "id": str(doc.id),
+                        "filename": doc.filename,
+                        "similarity_score": round(float(similarity), 4),
+                        "created_at": doc.created_at.isoformat(),
+                    }
+                )
 
         # Sort by similarity and return top results
         similarities.sort(key=lambda x: x["similarity_score"], reverse=True)

@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/routing';
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeSanitize from 'rehype-sanitize';
 
 interface Message {
   id: string;
@@ -266,44 +269,52 @@ export default function ChatPage() {
         <div className="p-4 border-b border-gray-200">
           <button
             onClick={createSession}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            aria-label={t('new_chat')}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             {t('new_chat')}
           </button>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto">
           {sessions.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 text-sm">
+            <div className="p-4 text-center text-gray-500 text-sm" role="status">
               {t('no_sessions')}
             </div>
           ) : (
-            <div className="p-2">
+            <ol role="list" aria-label={t('sessions_title')} className="p-2">
               {sessions.map(session => (
-                <div
-                  key={session.id}
-                  onClick={() => setCurrentSession(session)}
-                  className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer mb-1 transition-colors ${
-                    currentSession?.id === session.id
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  <span className="truncate text-sm">{session.title}</span>
-                  <button
-                    onClick={(e) => deleteSession(session.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
+                <li key={session.id} role="listitem">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setCurrentSession(session)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrentSession(session); } }}
+                    aria-current={currentSession?.id === session.id ? 'true' : undefined}
+                    aria-label={session.title}
+                    className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer mb-1 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      currentSession?.id === session.id
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'hover:bg-gray-100'
+                    }`}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
+                    <span className="truncate text-sm">{session.title}</span>
+                    <button
+                      onClick={(e) => deleteSession(session.id, e)}
+                      aria-label={`${t('delete_session')}: ${session.title}`}
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 hover:text-red-500 transition-opacity focus:outline-none focus:ring-2 focus:ring-red-400 rounded"
+                    >
+                      <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
               ))}
-            </div>
+            </ol>
           )}
         </div>
       </div>
@@ -311,7 +322,13 @@ export default function ChatPage() {
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div
+          className="flex-1 overflow-y-auto p-6 space-y-4"
+          aria-live="polite"
+          aria-atomic="false"
+          aria-label={t('messages_region')}
+          role="log"
+        >
           {!currentSession ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <svg className="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -337,7 +354,51 @@ export default function ChatPage() {
                       : 'bg-gray-100 text-gray-900'
                   }`}
                 >
-                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  {message.role === 'assistant' ? (
+                    <ReactMarkdown
+                      rehypePlugins={[rehypeSanitize, rehypeHighlight]}
+                      components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-3">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-lg font-semibold mb-2 mt-3">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-base font-semibold mb-1 mt-2">{children}</h3>,
+                        ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                        li: ({ children }) => <li className="text-sm">{children}</li>,
+                        code: ({ children, className }) => {
+                          const isBlock = className?.startsWith('language-');
+                          return isBlock ? (
+                            <code className={`${className} text-sm`}>{children}</code>
+                          ) : (
+                            <code className="bg-gray-200 text-gray-800 px-1 py-0.5 rounded text-sm font-mono">{children}</code>
+                          );
+                        },
+                        pre: ({ children }) => (
+                          <pre className="bg-gray-100 rounded-lg p-3 mb-2 overflow-x-auto text-sm">{children}</pre>
+                        ),
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-4 border-gray-300 pl-3 italic text-gray-700 mb-2">{children}</blockquote>
+                        ),
+                        a: ({ href, children }) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">{children}</a>
+                        ),
+                        table: ({ children }) => (
+                          <div className="overflow-x-auto mb-2">
+                            <table className="min-w-full border border-gray-200 rounded text-sm">{children}</table>
+                          </div>
+                        ),
+                        th: ({ children }) => <th className="border border-gray-200 px-3 py-1.5 bg-gray-50 font-semibold text-left">{children}</th>,
+                        td: ({ children }) => <td className="border border-gray-200 px-3 py-1.5">{children}</td>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        em: ({ children }) => <em className="italic">{children}</em>,
+                        hr: () => <hr className="border-gray-300 my-2" />,
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  ) : (
+                    <div className="whitespace-pre-wrap">{message.content}</div>
+                  )}
                   
                   {message.sources && message.sources.length > 0 && (
                     <div className={`mt-3 pt-3 border-t ${message.role === 'user' ? 'border-blue-500' : 'border-gray-200'}`}>
@@ -379,7 +440,7 @@ export default function ChatPage() {
           )}
           
           {isStreaming && (
-            <div className="flex justify-start">
+            <div className="flex justify-start" role="status" aria-live="polite">
               <div className="bg-gray-100 rounded-lg p-4">
                 <div className="flex items-center gap-2 text-gray-500">
                   <div className="animate-pulse">
@@ -412,6 +473,8 @@ export default function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('type_message')}
+              aria-label={t('type_message')}
+              aria-multiline="true"
               className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={1}
               disabled={!currentSession || isStreaming}
@@ -419,7 +482,9 @@ export default function ChatPage() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || !currentSession || isStreaming}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label={t('send')}
+              aria-busy={isLoading}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {isLoading ? t('thinking') : t('send')}
             </button>

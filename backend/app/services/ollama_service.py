@@ -4,6 +4,7 @@ Ollama Service for local LLM processing
 Handles communication with Ollama for confidential document processing.
 This ensures PII and confidential data never leaves the local infrastructure.
 """
+
 import os
 import logging
 from typing import AsyncGenerator, List, Dict, Any, Optional
@@ -27,15 +28,14 @@ class OllamaService:
         self.model = OLLAMA_MODEL
 
     @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=2, max=5)
+        stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5)
     )
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
-        num_predict: int = 4096
+        num_predict: int = 4096,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using Ollama
@@ -53,28 +53,25 @@ class OllamaService:
         ollama_messages = []
         for msg in messages:
             role_map = {"user": "user", "assistant": "assistant", "system": "system"}
-            ollama_messages.append({
-                "role": role_map.get(msg.get("role", "user"), "user"),
-                "content": msg.get("content", "")
-            })
+            ollama_messages.append(
+                {
+                    "role": role_map.get(msg.get("role", "user"), "user"),
+                    "content": msg.get("content", ""),
+                }
+            )
 
         payload = {
             "model": self.model,
             "messages": ollama_messages,
             "stream": stream,
-            "options": {
-                "temperature": temperature,
-                "num_predict": num_predict
-            }
+            "options": {"temperature": temperature, "num_predict": num_predict},
         }
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 if stream:
                     async with client.stream(
-                        "POST",
-                        f"{self.base_url}/api/chat",
-                        json=payload
+                        "POST", f"{self.base_url}/api/chat", json=payload
                     ) as response:
                         response.raise_for_status()
 
@@ -82,6 +79,7 @@ class OllamaService:
                             if line.strip():
                                 try:
                                     import json
+
                                     data = json.loads(line)
                                     if "message" in data:
                                         content = data["message"].get("content", "")
@@ -93,8 +91,7 @@ class OllamaService:
                                     continue
                 else:
                     response = await client.post(
-                        f"{self.base_url}/api/chat",
-                        json=payload
+                        f"{self.base_url}/api/chat", json=payload
                     )
                     response.raise_for_status()
                     result = response.json()
@@ -107,15 +104,14 @@ class OllamaService:
             yield f"Error: Could not connect to Ollama service"
 
     @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=2, max=5)
+        stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5)
     )
     async def generate(
         self,
         prompt: str,
         system: str = "You are a helpful assistant.",
         temperature: float = 0.7,
-        num_predict: int = 4096
+        num_predict: int = 4096,
     ) -> str:
         """
         Generate text using Ollama (non-streaming)
@@ -134,17 +130,13 @@ class OllamaService:
             "prompt": prompt,
             "system": system,
             "stream": False,
-            "options": {
-                "temperature": temperature,
-                "num_predict": num_predict
-            }
+            "options": {"temperature": temperature, "num_predict": num_predict},
         }
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
-                    f"{self.base_url}/api/generate",
-                    json=payload
+                    f"{self.base_url}/api/generate", json=payload
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -172,14 +164,12 @@ class OllamaService:
                     "service": "ollama",
                     "status": "healthy",
                     "model": self.model,
-                    "available_models": [m.get("name") for m in result.get("models", [])]
+                    "available_models": [
+                        m.get("name") for m in result.get("models", [])
+                    ],
                 }
         except Exception as e:
-            return {
-                "service": "ollama",
-                "status": "unhealthy",
-                "error": str(e)
-            }
+            return {"service": "ollama", "status": "unhealthy", "error": str(e)}
 
 
 # Global Ollama service instance

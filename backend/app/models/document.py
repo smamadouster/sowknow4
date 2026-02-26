@@ -10,7 +10,7 @@ from sqlalchemy import (
     Index,
     event,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -98,6 +98,9 @@ class Document(Base, TimestampMixin):
 
     # Ownership
     uploaded_by = Column(GUIDType(as_uuid=True), nullable=True, index=True)
+
+    # Batch upload tracking — groups documents uploaded together
+    batch_id = Column(String(64), nullable=True, index=True)
 
     # Additional metadata stored as JSON
     document_metadata = Column("metadata", JSONB, default=dict)
@@ -190,7 +193,7 @@ class DocumentChunk(Base, TimestampMixin):
     # Embedding vector column (pgvector)
     # This stores the 1024-dimensional embedding for semantic search
     if Vector is not None:
-        embedding_vector = Column(Vector(dim=1024), nullable=True, index=True)
+        embedding_vector = Column(Vector(1024), nullable=True, index=True)
     else:
         # Fallback for testing without pgvector - use Text column
         embedding_vector = Column(Text, nullable=True)
@@ -201,6 +204,11 @@ class DocumentChunk(Base, TimestampMixin):
     document_metadata = Column(
         "metadata", JSONB, default=dict
     )  # For embeddings and other metadata
+
+    # Full-text search — auto-updated by DB trigger (migration 009)
+    # embedding = Column(Vector(1024), nullable=True)  — mapped as embedding_vector above
+    search_vector = Column(TSVECTOR, nullable=True)
+    search_language = Column(String(10), nullable=False, server_default="french")
 
     # Relationships
     document = relationship("Document", back_populates="chunks")
@@ -226,7 +234,36 @@ class DocumentChunk(Base, TimestampMixin):
         )
 
     def __repr__(self):
-        return f"<DocumentChunk {self.document_id}/{self.chunk_index}>"
+        lang = self.search_language or "french"
+        return f"<DocumentChunk {self.document_id}/{self.chunk_index} lang={lang}>"
+
+    @property
+    def highlight_text(self) -> str:
+        """Return chunk_text suitable for highlighting (delegates to chunk_text)."""
+        return self.chunk_text or ""
+
+    def to_dict(self, include_embedding: bool = False) -> dict:
+        """Serialize chunk to a plain dictionary.
+
+        Args:
+            include_embedding: When True, includes the embedding_vector values.
+        """
+        data = {
+            "id": str(self.id),
+            "document_id": str(self.document_id),
+            "chunk_index": self.chunk_index,
+            "chunk_text": self.chunk_text,
+            "token_count": self.token_count,
+            "page_number": self.page_number,
+            "language": self.search_language,
+            "metadata": self.document_metadata or {},
+        }
+        if include_embedding and self.embedding_vector is not None:
+            try:
+                data["embedding"] = list(self.embedding_vector)
+            except TypeError:
+                data["embedding"] = None
+        return data
 
 
 # Set up defaults for test instances

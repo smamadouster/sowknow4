@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* highlight.js GitHub theme for code blocks */
+@import 'highlight.js/styles/github.css';
+
 :root {
   --color-primary-bg: #FFFFFF;
   --color-primary-dark: #1A1A2E;

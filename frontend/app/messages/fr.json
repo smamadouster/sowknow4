@@ -32,7 +32,12 @@
     "logout_streaming_warning": "L'IA génère actuellement une réponse. La déconnexion l'interrompra.",
     "logout_upload_warning": "Des fichiers sont en cours de téléchargement. La déconnexion les annulera.",
     "login": "Connexion",
-    "register": "S'inscrire"
+    "register": "S'inscrire",
+    "skip_to_content": "Aller au contenu principal",
+    "toggle_navigation": "Basculer la navigation",
+    "main_navigation": "Navigation principale",
+    "close_menu": "Fermer le menu",
+    "knowledge_graph": "Graphe de Connaissances"
   },
   "auth": {
     "login_title": "Connexion à SOWKNOW",
@@ -73,7 +78,12 @@
     "anomalies": "Anomalies",
     "no_anomalies": "Aucune anomalie détectée",
     "anomalies_found": "{count} anomalie(s) détectée(s)",
-    "view_details": "Voir les détails"
+    "view_details": "Voir les détails",
+    "document_distribution": "Répartition des Documents",
+    "public": "Public",
+    "confidential": "Confidentiel",
+    "queue_breakdown": "Répartition de la File de Traitement",
+    "uploads_trend": "Téléchargements — 7 Derniers Jours"
   },
   "documents": {
     "title": "Documents",
@@ -170,7 +180,9 @@
     "sessions_title": "Conversations",
     "error_loading": "Erreur lors du chargement",
     "error_sending": "Erreur lors de l'envoi",
-    "streaming_error": "Erreur de streaming"
+    "streaming_error": "Erreur de streaming",
+    "delete_session": "Supprimer la conversation",
+    "messages_region": "Messages de la conversation"
   },
   "collections": {
     "title": "Collections Intelligentes",

@@ -1,7 +1,10 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 import time
 import os
 from collections import defaultdict
@@ -86,8 +89,21 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     print("Database tables created/verified")
     yield
-    # Shutdown
+    # Shutdown: release resources gracefully
     print("Shutting down...")
+    try:
+        engine.dispose()
+        print("Database connection pool disposed")
+    except Exception as exc:
+        print(f"Error disposing DB pool: {exc}")
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        import redis as _redis
+        _redis.from_url(redis_url).connection_pool.disconnect()
+        print("Redis connection pool closed")
+    except Exception as exc:
+        print(f"Error closing Redis pool: {exc}")
+    print("Shutdown complete")
 
 app = FastAPI(
     title="SOWKNOW API",
@@ -98,6 +114,55 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     lifespan=lifespan
 )
+
+_is_production = os.getenv("APP_ENV", "development").lower() == "production"
+
+
+def _error_response(error_type: str, message: str, detail: str | None, http_status: int) -> JSONResponse:
+    """Build a consistent error envelope."""
+    body: dict = {
+        "error": {
+            "type": error_type,
+            "message": message,
+            "detail": detail if not _is_production else None,
+            "timestamp": time.time(),
+        }
+    }
+    return JSONResponse(status_code=http_status, content=body)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Return 400 with structured error for invalid request bodies / query params."""
+    return _error_response(
+        error_type="validation_error",
+        message="Request validation failed",
+        detail=str(exc.errors()),
+        http_status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    """Return 503 on database errors to avoid leaking SQL details."""
+    return _error_response(
+        error_type="database_error",
+        message="A database error occurred. Please try again later.",
+        detail=str(exc) if not _is_production else None,
+        http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all handler so unhandled exceptions never leak tracebacks."""
+    return _error_response(
+        error_type="internal_error",
+        message="An unexpected error occurred.",
+        detail=str(exc) if not _is_production else None,
+        http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+
 
 # ============================================================================
 # SECURITY CRITICAL: CORS and TrustedHost Configuration
@@ -263,7 +328,7 @@ async def health():
         redis_status = f"error: {str(e)}"
 
     try:
-        ollama_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
             if response.status_code == 200:
@@ -303,6 +368,52 @@ async def health():
             "openrouter": openrouter_health
         }
     }
+
+@app.get("/health/celery")
+async def celery_health():
+    """
+    Check Celery worker availability and queue depth.
+
+    Returns 200 when at least one worker is active, 503 otherwise.
+    This endpoint is used by load balancers, Kubernetes readiness probes,
+    and the Celery Beat health check.
+    """
+    from fastapi import HTTPException
+    from app.celery_app import celery_app as _celery
+
+    try:
+        inspect = _celery.control.inspect(timeout=5.0)
+        active_workers = inspect.active() or {}
+        stats = inspect.stats() or {}
+        reserved = inspect.reserved() or {}
+
+        worker_count = len(active_workers)
+        if worker_count == 0:
+            raise HTTPException(
+                status_code=503,
+                detail="No active Celery workers found",
+            )
+
+        # Aggregate queue depths across all workers
+        total_active = sum(len(tasks) for tasks in active_workers.values())
+        total_reserved = sum(len(tasks) for tasks in reserved.values())
+
+        return {
+            "status": "healthy",
+            "workers": worker_count,
+            "active_tasks": total_active,
+            "reserved_tasks": total_reserved,
+            "worker_names": list(active_workers.keys()),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Celery health check failed: {str(exc)}",
+        )
+
 
 @app.get("/api/v1/status")
 async def api_status():

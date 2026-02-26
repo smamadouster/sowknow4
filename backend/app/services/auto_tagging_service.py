@@ -4,6 +4,7 @@ Auto-Tagging Service for Document Ingestion
 Uses MiniMax to automatically extract topics, entities, importance,
 and language from documents during the ingestion pipeline.
 """
+
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -21,24 +22,23 @@ class AutoTaggingService:
         self.minimax_service = minimax_service
         self._ollama_service = None
         self._openrouter_service = None
-    
+
     def _get_ollama_service(self):
         if self._ollama_service is None:
             from app.services.ollama_service import ollama_service
+
             self._ollama_service = ollama_service
         return self._ollama_service
-    
+
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
             from app.services.openrouter_service import openrouter_service
+
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
     async def tag_document(
-        self,
-        document: Document,
-        extracted_text: str,
-        db_session=None
+        self, document: Document, extracted_text: str, db_session=None
     ) -> List[DocumentTag]:
         """
         Auto-tag a document with topics, entities, importance, and language
@@ -54,15 +54,21 @@ class AutoTaggingService:
         try:
             # Determine LLM routing based on document bucket
             use_ollama = document.bucket == DocumentBucket.CONFIDENTIAL
-            
+
             # Prepare the text for analysis (truncate if too long)
-            analysis_text = self._prepare_text_for_analysis(extracted_text, document.filename)
+            analysis_text = self._prepare_text_for_analysis(
+                extracted_text, document.filename
+            )
 
             # Call appropriate LLM to extract tags
             if use_ollama:
-                tags_data = await self._extract_tags_with_ollama(analysis_text, document)
+                tags_data = await self._extract_tags_with_ollama(
+                    analysis_text, document
+                )
             else:
-                tags_data = await self._extract_tags_with_minimax(analysis_text, document)
+                tags_data = await self._extract_tags_with_minimax(
+                    analysis_text, document
+                )
 
             if not tags_data:
                 logger.warning(f"No tags extracted for document {document.id}")
@@ -74,37 +80,43 @@ class AutoTaggingService:
 
             # Topic tags
             for topic in tags_data.get("topics", [])[:5]:
-                tags.append(DocumentTag(
-                    document_id=document.id,
-                    tag_name=topic,
-                    tag_type="topic",
-                    auto_generated=True,
-                    confidence_score=85,
-                    created_at=current_time
-                ))
+                tags.append(
+                    DocumentTag(
+                        document_id=document.id,
+                        tag_name=topic,
+                        tag_type="topic",
+                        auto_generated=True,
+                        confidence_score=85,
+                        created_at=current_time,
+                    )
+                )
 
             # Entity tags
             for entity in tags_data.get("entities", [])[:10]:
-                tags.append(DocumentTag(
-                    document_id=document.id,
-                    tag_name=entity["name"],
-                    tag_type=entity.get("type", "entity"),
-                    auto_generated=True,
-                    confidence_score=entity.get("confidence", 75),
-                    created_at=current_time
-                ))
+                tags.append(
+                    DocumentTag(
+                        document_id=document.id,
+                        tag_name=entity["name"],
+                        tag_type=entity.get("type", "entity"),
+                        auto_generated=True,
+                        confidence_score=entity.get("confidence", 75),
+                        created_at=current_time,
+                    )
+                )
 
             # Importance tag
             importance = tags_data.get("importance")
             if importance:
-                tags.append(DocumentTag(
-                    document_id=document.id,
-                    tag_name=importance,
-                    tag_type="importance",
-                    auto_generated=True,
-                    confidence_score=80,
-                    created_at=current_time
-                ))
+                tags.append(
+                    DocumentTag(
+                        document_id=document.id,
+                        tag_name=importance,
+                        tag_type="importance",
+                        auto_generated=True,
+                        confidence_score=80,
+                        created_at=current_time,
+                    )
+                )
 
             # Language detection (update document field too)
             language = tags_data.get("language", "unknown")
@@ -136,9 +148,7 @@ class AutoTaggingService:
         return f"Filename: {filename}\n\nContent:\n{text_preview}"
 
     async def _extract_tags_with_minimax(
-        self,
-        text: str,
-        document: Document
+        self, text: str, document: Document
     ) -> Optional[Dict[str, Any]]:
         """Extract tags using MiniMax for public documents"""
 
@@ -172,7 +182,7 @@ Extract the tags now:"""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
@@ -180,18 +190,20 @@ Extract the tags now:"""
             # Use MiniMax for public documents
             llm_service = self.minimax_service
             async for chunk in llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=1000
+                messages=messages, stream=False, temperature=0.3, max_tokens=1000
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
 
             # Extract JSON
             import json
+
             json_text = self._extract_json(response_text)
 
             if json_text:
@@ -203,9 +215,7 @@ Extract the tags now:"""
         return None
 
     async def _extract_tags_with_ollama(
-        self,
-        text: str,
-        document: Document
+        self, text: str, document: Document
     ) -> Optional[Dict[str, Any]]:
         """Extract tags using Ollama"""
 
@@ -239,24 +249,26 @@ Extract the tags now:"""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
             llm_service = self._get_ollama_service()
             response_parts = []
             async for chunk in llm_service.chat_completion(
-                messages=messages,
-                stream=False,
-                temperature=0.3,
-                max_tokens=1000
+                messages=messages, stream=False, temperature=0.3, max_tokens=1000
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                if (
+                    chunk
+                    and not chunk.startswith("Error:")
+                    and not chunk.startswith("__USAGE__")
+                ):
                     response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
 
             import json
+
             json_text = self._extract_json(response_text)
 
             if json_text:
@@ -313,14 +325,51 @@ Extract the tags now:"""
         text_lower = text.lower()[:1000]
 
         # French indicators
-        fr_indicators = [' le ', ' la ', ' les ', ' un ', ' une ', ' des ', ' et ',
-                        ' est ', ' sont ', ' pour ', ' avec ', ' sans ', ' pas ',
-                        'plus', 'être', 'avoir', 'faire', 'aller', 'voir']
+        fr_indicators = [
+            " le ",
+            " la ",
+            " les ",
+            " un ",
+            " une ",
+            " des ",
+            " et ",
+            " est ",
+            " sont ",
+            " pour ",
+            " avec ",
+            " sans ",
+            " pas ",
+            "plus",
+            "être",
+            "avoir",
+            "faire",
+            "aller",
+            "voir",
+        ]
 
         # English indicators
-        en_indicators = [' the ', ' a ', ' an ', ' and ', ' or ', ' but ', ' with ',
-                        ' without ', ' not ', ' is ', ' are ', ' was ', ' were ',
-                        'have', 'has', 'had', 'will', 'would', 'could', 'should']
+        en_indicators = [
+            " the ",
+            " a ",
+            " an ",
+            " and ",
+            " or ",
+            " but ",
+            " with ",
+            " without ",
+            " not ",
+            " is ",
+            " are ",
+            " was ",
+            " were ",
+            "have",
+            "has",
+            "had",
+            "will",
+            "would",
+            "could",
+            "should",
+        ]
 
         fr_count = sum(1 for indicator in fr_indicators if indicator in text_lower)
         en_count = sum(1 for indicator in en_indicators if indicator in text_lower)
@@ -335,10 +384,7 @@ Extract the tags now:"""
             return "unknown"
 
     async def suggest_similar_documents(
-        self,
-        document_id: str,
-        db_session,
-        limit: int = 5
+        self, document_id: str, db_session, limit: int = 5
     ) -> List[Dict[str, Any]]:
         """
         Suggest similar documents based on tag overlap
@@ -354,9 +400,11 @@ Extract the tags now:"""
         from sqlalchemy import func, and_
 
         # Get tags for the reference document
-        ref_tags = db_session.query(DocumentTag.tag_name).filter(
-            DocumentTag.document_id == document_id
-        ).all()
+        ref_tags = (
+            db_session.query(DocumentTag.tag_name)
+            .filter(DocumentTag.document_id == document_id)
+            .all()
+        )
 
         if not ref_tags:
             return []
@@ -364,31 +412,36 @@ Extract the tags now:"""
         ref_tag_names = [tag[0] for tag in ref_tags]
 
         # Find documents with shared tags
-        similar = db_session.query(
-            DocumentTag.document_id,
-            func.count(DocumentTag.tag_name).label('shared_count')
-        ).filter(
-            and_(
-                DocumentTag.tag_name.in_(ref_tag_names),
-                DocumentTag.document_id != document_id
+        similar = (
+            db_session.query(
+                DocumentTag.document_id,
+                func.count(DocumentTag.tag_name).label("shared_count"),
             )
-        ).group_by(
-            DocumentTag.document_id
-        ).order_by(
-            func.count(DocumentTag.tag_name).desc()
-        ).limit(limit).all()
+            .filter(
+                and_(
+                    DocumentTag.tag_name.in_(ref_tag_names),
+                    DocumentTag.document_id != document_id,
+                )
+            )
+            .group_by(DocumentTag.document_id)
+            .order_by(func.count(DocumentTag.tag_name).desc())
+            .limit(limit)
+            .all()
+        )
 
         results = []
         for doc_id, shared_count in similar:
             # Get document info
             doc = db_session.query(Document).filter(Document.id == doc_id).first()
             if doc:
-                results.append({
-                    "id": str(doc.id),
-                    "filename": doc.filename,
-                    "shared_tags": shared_count,
-                    "similarity_score": round(shared_count / len(ref_tag_names), 2)
-                })
+                results.append(
+                    {
+                        "id": str(doc.id),
+                        "filename": doc.filename,
+                        "shared_tags": shared_count,
+                        "similarity_score": round(shared_count / len(ref_tag_names), 2),
+                    }
+                )
 
         return results
 

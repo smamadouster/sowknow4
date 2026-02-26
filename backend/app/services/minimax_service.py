@@ -1,6 +1,7 @@
 """
 MiniMax service for direct API access (no OpenRouter markup)
 """
+
 import os
 import logging
 import json
@@ -39,27 +40,31 @@ class MiniMaxService:
             return 0
         return len(text) // 4
 
-    def _truncate_messages(self, messages: List[Dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS) -> List[Dict[str, str]]:
+    def _truncate_messages(
+        self, messages: List[Dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS
+    ) -> List[Dict[str, str]]:
         total_tokens = 0
         truncated_messages = []
-        
+
         for msg in messages:
             content = msg.get("content", "")
             msg_tokens = self._estimate_tokens(content)
-            
+
             if total_tokens + msg_tokens > max_tokens:
                 available = max_tokens - total_tokens
                 if available > 100:
-                    truncated_content = content[:available * 4]
-                    truncated_messages.append({
-                        "role": msg.get("role", "user"),
-                        "content": truncated_content + "... [truncated]"
-                    })
+                    truncated_content = content[: available * 4]
+                    truncated_messages.append(
+                        {
+                            "role": msg.get("role", "user"),
+                            "content": truncated_content + "... [truncated]",
+                        }
+                    )
                 break
-            
+
             truncated_messages.append(msg)
             total_tokens += msg_tokens
-        
+
         return truncated_messages
 
     def _get_headers(self) -> Dict[str, str]:
@@ -69,8 +74,7 @@ class MiniMaxService:
         }
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     async def chat_completion(
         self,
@@ -78,7 +82,7 @@ class MiniMaxService:
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        cache_key: Optional[str] = None
+        cache_key: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using MiniMax API directly
@@ -94,7 +98,7 @@ class MiniMaxService:
             "messages": truncated_messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "stream": stream
+            "stream": stream,
         }
 
         try:
@@ -104,7 +108,7 @@ class MiniMaxService:
                         "POST",
                         f"{self.base_url}/v1/text/chatcompletion_v2",
                         json=payload,
-                        headers=self._get_headers()
+                        headers=self._get_headers(),
                     ) as response:
                         response.raise_for_status()
                         async for line in response.aiter_lines():
@@ -122,17 +126,21 @@ class MiniMaxService:
                     response = await client.post(
                         f"{self.base_url}/v1/text/chatcompletion_v2",
                         json=payload,
-                        headers=self._get_headers()
+                        headers=self._get_headers(),
                     )
                     response.raise_for_status()
                     data = response.json()
-                    
+
                     if "choices" in data and len(data["choices"]) > 0:
-                        content = data["choices"][0].get("message", {}).get("content", "")
+                        content = (
+                            data["choices"][0].get("message", {}).get("content", "")
+                        )
                         yield content
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"MiniMax API error: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"MiniMax API error: {e.response.status_code} - {e.response.text}"
+            )
             yield f"Error: MiniMax API returned {e.response.status_code}"
         except Exception as e:
             logger.error(f"MiniMax service error: {str(e)}")
@@ -142,11 +150,13 @@ class MiniMaxService:
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: int = 4096
+        max_tokens: int = 4096,
     ) -> str:
         """Non-streaming version"""
         result = ""
-        async for chunk in self.chat_completion(messages, stream=False, temperature=temperature, max_tokens=max_tokens):
+        async for chunk in self.chat_completion(
+            messages, stream=False, temperature=temperature, max_tokens=max_tokens
+        ):
             result += chunk
         return result
 

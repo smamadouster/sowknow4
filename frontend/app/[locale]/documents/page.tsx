@@ -473,7 +473,7 @@ export default function DocumentsPage() {
         <div className="flex items-center gap-4">
           <select
             value={bucketFilter}
-            onChange={(e) => setBucketFilter(e.target.value as any)}
+            onChange={(e) => setBucketFilter(e.target.value as 'all' | 'public' | 'confidential')}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">{t('all_buckets')}</option>

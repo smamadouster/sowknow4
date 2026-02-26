@@ -222,7 +222,7 @@ async def health():
         redis_status = f"error: {str(e)}"
 
     try:
-        ollama_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
             if response.status_code == 200:

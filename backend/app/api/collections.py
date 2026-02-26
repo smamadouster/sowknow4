@@ -6,7 +6,7 @@ Provides endpoints for creating, managing, and querying Smart Collections.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status, APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
 from typing import Optional, List
@@ -76,7 +76,7 @@ def create_audit_log(
         logger.error(f"Audit logging failed: {str(e)}")
 
 
-@router.post("", response_model=CollectionResponse, status_code=201)
+@router.post("", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
 async def create_collection(
     collection_data: CollectionCreate,
     current_user: User = Depends(get_current_user),
@@ -96,7 +96,7 @@ async def create_collection(
         return collection
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to create collection: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create collection: {str(e)}"
         )
 
 
@@ -127,7 +127,7 @@ async def preview_collection(
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to preview collection: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to preview collection: {str(e)}"
         )
 
 
@@ -203,7 +203,7 @@ async def get_collection_stats(
         stats = collection_service.get_collection_stats(user=current_user, db=db)
         return CollectionStatsResponse(**stats)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get stats: {str(e)}")
 
 
 @router.get("/{collection_id}", response_model=CollectionDetailResponse)
@@ -237,7 +237,7 @@ async def get_collection(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Get collection items with document info
     items = (
@@ -312,7 +312,7 @@ async def update_collection(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Update fields
     if update_data.name is not None:
@@ -332,7 +332,7 @@ async def update_collection(
     return collection
 
 
-@router.delete("/{collection_id}", status_code=204)
+@router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -352,7 +352,7 @@ async def delete_collection(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     db.delete(collection)
     db.commit()
@@ -382,15 +382,15 @@ async def refresh_collection(
         )
         return collection
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to refresh collection: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to refresh collection: {str(e)}"
         )
 
 
 @router.post(
-    "/{collection_id}/items", response_model=CollectionItemResponse, status_code=201
+    "/{collection_id}/items", response_model=CollectionItemResponse, status_code=status.HTTP_201_CREATED
 )
 async def add_collection_item(
     collection_id: UUID,
@@ -413,7 +413,7 @@ async def add_collection_item(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Check if item already exists
     existing = (
@@ -428,7 +428,7 @@ async def add_collection_item(
     )
 
     if existing:
-        raise HTTPException(status_code=400, detail="Document already in collection")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document already in collection")
 
     # Get current max order
     max_order = (
@@ -486,7 +486,7 @@ async def update_collection_item(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Get item
     item = (
@@ -501,7 +501,7 @@ async def update_collection_item(
     )
 
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
     # Update fields
     if update_data.relevance_score is not None:
@@ -519,7 +519,7 @@ async def update_collection_item(
     return item
 
 
-@router.delete("/{collection_id}/items/{item_id}", status_code=204)
+@router.delete("/{collection_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_collection_item(
     collection_id: UUID,
     item_id: UUID,
@@ -539,7 +539,7 @@ async def remove_collection_item(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Get item
     item = (
@@ -554,7 +554,7 @@ async def remove_collection_item(
     )
 
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
     db.delete(item)
 
@@ -582,7 +582,7 @@ async def pin_collection(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     collection.is_pinned = not collection.is_pinned
     db.commit()
@@ -607,7 +607,7 @@ async def favorite_collection(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     collection.is_favorite = not collection.is_favorite
     db.commit()
@@ -649,7 +649,7 @@ async def chat_with_collection(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     try:
         response = await collection_chat_service.chat_with_collection(
@@ -661,9 +661,9 @@ async def chat_with_collection(
         )
         return CollectionChatResponse(**response)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Chat error: {str(e)}")
 
 
 @router.get("/{collection_id}/export")
@@ -719,7 +719,7 @@ async def export_collection(
     )
 
     if not collection:
-        raise HTTPException(status_code=404, detail="Collection not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     items = (
         db.query(CollectionItem)
@@ -741,7 +741,7 @@ async def export_collection(
                 f"attempted to export collection {collection_id} containing confidential documents"
             )
             raise HTTPException(
-                status_code=403,
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: Cannot export collection containing confidential documents",
             )
 
@@ -805,7 +805,7 @@ async def export_collection(
             from reportlab.pdfgen import canvas as rl_canvas
         except ImportError:
             raise HTTPException(
-                status_code=500,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="PDF generation library not installed. Please install reportlab.",
             )
 

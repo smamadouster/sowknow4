@@ -37,13 +37,15 @@ class EmbeddingService:
         self._initialized = True
 
     @property
-    def model(self):
+    def model(self) -> object:
+        """Return the loaded SentenceTransformer model, loading it lazily if needed."""
         if self._model is None:
             self._load_model()
         return self._model
 
     @property
     def is_loaded(self) -> bool:
+        """True when the embedding model has been loaded into memory."""
         return self._model is not None
 
     @property
@@ -58,6 +60,7 @@ class EmbeddingService:
 
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     self._device = "cuda"
                     logger.info("Using CUDA for embeddings")
@@ -85,6 +88,7 @@ class EmbeddingService:
             )
 
     def get_memory_stats(self) -> Dict[str, Any]:
+        """Return memory usage statistics for the embedding service process."""
         try:
             import psutil
 
@@ -115,6 +119,7 @@ class EmbeddingService:
             }
 
     def health_check(self) -> Dict[str, Any]:
+        """Return a health status dict including memory stats and load error if any."""
         stats = self.get_memory_stats()
         stats["status"] = "healthy" if self.is_loaded else "model_not_loaded"
         if self._load_error:

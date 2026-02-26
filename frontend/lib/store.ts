@@ -239,7 +239,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const response = await api.getSessions();
 
       if (response.data && !response.error) {
-        set({ sessions: (response.data as any).sessions || [] });
+        set({ sessions: (response.data as { sessions: ChatSession[] }).sessions || [] });
       }
     } catch (error) {
       console.error('Error loading sessions:', error);
@@ -253,7 +253,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const response = await api.getMessages(sessionId);
 
       if (response.data && !response.error) {
-        set({ messages: (response.data as any).messages || [] });
+        set({ messages: (response.data as { messages: ChatMessage[] }).messages || [] });
       }
     } catch (error) {
       console.error('Error loading messages:', error);

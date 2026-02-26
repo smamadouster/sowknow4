@@ -5,6 +5,7 @@ LLM Routing Strategy:
 - Confidential Docs: Ollama (privacy — never leaves the server)
 - All public (RAG + general): MiniMax M2.5 (direct API) -> Kimi K2.5 (OpenRouter) -> Ollama
 """
+
 import os
 import logging
 import json
@@ -58,15 +59,14 @@ class OllamaService:
         self.model = OLLAMA_MODEL
 
     @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=2, max=5)
+        stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5)
     )
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
-        num_predict: int = 4096
+        num_predict: int = 4096,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using Ollama
@@ -84,28 +84,25 @@ class OllamaService:
         ollama_messages = []
         for msg in messages:
             role_map = {"user": "user", "assistant": "assistant", "system": "system"}
-            ollama_messages.append({
-                "role": role_map.get(msg.get("role", "user"), "user"),
-                "content": msg.get("content", "")
-            })
+            ollama_messages.append(
+                {
+                    "role": role_map.get(msg.get("role", "user"), "user"),
+                    "content": msg.get("content", ""),
+                }
+            )
 
         payload = {
             "model": self.model,
             "messages": ollama_messages,
             "stream": stream,
-            "options": {
-                "temperature": temperature,
-                "num_predict": num_predict
-            }
+            "options": {"temperature": temperature, "num_predict": num_predict},
         }
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 if stream:
                     async with client.stream(
-                        "POST",
-                        f"{self.base_url}/api/chat",
-                        json=payload
+                        "POST", f"{self.base_url}/api/chat", json=payload
                     ) as response:
                         response.raise_for_status()
 
@@ -123,8 +120,7 @@ class OllamaService:
                                     continue
                 else:
                     response = await client.post(
-                        f"{self.base_url}/api/chat",
-                        json=payload
+                        f"{self.base_url}/api/chat", json=payload
                     )
                     response.raise_for_status()
                     result = response.json()
@@ -135,6 +131,16 @@ class OllamaService:
         except httpx.HTTPError as e:
             logger.error(f"Ollama error: {str(e)}")
             yield f"Error: Could not connect to Ollama service"
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Return Ollama reachability status."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{self.base_url}/api/tags")
+                response.raise_for_status()
+                return {"service": "ollama", "status": "healthy"}
+        except Exception as e:
+            return {"service": "ollama", "status": "unhealthy", "error": str(e)}
 
 
 class ChatService:
@@ -148,33 +154,26 @@ class ChatService:
         self.max_context_messages = 10
 
     async def get_conversation_history(
-        self,
-        session_id: UUID,
-        db
+        self, session_id: UUID, db
     ) -> List[Dict[str, str]]:
         """Get conversation history for context"""
-        messages = db.query(ChatMessage).filter(
-            ChatMessage.session_id == session_id
-        ).order_by(
-            ChatMessage.created_at.asc()
-        ).limit(self.max_context_messages).all()
+        messages = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc())
+            .limit(self.max_context_messages)
+            .all()
+        )
 
         history = []
         for msg in messages:
             role = "user" if msg.role == MessageRole.USER else "assistant"
-            history.append({
-                "role": role,
-                "content": msg.content
-            })
+            history.append({"role": role, "content": msg.content})
 
         return history
 
     async def retrieve_relevant_chunks(
-        self,
-        query: str,
-        session_id: UUID,
-        db,
-        current_user: User
+        self, query: str, session_id: UUID, db, current_user: User
     ) -> tuple[List[Dict], bool]:
         """
         Retrieve relevant document chunks for RAG
@@ -186,34 +185,30 @@ class ChatService:
         has_pii = pii_detection_service.detect_pii(query)
         if has_pii:
             pii_summary = pii_detection_service.get_pii_summary(query)
-            logger.warning(f"PII detected in chat query by user {current_user.email}: {pii_summary['detected_types']}")
+            logger.warning(
+                f"PII detected in chat query by user {current_user.email}: {pii_summary['detected_types']}"
+            )
 
         # Get session to check document scope
-        session = db.query(ChatSession).filter(
-            ChatSession.id == session_id
-        ).first()
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
         # Perform search
         search_result = await search_service.hybrid_search(
-            query=query,
-            limit=10,
-            offset=0,
-            db=db,
-            user=current_user
+            query=query, limit=10, offset=0, db=db, user=current_user
         )
 
         # Filter by document scope if specified
         if session and session.document_scope:
             scope_set = set(str(doc_id) for doc_id in session.document_scope)
             search_result["results"] = [
-                r for r in search_result["results"]
-                if str(r.document_id) in scope_set
+                r for r in search_result["results"] if str(r.document_id) in scope_set
             ]
 
         # Check for confidential documents OR PII in query
-        has_confidential = any(
-            r.document_bucket == "confidential" for r in search_result["results"]
-        ) or has_pii
+        has_confidential = (
+            any(r.document_bucket == "confidential" for r in search_result["results"])
+            or has_pii
+        )
 
         # Format as source documents
         sources = []
@@ -223,13 +218,15 @@ class ChatService:
             if has_pii:
                 chunk_text, _ = pii_detection_service.redact_pii(chunk_text)
 
-            sources.append({
-                "document_id": r.document_id,
-                "document_name": r.document_name,
-                "chunk_id": r.chunk_id,
-                "chunk_text": chunk_text,
-                "relevance_score": r.final_score
-            })
+            sources.append(
+                {
+                    "document_id": r.document_id,
+                    "document_name": r.document_name,
+                    "chunk_id": r.chunk_id,
+                    "chunk_text": chunk_text,
+                    "relevance_score": r.final_score,
+                }
+            )
 
         return sources, has_confidential
 
@@ -237,7 +234,7 @@ class ChatService:
         self,
         query: str,
         sources: List[Dict],
-        conversation_history: List[Dict[str, str]]
+        conversation_history: List[Dict[str, str]],
     ) -> List[Dict[str, str]]:
         """
         Build RAG context with system prompt and retrieved documents
@@ -280,41 +277,25 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         # Build messages
         messages = [
-            {
-                "role": "system",
-                "content": system_prompt.format(context=context_text)
-            }
+            {"role": "system", "content": system_prompt.format(context=context_text)}
         ]
 
         # Add conversation history
         for msg in conversation_history:
-            messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
+            messages.append({"role": msg["role"], "content": msg["content"]})
 
         # Add current query
-        messages.append({
-            "role": "user",
-            "content": query
-        })
+        messages.append({"role": "user", "content": query})
 
         return messages
 
     async def generate_chat_response(
-        self,
-        session_id: UUID,
-        user_message: str,
-        db,
-        current_user: User
+        self, session_id: UUID, user_message: str, db, current_user: User
     ) -> Dict[str, Any]:
         """Generate chat response (non-streaming)"""
         # Retrieve relevant chunks
         sources, has_confidential = await self.retrieve_relevant_chunks(
-            query=user_message,
-            session_id=session_id,
-            db=db,
-            current_user=current_user
+            query=user_message, session_id=session_id, db=db, current_user=current_user
         )
 
         # Get conversation history
@@ -328,6 +309,24 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # 2. All public (RAG + general) -> MiniMax M2.5 (direct) -> Kimi K2.5 (OpenRouter) -> Ollama
 
         if has_confidential:
+            ollama_health = await self.ollama_service.health_check()
+            if ollama_health["status"] != "healthy":
+                logger.error(
+                    f"Ollama unavailable for confidential query: {ollama_health.get('error', 'unknown')}"
+                )
+                return {
+                    "content": (
+                        "Votre requête implique des documents confidentiels qui nécessitent "
+                        "un traitement local sécurisé. Le service IA local est temporairement "
+                        "indisponible. Veuillez réessayer dans quelques minutes. / "
+                        "Your query involves confidential documents requiring secure local processing. "
+                        "The local AI service is temporarily unavailable. Please try again in a few minutes."
+                    ),
+                    "llm_used": LLMProvider.OLLAMA,
+                    "sources": [],
+                    "has_confidential": True,
+                    "error": "ollama_unavailable",
+                }
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
@@ -357,35 +356,30 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Format sources for response
         formatted_sources = []
         for source in sources:
-            formatted_sources.append({
-                "document_id": source["document_id"],
-                "document_name": source["document_name"],
-                "chunk_id": source["chunk_id"],
-                "chunk_text": source["chunk_text"][:200],
-                "relevance_score": source["relevance_score"]
-            })
+            formatted_sources.append(
+                {
+                    "document_id": source["document_id"],
+                    "document_name": source["document_name"],
+                    "chunk_id": source["chunk_id"],
+                    "chunk_text": source["chunk_text"][:200],
+                    "relevance_score": source["relevance_score"],
+                }
+            )
 
         return {
             "content": response_text,
             "llm_used": llm_provider,
             "sources": formatted_sources,
-            "has_confidential": has_confidential
+            "has_confidential": has_confidential,
         }
 
     async def generate_chat_response_stream(
-        self,
-        session_id: UUID,
-        user_message: str,
-        db,
-        current_user: User
+        self, session_id: UUID, user_message: str, db, current_user: User
     ) -> AsyncGenerator[str, None]:
         """Generate streaming chat response"""
         # Retrieve relevant chunks
         sources, has_confidential = await self.retrieve_relevant_chunks(
-            query=user_message,
-            session_id=session_id,
-            db=db,
-            current_user=current_user
+            query=user_message, session_id=session_id, db=db, current_user=current_user
         )
 
         # Get conversation history
@@ -399,6 +393,22 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # 2. All public (RAG + general) -> MiniMax M2.5 (direct) -> Kimi K2.5 (OpenRouter) -> Ollama
 
         if has_confidential:
+            ollama_health = await self.ollama_service.health_check()
+            if ollama_health["status"] != "healthy":
+                logger.error(
+                    f"Ollama unavailable for confidential stream query: {ollama_health.get('error', 'unknown')}"
+                )
+                error_msg = (
+                    "Votre requête implique des documents confidentiels qui nécessitent "
+                    "un traitement local sécurisé. Le service IA local est temporairement "
+                    "indisponible. Veuillez réessayer dans quelques minutes. / "
+                    "Your query involves confidential documents requiring secure local processing. "
+                    "The local AI service is temporarily unavailable. Please try again in a few minutes."
+                )
+                yield f"data: {json.dumps({'type': 'llm_info', 'llm_used': LLMProvider.OLLAMA.value, 'has_confidential': True, 'cache_hit': False})}\n\n"
+                yield f"data: {json.dumps({'type': 'message', 'content': error_msg})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
             routing_reason = "confidential_docs"
@@ -432,6 +442,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 logger.info("Stream cache HIT – serving from Redis cache")
                 try:
                     from app.services.cache_monitor import cache_monitor
+
                     cache_monitor.record_cache_hit(
                         cache_key="stream_pre_check",
                         tokens_saved=len(cached_content) // 4,
@@ -455,12 +466,14 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Send sources
         formatted_sources = []
         for source in sources:
-            formatted_sources.append({
-                "document_id": str(source["document_id"]),
-                "document_name": source["document_name"],
-                "chunk_id": str(source["chunk_id"]),
-                "relevance_score": source["relevance_score"]
-            })
+            formatted_sources.append(
+                {
+                    "document_id": str(source["document_id"]),
+                    "document_name": source["document_name"],
+                    "chunk_id": str(source["chunk_id"]),
+                    "relevance_score": source["relevance_score"],
+                }
+            )
 
         yield f"data: {json.dumps({'type': 'sources', 'sources': formatted_sources})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"

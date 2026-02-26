@@ -6,15 +6,15 @@ and thought evolution tracking.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import date, datetime
+from typing import List, Dict, Any
+from datetime import date
 from collections import defaultdict
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, desc, select, func
+from sqlalchemy import and_, select
 
 from app.models.knowledge_graph import TimelineEvent, Entity, EntityType
-from app.models.document import Document, DocumentStatus
+from app.models.document import Document
 
 logger = logging.getLogger(__name__)
 

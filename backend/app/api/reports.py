@@ -13,7 +13,7 @@ from fastapi import status, APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.reports import GenerateReportRequest, GenerateReportResponse
+from app.schemas.reports import GenerateReportRequest
 
 logger = logging.getLogger(__name__)
 

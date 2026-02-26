@@ -6,14 +6,13 @@ evolution of concepts across documents.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import date, datetime, timedelta
+from typing import List, Dict, Any
+from datetime import date, timedelta
 from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, desc, select
+from sqlalchemy import and_, desc, select
 
-from app.models.knowledge_graph import Entity, TimelineEvent, EntityMention, EntityType
-from app.models.document import Document
+from app.models.knowledge_graph import Entity, TimelineEvent
 
 logger = logging.getLogger(__name__)
 

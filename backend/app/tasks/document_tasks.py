@@ -7,10 +7,8 @@ Status values used in this module:
 """
 
 from celery import shared_task
-from app.celery_app import celery_app
 from app.tasks.base import log_task_memory, base_task_failure_handler
 import logging
-from typing import Optional
 import uuid
 from datetime import datetime
 
@@ -555,7 +553,6 @@ def generate_embeddings(self, chunk_ids: list) -> dict:
         db.rollback()
         logger.error(f"Error generating embeddings: {str(e)}")
         # If all retries exhausted, store in DLQ
-        from celery.exceptions import MaxRetriesExceededError
 
         if self.request.retries >= self.max_retries:
             try:

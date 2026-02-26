@@ -9,7 +9,6 @@ LLM Routing Strategy:
 import os
 import logging
 import json
-import asyncio
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from uuid import UUID
 
@@ -19,7 +18,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.models.user import User
-from app.models.document import Document, DocumentBucket
 from app.services.search_service import search_service
 from app.services.pii_detection_service import pii_detection_service
 from app.services.llm_router import llm_router
@@ -133,7 +131,7 @@ class OllamaService:
 
         except httpx.HTTPError as e:
             logger.error(f"Ollama error: {str(e)}")
-            yield f"Error: Could not connect to Ollama service"
+            yield "Error: Could not connect to Ollama service"
 
     async def health_check(self) -> Dict[str, Any]:
         """Return Ollama reachability status."""
@@ -323,8 +321,8 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 # Enqueue via DeferredQueryService so the query is retried when Ollama recovers
                 deferred_id = await deferred_query_service.enqueue(
                     user_id=str(current_user.id),
-                    query_text=query,
-                    document_ids=[c.get("document_id") for c in source_documents if c.get("document_id")],
+                    query_text=user_message,
+                    document_ids=[c.get("document_id") for c in sources if c.get("document_id")],
                 )
                 logger.info(f"Confidential query queued as deferred_id={deferred_id} via DeferredQueryService")
                 return {
@@ -418,7 +416,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 # Queue via DeferredQueryService for retry when Ollama recovers
                 deferred_id = await deferred_query_service.enqueue(
                     user_id=str(current_user.id),
-                    query_text=query,
+                    query_text=user_message,
                     document_ids=[c.get("document_id") for c in sources if c.get("document_id")],
                 )
                 logger.info(f"Streaming confidential query queued deferred_id={deferred_id}")
@@ -437,7 +435,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Delegate provider selection to llm_router — no inline routing here
         try:
             routing_decision = await llm_router.select_provider(
-                query=query,
+                query=user_message,
                 context_chunks=sources,
                 has_confidential=has_confidential,
             )

@@ -7,11 +7,9 @@ information disclosure.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Set
-from datetime import datetime, timedelta
+from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
-from collections import defaultdict
 
 from app.models.user import User
 from app.models.knowledge_graph import Entity, EntityRelationship, TimelineEvent

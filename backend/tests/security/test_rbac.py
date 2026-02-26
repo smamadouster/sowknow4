@@ -15,7 +15,6 @@ Tests verify:
 - User uploads → 403
 - User tries to delete → 403
 """
-import pytest
 import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -726,7 +725,6 @@ class TestAdminPasswordReset:
         db.commit()
 
         # Use a fake UUID
-        import uuid
         fake_id = uuid.uuid4()
 
         # Try to reset password of non-existent user

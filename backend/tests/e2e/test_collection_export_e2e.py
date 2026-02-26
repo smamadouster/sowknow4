@@ -13,8 +13,6 @@ All external LLM / AI calls are mocked. reportlab runs for real to verify PDF ge
 """
 import json
 import pytest
-from datetime import datetime
-from unittest.mock import patch, MagicMock, AsyncMock
 from uuid import uuid4
 
 from fastapi.testclient import TestClient

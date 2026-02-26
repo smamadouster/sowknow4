@@ -2,14 +2,11 @@
 SOWKNOW API - Minimal Working Version
 """
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 import time
 import os
-from collections import defaultdict
-from threading import Lock
 from contextlib import asynccontextmanager
 import logging
 from datetime import datetime
@@ -419,7 +416,6 @@ async def prometheus_metrics():
     Prometheus metrics endpoint.
     Exposes all metrics in Prometheus format for scraping.
     """
-    from app.services.prometheus_metrics import get_metrics
 
     metrics = get_metrics()
 

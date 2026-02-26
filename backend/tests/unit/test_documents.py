@@ -2,9 +2,7 @@
 Unit tests for document endpoints
 """
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 from io import BytesIO
 
 
@@ -186,7 +184,6 @@ def test_delete_document_admin(client: TestClient, test_document, admin_headers)
 
 def test_get_document_status_requires_auth(client: TestClient, test_document):
     """Status endpoint must reject unauthenticated requests"""
-    import uuid
     response = client.get(f"/api/v1/documents/{test_document.id}/status")
     assert response.status_code == 401
 

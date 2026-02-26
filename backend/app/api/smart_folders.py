@@ -8,7 +8,6 @@ import json
 import logging
 from fastapi import status, APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from typing import Optional
 from uuid import UUID
 
@@ -20,7 +19,6 @@ from app.schemas.collection import (
     SmartFolderResponse,
     CollectionReportRequest,
     CollectionReportResponse,
-    ReportFormat,
 )
 from app.services.smart_folder_service import smart_folder_service
 from app.services.report_service import report_service, ReportFormat as ReportFormatService

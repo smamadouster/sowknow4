@@ -2,9 +2,8 @@
 Text extraction service for various document formats
 """
 
-import os
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -285,8 +284,6 @@ class TextExtractor:
         """
         try:
             import PyPDF2
-            from PIL import Image
-            import io
 
             images = []
             with open(file_path, "rb") as file:

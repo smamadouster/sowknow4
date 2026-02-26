@@ -11,7 +11,6 @@ P1-6:
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision = "add_coll_confidential_008"

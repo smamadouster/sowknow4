@@ -9,12 +9,10 @@ a knowledge graph for graph-augmented retrieval.
 import logging
 import json
 import warnings
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, select
-from collections import defaultdict
+from sqlalchemy import and_, select
 
 from app.models.knowledge_graph import (
     Entity,
@@ -24,8 +22,7 @@ from app.models.knowledge_graph import (
     EntityType,
     RelationType,
 )
-from app.models.document import Document, DocumentChunk, DocumentStatus, DocumentBucket
-from app.models.user import User
+from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)

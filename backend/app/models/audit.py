@@ -1,10 +1,9 @@
 """
 Audit log model for tracking admin actions and confidential access
 """
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Enum as SQLEnum, func
+from sqlalchemy import Column, String, Text, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin, GUIDType
-from app.models.user import User, UserRole
 import enum
 import uuid
 

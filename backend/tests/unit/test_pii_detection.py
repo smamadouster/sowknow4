@@ -2,7 +2,6 @@
 Unit tests for PII Detection Service
 Tests detection and redaction of personally identifiable information
 """
-import pytest
 from app.services.pii_detection_service import PIIDetectionService
 
 

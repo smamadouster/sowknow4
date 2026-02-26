@@ -3,7 +3,6 @@ Unit tests for Cache Monitor service
 """
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
 
 from app.services.cache_monitor import (
     CacheMonitor,

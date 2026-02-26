@@ -12,7 +12,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 
 # Import Vector type from pgvector for embeddings
 try:

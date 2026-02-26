@@ -29,11 +29,8 @@ import time
 import os
 import httpx
 import statistics
-import tempfile
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from io import BytesIO
+from typing import Dict
+from unittest.mock import Mock, AsyncMock, patch
 import numpy as np
 
 from sqlalchemy.orm import Session
@@ -41,12 +38,9 @@ from sqlalchemy import text
 
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentChunk, DocumentBucket, DocumentStatus, DocumentLanguage
-from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
-from app.services.search_service import search_service, HybridSearchService
-from app.services.chat_service import chat_service
-from app.services.minimax_service import minimax_service, MiniMaxService
-from app.services.ollama_service import ollama_service, OllamaService
-from app.services.embedding_service import embedding_service
+from app.services.search_service import search_service
+from app.services.minimax_service import MiniMaxService
+from app.services.ollama_service import OllamaService
 
 
 # ============================================================================
@@ -347,7 +341,7 @@ class TestPerformanceTargets:
                     user=user
                 )
                 times['search'] = time.time() - start
-            except Exception as e:
+            except Exception:
                 times['search'] = -1
 
             # Simulate think time
@@ -695,7 +689,7 @@ class TestResilienceMatrix:
                 if result and "Fallback" in result:
                     print(f"OCR succeeded after {attempt} retries using fallback")
                     return  # Success with fallback
-            except Exception as e:
+            except Exception:
                 if attempt < max_retries - 1:
                     delay = base_delay * (2 ** attempt)  # Exponential backoff
                     await asyncio.sleep(delay)

@@ -7,10 +7,8 @@ Tests use mock Telegram Update objects so no live Telegram connection is needed.
 """
 
 import pytest
-import asyncio
-import json
 import re
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Dict, Any, List, Optional
 
 

@@ -6,9 +6,8 @@ found during research before it's presented to the user.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from collections import defaultdict
 
 from app.services.ollama_service import ollama_service
 from app.services.minimax_service import minimax_service

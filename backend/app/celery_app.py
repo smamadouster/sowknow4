@@ -10,24 +10,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Redis / broker configuration
+# Redis / broker configuration — sourced from authenticated settings.REDIS_URL
 # ---------------------------------------------------------------------------
 
-
-def _validate_redis_url() -> str:
-    """Return REDIS_URL from environment, raising on misconfiguration."""
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    if not redis_url:
-        raise ValueError("REDIS_URL environment variable is required")
-    if not redis_url.startswith(("redis://", "rediss://", "unix://")):
+try:
+    from app.core.config import settings as _settings
+    REDIS_URL = _settings.REDIS_URL
+except Exception:
+    # Fallback for environments where config.py is not yet bootstrapped
+    # (e.g., during Alembic migrations or bare-metal test runs).
+    # REDIS_URL from env must already include credentials in this path.
+    _raw = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    if not _raw.startswith(("redis://", "rediss://", "unix://")):
         raise ValueError(
             f"REDIS_URL must start with 'redis://', 'rediss://', or 'unix://'; "
-            f"got: {redis_url!r}"
+            f"got: {_raw!r}"
         )
-    return redis_url
-
-
-REDIS_URL = _validate_redis_url()
+    REDIS_URL = _raw
 
 # ---------------------------------------------------------------------------
 # Create Celery app
@@ -42,6 +41,7 @@ celery_app = Celery(
         "app.tasks.anomaly_tasks",
         "app.tasks.embedding_tasks",
         "app.tasks.report_tasks",
+        "app.tasks.monitoring_tasks",
     ],
 )
 
@@ -57,10 +57,14 @@ _visibility_timeout = visibility_timeout
 _task_time_limit = task_time_limit
 
 celery_app.conf.update(
-    # Serialisation
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
+    # Memory optimisation — keep RSS within the 1280m container ceiling
+    worker_concurrency=2,
+    worker_max_tasks_per_child=50,
+    worker_prefetch_multiplier=1,
+    # Serialisation — JSON only; no binary serializers permitted
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
     timezone="UTC",
     enable_utc=True,
     # Task routing
@@ -75,7 +79,6 @@ celery_app.conf.update(
     result_expires=3600,  # 1 hour
     # Reliability
     task_acks_late=True,
-    worker_prefetch_multiplier=1,
     # Rate limiting (env-configurable)
     task_default_rate_limit=os.getenv("CELERY_RATE_LIMIT", "10/m"),
     # Task time limits (env-configurable)

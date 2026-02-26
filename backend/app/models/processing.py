@@ -1,6 +1,5 @@
 from sqlalchemy import Column, String, ForeignKey, Text, Enum, Integer, DateTime
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 import uuid
 import enum
 from app.models.base import Base, TimestampMixin, GUIDType

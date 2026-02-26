@@ -4,11 +4,15 @@ Knowledge Graph API endpoints for Phase 3
 Provides endpoints for entity extraction, relationship mapping, timeline
 construction, and graph visualization data.
 """
+import logging
+
 from fastapi import status, APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional, List
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.user import User
@@ -33,7 +37,7 @@ async def extract_entities_from_document(
     Analyzes the document and extracts people, organizations, locations,
     concepts, and events for the knowledge graph.
     """
-    from app.models.document import Document, DocumentChunk, DocumentStatus
+    from app.models.document import Document, DocumentChunk
 
     # Get document
     result = await db.execute(select(Document).where(Document.id == document_id))

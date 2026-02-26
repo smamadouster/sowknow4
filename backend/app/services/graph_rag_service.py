@@ -7,19 +7,17 @@ relevance and discover related information.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional
 from collections import defaultdict
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, select
+from sqlalchemy import and_, or_, select
 
 from app.models.knowledge_graph import (
     Entity,
     EntityRelationship,
     EntityMention,
-    EntityType,
-    RelationType,
 )
-from app.models.document import Document, DocumentChunk, DocumentBucket
+from app.models.document import Document, DocumentBucket
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)

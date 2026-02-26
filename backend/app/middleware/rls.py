@@ -13,7 +13,6 @@ Variables set per request:
 import logging
 
 from jose import JWTError, jwt
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.database import AsyncSessionLocal

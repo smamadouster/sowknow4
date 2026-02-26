@@ -5,9 +5,8 @@ Provides endpoints for the orchestrated multi-agent search system
 with clarification, research, verification, and answer generation.
 """
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from typing import Optional, List
 from uuid import UUID
 import logging
@@ -18,8 +17,7 @@ from app.models.document import Document, DocumentBucket
 from app.models.audit import AuditLog, AuditAction
 from app.services.agents.agent_orchestrator import (
     agent_orchestrator,
-    OrchestratorRequest,
-    OrchestratorState
+    OrchestratorRequest
 )
 from app.services.agents.clarification_agent import (
     clarification_agent,
@@ -391,7 +389,6 @@ async def detect_inconsistencies(
     Analyzes multiple sources to find conflicting
     information.
     """
-    from app.models.document import Document
 
     sources = []
     confidential_docs = []

@@ -3,10 +3,8 @@ Celery tasks for anomaly detection and scheduled reports
 """
 
 from celery import shared_task
-from app.celery_app import celery_app
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +54,7 @@ def daily_anomaly_report() -> dict:
     # Per PRD: Documents stuck in 'processing' status for more than 24 hours
     try:
         from app.models.document import Document, DocumentStatus
-        from app.models.processing import ProcessingQueue, TaskStatus
+        from app.models.processing import ProcessingQueue, TaskStatus  # noqa: F401
 
         db = SessionLocal()
         try:

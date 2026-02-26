@@ -6,10 +6,7 @@ using unittest.mock to isolate the endpoint behaviour.
 """
 
 import io
-import json
-import pytest
 from datetime import datetime
-from unittest.mock import MagicMock, patch, PropertyMock
 from uuid import uuid4
 
 from app.models.user import User, UserRole

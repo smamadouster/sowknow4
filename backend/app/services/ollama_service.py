@@ -7,7 +7,7 @@ This ensures PII and confidential data never leaves the local infrastructure.
 
 import os
 import logging
-from typing import AsyncGenerator, List, Dict, Any, Optional
+from typing import AsyncGenerator, List, Dict, Any
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -117,7 +117,7 @@ class OllamaService(BaseLLMService):
 
         except httpx.HTTPError as e:
             logger.error(f"Ollama error: {str(e)}")
-            yield f"Error: Could not connect to Ollama service"
+            yield "Error: Could not connect to Ollama service"
 
     @retry(
         stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5)

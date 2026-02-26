@@ -14,7 +14,6 @@ CONTEXT CACHING:
 import os
 import logging
 import json
-import asyncio
 import hashlib
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from datetime import datetime
@@ -399,7 +398,7 @@ class OpenRouterService:
             # Handle rate limit (429) errors with specific retry trigger
             if e.response.status_code == 429:
                 logger.warning(
-                    f"OpenRouter rate limit hit (429), will retry with backoff"
+                    "OpenRouter rate limit hit (429), will retry with backoff"
                 )
                 # Re-raise to trigger tenacity retry with exponential backoff
                 raise

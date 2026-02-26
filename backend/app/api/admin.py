@@ -4,9 +4,9 @@ Admin API endpoints for user management, dashboard, stats, and audit logging
 
 from fastapi import status, APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, and_, or_, desc, select, text
+from sqlalchemy import func, or_, desc, select, text
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Optional
 import uuid
 import json
 import os
@@ -15,7 +15,7 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentStatus, DocumentBucket
 from app.models.chat import ChatSession
-from app.models.processing import ProcessingQueue, TaskStatus, TaskType
+from app.models.processing import ProcessingQueue, TaskStatus
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.admin import (
     PasswordReset,

@@ -12,15 +12,14 @@ Cache key prefix: collection:{collection_id}:query:{hash}
 
 import logging
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc, select, func
+from sqlalchemy import and_, or_, select
 
 # Redis-backed cache invalidation for collection LLM responses
 try:
-    from app.services.openrouter_service import openrouter_service as _openrouter_svc
+    from app.services.openrouter_service import openrouter_service as _openrouter_svc # noqa: F401
 
     _CACHE_KEY_PREFIX = "collection"
     _cache_invalidation_enabled = True
@@ -30,14 +29,11 @@ except ImportError:
 from app.models.collection import (
     Collection,
     CollectionItem,
-    CollectionChatSession,
     CollectionVisibility,
-    CollectionType,
 )
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
-from app.models.chat import ChatSession, LLMProvider
-from app.schemas.collection import CollectionCreate, CollectionUpdate
+from app.schemas.collection import CollectionCreate
 from app.services.intent_parser import (
     intent_parser_service,
     ParsedIntent as ParsedIntentModel,

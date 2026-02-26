@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -12,7 +12,6 @@ from slowapi.errors import RateLimitExceeded
 from app.limiter import limiter
 import time
 import os
-from collections import defaultdict
 from threading import Lock
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -23,7 +22,6 @@ from app.api import auth, admin, search, documents
 from app.api import collections, smart_folders, knowledge_graph, graph_rag, multi_agent
 from app.api import chat
 from app.database import engine, init_pgvector, create_all_tables
-from app.models.user import User
 from app.services.openrouter_service import openrouter_service
 # TODO: Import other models once database is set up
 # from app.models.document import Document, DocumentTag, DocumentChunk

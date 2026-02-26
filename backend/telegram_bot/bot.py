@@ -29,7 +29,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from telegram.ext import CallbackQueryHandler, ConversationHandler
+from telegram.ext import CallbackQueryHandler
 import redis.asyncio as redis_async
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -608,7 +608,7 @@ async def handle_document_upload(
                 "task": None,
             }
             await update.message.reply_text(
-                f"📦 <b>Receiving files…</b>", parse_mode="HTML"
+                "📦 <b>Receiving files…</b>", parse_mode="HTML"
             )
         group = _media_groups[media_group_id]
         group["files"].append({"file_bytes": file_bytes, "filename": filename, "tags": parsed_tags})

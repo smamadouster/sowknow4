@@ -8,7 +8,6 @@ import uuid
 import logging
 from pathlib import Path
 from typing import Optional
-import shutil
 from datetime import datetime
 
 from cryptography.fernet import Fernet, InvalidToken

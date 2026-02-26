@@ -11,8 +11,8 @@ Verifies:
 
 import pytest
 import json
-from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
-from typing import AsyncGenerator, List, Dict, Any, Optional
+from unittest.mock import MagicMock, AsyncMock, patch
+from typing import AsyncGenerator, List, Dict
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,6 @@ class TestStreamingCacheHit:
     @pytest.mark.asyncio
     async def test_llm_info_event_has_type_field(self):
         """Every SSE data payload must include a `type` field for frontend dispatch."""
-        from app.services.chat_service import ChatService
 
         svc = self._make_chat_service()
 
@@ -178,7 +177,6 @@ class TestStreamingCacheHit:
     @pytest.mark.asyncio
     async def test_llm_info_contains_cache_hit_false_for_ollama(self):
         """Ollama path always emits cache_hit=False."""
-        from app.services.chat_service import ChatService
 
         svc = self._make_chat_service()
 
@@ -203,7 +201,6 @@ class TestStreamingCacheHit:
     @pytest.mark.asyncio
     async def test_cache_hit_true_when_openrouter_has_cached_response(self):
         """When OpenRouter cache has a response, cache_hit=True and LLM is not called."""
-        from app.services.chat_service import ChatService
 
         svc = self._make_chat_service()
 
@@ -247,7 +244,6 @@ class TestStreamingCacheHit:
     @pytest.mark.asyncio
     async def test_cache_hit_false_when_openrouter_cache_miss(self):
         """When OpenRouter cache has no entry, cache_hit=False and LLM is called."""
-        from app.services.chat_service import ChatService
 
         svc = self._make_chat_service()
 
@@ -282,7 +278,6 @@ class TestStreamingCacheHit:
     @pytest.mark.asyncio
     async def test_all_events_have_type_field(self):
         """Verify every emitted data event has a `type` field (frontend contract)."""
-        from app.services.chat_service import ChatService
 
         svc = self._make_chat_service()
 
@@ -321,7 +316,6 @@ class TestStreamingCacheHit:
         (mimicking a Kimi-only deployment where the cache layer isn't present) and
         verify cache_hit=False is emitted and the LLM is still called.
         """
-        from app.services.chat_service import ChatService
 
         svc = self._make_chat_service()
 

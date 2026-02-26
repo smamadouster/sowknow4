@@ -9,8 +9,6 @@ This addresses the P0 issue: Celery worker OOM fix.
 """
 
 import pytest
-import sys
-import importlib
 import numpy as np
 from unittest.mock import patch, MagicMock
 

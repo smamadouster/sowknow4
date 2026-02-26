@@ -90,5 +90,73 @@ services:
           memory: 512m
           cpus: '1.0'
 
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: sowknow4-celery-worker-dev
+    environment:
+      DATABASE_URL: postgresql://sowknow:${DATABASE_PASSWORD}@postgres:5432/sowknow
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
+    deploy:
+      resources:
+        limits:
+          memory: 1280m
+          cpus: '1.5'
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: sowknow4-celery-beat-dev
+    environment:
+      DATABASE_URL: postgresql://sowknow:${DATABASE_PASSWORD}@postgres:5432/sowknow
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: celery -A app.celery_app beat --loglevel=info
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.25'
+
+  telegram-bot:
+    image: sowknow4-telegram-bot:latest
+    container_name: sowknow4-telegram-bot-dev
+    environment:
+      BACKEND_URL: http://backend:8000
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      BOT_API_KEY: ${BOT_API_KEY}
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'
+
 volumes:
   postgres-data:

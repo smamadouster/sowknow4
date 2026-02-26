@@ -10,7 +10,6 @@ All processing is done locally - zero PII sent to cloud APIs.
 """
 
 import os
-import base64
 import time
 import logging
 from enum import Enum
@@ -167,7 +166,6 @@ class OCRService:
         language: str = "french",
     ) -> Dict[str, Any]:
         """Internal extraction returning full metadata dict."""
-        import asyncio
         start_time = time.time()
         with open(image_path, "rb") as f:
             image_bytes = f.read()
@@ -249,6 +247,8 @@ class OCRService:
 
     async def _gundam_mode_paddle(self, img_cv, ocr, language: str) -> Dict[str, Any]:
         """Multi-pass OCR with result merging - for complex documents"""
+        import cv2  # noqa: PLC0415
+
         scales = [0.5, 1.0, 1.5]
         all_results = []
 

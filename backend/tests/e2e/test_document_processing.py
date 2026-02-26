@@ -19,7 +19,6 @@ Test cases:
 from __future__ import annotations
 
 import os
-import tempfile
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -42,7 +41,6 @@ os.environ.setdefault("APP_ENV", "test")
 from app.models.base import Base
 from app.models.document import Document, DocumentBucket, DocumentStatus, DocumentChunk
 from app.models.processing import ProcessingQueue, TaskType, TaskStatus
-from app.models.failed_task import FailedCeleryTask
 from app.models.user import User, UserRole
 from app.utils.security import get_password_hash
 
@@ -316,7 +314,6 @@ class TestErrorHandling:
         doc = _make_document(db_session, file_path="/tmp/does_not_exist_ever.txt")
 
         from app.tasks.document_tasks import process_document
-        from celery.exceptions import MaxRetriesExceeded
 
         with patch("app.tasks.document_tasks.SessionLocal", return_value=db_session):
             # Task will fail; eager mode raises after max retries

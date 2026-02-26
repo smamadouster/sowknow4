@@ -5,7 +5,6 @@ Uses MiniMax to extract structured intent from natural language queries,
 including keywords, date ranges, entities, and document types.
 """
 
-import os
 import logging
 import json
 import warnings
@@ -15,7 +14,6 @@ from enum import Enum
 import re
 
 from app.services.minimax_service import minimax_service
-from app.models.user import UserRole
 
 logger = logging.getLogger(__name__)
 

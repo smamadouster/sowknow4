@@ -5,15 +5,10 @@ Comprehensive end-to-end tests covering Smart Collections,
 Smart Folders, Reports, and Auto-Tagging.
 """
 import pytest
-from uuid import uuid4
-from datetime import datetime
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app.models.user import User, UserRole
-from app.models.collection import Collection, CollectionItem
-from app.models.document import Document, DocumentTag
 from app.utils.security import create_access_token, get_password_hash
 
 

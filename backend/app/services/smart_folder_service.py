@@ -8,10 +8,10 @@ based on user-provided topics.
 
 import logging
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, desc, select
+from sqlalchemy import and_, select
 
 from app.models.collection import (
     Collection,

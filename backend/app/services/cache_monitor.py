@@ -8,7 +8,6 @@ token savings, and daily statistics for cost optimization tracking.
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from collections import defaultdict
 from threading import Lock
 import json
 

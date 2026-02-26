@@ -6,7 +6,7 @@ from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 import time
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture(scope="session")
@@ -117,7 +117,6 @@ class TestPerformanceRequirements:
 
     def test_search_response_time(self, test_db):
         """Test that search responds in < 3 seconds"""
-        import time
 
         # Setup: Create documents with embeddings
         # Measure search time
@@ -130,7 +129,6 @@ class TestPerformanceRequirements:
 
     def test_upload_processing_time(self, test_db):
         """Test that document processing completes in reasonable time"""
-        import time
 
         # Upload document
         # Wait for processing

@@ -12,7 +12,7 @@ Tests cover:
 
 import pytest
 import io
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 from PIL import Image
 
 
@@ -103,6 +103,8 @@ class TestOCRService:
 
     def test_get_available_modes(self, ocr_service):
         """Test getting available modes"""
+        from app.services.ocr_service import OCRMode  # noqa: PLC0415
+
         modes = ocr_service.get_available_modes()
 
         assert "base" in modes or OCRMode.BASE in modes

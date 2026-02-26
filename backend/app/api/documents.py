@@ -15,7 +15,6 @@ from fastapi import (
     Form,
     Query,
     Header,
-    Request,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -43,7 +42,6 @@ from app.models.document import (
 )
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.document import (
-    DocumentCreate,
     DocumentResponse,
     DocumentListResponse,
     DocumentUploadResponse,
@@ -547,7 +545,7 @@ async def upload_batch_documents(
         if not BOT_API_KEY:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bot API key not configured")
         if x_bot_api_key != BOT_API_KEY:
-            logger.warning(f"Invalid Bot API Key")
+            logger.warning("Invalid Bot API Key")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
         is_bot = True
 

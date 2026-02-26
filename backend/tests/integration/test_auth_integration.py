@@ -14,20 +14,17 @@ This module tests end-to-end security scenarios:
 - Session management
 """
 
-import pytest
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.utils.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    get_password_hash,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    get_password_hash
 )
 
 

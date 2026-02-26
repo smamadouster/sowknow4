@@ -9,6 +9,7 @@ sqlalchemy==2.0.23
 alembic==1.12.1
 psycopg2-binary==2.9.9
 asyncpg==0.29.0
+aiosqlite>=0.19.0
 pgvector==0.2.4
 
 # Authentication
@@ -64,6 +65,11 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 testcontainers==3.7.0
+
+# Code Quality (lint, security, dependency audit)
+ruff>=0.4.0
+bandit[toml]>=1.7.0
+pip-audit>=2.7.0
 
 # PDF Generation
 reportlab==4.0.7

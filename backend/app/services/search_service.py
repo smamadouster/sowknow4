@@ -6,7 +6,6 @@ import asyncio
 import logging
 import re
 from typing import List, Optional, Dict, Any
-from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func, desc
 

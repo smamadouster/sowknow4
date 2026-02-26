@@ -10,7 +10,6 @@ import logging
 from typing import Dict, Callable, Optional
 from functools import wraps
 from collections import defaultdict
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -251,15 +250,15 @@ class PrometheusMetrics:
 
         # Add startup time metric
         uptime = time.time() - self._start_time
-        lines.append(f"# HELP sowknow_uptime_seconds Seconds since startup")
-        lines.append(f"# TYPE sowknow_uptime_seconds gauge")
+        lines.append("# HELP sowknow_uptime_seconds Seconds since startup")
+        lines.append("# TYPE sowknow_uptime_seconds gauge")
         lines.append(f"sowknow_uptime_seconds {uptime:.2f}")
 
         # Add export timestamp
         lines.append(
-            f"# HELP sowknow_export_timestamp_seconds Unix timestamp of last export"
+            "# HELP sowknow_export_timestamp_seconds Unix timestamp of last export"
         )
-        lines.append(f"# TYPE sowknow_export_timestamp_seconds gauge")
+        lines.append("# TYPE sowknow_export_timestamp_seconds gauge")
         lines.append(f"sowknow_export_timestamp_seconds {time.time():.2f}")
 
         # Add all registered metrics

@@ -10,7 +10,6 @@ This migration fills that gap.
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "011"
 down_revision = "010"

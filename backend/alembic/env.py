@@ -22,10 +22,6 @@ if config.config_file_name is not None:
 
 # Import all models for autogenerate
 from app.models.base import Base
-from app.models.user import User
-from app.models.document import Document, DocumentTag, DocumentChunk
-from app.models.chat import ChatSession, ChatMessage
-from app.models.processing import ProcessingQueue
 
 # Set target metadata
 target_metadata = Base.metadata
@@ -60,7 +56,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, 
+            connection=connection,
             target_metadata=target_metadata,
             include_schemas=True
         )

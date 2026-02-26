@@ -2,10 +2,7 @@
 Security tests for LLM Routing
 Tests PII sanitization, confidential routing, and API key exposure prevention
 """
-import pytest
-from unittest.mock import patch, MagicMock
 import os
-import re
 
 from app.services.pii_detection_service import pii_detection_service
 from app.services.chat_service import ChatService
@@ -22,9 +19,9 @@ class TestPIISanitizationEffectiveness:
     def test_email_sanitization(self):
         """Test email addresses are properly sanitized"""
         text = "Contact john.doe@company.com or jane@partner.org"
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[EMAIL_REDACTED]" in redacted
         assert "john.doe@company.com" not in redacted
         assert "jane@partner.org" not in redacted
@@ -33,9 +30,9 @@ class TestPIISanitizationEffectiveness:
     def test_phone_sanitization(self):
         """Test phone numbers are properly sanitized"""
         text = "Call 06 12 34 56 78 or +33 1 23 45 67 89"
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[PHONE_REDACTED]" in redacted
         assert "06 12 34 56 78" not in redacted
         assert "33 1 23 45" not in redacted
@@ -43,44 +40,44 @@ class TestPIISanitizationEffectiveness:
     def test_ssn_sanitization(self):
         """Test SSN is properly sanitized"""
         text = "SSN: 123-45-6789"
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[SSN_REDACTED]" in redacted
         assert "123-45-6789" not in redacted
 
     def test_credit_card_sanitization(self):
         """Test credit card is properly sanitized"""
         text = "Card: 4532 1234 5678 9010"
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[CARD_REDACTED]" in redacted or "4532" not in redacted
 
     def test_iban_sanitization(self):
         """Test IBAN is properly sanitized"""
         text = "IBAN: FR76 1234 5678 9012 3456 7890 123"
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[IBAN_REDACTED]" in redacted
         assert "FR76" not in redacted
 
     def test_ip_address_sanitization(self):
         """Test IP address is properly sanitized"""
         text = "Server IP: 192.168.1.1"
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[IP_REDACTED]" in redacted
         assert "192.168.1.1" not in redacted
 
     def test_url_sanitization(self):
         """Test URL with params is properly sanitized"""
         text = "API: https://api.example.com?api_key=secret123"
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[URL_REDACTED]" in redacted
         assert "api_key=secret123" not in redacted
 
@@ -93,9 +90,9 @@ class TestPIISanitizationEffectiveness:
         SSN: 123-45-6789
         Card: 4532 1234 5678 9010
         """
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert "[EMAIL_REDACTED]" in redacted
         assert "[PHONE_REDACTED]" in redacted
         assert "[SSN_REDACTED]" in redacted
@@ -105,9 +102,9 @@ class TestPIISanitizationEffectiveness:
     def test_non_pii_preserved(self):
         """Test that non-PII content is preserved"""
         text = "This document contains important information about the project."
-        
+
         redacted, stats = self.service.redact_pii(text)
-        
+
         assert redacted == text
         assert stats == {}
 
@@ -118,7 +115,7 @@ class TestConfidentialDocumentRoutingSecurity:
     def test_confidential_doc_uses_ollama(self):
         """Test that confidential documents route to Ollama"""
         from app.api.chat import determine_llm_provider
-        
+
         # Confidential content should route to Ollama
         provider = determine_llm_provider(has_confidential=True)
         assert provider.value == "ollama"
@@ -126,7 +123,7 @@ class TestConfidentialDocumentRoutingSecurity:
     def test_public_doc_can_use_kimi(self):
         """Test that public documents without PII can use Kimi"""
         from app.api.chat import determine_llm_provider
-        
+
         provider = determine_llm_provider(has_confidential=False)
         assert provider.value == "kimi"
 
@@ -138,7 +135,7 @@ class TestConfidentialDocumentRoutingSecurity:
             role=UserRole.USER,
             can_access_confidential=False
         )
-        
+
         # Verify user doesn't have confidential access
         assert regular_user.can_access_confidential is False
 
@@ -150,7 +147,7 @@ class TestConfidentialDocumentRoutingSecurity:
             role=UserRole.ADMIN,
             can_access_confidential=True
         )
-        
+
         # Verify admin has confidential access
         assert admin_user.can_access_confidential is True
 
@@ -164,7 +161,7 @@ class TestConfidentialDocumentRoutingSecurity:
             size=1024,
             mime_type="application/pdf"
         )
-        
+
         public_doc = Document(
             filename="public.pdf",
             original_filename="public.pdf",
@@ -173,7 +170,7 @@ class TestConfidentialDocumentRoutingSecurity:
             size=1024,
             mime_type="application/pdf"
         )
-        
+
         assert confidential_doc.bucket == DocumentBucket.CONFIDENTIAL
         assert public_doc.bucket == DocumentBucket.PUBLIC
 
@@ -189,7 +186,6 @@ class TestAPIKeyExposurePrevention:
 
     def test_authorization_header_sanitization(self):
         """Test that API keys are not exposed in error messages or logs"""
-        import os
         os.environ['OPENROUTER_API_KEY'] = 'sk-test-12345'
 
         # Verify key is in environment
@@ -205,7 +201,7 @@ class TestAPIKeyExposurePrevention:
         """Test that error messages don't expose sensitive data"""
         # Error messages should not contain API keys
         error_msg = "Error: API error - 500"
-        
+
         # Should not contain actual key values
         assert "sk-" not in error_msg
         assert "api_key" not in error_msg.lower()
@@ -235,7 +231,7 @@ class TestPIIDetectionAccuracy:
             "The meeting is scheduled for next week.",
             "Project milestone achieved successfully.",
         ]
-        
+
         for text in clean_texts:
             assert self.service.detect_pii(text) is False, f"False positive for: {text}"
 
@@ -244,7 +240,7 @@ class TestPIIDetectionAccuracy:
         # Valid test card (passes Luhn)
         valid_card = "4532015112830366"
         assert self.service._is_valid_credit_card(valid_card) is True
-        
+
         # Invalid card (fails Luhn)
         invalid_card = "1234567890123456"
         assert self.service._is_valid_credit_card(invalid_card) is False
@@ -262,7 +258,7 @@ class TestSecurityLogging:
         # This is implemented in the service
         text = "Contact john@example.com"
         has_pii = self.service.detect_pii(text)
-        
+
         # Should detect PII
         assert has_pii is True
 
@@ -270,10 +266,9 @@ class TestSecurityLogging:
         """Test that routing decisions can be logged"""
         # Routing decisions are logged in chat_service
         # This test documents the requirement
-        from app.services.chat_service import ChatService
-        
+
         service = ChatService()
-        
+
         # Verify service exists and can log
         assert service is not None
 
@@ -294,7 +289,7 @@ class TestMultiTenantIsolation:
         # - Document ID
         # - Timestamp
         # - Action (view, search, etc.)
-        
+
         # This test documents requirements
         audit_entry = {
             "user_id": "user-123",
@@ -302,7 +297,7 @@ class TestMultiTenantIsolation:
             "action": "view",
             "timestamp": "2024-01-01T00:00:00Z"
         }
-        
+
         assert "user_id" in audit_entry
         assert "document_id" in audit_entry
         assert "timestamp" in audit_entry

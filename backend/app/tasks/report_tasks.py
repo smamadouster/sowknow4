@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from celery import shared_task
@@ -112,8 +112,6 @@ def _generate_pdf_content(report_type: str, filters: dict, output_path: str):
     does not crash in environments without fpdf2.
     """
     from app.database import SessionLocal
-    from app.models.document import Document, DocumentStatus
-    from sqlalchemy import func
 
     db = SessionLocal()
     try:
@@ -130,7 +128,7 @@ def _generate_pdf_content(report_type: str, filters: dict, output_path: str):
 
 def _write_pdf_with_fpdf(FPDF, report_type: str, filters: dict, output_path: str, db):
     """Generate a real PDF using fpdf2."""
-    from app.models.document import Document, DocumentStatus
+    from app.models.document import Document
     from sqlalchemy import func
 
     pdf = FPDF()
@@ -242,8 +240,6 @@ def generate_excel_export(
 def _generate_excel_content(export_type: str, filters: dict, output_path: str) -> int:
     """Build Excel content, returns row count."""
     from app.database import SessionLocal
-    from app.models.document import Document
-    from app.models.audit import AuditLog
 
     db = SessionLocal()
     try:

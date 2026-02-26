@@ -6,24 +6,20 @@ from fastapi.responses import StreamingResponse
 from app.limiter import limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from typing import Optional, List
 from uuid import uuid4, UUID
-import json
 
 from app.database import get_db, AsyncSessionLocal
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.api.deps import get_current_user
 from app.services.chat_service import chat_service
-from app.services.llm_router import llm_router
 from app.schemas.chat import (
     ChatSessionCreate,
     ChatSessionResponse,
     ChatSessionListResponse,
     ChatMessageCreate,
     ChatMessageResponse,
-    ChatMessageListResponse,
-    SourceDocument
+    ChatMessageListResponse
 )
 
 router = APIRouter(prefix="/chat", tags=["chat"])

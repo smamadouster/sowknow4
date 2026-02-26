@@ -1,4 +1,5 @@
 import createMiddleware from 'next-intl/middleware';
+import { NextRequest } from 'next/server';
 import { routing } from './i18n/routing';
 
 const t = createMiddleware({
@@ -6,7 +7,7 @@ const t = createMiddleware({
   localeDetection: true,
 });
 
-export default function middleware(request: any) {
+export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
   const publicPaths = [

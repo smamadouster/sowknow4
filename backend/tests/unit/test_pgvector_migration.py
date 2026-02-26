@@ -9,12 +9,10 @@ These tests verify:
 """
 
 import pytest
-import json
 import numpy as np
 from unittest.mock import patch, MagicMock
 from uuid import uuid4
 
-from sqlalchemy import Column, text
 
 # pgvector's Vector type is only available when pgvector is installed
 try:

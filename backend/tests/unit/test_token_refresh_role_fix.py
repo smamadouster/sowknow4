@@ -13,8 +13,6 @@ token payload, not old_token["role"].
 This test file verifies the fix without requiring database connections.
 """
 
-import pytest
-import sys
 import os
 
 # Set environment before any imports
@@ -29,8 +27,6 @@ from app.utils.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    SECRET_KEY,
-    ALGORITHM,
 )
 
 

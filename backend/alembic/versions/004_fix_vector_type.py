@@ -10,8 +10,6 @@ canonical 'embedding' column used by the semantic_search() function.
 """
 
 from alembic import op
-import sqlalchemy as sa
-from pgvector.sqlalchemy import Vector
 
 
 revision = "fix_vector_type_004"

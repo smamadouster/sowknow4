@@ -6,7 +6,7 @@ sources — exactly like ResearcherAgent, AnswerAgent, VerificationAgent —
 without requiring the caller to pass an explicit `use_ollama=True`.
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from app.services.agents.clarification_agent import (
     ClarificationAgent,
     ClarificationRequest,

@@ -13,12 +13,10 @@ Expected: Tests FAIL on violations and PASS when secure.
 """
 
 import pytest
-import os
 import time
-import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 import sys
 sys.path.insert(0, '/root/development/src/active/sowknow4/backend')
@@ -27,8 +25,6 @@ from app.utils.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    get_password_hash,
-    verify_password,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
     SECRET_KEY,
@@ -55,11 +51,10 @@ class TestFrontendTokenStorageCompliance:
         Status: PASS - Implementation sets httponly=True
         """
         from app.api.auth import set_auth_cookies
-        from fastapi import Response
-        
+
         mock_response = MagicMock()
         set_auth_cookies(mock_response, "access_token_value", "refresh_token_value")
-        
+
         calls = mock_response.set_cookie.call_args_list
         for call in calls:
             kwargs = call.kwargs
@@ -99,12 +94,12 @@ class TestFrontendTokenStorageCompliance:
         """
         frontend_path = Path("/root/development/src/active/sowknow4/frontend/app/[locale]/collections/[id]/page.tsx")
         content = frontend_path.read_text()
-        
+
         violations = []
         for i, line in enumerate(content.split('\n'), 1):
             if 'localStorage.getItem("token")' in line or "localStorage.getItem('token')" in line:
                 violations.append(f"Line {i}: {line.strip()}")
-        
+
         assert len(violations) == 0, f"localStorage token usage found: {violations}"
 
     def test_frontend_localstorage_violation_detection_smart_folders_page(self):
@@ -115,17 +110,17 @@ class TestFrontendTokenStorageCompliance:
         Status: Based on previous audit - should check fresh
         """
         frontend_path = Path("/root/development/src/active/sowknow4/frontend/app/[locale]/smart-folders/page.tsx")
-        
+
         if not frontend_path.exists():
             pytest.skip("smart-folders page not found at expected path")
-            
+
         content = frontend_path.read_text()
-        
+
         violations = []
         for i, line in enumerate(content.split('\n'), 1):
             if 'localStorage.getItem("token")' in line or "localStorage.getItem('token')" in line:
                 violations.append(f"Line {i}: {line.strip()}")
-        
+
         assert len(violations) == 0, f"localStorage token usage found: {violations}"
 
     def test_tokens_not_in_response_body(self):
@@ -136,14 +131,14 @@ class TestFrontendTokenStorageCompliance:
         Status: PASS - Implementation correctly returns only user info
         """
         from app.schemas.token import LoginResponse
-        
+
         response = LoginResponse(
             message="Login successful",
             user={"id": "123", "email": "test@test.com", "full_name": "Test", "role": "user"}
         )
-        
+
         response_dict = response.dict()
-        
+
         assert "access_token" not in response_dict or response_dict.get("access_token") is None, \
             "access_token must NOT be in response body (XSS prevention)"
         assert "refresh_token" not in response_dict or response_dict.get("refresh_token") is None, \
@@ -179,9 +174,9 @@ class TestBackendTokenExpiryCompliance:
         """
         token = create_access_token(data={"sub": "test@test.com", "role": "user"})
         payload = decode_token(token)
-        
+
         expected_exp = int(time.time()) + (ACCESS_TOKEN_EXPIRE_MINUTES * 60)
-        
+
         assert abs(payload["exp"] - expected_exp) < 5, \
             f"Token exp should be ~{expected_exp}, got {payload['exp']}"
 
@@ -204,9 +199,9 @@ class TestBackendTokenExpiryCompliance:
         """
         token = create_refresh_token(data={"sub": "test@test.com", "role": "user"})
         payload = decode_token(token, expected_type="refresh")
-        
+
         expected_exp = int(time.time()) + (REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60)
-        
+
         assert abs(payload["exp"] - expected_exp) < 5, \
             f"Token exp should be ~{expected_exp}, got {payload['exp']}"
 
@@ -219,10 +214,10 @@ class TestBackendTokenExpiryCompliance:
         """
         access_token = create_access_token(data={"sub": "test@test.com", "role": "user"})
         refresh_token = create_refresh_token(data={"sub": "test@test.com", "role": "user"})
-        
+
         access_payload = decode_token(access_token)
         refresh_payload = decode_token(refresh_token, expected_type="refresh")
-        
+
         assert refresh_payload["exp"] > access_payload["exp"], \
             "Refresh token must have longer expiration than access token"
 
@@ -234,7 +229,7 @@ class TestBackendTokenExpiryCompliance:
         Status: PASS
         """
         from app.utils.security import TokenExpiredError
-        
+
         expire = datetime.utcnow() - timedelta(minutes=20)
         payload = {
             "sub": "test@test.com",
@@ -242,9 +237,9 @@ class TestBackendTokenExpiryCompliance:
             "exp": expire,
             "type": "access"
         }
-        
+
         expired_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-        
+
         with pytest.raises(TokenExpiredError):
             decode_token(expired_token)
 
@@ -256,7 +251,7 @@ class TestBackendTokenExpiryCompliance:
         Status: PASS
         """
         from app.utils.security import TokenExpiredError
-        
+
         expire = datetime.utcnow() - timedelta(days=8)
         payload = {
             "sub": "test@test.com",
@@ -264,9 +259,9 @@ class TestBackendTokenExpiryCompliance:
             "exp": expire,
             "type": "refresh"
         }
-        
+
         expired_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-        
+
         with pytest.raises(TokenExpiredError):
             decode_token(expired_token, expected_type="refresh")
 
@@ -289,7 +284,7 @@ class TestSecurityConfigurationCompliance:
         Status: FAIL - DEFAULT VALUE FOUND in security.py
         """
         from app.utils.security import SECRET_KEY
-        
+
         dangerous_defaults = [
             "your-secret-key-change-in-production",
             "secret-key",
@@ -297,9 +292,9 @@ class TestSecurityConfigurationCompliance:
             "default-secret",
             "test-secret"
         ]
-        
+
         is_default = any(default in SECRET_KEY.lower() for default in dangerous_defaults)
-        
+
         assert not is_default, \
             f"JWT_SECRET appears to be hardcoded with default value: {SECRET_KEY[:20]}..."
 
@@ -324,10 +319,10 @@ class TestSecurityConfigurationCompliance:
         Status: PASS - Using passlib with bcrypt default
         """
         from app.utils.security import pwd_context
-        
+
         context = pwd_context
         assert context is not None, "Password context must be configured"
-        
+
     def test_password_hashing_uses_bcrypt(self):
         """
         Test Name: Password Hashing Algorithm
@@ -346,15 +341,15 @@ class TestSecurityConfigurationCompliance:
         """
         from app.main import app
         from fastapi.middleware.cors import CORSMiddleware
-        
+
         cors_configured = False
         for middleware in app.user_middleware:
             if hasattr(middleware, 'cls') and middleware.cls == CORSMiddleware:
                 cors_configured = True
                 break
-        
+
         assert cors_configured, "CORS middleware must be configured"
-        
+
     def test_token_algorithm_is_hs256(self):
         """
         Test Name: JWT Algorithm
@@ -385,9 +380,9 @@ class TestTelegramAuthCompliance:
         """
         from app.api.auth import telegram_auth
         import inspect
-        
+
         source = inspect.getsource(telegram_auth)
-        
+
         assert "TELEGRAM_BOT_TOKEN" in source or "bot_token" in source.lower(), \
             "Telegram auth should validate Bot API Key"
 
@@ -418,10 +413,10 @@ class TestTelegramAuthCompliance:
         """
         from app.api.auth import set_auth_cookies
         from unittest.mock import MagicMock
-        
+
         mock_response = MagicMock()
         set_auth_cookies(mock_response, "access", "refresh")
-        
+
         assert mock_response.set_cookie.called, \
             "Telegram auth should set cookies"
 
@@ -440,7 +435,7 @@ class TestTokenTypeClaimCompliance:
         """
         token = create_access_token(data={"sub": "test@test.com", "role": "user"})
         payload = decode_token(token)
-        
+
         assert payload.get("type") == "access", \
             "Access token must have type='access' claim"
 
@@ -453,7 +448,7 @@ class TestTokenTypeClaimCompliance:
         """
         token = create_refresh_token(data={"sub": "test@test.com", "role": "user"})
         payload = decode_token(token, expected_type="refresh")
-        
+
         assert payload.get("type") == "refresh", \
             "Refresh token must have type='refresh' claim"
 
@@ -465,9 +460,9 @@ class TestTokenTypeClaimCompliance:
         Status: PASS
         """
         from app.utils.security import TokenInvalidError
-        
+
         access_token = create_access_token(data={"sub": "test@test.com", "role": "user"})
-        
+
         with pytest.raises(TokenInvalidError):
             decode_token(access_token, expected_type="refresh")
 
@@ -476,7 +471,7 @@ class TestSummaryReport:
     """
     Summary Report - Aggregated test results
     """
-    
+
     def generate_summary_report(self):
         """
         Generate a summary report of all test results.
@@ -484,7 +479,7 @@ class TestSummaryReport:
         """
         return {
             "total_tests": "See pytest output",
-            "passed": "See pytest output", 
+            "passed": "See pytest output",
             "failed": "See pytest output",
             "critical_issues": [
                 "Frontend localStorage token storage (XSS vulnerability)",

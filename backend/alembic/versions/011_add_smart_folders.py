@@ -12,7 +12,6 @@ P1-8: Smart folders are dynamic, rule-based subsets of a collection.
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision = "add_smart_folders_011"

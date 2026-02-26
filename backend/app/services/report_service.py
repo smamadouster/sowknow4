@@ -339,10 +339,10 @@ Create a professional report with:
         """
         try:
             # Import reportlab here to avoid dependency issues
-            from reportlab.lib.pagesizes import letter, A4
+            from reportlab.lib.pagesizes import letter, A4  # noqa: F401
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.units import inch
-            from reportlab.platypus import (
+            from reportlab.lib.units import inch  # noqa: F401
+            from reportlab.platypus import (  # noqa: F401
                 SimpleDocTemplate,
                 Paragraph,
                 Spacer,
@@ -350,9 +350,9 @@ Create a professional report with:
                 Table,
                 TableStyle,
             )
-            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT  # noqa: F401
             from reportlab.lib import colors
-            import os
+            import os  # noqa: F401
 
             # Create buffer
             buffer = BytesIO()

@@ -8,19 +8,16 @@ for public documents and Ollama for confidential documents.
 import logging
 import uuid
 import json
-from typing import List, Dict, Any, Optional, AsyncGenerator
-from datetime import datetime
+from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, select
+from sqlalchemy import select
 
 from app.models.collection import Collection, CollectionChatSession
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.models.user import User
-from app.models.document import Document
 from app.models.audit import AuditLog, AuditAction
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
-from app.services.llm_router import llm_router
 
 logger = logging.getLogger(__name__)
 

@@ -15,14 +15,13 @@ Run with: python tests/performance/run_benchmarks.py
 Results are printed in markdown table format for easy reporting.
 """
 import asyncio
-import sys
 import os
 import time
 import statistics
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import httpx
 import numpy as np
 
@@ -361,7 +360,7 @@ class PerformanceBenchmark:
     async def run_all(self, token: Optional[str] = None) -> List[BenchmarkResult]:
         """Run all benchmark tests"""
         print(f"\n{'='*70}")
-        print(f"SOWKNOW Performance Benchmark")
+        print("SOWKNOW Performance Benchmark")
         print(f"API Base URL: {API_BASE_URL}")
         print(f"Timestamp: {datetime.now().isoformat()}")
         print(f"{'='*70}\n")
@@ -418,7 +417,7 @@ class PerformanceBenchmark:
         all_total = len(self.results)
         overall_rate = (all_pass / all_total * 100) if all_total > 0 else 0
 
-        print(f"\n## Overall Summary")
+        print("\n## Overall Summary")
         print(f"\n**Total Tests: {all_total}**")
         print(f"**Passed: {all_pass}**")
         print(f"**Failed: {all_total - all_pass}**")

@@ -1,8 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.orm import sessionmaker
 from typing import AsyncGenerator
 import os
 from dotenv import load_dotenv
@@ -14,17 +13,22 @@ DATABASE_URL = os.getenv(
 )
 
 # Rewrite URL to use asyncpg driver
-_async_db_url = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://").replace(
-    "postgresql+psycopg2://", "postgresql+asyncpg://"
-)
+if DATABASE_URL.startswith("sqlite"):
+    # SQLite: use aiosqlite for async (test environment only)
+    _async_db_url = DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://", 1)
+    _is_sqlite = True
+else:
+    _async_db_url = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://").replace(
+        "postgresql+psycopg2://", "postgresql+asyncpg://"
+    )
+    _is_sqlite = False
 
 # Async engine with pgvector support and connection pooling
+# SQLite (test) does not support pool_size/max_overflow
 engine = create_async_engine(
     _async_db_url,
-    pool_pre_ping=True,
-    pool_recycle=300,
-    pool_size=10,
-    max_overflow=20,
+    pool_pre_ping=not _is_sqlite,
+    **({} if _is_sqlite else {"pool_recycle": 300, "pool_size": 10, "max_overflow": 20}),
 )
 
 # Async session factory — expire_on_commit=False avoids lazy-load errors

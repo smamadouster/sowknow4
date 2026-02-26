@@ -3,16 +3,14 @@ Unit tests for document processing Celery tasks.
 Tests stuck document handling, embedding error recovery, and chunk storage transactions.
 """
 
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import uuid
 
 from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentStatus, DocumentBucket
 from app.models.processing import ProcessingQueue, TaskType, TaskStatus
-from app.tasks.document_tasks import process_document
 from app.tasks.anomaly_tasks import recover_stuck_documents
 
 

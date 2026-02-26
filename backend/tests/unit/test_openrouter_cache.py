@@ -12,12 +12,9 @@ Tests cover:
 
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-import hashlib
-import json
 
 from app.services.openrouter_service import (
     OpenRouterService,
-    _get_redis_client,
     CACHE_KEY_PREFIX,
     CACHE_TTL_SECONDS,
     COLLECTION_CACHE_KEYS_PREFIX,

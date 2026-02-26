@@ -6,11 +6,10 @@ Useful for finding document groups like "all IDs", "all balance sheets", etc.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Tuple
-from collections import defaultdict
+from typing import List, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, and_, or_, select
+from sqlalchemy import and_, select
 import numpy as np
 
 from app.models.document import Document, DocumentChunk

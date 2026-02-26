@@ -7,7 +7,6 @@ Updated for httpOnly cookie-based authentication:
 - Password complexity validation enforced
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -305,7 +304,7 @@ def test_cookie_attributes(client: TestClient, db: Session):
 def test_refresh_token_with_cookie(client: TestClient, db: Session):
     """Test token refresh using cookie"""
     from app.models.user import User
-    from app.utils.security import get_password_hash, create_refresh_token
+    from app.utils.security import get_password_hash
 
     password = "SecurePassword123!"
     hashed = get_password_hash(password)

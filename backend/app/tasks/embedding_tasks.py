@@ -12,10 +12,10 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import List, Optional
+from typing import List
 
 from app.celery_app import celery_app
-from app.tasks.base import log_task_memory, store_dlq_on_max_retries
+from app.tasks.base import store_dlq_on_max_retries
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ def recompute_embeddings_for_document(self, document_id: str) -> dict:
         }
     """
     from app.database import SessionLocal
-    from app.models.document import Document, DocumentChunk, DocumentStatus
+    from app.models.document import Document, DocumentChunk
     from app.services.embedding_service import embedding_service
 
     start = time.time()
@@ -273,7 +273,6 @@ def upgrade_embeddings_model(
     """
     from app.database import SessionLocal
     from app.models.document import DocumentChunk
-    from app.services.embedding_service import EmbeddingService
 
     start = time.time()
 
@@ -308,7 +307,6 @@ def upgrade_embeddings_model(
             batch = all_chunks[batch_start : batch_start + batch_size]
             texts = [f"passage: {c.chunk_text}" for c in batch]
             try:
-                import numpy as np
 
                 embeddings = target_model.encode(
                     texts,

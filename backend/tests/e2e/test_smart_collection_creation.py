@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
-from app.models.collection import Collection, CollectionItem, CollectionVisibility
+from app.models.collection import Collection, CollectionItem
 from app.services.intent_parser import intent_parser_service
 from app.services.collection_service import collection_service
 
@@ -135,7 +135,7 @@ class TestStep1CollectionCreationPublic:
         data = response.json()
 
         # Verify all required fields present
-        required_fields = ["id", "name", "query", "document_count", "status", 
+        required_fields = ["id", "name", "query", "document_count", "status",
                           "collection_type", "visibility", "created_at", "updated_at"]
         for field in required_fields:
             assert field in data, f"Missing required field: {field}"
@@ -263,7 +263,6 @@ class TestStep4AIAnalysis:
     @pytest.mark.asyncio
     async def test_ai_summary_generation(self):
         """Verify AI analysis generates summary"""
-        from app.services.collection_service import collection_service
 
         mock_documents = [
             MagicMock(
@@ -318,7 +317,6 @@ class TestStep5CollectionConfidentialDocuments:
     @pytest.mark.asyncio
     async def test_llm_routing_for_confidential_docs(self):
         """Verify LLM routing: Analysis uses Ollama if confidential docs included"""
-        from app.services.collection_service import collection_service
 
         mock_documents = [
             MagicMock(
@@ -350,7 +348,7 @@ class TestStep5CollectionConfidentialDocuments:
 
             # Verify Ollama was called (not OpenRouter)
             mock_ollama.assert_called_once()
-            print(f"\n[LLM ROUTING] Confidential docs route to Ollama: ✓")
+            print("\n[LLM ROUTING] Confidential docs route to Ollama: ✓")
             print(f"[LLM ROUTING] Summary: {summary}")
 
     def test_regular_user_cannot_see_confidential_in_collections(
@@ -481,7 +479,6 @@ class TestSecurityGates:
 
     def test_confidential_documents_only_analyzed_by_ollama(self):
         """Security Gate 1: Confidential documents only analyzed by Ollama"""
-        from app.services.collection_service import collection_service
 
         # Check that the routing logic checks for confidential bucket
         import inspect

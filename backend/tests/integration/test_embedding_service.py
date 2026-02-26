@@ -3,8 +3,6 @@ Embedding Service Tests
 Tests embedding model functionality
 """
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-import numpy as np
 
 
 class TestEmbeddingServiceConfiguration:
@@ -36,7 +34,7 @@ class TestEmbeddingGeneration:
         """Test embedding dimensions are correct"""
         # multilingual-e5-large produces 1024-dim embeddings
         expected_dim = 1024
-        
+
         # This is a documentation test
         assert expected_dim == 1024
 
@@ -47,11 +45,11 @@ class TestEmbeddingGeneration:
         try:
             from app.services.embedding_service import EmbeddingService
             service = EmbeddingService()
-            
+
             # Would call actual service
             # embedding = service.encode("test text")
             # assert len(embedding) == 1024
-            
+
             pytest.skip("Embedding service requires model to be loaded")
         except ImportError:
             pytest.skip("EmbeddingService not implemented")
@@ -75,12 +73,12 @@ class TestEmbeddingBatching:
         """Test batch embedding generation"""
         texts = [
             "First document text",
-            "Second document text", 
+            "Second document text",
             "Third document text"
         ]
-        
+
         # Would test batch generation
         # embeddings = service.encode_batch(texts)
         # assert len(embeddings) == 3
-        
+
         pytest.skip("Embedding service requires model to be loaded")

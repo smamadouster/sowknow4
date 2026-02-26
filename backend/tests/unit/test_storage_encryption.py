@@ -15,7 +15,7 @@ import tempfile
 import shutil
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Test with a real Fernet key
 TEST_FERNET_KEY = b"J6KqI5tQoFdHm8xLv9zR2YbC1sK4pA7eN0wX3jH8uM="

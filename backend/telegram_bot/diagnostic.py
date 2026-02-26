@@ -16,7 +16,7 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 
 async def test_dns_resolution():
     """Test if the backend hostname resolves"""
-    print(f"Testing DNS resolution for backend...")
+    print("Testing DNS resolution for backend...")
     try:
         # Extract hostname from URL
         from urllib.parse import urlparse
@@ -29,7 +29,7 @@ async def test_dns_resolution():
 
         # Try to resolve the hostname
         addr_info = socket.getaddrinfo(hostname, port)
-        print(f"  DNS Resolution: SUCCESS")
+        print("  DNS Resolution: SUCCESS")
         for info in addr_info[:2]:
             print(f"    - {info[4]}")
         return True
@@ -47,10 +47,10 @@ async def test_backend_connection():
         print(f"  Status Code: {response.status_code}")
         print(f"  Response: {response.text[:200]}")
         if response.status_code == 200:
-            print(f"  Connection: SUCCESS")
+            print("  Connection: SUCCESS")
             return True
         else:
-            print(f"  Connection: FAILED (unexpected status)")
+            print("  Connection: FAILED (unexpected status)")
             return False
     except Exception as e:
         print(f"  Connection: FAILED - {e}")

@@ -6,16 +6,14 @@ to create a connected knowledge graph.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Set, Tuple
-from datetime import date
+from typing import List, Dict, Any, Optional
 from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, func, select
+from sqlalchemy import or_, select
 
 from app.models.knowledge_graph import (
     Entity,
     EntityRelationship,
-    EntityMention,
     EntityType,
     RelationType,
 )

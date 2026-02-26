@@ -8,7 +8,6 @@ to understand intent, context, and scope.
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from pydantic import BaseModel
 
 from app.services.ollama_service import ollama_service
 from app.services.minimax_service import minimax_service

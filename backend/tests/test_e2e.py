@@ -9,14 +9,11 @@ Tests the complete system including:
 - Multi-Agent Search
 """
 import pytest
-import asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.database import get_db
 from app.models.user import User
-from app.models.document import Document, DocumentStatus
 
 
 @pytest.fixture

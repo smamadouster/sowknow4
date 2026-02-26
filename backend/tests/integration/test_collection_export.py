@@ -6,8 +6,6 @@ Tests RBAC enforcement, PDF/JSON export functionality, and audit logging.
 
 import pytest
 import json
-import base64
-from datetime import datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -22,7 +20,6 @@ from app.models.collection import (
     CollectionType,
 )
 from app.utils.security import create_access_token
-from app.main import app
 
 
 _FIXTURE_BCRYPT_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
@@ -529,7 +526,7 @@ class TestCollectionExportEndpoint:
         self, client: TestClient, db: Session, public_collection: Collection
     ):
         """Test that collection owner can export their collection"""
-        from app.models.user import User, UserRole
+        from app.models.user import User
 
         owner = db.query(User).filter(User.id == public_collection.user_id).first()
         headers = self.get_auth_headers(owner)

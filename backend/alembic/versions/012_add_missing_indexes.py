@@ -18,7 +18,6 @@ Adds two things the schema was missing:
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "012"
 down_revision = "011"

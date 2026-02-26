@@ -15,7 +15,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.search import SearchRequest, SearchResponse, SearchResultChunk
-from app.schemas.pagination import encode_cursor, decode_cursor, CursorPaginatedResponse
+from app.schemas.pagination import encode_cursor, decode_cursor
 from app.services.search_service import search_service
 from app.api.deps import get_current_user
 from app.limiter import limiter

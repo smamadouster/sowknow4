@@ -4,11 +4,7 @@ Tests that services without proper routing are identified and fixed
 """
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-import os
-import json
-from uuid import uuid4
 
-from app.services.pii_detection_service import pii_detection_service
 from app.services.intent_parser import IntentParserService
 from app.services.entity_extraction_service import EntityExtractionService
 from app.services.auto_tagging_service import AutoTaggingService
@@ -62,7 +58,7 @@ class TestEntityExtractionRouting:
     def test_entity_extraction_document_parameter(self, entity_extraction):
         """Test that EntityExtraction receives document but doesn't check bucket"""
         # This test documents the expected behavior after fix
-        
+
         public_doc = Document(
             filename="public.pdf",
             original_filename="public.pdf",
@@ -71,7 +67,7 @@ class TestEntityExtractionRouting:
             size=1024,
             mime_type="application/pdf"
         )
-        
+
         confidential_doc = Document(
             filename="confidential.pdf",
             original_filename="confidential.pdf",
@@ -80,7 +76,7 @@ class TestEntityExtractionRouting:
             size=1024,
             mime_type="application/pdf"
         )
-        
+
         # Both should work, but currently both use MiniMax
         assert public_doc.bucket == DocumentBucket.PUBLIC
         assert confidential_doc.bucket == DocumentBucket.CONFIDENTIAL
@@ -144,7 +140,7 @@ class TestRoutingGapAnalysis:
             ('EntityExtraction', EntityExtractionService),
             ('AutoTagging', AutoTaggingService),
         ]
-        
+
         # This test documents which services need routing fixes
         for name, ServiceClass in services_to_check:
             service = ServiceClass()
@@ -171,7 +167,7 @@ class TestRequiredRoutingFunctionality:
             size=1024,
             mime_type="application/pdf"
         )
-        
+
         assert hasattr(doc, 'bucket')
         assert doc.bucket == DocumentBucket.CONFIDENTIAL
 
@@ -182,13 +178,13 @@ class TestRequiredRoutingFunctionality:
             hashed_password="hash",
             role=UserRole.ADMIN
         )
-        
+
         regular = User(
             email="user@test.com",
             hashed_password="hash",
             role=UserRole.USER
         )
-        
+
         assert admin.role == UserRole.ADMIN
         assert regular.role == UserRole.USER
         assert admin.role != regular.role
@@ -201,16 +197,16 @@ class TestRequiredRoutingFunctionality:
             role=UserRole.ADMIN,
             can_access_confidential=True
         )
-        
+
         user = User(
             email="user@test.com",
             hashed_password="hash",
             role=UserRole.USER,
             can_access_confidential=False
         )
-        
+
         # Admin with confidential access should route to Ollama for confidential docs
         assert admin.can_access_confidential is True
-        
+
         # Regular user without confidential access
         assert user.can_access_confidential is False or user.can_access_confidential is None

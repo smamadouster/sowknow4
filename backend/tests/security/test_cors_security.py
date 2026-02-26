@@ -8,13 +8,9 @@ This module tests CORS configuration to ensure:
 - Proper headers are enforced
 - Security headers are present
 """
-import pytest
 import os
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
-from app.models.user import User, UserRole
-from app.utils.security import create_access_token, get_password_hash
 
 
 class TestCORSPolicy:

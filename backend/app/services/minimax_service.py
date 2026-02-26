@@ -5,7 +5,7 @@ MiniMax service for direct API access (no OpenRouter markup)
 import os
 import logging
 import json
-from typing import AsyncGenerator, List, Dict, Any, Optional
+from typing import AsyncGenerator, List, Dict, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential

@@ -8,7 +8,7 @@ immediately.  The query is persisted and retried once Ollama recovers.
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum as SAEnum, JSON
+from sqlalchemy import Column, Integer, Text, DateTime, Enum as SAEnum, JSON
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 import uuid
 

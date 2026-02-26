@@ -3,11 +3,9 @@ Integration tests for DNS resilience and network utilities.
 """
 import pytest
 import socket
-import time
 import os
 import sys
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-import subprocess
+from unittest.mock import patch, AsyncMock
 import importlib.util
 
 # Setup path for dns_validator (relative to this test file)
@@ -70,17 +68,17 @@ class TestDNSValidation:
     def test_validate_before_startup_with_failure(self):
         """Test pre-flight validation when some checks fail"""
         call_count = 0
-        
+
         def mock_check(hostname):
             nonlocal call_count
             call_count += 1
             if call_count == 2:
                 return (False, "failed")
             return (True, "resolved")
-        
+
         dns_validator.check_dns_resolution = mock_check
         original_func = dns_validator.check_dns_resolution
-        
+
         try:
             result = validate_before_startup()
             assert result is False
@@ -102,11 +100,11 @@ class TestRetryLogic:
     async def test_with_retry_success_first_attempt(self):
         """Test retry decorator with immediate success"""
         mock_func = AsyncMock(return_value="success")
-        
+
         @with_retry(max_attempts=3)
         async def decorated():
             return await mock_func()
-        
+
         result = await decorated()
         assert result == "success"
         assert mock_func.call_count == 1
@@ -116,18 +114,18 @@ class TestRetryLogic:
         """Test retry after failures"""
         import httpx
         call_count = 0
-        
+
         async def failing_func():
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise httpx.ConnectError("Connection failed")
             return "success"
-        
+
         @with_retry(max_attempts=3, min_wait=0.1)
         async def decorated():
             return await failing_func()
-        
+
         result = await decorated()
         assert result == "success"
         assert call_count == 3
@@ -136,14 +134,14 @@ class TestRetryLogic:
     async def test_with_retry_all_failures(self):
         """Test retry with all attempts failing"""
         import httpx
-        
+
         async def always_fail():
             raise httpx.ConnectError("Connection failed")
-        
+
         @with_retry(max_attempts=3, min_wait=0.1)
         async def decorated():
             return await always_fail()
-        
+
         with pytest.raises(httpx.ConnectError):
             await decorated()
 
@@ -154,28 +152,28 @@ class TestCircuitBreakerIntegration:
     def test_circuit_breaker_states(self):
         """Test circuit breaker state transitions"""
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
-        
+
         assert cb.state == "CLOSED"
-        
+
         cb._record_failure()
         assert cb.state == "CLOSED"
-        
+
         cb._record_failure()
         assert cb.state == "CLOSED"
-        
+
         cb._record_failure()
         assert cb.state == "OPEN"
-        
+
         # With recovery_timeout=60, _can_execute should still return False
         assert not cb._can_execute()
 
     def test_circuit_breaker_recovery(self):
         """Test circuit breaker recovery to half-open"""
         cb = CircuitBreaker(failure_threshold=1, recovery_timeout=0)
-        
+
         cb._record_failure()
         assert cb.state == "OPEN"
-        
+
         cb._can_execute()
         assert cb.state == "HALF_OPEN"
 
@@ -191,19 +189,19 @@ class TestResilientClient:
             enable_circuit_breaker=True,
             max_attempts=3,
         )
-        
+
         client._circuit_breaker._record_failure()
         client._circuit_breaker._record_failure()
         client._circuit_breaker._record_failure()
         client._circuit_breaker._record_failure()
         client._circuit_breaker._record_failure()
-        
+
         with pytest.raises(CircuitBreakerOpenError):
             await client.get("/status/200")
-        
+
         status = client.get_circuit_breaker_status()
         assert status["state"] == "OPEN"
-        
+
         await client.close()
 
     @pytest.mark.asyncio
@@ -256,15 +254,15 @@ class TestNetworkResilience:
 
 def test_end_to_end_dns_failure_scenario():
     """End-to-end test simulating DNS failure scenario"""
-    
+
     with patch('socket.gethostbyname') as mock_dns:
         mock_dns.side_effect = socket.gaierror("Temporary failure in name resolution")
-        
+
         success, message = check_dns_resolution("api.telegram.org")
         assert success is False
-        
+
         mock_dns.side_effect = None
-        
+
         success, message = check_dns_resolution("google.com")
         assert success is True
 
@@ -272,14 +270,14 @@ def test_end_to_end_dns_failure_scenario():
 def test_circuit_breaker_full_cycle():
     """Test full circuit breaker lifecycle"""
     cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0, half_open_success_threshold=2)
-    
+
     cb._record_failure()
     cb._record_failure()
     assert cb.state == "OPEN"
-    
+
     cb._can_execute()
     assert cb.state == "HALF_OPEN"
-    
+
     cb._record_success()
     cb._record_success()
     assert cb.state == "CLOSED"

@@ -2,14 +2,11 @@
 Unit tests for LLM Routing Logic - Complete Coverage
 Tests dual-LLM routing based on confidential context detection per PRD table
 """
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
-from uuid import uuid4
 
 from app.services.pii_detection_service import pii_detection_service
 from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket, DocumentStatus
-from app.models.chat import ChatSession, LLMProvider
+from app.models.document import Document, DocumentBucket
+from app.models.chat import LLMProvider
 
 
 class TestDetermineLLMProviderFunction:
@@ -34,10 +31,10 @@ class TestRoutingWithPIIDetection:
     def test_pii_in_query_triggers_ollama(self):
         """Test that PII in query triggers Ollama routing"""
         query_with_pii = "Send email to john.doe@example.com and jane@test.org"
-        
+
         has_pii = pii_detection_service.detect_pii(query_with_pii)
         assert has_pii is True
-        
+
         from app.api.chat import determine_llm_provider
         provider = determine_llm_provider(has_confidential=has_pii)
         assert provider == LLMProvider.OLLAMA
@@ -45,10 +42,10 @@ class TestRoutingWithPIIDetection:
     def test_no_pii_allows_kimi(self):
         """Test that queries without PII can use Kimi"""
         query_no_pii = "What are the main features of our product?"
-        
+
         has_pii = pii_detection_service.detect_pii(query_no_pii)
         assert has_pii is False
-        
+
         from app.api.chat import determine_llm_provider
         provider = determine_llm_provider(has_confidential=has_pii)
         assert provider == LLMProvider.KIMI
@@ -64,7 +61,7 @@ class TestUserRoleRouting:
             hashed_password="hash",
             role=UserRole.USER
         )
-        
+
         assert regular_user.role == UserRole.USER
         assert regular_user.can_access_confidential is None or regular_user.can_access_confidential is False
 
@@ -76,7 +73,7 @@ class TestUserRoleRouting:
             role=UserRole.ADMIN,
             can_access_confidential=True
         )
-        
+
         assert admin_user.role == UserRole.ADMIN
         assert admin_user.can_access_confidential is True
 
@@ -88,7 +85,7 @@ class TestUserRoleRouting:
             role=UserRole.SUPERUSER,
             can_access_confidential=True
         )
-        
+
         assert superuser.role == UserRole.SUPERUSER
         assert superuser.can_access_confidential is True
 
@@ -106,7 +103,7 @@ class TestDocumentBucketRouting:
             size=1024,
             mime_type="application/pdf"
         )
-        
+
         assert public_doc.bucket == DocumentBucket.PUBLIC
 
     def test_confidential_document_routing(self):
@@ -119,7 +116,7 @@ class TestDocumentBucketRouting:
             size=1024,
             mime_type="application/pdf"
         )
-        
+
         assert confidential_doc.bucket == DocumentBucket.CONFIDENTIAL
 
 

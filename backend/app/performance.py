@@ -222,35 +222,34 @@ def refresh_materialized_views(engine):
 def setup_query_caching(redis_client):
     """Setup query result caching in Redis"""
 
+    import json
     from functools import wraps
     import hashlib
-    import json
-    import pickle
 
     def cache_query(ttl=300):
-        """Decorator to cache query results"""
+        """Decorator to cache query results in Redis using JSON serialization."""
 
         def decorator(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
-                # Create cache key from function name and arguments
+                # Create cache key using SHA-256 (not MD5 — avoid weak hash warning)
                 key_data = f"{func.__name__}:{str(args)}:{str(kwargs)}"
-                cache_key = f"query_cache:{hashlib.md5(key_data.encode()).hexdigest()}"
+                cache_key = f"query_cache:{hashlib.sha256(key_data.encode()).hexdigest()}"
 
-                # Try to get from cache
+                # Try to get from cache — use JSON (not pickle) to avoid deserialization risk
                 cached = redis_client.get(cache_key)
                 if cached:
-                    return pickle.loads(cached)
+                    return json.loads(cached)
 
                 # Execute function
                 result = await func(*args, **kwargs)
 
-                # Cache result
-                redis_client.setex(
-                    cache_key,
-                    ttl,
-                    pickle.dumps(result)
-                )
+                # Cache result as JSON
+                try:
+                    redis_client.setex(cache_key, ttl, json.dumps(result))
+                except (TypeError, ValueError):
+                    # Result not JSON-serializable — skip caching for this call
+                    pass
 
                 return result
 

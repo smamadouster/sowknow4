@@ -14,11 +14,10 @@ This module tests:
 - Tokens NOT in response body (XSS prevention)
 """
 import pytest
-import json
 from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from app.models.user import User, UserRole
 from app.utils.security import (
@@ -30,9 +29,7 @@ from app.utils.security import (
     SECRET_KEY,
     ALGORITHM
 )
-from jose import jwt, JWTError
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import Depends, HTTPException
+from jose import jwt
 
 
 class TestLoginSecurity:
@@ -242,7 +239,6 @@ class TestProtectedRouteAccess:
         db.commit()
 
         # Create expired token (exp in past)
-        from datetime import datetime, timedelta
         expire = datetime.utcnow() - timedelta(minutes=15)
 
         payload = {
@@ -378,7 +374,6 @@ class TestTokenSecurity:
 
     def test_refresh_token_longer_expiration(self, db: Session):
         """Test that refresh tokens have longer expiration than access tokens"""
-        import time
 
         access_token = create_access_token(data={
             "sub": "test@example.com",
@@ -399,7 +394,7 @@ class TestTokenSecurity:
 
     def test_cannot_use_token_after_secret_change(self, db: Session):
         """Test that tokens are invalidated if secret changes"""
-        from app.utils.security import SECRET_KEY, TokenInvalidError
+        from app.utils.security import TokenInvalidError
 
         # Create token with current secret
         token = create_access_token(data={
@@ -815,7 +810,6 @@ class TestTokenRotation:
 
     def test_refresh_with_expired_token_returns_token_expired_code(self, test_client: TestClient, db: Session):
         """Test that refresh with expired token returns TOKEN_EXPIRED code"""
-        from datetime import datetime, timedelta
         from jose import jwt
 
         # Create user

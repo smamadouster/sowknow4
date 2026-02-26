@@ -3,7 +3,7 @@ Dead Letter Queue model for permanently failed Celery tasks
 """
 
 from sqlalchemy import Column, String, Integer, Text, DateTime
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 import uuid
 

@@ -5,7 +5,7 @@ Provides endpoints for graph-augmented retrieval, synthesis,
 temporal reasoning, and progressive revelation.
 """
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional, List
@@ -23,8 +23,7 @@ from app.services.synthesis_service import (
 )
 from app.services.temporal_reasoning_service import temporal_reasoning_service
 from app.services.progressive_revelation_service import (
-    progressive_revelation_service,
-    RevelationLayer
+    progressive_revelation_service
 )
 from app.api.deps import get_current_user
 

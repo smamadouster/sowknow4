@@ -8,8 +8,7 @@ without requiring the full FastAPI application.
 import pytest
 import time
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
-from unittest.mock import patch
+from jose import jwt
 
 from app.utils.security import (
     verify_password,
@@ -25,8 +24,7 @@ from app.utils.security import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 
-from app.models.user import User, UserRole
-from app.api.deps import get_current_user, require_admin
+from app.models.user import UserRole
 
 
 class TestPasswordSecurity:
@@ -291,7 +289,6 @@ class TestTokenRotation:
 
     def test_access_token_shorter_expiration_than_refresh(self):
         """Test that access tokens expire sooner than refresh tokens"""
-        import time
 
         access_token = create_access_token(
             data={"sub": "test@example.com", "role": "user"}

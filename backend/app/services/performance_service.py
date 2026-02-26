@@ -6,15 +6,13 @@ and provides memory profiling recommendations.
 """
 
 import logging
-import time
 import psutil
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, List, Any
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, desc
 
-from app.models.document import Document, DocumentChunk, DocumentStatus
-from app.models.chat import ChatSession, ChatMessage, LLMProvider
+from app.models.document import DocumentChunk
 from app.services.cache_monitor import cache_monitor_service
 
 logger = logging.getLogger(__name__)
@@ -225,7 +223,7 @@ class PerformanceTuningService:
                         "collection_name": collection.name,
                         "should_cache": True,
                         "reason": f"Has {document_count} documents with high access frequency",
-                        "estimated_savings": f"60-80% on recurring queries",
+                        "estimated_savings": "60-80% on recurring queries",
                     }
                 )
 
@@ -254,7 +252,7 @@ class PerformanceTuningService:
         # Get actual model memory
         model_memory_mb = 0
         try:
-            import sentence_transformers
+            import sentence_transformers # noqa: F401
 
             # Model would be loaded in worker process
             model_memory_mb = 1300  # e5-large approximate

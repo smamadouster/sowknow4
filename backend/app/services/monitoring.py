@@ -6,7 +6,6 @@ and alerting capabilities per PRD requirements.
 """
 
 import os
-import asyncio
 import logging
 import psutil
 from datetime import datetime, timedelta
@@ -18,11 +17,10 @@ try:
 except ImportError:
     Histogram = None  # type: ignore[assignment,misc]
     _prometheus_available = False
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections import defaultdict
 from threading import Lock
 import redis
-import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -335,7 +333,7 @@ class QueueMonitor:
         """
         try:
             r = self._get_redis()
-            key = f"celery"  # Default Celery key format
+            key = "celery"  # Default Celery key format
             # Try different key patterns
             depth = r.llen(key)
             if depth == 0:

@@ -12,7 +12,6 @@ Tests verify:
 - Admin searches → all results
 - Confidential documents never appear in user's autocomplete/suggestions
 """
-import pytest
 import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session

@@ -6,7 +6,7 @@ to gather comprehensive information for a query.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from collections import defaultdict
 

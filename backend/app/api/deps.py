@@ -16,7 +16,6 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from jose import JWTError
 import logging
 
 from app.database import get_db
@@ -95,7 +94,7 @@ async def get_current_user(
     try:
         payload = decode_token(token)
     except TokenExpiredError:
-        logger.warning(f"Authentication failed: Token expired")
+        logger.warning("Authentication failed: Token expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
@@ -107,15 +106,15 @@ async def get_current_user(
     except Exception as e:
         logger.warning(f"Authentication failed: Token decode error - {str(e)}")
         raise credentials_exception
-    
+
     if not payload:
-        logger.warning(f"Authentication failed: Invalid token")
+        logger.warning("Authentication failed: Invalid token")
         raise credentials_exception
 
     # Extract user identifier
     email: Optional[str] = payload.get("sub")
     if email is None:
-        logger.warning(f"Authentication failed: Token missing subject")
+        logger.warning("Authentication failed: Token missing subject")
         raise credentials_exception
 
     # Lookup user in database

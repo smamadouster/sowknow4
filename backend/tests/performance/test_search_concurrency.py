@@ -8,7 +8,7 @@ Validates two reliability guardrails added in P2-E2:
 All tests use pytest-asyncio + unittest.mock so no live DB/Redis is required.
 """
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

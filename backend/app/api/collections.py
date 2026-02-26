@@ -9,7 +9,7 @@ import logging
 from fastapi import status, APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_, desc, select, func
-from typing import Optional, List
+from typing import Optional
 from uuid import UUID
 
 import json
@@ -784,7 +784,7 @@ async def export_collection(
                 HRFlowable,
             )
             from reportlab.lib import colors
-            from reportlab.pdfgen import canvas as rl_canvas
+            from reportlab.pdfgen import canvas as rl_canvas # noqa: F401
         except ImportError:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

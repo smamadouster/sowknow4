@@ -7,14 +7,13 @@ Supports SHA256 hashing with metadata tracking for file integrity.
 
 import logging
 import hashlib
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 
 from app.models.document import Document
-from app.models.base import Base
 
 logger = logging.getLogger(__name__)
 

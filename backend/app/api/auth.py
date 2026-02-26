@@ -17,24 +17,22 @@ Token Blacklist:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import timedelta
-from typing import Any
 import uuid
 import os
 import secrets
 import hashlib
 from dotenv import load_dotenv
 import redis
-import json
 import logging
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserPublic, UserInDB
-from app.schemas.token import Token, LoginResponse
+from app.schemas.user import UserCreate, UserPublic
+from app.schemas.token import LoginResponse
 from app.schemas.auth import ForgotPasswordRequest, ResendVerificationRequest, TelegramAuthRequest
 from app.utils.security import (
     verify_password,

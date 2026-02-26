@@ -6,7 +6,7 @@ for graph-augmented retrieval and knowledge visualization.
 """
 import uuid
 import enum
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Text, JSON, Index, Float, Date, Enum
+from sqlalchemy import Column, String, Integer, ForeignKey, Text, Index, Float, Date, Enum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin, GUIDType

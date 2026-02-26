@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator, field_serializer
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, Any
 from datetime import datetime
 import enum

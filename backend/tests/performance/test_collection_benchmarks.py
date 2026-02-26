@@ -43,17 +43,14 @@ from __future__ import annotations
 
 import json
 import time
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 from app.models.document import Document, DocumentBucket, DocumentStatus
-from app.models.user import User, UserRole
 from app.schemas.collection import CollectionCreate
 from app.services.collection_service import collection_service
 from app.services.intent_parser import ParsedIntent, intent_parser_service

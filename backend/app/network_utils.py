@@ -13,8 +13,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type,
-    before_sleep_log,
-    RetryError
+    before_sleep_log
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +76,7 @@ class CircuitBreaker:
     - OPEN: Too many failures, requests fail immediately
     - HALF_OPEN: Testing if service recovered
     """
-    
+
     def __init__(
         self,
         failure_threshold: int = 5,
@@ -91,12 +90,12 @@ class CircuitBreaker:
         self.success_count = 0
         self.last_failure_time: Optional[float] = None
         self.state = "CLOSED"
-        
+
     def _can_execute(self) -> bool:
         """Check if request can be executed based on circuit state."""
         if self.state == "CLOSED":
             return True
-        
+
         if self.state == "OPEN":
             if time.time() - self.last_failure_time >= self.recovery_timeout:
                 self.state = "HALF_OPEN"
@@ -104,12 +103,12 @@ class CircuitBreaker:
                 logger.info("Circuit breaker: OPEN -> HALF_OPEN")
                 return True
             return False
-        
+
         if self.state == "HALF_OPEN":
             return True
-            
+
         return False
-    
+
     def _record_success(self) -> None:
         """Record successful request."""
         if self.state == "HALF_OPEN":
@@ -121,19 +120,19 @@ class CircuitBreaker:
                 logger.info("Circuit breaker: HALF_OPEN -> CLOSED")
         elif self.state == "CLOSED":
             self.failure_count = max(0, self.failure_count - 1)
-    
+
     def _record_failure(self) -> None:
         """Record failed request."""
         self.failure_count += 1
         self.last_failure_time = time.time()
-        
+
         if self.state == "HALF_OPEN":
             self.state = "OPEN"
             logger.warning("Circuit breaker: HALF_OPEN -> OPEN")
         elif self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
             logger.warning(f"Circuit breaker: CLOSED -> OPEN (failures: {self.failure_count})")
-    
+
     @property
     def status(self) -> dict:
         """Get circuit breaker status."""
@@ -149,7 +148,7 @@ class ResilientAsyncClient:
     """
     Async HTTP client with built-in retry logic and circuit breaker.
     """
-    
+
     def __init__(
         self,
         base_url: str = "",
@@ -163,11 +162,11 @@ class ResilientAsyncClient:
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
         self._circuit_breaker = CircuitBreaker() if enable_circuit_breaker else None
-        
+
         self._max_attempts = max_attempts
         self._min_wait = min_wait
         self._max_wait = max_wait
-    
+
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create httpx client."""
         if self._client is None or self._client.is_closed:
@@ -176,12 +175,12 @@ class ResilientAsyncClient:
                 timeout=httpx.Timeout(self.timeout),
             )
         return self._client
-    
+
     async def close(self) -> None:
         """Close the HTTP client."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
-    
+
     async def request(
         self,
         method: str,
@@ -195,25 +194,25 @@ class ResilientAsyncClient:
             raise CircuitBreakerOpenError(
                 f"Circuit breaker is {self._circuit_breaker.state}"
             )
-        
+
         client = await self._get_client()
         last_exception: Optional[Exception] = None
-        
+
         for attempt in range(1, self._max_attempts + 1):
             try:
                 response = await client.request(method, url, **kwargs)
-                
+
                 if self._circuit_breaker:
                     self._circuit_breaker._record_success()
-                    
+
                 return response
-                
+
             except RETRYABLE_EXCEPTIONS as e:
                 last_exception = e
                 logger.warning(
                     f"Request attempt {attempt}/{self._max_attempts} failed: {str(e)}"
                 )
-                
+
                 if attempt < self._max_attempts:
                     wait_time = min(
                         self._min_wait * (2 ** (attempt - 1)),
@@ -225,30 +224,30 @@ class ResilientAsyncClient:
                     if self._circuit_breaker:
                         self._circuit_breaker._record_failure()
                     raise
-        
+
         if last_exception:
             raise last_exception
-    
+
     @with_retry()
     async def get(self, url: str, **kwargs) -> httpx.Response:
         """GET request with retry."""
         return await self.request("GET", url, **kwargs)
-    
+
     @with_retry()
     async def post(self, url: str, **kwargs) -> httpx.Response:
         """POST request with retry."""
         return await self.request("POST", url, **kwargs)
-    
+
     @with_retry()
     async def put(self, url: str, **kwargs) -> httpx.Response:
         """PUT request with retry."""
         return await self.request("PUT", url, **kwargs)
-    
+
     @with_retry()
     async def delete(self, url: str, **kwargs) -> httpx.Response:
         """DELETE request with retry."""
         return await self.request("DELETE", url, **kwargs)
-    
+
     def get_circuit_breaker_status(self) -> Optional[dict]:
         """Get circuit breaker status if enabled."""
         if self._circuit_breaker:

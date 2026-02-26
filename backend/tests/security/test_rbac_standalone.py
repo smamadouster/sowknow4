@@ -6,7 +6,7 @@ These tests verify RBAC implementation without requiring the full API.
 import pytest
 
 from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.document import Document, DocumentBucket
 from app.services.search_service import HybridSearchService
 
 

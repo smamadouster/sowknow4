@@ -1,0 +1,72 @@
+[tool.ruff]
+# Target Python version
+target-version = "py311"
+
+# Directories to exclude from linting
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "alembic/versions",
+    ".pytest_cache",
+    "htmlcov",
+]
+
+line-length = 120
+
+[tool.ruff.lint]
+# Rules enabled
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+]
+
+# Rules ignored project-wide (with rationale)
+ignore = [
+    # E402: Module level import not at top of file
+    # Intentional: lazy imports to avoid circular dependencies and optional deps
+    "E402",
+
+    # E712: Avoid equality comparisons to True/False
+    # SQLAlchemy ORM filter expressions require == True for column comparisons
+    # e.g. filter(User.is_active == True) is valid SQLAlchemy syntax
+    "E712",
+
+    # E711: Comparison to None
+    # Some SQLAlchemy expressions require == None syntax for query construction
+    "E711",
+
+    # F841: Local variable assigned but never used
+    # Common in exception handlers: `except Exception as e:` where e is logged
+    # and in test setup fixtures
+    "F841",
+
+    # E722: Bare except
+    # Some legacy code uses bare except as a last-resort catch-all
+    # TODO: Replace with `except Exception:` in a follow-up pass
+    "E722",
+
+    # E501: Line too long
+    # Complex business logic and long string literals are unavoidable in some cases
+    # Line length is already set to 120 (generous)
+    "E501",
+
+    # W293: Whitespace before blank line (auto-fixer handles most; residual in generated code)
+    "W293",
+]
+
+# Per-file rule overrides
+[tool.ruff.lint.per-file-ignores]
+# __init__.py files: F401 (unused imports) are re-exports — intentional
+"__init__.py" = ["F401"]
+# Test files: allow unused imports (fixtures, mock helpers imported for side effects)
+"tests/**/*.py" = ["F401", "F811"]
+# Alembic env: E402 is structurally required
+"alembic/env.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false

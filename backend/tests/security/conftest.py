@@ -7,13 +7,10 @@ without external database dependencies.
 """
 import pytest
 import os
-import uuid
 from typing import Generator, Dict
-from sqlalchemy import create_engine, event, text, JSON, String, Text
+from sqlalchemy import create_engine, event, JSON, Text
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker, Session
-from unittest.mock import Mock, MagicMock
-import sqlalchemy as sa
 
 # Set test environment variables before importing anything
 os.environ["JWT_SECRET"] = "test-secret-key-for-security-testing-only"
@@ -31,11 +28,8 @@ from app.models.base import Base
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.utils.security import (
-    verify_password,
     get_password_hash,
-    create_access_token,
-    create_refresh_token,
-    decode_token
+    create_access_token
 )
 
 # Test database URL - SQLite for isolated, fast testing
@@ -53,7 +47,6 @@ test_engine = create_engine(
 @event.listens_for(Base.metadata, "before_create")
 def _strip_pg_for_sqlite(metadata, connection, **kw):
     """Remove schemas and replace PG-specific types for SQLite compatibility."""
-    from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 
     for table in metadata.tables.values():
         table.schema = None

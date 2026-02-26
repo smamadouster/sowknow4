@@ -11,9 +11,7 @@ Validates:
 
 import pytest
 import json
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
 
 class TestRedisSessionManager:

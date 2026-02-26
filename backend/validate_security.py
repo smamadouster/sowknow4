@@ -4,7 +4,6 @@ Security Configuration Validation Script
 Validates the CORS and TrustedHost configuration logic without requiring FastAPI.
 """
 
-import os
 
 def parse_allowed_origins(app_env, allowed_origins_str):
     """Replicate the ALLOWED_ORIGINS parsing logic from main_minimal.py"""
@@ -61,10 +60,10 @@ def test_security_config():
         all_passed = False
     except ValueError as e:
         if "SECURITY ERROR" in str(e) and "ALLOWED_ORIGINS" in str(e):
-            print(f"  ✓ PASS: Correctly raises error")
+            print("  ✓ PASS: Correctly raises error")
             print(f"         Message: {str(e)[:80]}...")
         else:
-            print(f"  ❌ FAIL: Wrong error message")
+            print("  ❌ FAIL: Wrong error message")
             all_passed = False
 
     # Test 2: Production with wildcard origin
@@ -75,10 +74,10 @@ def test_security_config():
         all_passed = False
     except ValueError as e:
         if "SECURITY ERROR" in str(e) and "Wildcard origins" in str(e):
-            print(f"  ✓ PASS: Correctly rejects wildcard origin")
+            print("  ✓ PASS: Correctly rejects wildcard origin")
             print(f"         Message: {str(e)[:80]}...")
         else:
-            print(f"  ❌ FAIL: Wrong error message")
+            print("  ❌ FAIL: Wrong error message")
             all_passed = False
 
     # Test 3: Production with valid ALLOWED_ORIGINS
@@ -90,7 +89,7 @@ def test_security_config():
         )
         expected = ["https://sowknow.gollamtech.com", "https://www.sowknow.gollamtech.com"]
         if origins == expected:
-            print(f"  ✓ PASS: Origins parsed correctly")
+            print("  ✓ PASS: Origins parsed correctly")
             print(f"         {origins}")
         else:
             print(f"  ❌ FAIL: Wrong origins. Expected {expected}, got {origins}")
@@ -107,10 +106,10 @@ def test_security_config():
         all_passed = False
     except ValueError as e:
         if "SECURITY ERROR" in str(e) and "ALLOWED_HOSTS" in str(e):
-            print(f"  ✓ PASS: Correctly raises error")
+            print("  ✓ PASS: Correctly raises error")
             print(f"         Message: {str(e)[:80]}...")
         else:
-            print(f"  ❌ FAIL: Wrong error message")
+            print("  ❌ FAIL: Wrong error message")
             all_passed = False
 
     # Test 5: Production with valid ALLOWED_HOSTS
@@ -122,7 +121,7 @@ def test_security_config():
         )
         expected = ["sowknow.gollamtech.com", "www.sowknow.gollamtech.com"]
         if hosts == expected:
-            print(f"  ✓ PASS: Hosts parsed correctly")
+            print("  ✓ PASS: Hosts parsed correctly")
             print(f"         {hosts}")
         else:
             print(f"  ❌ FAIL: Wrong hosts. Expected {expected}, got {hosts}")
@@ -138,16 +137,16 @@ def test_security_config():
         hosts = parse_allowed_hosts("development", "")
 
         if "http://localhost:3000" in origins:
-            print(f"  ✓ PASS: Default origins include localhost:3000")
+            print("  ✓ PASS: Default origins include localhost:3000")
             print(f"         {origins}")
         else:
-            print(f"  ❌ FAIL: Missing localhost:3000 in defaults")
+            print("  ❌ FAIL: Missing localhost:3000 in defaults")
             all_passed = False
 
         if hosts == ["*"]:
-            print(f"  ✓ PASS: Default hosts allow all (permissive for dev)")
+            print("  ✓ PASS: Default hosts allow all (permissive for dev)")
         else:
-            print(f"  ❌ FAIL: Development should allow all hosts")
+            print("  ❌ FAIL: Development should allow all hosts")
             all_passed = False
     except Exception as e:
         print(f"  ❌ FAIL: Unexpected error: {e}")
@@ -162,7 +161,7 @@ def test_security_config():
         )
         expected = ["http://localhost:8080", "http://127.0.0.1:8080"]
         if origins == expected:
-            print(f"  ✓ PASS: Custom origins parsed correctly")
+            print("  ✓ PASS: Custom origins parsed correctly")
             print(f"         {origins}")
         else:
             print(f"  ❌ FAIL: Wrong origins. Expected {expected}, got {origins}")
@@ -180,7 +179,7 @@ def test_security_config():
         )
         expected = ["https://sowknow.gollamtech.com", "https://www.sowknow.gollamtech.com"]
         if origins == expected:
-            print(f"  ✓ PASS: Whitespace handled correctly")
+            print("  ✓ PASS: Whitespace handled correctly")
             print(f"         {origins}")
         else:
             print(f"  ❌ FAIL: Wrong origins. Expected {expected}, got {origins}")
@@ -226,14 +225,14 @@ def check_env_files():
                 has_allowed_hosts = "ALLOWED_HOSTS" in content
 
                 if has_allowed_origins:
-                    print(f"  ✓ ALLOWED_ORIGINS variable found")
+                    print("  ✓ ALLOWED_ORIGINS variable found")
                 else:
-                    print(f"  ⚠ ALLOWED_ORIGINS variable missing")
+                    print("  ⚠ ALLOWED_ORIGINS variable missing")
 
                 if has_allowed_hosts:
-                    print(f"  ✓ ALLOWED_HOSTS variable found")
+                    print("  ✓ ALLOWED_HOSTS variable found")
                 else:
-                    print(f"  ⚠ ALLOWED_HOSTS variable missing")
+                    print("  ⚠ ALLOWED_HOSTS variable missing")
 
         except FileNotFoundError:
             print(f"  ⚠ File not found: {filepath}")

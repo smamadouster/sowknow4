@@ -7,7 +7,7 @@ Routes confidential documents to local Ollama when PII is detected.
 
 import re
 import logging
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Any
 
 logger = logging.getLogger(__name__)
 

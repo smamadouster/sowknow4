@@ -20,6 +20,7 @@ from app.models.document import Document
 from app.models.audit import AuditLog, AuditAction
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
+from app.services.llm_router import llm_router
 
 logger = logging.getLogger(__name__)
 

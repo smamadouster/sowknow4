@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,15 @@ class RoutingReason(str, Enum):
     PUBLIC_DOCS_RAG = "public_docs_rag"
     GENERAL_CHAT = "general_chat"
     FINAL_FALLBACK = "final_fallback_ollama"
+
+
+class LLMProvider(str, Enum):
+    """Canonical provider identifiers — single source of truth."""
+
+    MINIMAX = "minimax"
+    KIMI = "kimi"
+    OPENROUTER = "openrouter"
+    OLLAMA = "ollama"
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +73,14 @@ class LLMRouter:
     Services are injected at construction time so that tests can pass in mocks.
     """
 
+    # Fallback chains per routing scenario.
+    # Each chain is an ordered list of provider names tried left-to-right.
+    fallback_chains: Dict[str, List[str]] = {
+        "confidential": ["ollama"],
+        "public_docs": ["minimax", "openrouter", "ollama"],
+        "general_chat": ["kimi", "minimax", "openrouter", "ollama"],
+    }
+
     def __init__(
         self,
         *,
@@ -82,6 +99,41 @@ class LLMRouter:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    async def generate_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        query: str = "",
+        context_chunks: Optional[List[Dict[str, Any]]] = None,
+        *,
+        has_confidential: Optional[bool] = None,
+        stream: bool = False,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> AsyncGenerator[str, None]:
+        """
+        High-level entry point: route the query and call the selected provider.
+
+        Selects the best provider via :meth:`select_provider`, then delegates to
+        :class:`LLMServiceAdapter` for normalised ``chat_completion`` dispatch.
+
+        Yields:
+            Text chunks from the provider.
+        """
+        decision = await self.select_provider(
+            query=query,
+            context_chunks=context_chunks,
+            has_confidential=has_confidential,
+        )
+        adapter = LLMServiceAdapter(decision.service, decision.provider_name)
+        built_messages = adapter.build_messages(messages)
+        async for chunk in adapter.call_service(
+            built_messages,
+            stream=stream,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            yield chunk
 
     def detect_context_sensitivity(
         self,
@@ -197,6 +249,69 @@ class LLMRouter:
 
 
 # ---------------------------------------------------------------------------
+# Service adapter — normalises calling conventions across providers
+# ---------------------------------------------------------------------------
+
+
+class LLMServiceAdapter:
+    """
+    Adapts a provider service instance to a common calling convention.
+
+    Different providers use slightly different parameter names
+    (``max_tokens`` vs ``num_predict``, etc.).  This adapter normalises
+    them so :meth:`LLMRouter.generate_completion` can treat all providers
+    uniformly.
+    """
+
+    def __init__(self, service: Any, provider_name: str) -> None:
+        self._service = service
+        self._provider = provider_name
+
+    def build_messages(
+        self, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, str]]:
+        """
+        Normalise the message list to OpenAI format (role + content dicts).
+
+        Strips unknown keys so every provider receives a clean payload.
+        """
+        return [
+            {"role": str(m.get("role", "user")), "content": str(m.get("content", ""))}
+            for m in messages
+        ]
+
+    async def call_service(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        stream: bool = False,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Dispatch to the underlying service's ``chat_completion``, translating
+        parameter names as needed.
+        """
+        if self._provider == "ollama":
+            # Ollama uses num_predict instead of max_tokens
+            async for chunk in self._service.chat_completion(
+                messages,
+                stream=stream,
+                temperature=temperature,
+                num_predict=max_tokens,
+            ):
+                yield chunk
+        else:
+            async for chunk in self._service.chat_completion(
+                messages,
+                stream=stream,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                yield chunk
+
+
+# ---------------------------------------------------------------------------
 # Module-level singleton (lazy imports to avoid circular dependency)
 # ---------------------------------------------------------------------------
 
@@ -255,4 +370,5 @@ def _build_router() -> LLMRouter:
 
 
 # Singleton — built on first import.
+# llm_router = LLMRouter()  — services are wired by _build_router() to avoid circular imports
 llm_router: LLMRouter = _build_router()

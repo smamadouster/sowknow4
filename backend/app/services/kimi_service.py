@@ -19,10 +19,14 @@ from datetime import datetime
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.services.base_llm_service import BaseLLMService
+
 logger = logging.getLogger(__name__)
 
 # Configuration — Moonshot AI OpenAI-compatible endpoint
-KIMI_API_KEY = os.getenv("KIMI_API_KEY")
+# Support both MOONSHOT_API_KEY (canonical) and KIMI_API_KEY (legacy alias)
+MOONSHOT_API_KEY = os.getenv("MOONSHOT_API_KEY") or os.getenv("KIMI_API_KEY")
+KIMI_API_KEY = MOONSHOT_API_KEY  # backward-compatible alias
 KIMI_BASE_URL = os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1")
 # moonshot-v1-128k is the flagship 128K context model (like "kimi-latest")
 KIMI_MODEL = os.getenv("KIMI_MODEL", "moonshot-v1-128k")
@@ -32,7 +36,7 @@ KIMI_CONTEXT_WINDOW = 128000  # moonshot-v1-128k supports 128K tokens
 MAX_INPUT_TOKENS = 120000  # Leave headroom for response
 
 
-class KimiService:
+class KimiService(BaseLLMService):
     """Service for interacting with the Kimi API (Moonshot AI).
 
     Uses the OpenAI-compatible /v1/chat/completions endpoint.

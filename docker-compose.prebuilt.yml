@@ -30,6 +30,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       KIMI_API_KEY: ${KIMI_API_KEY}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
     ports:
       - "8000:8000"
     depends_on:

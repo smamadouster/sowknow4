@@ -21,6 +21,8 @@ from app.models.user import User
 from app.models.document import Document, DocumentBucket
 from app.services.search_service import search_service
 from app.services.pii_detection_service import pii_detection_service
+from app.services.llm_router import llm_router
+from app.services.deferred_query_service import deferred_query_service
 
 # Import all LLM services
 try:
@@ -310,22 +312,33 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         if has_confidential:
             ollama_health = await self.ollama_service.health_check()
-            if ollama_health["status"] != "healthy":
+            if ollama_health["status"] not in ("healthy", "degraded"):
                 logger.error(
                     f"Ollama unavailable for confidential query: {ollama_health.get('error', 'unknown')}"
                 )
+                # Enqueue via llm_router / DeferredQueryService so the query is retried
+                deferred_id = await deferred_query_service.enqueue(
+                    user_id=str(current_user.id),
+                    query_text=query,
+                    document_ids=[c.get("document_id") for c in source_documents if c.get("document_id")],
+                )
+                logger.info(f"Confidential query queued as deferred_id={deferred_id} via DeferredQueryService")
                 return {
                     "content": (
                         "Votre requête implique des documents confidentiels qui nécessitent "
                         "un traitement local sécurisé. Le service IA local est temporairement "
-                        "indisponible. Veuillez réessayer dans quelques minutes. / "
+                        "indisponible. Votre requête a été mise en file d'attente (queued) et sera "
+                        "traitée automatiquement dès que le service sera disponible. / "
                         "Your query involves confidential documents requiring secure local processing. "
-                        "The local AI service is temporarily unavailable. Please try again in a few minutes."
+                        "The local AI service is temporarily unavailable. Your query has been queued "
+                        "and will be processed automatically when the service recovers."
                     ),
                     "llm_used": LLMProvider.OLLAMA,
                     "sources": [],
                     "has_confidential": True,
                     "error": "ollama_unavailable",
+                    "queued": True,
+                    "deferred_id": deferred_id,
                 }
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
@@ -394,18 +407,25 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         if has_confidential:
             ollama_health = await self.ollama_service.health_check()
-            if ollama_health["status"] != "healthy":
+            if ollama_health["status"] not in ("healthy", "degraded"):
                 logger.error(
                     f"Ollama unavailable for confidential stream query: {ollama_health.get('error', 'unknown')}"
                 )
+                # Queue via DeferredQueryService for retry when Ollama recovers
+                deferred_id = await deferred_query_service.enqueue(
+                    user_id=str(current_user.id),
+                    query_text=query,
+                    document_ids=[c.get("document_id") for c in sources if c.get("document_id")],
+                )
+                logger.info(f"Streaming confidential query queued deferred_id={deferred_id}")
                 error_msg = (
                     "Votre requête implique des documents confidentiels qui nécessitent "
                     "un traitement local sécurisé. Le service IA local est temporairement "
-                    "indisponible. Veuillez réessayer dans quelques minutes. / "
+                    "indisponible. Votre requête a été mise en file d'attente (queued). / "
                     "Your query involves confidential documents requiring secure local processing. "
-                    "The local AI service is temporarily unavailable. Please try again in a few minutes."
+                    "The local AI service is temporarily unavailable. Your query has been queued."
                 )
-                yield f"data: {json.dumps({'type': 'llm_info', 'llm_used': LLMProvider.OLLAMA.value, 'has_confidential': True, 'cache_hit': False})}\n\n"
+                yield f"data: {json.dumps({'type': 'llm_info', 'llm_used': LLMProvider.OLLAMA.value, 'has_confidential': True, 'cache_hit': False, 'queued': True, 'deferred_id': deferred_id})}\n\n"
                 yield f"data: {json.dumps({'type': 'message', 'content': error_msg})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return

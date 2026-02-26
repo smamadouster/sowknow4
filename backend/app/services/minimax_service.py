@@ -10,6 +10,8 @@ from typing import AsyncGenerator, List, Dict, Any, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.services.base_llm_service import BaseLLMService
+
 logger = logging.getLogger(__name__)
 
 # Configuration
@@ -22,7 +24,7 @@ MINIMAX_CONTEXT_WINDOW = 128000
 MAX_INPUT_TOKENS = 120000
 
 
-class MiniMaxService:
+class MiniMaxService(BaseLLMService):
     """Service for interacting with MiniMax API directly"""
 
     def __init__(self):

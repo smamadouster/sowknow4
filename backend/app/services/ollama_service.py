@@ -12,15 +12,31 @@ from typing import AsyncGenerator, List, Dict, Any, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.services.base_llm_service import BaseLLMService
+
 logger = logging.getLogger(__name__)
 
 
-# Configuration
+# Configuration — OLLAMA_BASE_URL is the canonical variable name
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
 
+if not os.getenv("OLLAMA_BASE_URL"):
+    # raise ValueError in strict mode; log warning in development so the service
+    # still starts with the default URL rather than crashing on import.
+    _env = os.getenv("APP_ENV", "development")
+    if _env == "production":
+        raise ValueError(
+            "OLLAMA_BASE_URL must be set in production. "
+            "Add it to your .env file or docker-compose environment."
+        )
+    logger.warning(
+        "OLLAMA_BASE_URL not set — defaulting to http://ollama:11434. "
+        "Set OLLAMA_BASE_URL explicitly to suppress this warning."
+    )
 
-class OllamaService:
+
+class OllamaService(BaseLLMService):
     """Service for interacting with Ollama (local LLM)"""
 
     def __init__(self):
@@ -149,7 +165,12 @@ class OllamaService:
 
     async def health_check(self) -> Dict[str, Any]:
         """
-        Check Ollama service health
+        Check Ollama service health.
+
+        Returns a status dict with "status" one of:
+            "healthy"     — service is reachable and the configured model is loaded
+            "degraded"    — service is reachable but the model may not be loaded
+            "unavailable" — service cannot be reached (connection error / timeout)
 
         Returns:
             Health check result dict
@@ -160,16 +181,28 @@ class OllamaService:
                 response.raise_for_status()
                 result = response.json()
 
+                available_models = [m.get("name") for m in result.get("models", [])]
+                model_loaded = any(self.model in (m or "") for m in available_models)
+
                 return {
                     "service": "ollama",
-                    "status": "healthy",
+                    "status": "healthy" if model_loaded else "degraded",
                     "model": self.model,
-                    "available_models": [
-                        m.get("name") for m in result.get("models", [])
-                    ],
+                    "model_loaded": model_loaded,
+                    "available_models": available_models,
                 }
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            return {
+                "service": "ollama",
+                "status": "unavailable",
+                "error": str(e),
+            }
         except Exception as e:
-            return {"service": "ollama", "status": "unhealthy", "error": str(e)}
+            return {
+                "service": "ollama",
+                "status": "unavailable",
+                "error": str(e),
+            }
 
 
 # Global Ollama service instance

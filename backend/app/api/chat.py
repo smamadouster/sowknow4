@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.api.deps import get_current_user
 from app.services.chat_service import chat_service
+from app.services.llm_router import llm_router
 from app.schemas.chat import (
     ChatSessionCreate,
     ChatSessionResponse,
@@ -28,8 +29,13 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 # Helper functions
 def determine_llm_provider(has_confidential: bool) -> LLMProvider:
-    """Determine which LLM to use based on document context"""
-    return LLMProvider.OLLAMA if has_confidential else LLMProvider.KIMI
+    """Determine which LLM to use based on document context.
+
+    Routes confidential queries to OLLAMA (privacy guarantee).
+    Public queries use the llm_router fallback chain:
+        KIMI → MINIMAX → OPENROUTER → OLLAMA.
+    """
+    return LLMProvider.OLLAMA if has_confidential else LLMProvider.OPENROUTER
 
 
 @router.post("/sessions", response_model=ChatSessionResponse)

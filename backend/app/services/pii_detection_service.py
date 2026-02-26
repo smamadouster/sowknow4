@@ -265,6 +265,37 @@ class PIIDetectionService:
             "details": details,
         }
 
+    def detect_pii_in_chunks(
+        self, chunks: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Detect PII across a list of document chunks.
+
+        Each chunk is expected to have at least a ``content`` key.
+
+        Returns:
+            {
+                "has_pii": bool,
+                "affected_chunks": [{"index": int, "summary": {...}}, ...],
+                "total_chunks": int,
+                "pii_chunk_count": int,
+            }
+        """
+        affected_chunks: List[Dict[str, Any]] = []
+
+        for idx, chunk in enumerate(chunks):
+            text = chunk.get("content") or chunk.get("text") or ""
+            summary = self.get_pii_summary(text)
+            if summary.get("has_pii"):
+                affected_chunks.append({"index": idx, "summary": summary})
+
+        return {
+            "has_pii": len(affected_chunks) > 0,
+            "affected_chunks": affected_chunks,
+            "total_chunks": len(chunks),
+            "pii_chunk_count": len(affected_chunks),
+        }
+
     def _is_valid_credit_card(self, number: str) -> bool:
         """
         Validate credit card number using Luhn algorithm.

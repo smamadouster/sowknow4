@@ -76,6 +76,7 @@ coverage/
 
 # Secrets
 .secrets
+.env.secure
 secrets/
 keys/
 certificates/

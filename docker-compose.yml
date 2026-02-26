@@ -290,7 +290,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.telegram
     container_name: sowknow4-telegram-bot
-    restart: unless-stopped
+    restart: on-failure  # exit(0) on bad token must NOT restart; only crash (non-zero) restarts
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}

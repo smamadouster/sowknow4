@@ -1094,9 +1094,63 @@ def _validate_required_env_vars() -> bool:
     return True
 
 
+def _validate_bot_token(token: str) -> bool:
+    """Pre-flight check: verify the token is accepted by the Telegram Bot API.
+
+    Calls GET /bot{token}/getMe synchronously before starting the event loop.
+    Returns True on success, False on 401 (invalid/revoked token).
+    Network errors are treated as transient and return True (let polling handle it).
+    """
+    try:
+        import httpx
+        resp = httpx.get(
+            f"https://api.telegram.org/bot{token}/getMe",
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            bot_username = data.get("result", {}).get("username", "unknown")
+            logger.info(f"Token valid — bot username: @{bot_username}")
+            return True
+        elif resp.status_code == 401:
+            logger.error("=" * 60)
+            logger.error("TELEGRAM BOT TOKEN IS INVALID (401 Unauthorized)")
+            logger.error("The token was rejected by api.telegram.org.")
+            logger.error("")
+            logger.error("To fix:")
+            logger.error("  1. Open Telegram and message @BotFather")
+            logger.error("  2. Send /mybots → select your bot → API Token")
+            logger.error("     OR send /newbot to create a fresh bot")
+            logger.error("  3. Copy the new token")
+            logger.error("  4. Edit /var/docker/sowknow4/.env:")
+            logger.error("       TELEGRAM_BOT_TOKEN=<new token>")
+            logger.error("  5. Run: docker compose restart telegram-bot")
+            logger.error("=" * 60)
+            print("ERROR: TELEGRAM_BOT_TOKEN is invalid. See logs for fix instructions.")
+            return False
+        else:
+            logger.warning(
+                f"Unexpected response from Telegram API: HTTP {resp.status_code} — "
+                "proceeding anyway (may be a transient issue)."
+            )
+            return True
+    except Exception as exc:
+        logger.warning(
+            f"Could not reach Telegram API for pre-flight check: {exc} — "
+            "proceeding anyway."
+        )
+        return True
+
+
 def main() -> None:
     if not _validate_required_env_vars():
-        return
+        # Exit cleanly (code 0) — this is a config error, not a crash.
+        # With restart: on-failure, exit code 0 will NOT trigger a restart.
+        sys.exit(0)
+
+    if not _validate_bot_token(BOT_TOKEN):
+        # Token rejected by Telegram — exit cleanly, no restart loop.
+        sys.exit(0)
 
     logger.info("Initializing Telegram bot...")
 

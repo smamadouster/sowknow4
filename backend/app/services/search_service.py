@@ -7,8 +7,8 @@ import logging
 import re
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from sqlalchemy.orm import Session
-from sqlalchemy import text, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text, func, desc
 
 from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.models.user import User, UserRole
@@ -105,7 +105,7 @@ class HybridSearchService:
         query: str,
         limit: int = 50,
         offset: int = 0,
-        db: Session = None,
+        db: AsyncSession = None,
         user: User = None,
     ) -> List[SearchResult]:
         """
@@ -165,7 +165,7 @@ class HybridSearchService:
             LIMIT :limit OFFSET :offset
         """)
 
-        result = db.execute(
+        result = await db.execute(
             sql_query,
             {
                 "embedding": embedding_array,
@@ -199,7 +199,7 @@ class HybridSearchService:
         query: str,
         limit: int = 50,
         offset: int = 0,
-        db: Session = None,
+        db: AsyncSession = None,
         user: User = None,
     ) -> List[SearchResult]:
         """
@@ -258,7 +258,7 @@ class HybridSearchService:
             LIMIT :limit OFFSET :offset
         """)
 
-        result = db.execute(
+        result = await db.execute(
             sql_query,
             {
                 "query": query,
@@ -294,7 +294,7 @@ class HybridSearchService:
         query: str,
         limit: int = 50,
         offset: int = 0,
-        db: Session = None,
+        db: AsyncSession = None,
         user: User = None,
         timeout: float = 3.0,
     ) -> Dict[str, Any]:
@@ -460,10 +460,10 @@ class HybridSearchService:
         sanitized = re.sub(r"[&|!()<>:]+", " ", query).strip()
         return " ".join(sanitized.split())
 
-    def _keyword_search(
+    async def _keyword_search(
         self,
         query: str,
-        db: Session,
+        db: AsyncSession,
         user: User,
         limit: int = 50,
         language: str = "french",
@@ -479,7 +479,7 @@ class HybridSearchService:
 
         Args:
             query:    Raw search string (will be sanitized).
-            db:       Active SQLAlchemy session.
+            db:       Active SQLAlchemy async session.
             user:     Authenticated user for RBAC filtering.
             limit:    Maximum rows to return.
             language: Default text-search config (per-row config is preferred).
@@ -507,20 +507,21 @@ class HybridSearchService:
             else [DocumentBucket.PUBLIC.value]
         )
 
-        return (
-            db.query(DocumentChunk, Document, rank_expr.label("rank"))
+        stmt = (
+            select(DocumentChunk, Document, rank_expr.label("rank"))
             .join(Document, DocumentChunk.document_id == Document.id)
-            .filter(Document.bucket.in_(buckets))
-            .filter(DocumentChunk.search_vector.op("@@")(tsquery))
+            .where(Document.bucket.in_(buckets))
+            .where(DocumentChunk.search_vector.op("@@")(tsquery))
             .order_by(desc(rank_expr))
             .limit(limit)
-            .all()
         )
+        result = await db.execute(stmt)
+        return result.all()
 
-    def _keyword_search_with_metadata(
+    async def _keyword_search_with_metadata(
         self,
         query: str,
-        db: Session,
+        db: AsyncSession,
         user: User,
         limit: int = 50,
         language: str = "french",
@@ -533,7 +534,7 @@ class HybridSearchService:
 
         Args:
             query:    Raw search string.
-            db:       Active SQLAlchemy session.
+            db:       Active SQLAlchemy async session.
             user:     Authenticated user for RBAC filtering.
             limit:    Maximum rows to return.
             language: Default text-search config.
@@ -573,19 +574,20 @@ class HybridSearchService:
             else [DocumentBucket.PUBLIC.value]
         )
 
-        return (
-            db.query(DocumentChunk, Document, combined_rank.label("rank"))
+        stmt = (
+            select(DocumentChunk, Document, combined_rank.label("rank"))
             .join(Document, DocumentChunk.document_id == Document.id)
-            .filter(Document.bucket.in_(buckets))
-            .filter(DocumentChunk.search_vector.op("@@")(tsquery))
+            .where(Document.bucket.in_(buckets))
+            .where(DocumentChunk.search_vector.op("@@")(tsquery))
             .order_by(desc(combined_rank))
             .limit(limit)
-            .all()
         )
+        result = await db.execute(stmt)
+        return result.all()
 
-    def _get_highlighted_text(
+    async def _get_highlighted_text(
         self,
-        db: Session,
+        db: AsyncSession,
         chunk_text: str,
         query: str,
         language: str = "french",
@@ -596,7 +598,7 @@ class HybridSearchService:
         to produce browser-renderable highlights.
 
         Args:
-            db:         Active SQLAlchemy session.
+            db:         Active SQLAlchemy async session.
             chunk_text: Raw text to highlight.
             query:      Search query string.
             language:   PostgreSQL text-search configuration name.
@@ -606,7 +608,7 @@ class HybridSearchService:
             chunk_text if ts_headline fails.
         """
         try:
-            result = db.execute(
+            result = await db.execute(
                 text(
                     """
                     SELECT ts_headline(
@@ -618,8 +620,8 @@ class HybridSearchService:
                     """
                 ),
                 {"lang": language, "content": chunk_text, "query": query},
-            ).scalar()
-            return result or chunk_text
+            )
+            return result.scalar() or chunk_text
         except Exception:
             return chunk_text
 

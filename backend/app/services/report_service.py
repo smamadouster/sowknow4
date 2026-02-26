@@ -10,7 +10,8 @@ import logging
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from io import BytesIO
 
 from app.models.collection import Collection, CollectionItem
@@ -42,7 +43,7 @@ class ReportService:
         include_citations: bool = True,
         language: str = "en",
         user: User = None,
-        db: Session = None,
+        db: AsyncSession = None,
     ) -> Dict[str, Any]:
         """
         Generate a report from a collection
@@ -59,19 +60,20 @@ class ReportService:
             Dictionary with report content, metadata, and file info
         """
         # Get collection
-        collection = db.query(Collection).filter(Collection.id == collection_id).first()
+        collection = (await db.execute(select(Collection).where(Collection.id == collection_id))).scalar_one_or_none()
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
         # Get collection items with documents
         items = (
-            db.query(CollectionItem)
-            .filter(CollectionItem.collection_id == collection_id)
-            .join(Document)
-            .order_by(CollectionItem.relevance_score.desc())
-            .all()
-        )
+            await db.execute(
+                select(CollectionItem)
+                .where(CollectionItem.collection_id == collection_id)
+                .join(Document)
+                .order_by(CollectionItem.relevance_score.desc())
+            )
+        ).scalars().all()
 
         # Build document context
         document_context = await self._build_document_context(items, db)
@@ -143,7 +145,7 @@ class ReportService:
         return {**report_metadata, "content": report_content, "file_url": file_url}
 
     async def _build_document_context(
-        self, items: List[CollectionItem], db: Session
+        self, items: List[CollectionItem], db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """Build document context from collection items"""
         context = []
@@ -155,12 +157,13 @@ class ReportService:
             from app.models.document import DocumentChunk
 
             chunks = (
-                db.query(DocumentChunk)
-                .filter(DocumentChunk.document_id == item.document_id)
-                .order_by(DocumentChunk.chunk_index)
-                .limit(3)
-                .all()
-            )
+                await db.execute(
+                    select(DocumentChunk)
+                    .where(DocumentChunk.document_id == item.document_id)
+                    .order_by(DocumentChunk.chunk_index)
+                    .limit(3)
+                )
+            ).scalars().all()
 
             doc_info = {
                 "filename": item.document.filename,

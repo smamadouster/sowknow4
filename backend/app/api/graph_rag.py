@@ -6,7 +6,8 @@ temporal reasoning, and progressive revelation.
 """
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Optional, List
 from uuid import UUID
 import logging
@@ -32,8 +33,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/graph-rag", tags=["graph-rag"])
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: UUID,
     action: AuditAction,
     resource_type: str,
@@ -50,9 +51,9 @@ def create_audit_log(
             details=json.dumps(details) if details else None
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Audit logging failed: {str(e)}")
 
 
@@ -63,7 +64,7 @@ async def graph_augmented_search(
     top_k: int = Query(10, ge=1, le=50),
     expansion_depth: int = Query(2, ge=1, le=3),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Perform graph-augmented search
@@ -99,7 +100,7 @@ async def graph_aware_answer(
     query: str,
     document_ids: List[str] = Query([]),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Generate an answer using graph-aware context
@@ -147,7 +148,7 @@ async def find_entity_paths(
     target: str,
     max_length: int = Query(4, ge=1, le=6),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Find paths between two entities in the knowledge graph
@@ -174,7 +175,7 @@ async def get_entity_neighborhood(
     entity_name: str,
     radius: int = Query(2, ge=1, le=3),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get the neighborhood around an entity
@@ -202,7 +203,7 @@ async def synthesize_documents(
     include_timeline: bool = True,
     include_entities: bool = True,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Synthesize information from multiple documents
@@ -213,7 +214,8 @@ async def synthesize_documents(
     from app.models.document import Document
 
     # Check for confidential documents in the requested IDs
-    documents = db.query(Document).filter(Document.id.in_(document_ids)).all()
+    result = await db.execute(select(Document).where(Document.id.in_(document_ids)))
+    documents = result.scalars().all()
     confidential_docs = [
         {"id": str(doc.id), "filename": doc.filename}
         for doc in documents
@@ -222,7 +224,7 @@ async def synthesize_documents(
 
     # AUDIT LOG: Log confidential document access in synthesis
     if confidential_docs:
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -270,7 +272,7 @@ async def reason_about_event(
     event_id: UUID,
     time_window_days: int = Query(365, ge=1, le=3650),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Perform temporal reasoning on an event
@@ -292,7 +294,7 @@ async def analyze_entity_evolution(
     entity_name: str,
     time_months: int = Query(12, ge=1, le=120),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Analyze how an entity evolves over time
@@ -312,7 +314,7 @@ async def analyze_entity_evolution(
 async def find_temporal_patterns(
     min_occurrences: int = Query(3, ge=2, le=10),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Find recurring temporal patterns in the knowledge graph
@@ -336,7 +338,7 @@ async def reveal_entity(
     entity_id: UUID,
     layer: str = Query("surface", regex="^(surface|context|detailed|comprehensive)$"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Reveal entity information at specified layer
@@ -360,7 +362,7 @@ async def get_family_context(
     depth: int = Query(2, ge=1, le=3),
     include_timeline: bool = True,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Generate family context and narrative
@@ -388,7 +390,7 @@ async def get_family_context(
 async def progressive_search(
     query: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Search with progressive revelation based on user role

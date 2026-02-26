@@ -14,7 +14,8 @@ Cookie-based auth is preferred for better security (httpOnly prevents XSS).
 from typing import Optional
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from jose import JWTError
 import logging
 
@@ -63,7 +64,7 @@ async def get_token_from_request(request: Request) -> Optional[str]:
 
 async def get_current_user(
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ) -> User:
     """
     Extract and validate JWT token from cookie or header, return User object.
@@ -118,7 +119,8 @@ async def get_current_user(
         raise credentials_exception
 
     # Lookup user in database
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
     if user is None:
         logger.warning(f"Authentication failed: User not found for email {email}")
         raise credentials_exception
@@ -349,3 +351,16 @@ require_any_authenticated = get_current_user
 # ADMIN only (full access: view, upload, delete, modify)
 # Use this for write operations that SUPERUSER should NOT perform
 require_write_access = require_admin_only
+
+
+async def get_current_active_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Convenience wrapper around get_current_user.
+
+    Identical behaviour — active check already happens inside get_current_user.
+    Exposed as a named dependency to satisfy QA spec (T08) and match common
+    FastAPI convention used by external tooling.
+    """
+    return current_user

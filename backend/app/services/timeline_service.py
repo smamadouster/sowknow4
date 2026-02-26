@@ -10,8 +10,8 @@ from typing import List, Dict, Any, Optional
 from datetime import date, datetime
 from collections import defaultdict
 
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, or_, desc, select, func
 
 from app.models.knowledge_graph import TimelineEvent, Entity, EntityType
 from app.models.document import Document, DocumentStatus
@@ -38,7 +38,7 @@ class TimelineConstructionService:
     """Service for building and managing timelines"""
 
     async def build_document_timeline(
-        self, document_id: str, db: Session
+        self, document_id: str, db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """
         Build timeline from events in a document
@@ -52,11 +52,12 @@ class TimelineConstructionService:
         """
         # Get events for this document
         events = (
-            db.query(TimelineEvent)
-            .filter(TimelineEvent.document_id == document_id)
-            .order_by(TimelineEvent.event_date)
-            .all()
-        )
+            await db.execute(
+                select(TimelineEvent)
+                .where(TimelineEvent.document_id == document_id)
+                .order_by(TimelineEvent.event_date)
+            )
+        ).scalars().all()
 
         timeline = []
         for event in events:
@@ -77,7 +78,7 @@ class TimelineConstructionService:
         return timeline
 
     async def build_entity_timeline(
-        self, entity_name: str, db: Session
+        self, entity_name: str, db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """
         Build timeline for a specific entity across all documents
@@ -90,14 +91,16 @@ class TimelineConstructionService:
             List of events involving this entity
         """
         # Find entity
-        entity = db.query(Entity).filter(Entity.name.ilike(f"%{entity_name}%")).first()
+        entity = (
+            await db.execute(select(Entity).where(Entity.name.ilike(f"%{entity_name}%")))
+        ).scalar_one_or_none()
 
         if not entity:
             return []
 
         # Get events where this entity is mentioned
         event_ids = []
-        mentions = db.query(TimelineEvent).all()
+        mentions = (await db.execute(select(TimelineEvent))).scalars().all()
 
         for event in mentions:
             if str(entity.id) in event.entity_ids:
@@ -105,11 +108,12 @@ class TimelineConstructionService:
 
         # Build timeline
         events = (
-            db.query(TimelineEvent)
-            .filter(TimelineEvent.id.in_(event_ids))
-            .order_by(TimelineEvent.event_date)
-            .all()
-        )
+            await db.execute(
+                select(TimelineEvent)
+                .where(TimelineEvent.id.in_(event_ids))
+                .order_by(TimelineEvent.event_date)
+            )
+        ).scalars().all()
 
         timeline = []
         for event in events:
@@ -128,7 +132,7 @@ class TimelineConstructionService:
         return timeline
 
     async def detect_evolution_patterns(
-        self, concept_name: str, db: Session, time_window_months: int = 12
+        self, concept_name: str, db: AsyncSession, time_window_months: int = 12
     ) -> Dict[str, Any]:
         """
         Detect how a concept or thought evolved over time
@@ -143,15 +147,15 @@ class TimelineConstructionService:
         """
         # Get all entities matching the concept
         entities = (
-            db.query(Entity)
-            .filter(
-                and_(
-                    Entity.name.ilike(f"%{concept_name}%"),
-                    Entity.entity_type == EntityType.CONCEPT,
+            await db.execute(
+                select(Entity).where(
+                    and_(
+                        Entity.name.ilike(f"%{concept_name}%"),
+                        Entity.entity_type == EntityType.CONCEPT,
+                    )
                 )
             )
-            .all()
-        )
+        ).scalars().all()
 
         if not entities:
             return {"error": "Concept not found"}
@@ -159,21 +163,20 @@ class TimelineConstructionService:
         # Get related documents over time
         # Find documents mentioning these entities
         from app.models.knowledge_graph import EntityMention
-        from app.models.document import Document
 
         entity_ids = [str(e.id) for e in entities]
 
         # Get mentions with documents
         mentions = (
-            db.query(EntityMention)
-            .filter(EntityMention.entity_id.in_(entity_ids))
-            .all()
-        )
+            await db.execute(
+                select(EntityMention).where(EntityMention.entity_id.in_(entity_ids))
+            )
+        ).scalars().all()
 
         # Group by document date
         monthly_mentions = defaultdict(int)
         for mention in mentions:
-            doc = db.query(Document).get(mention.document_id)
+            doc = await db.get(Document, mention.document_id)
             if doc and doc.created_at:
                 month_key = doc.created_at.strftime("%Y-%m")
                 monthly_mentions[month_key] += 1
@@ -267,7 +270,7 @@ class TimelineConstructionService:
         return stages
 
     async def get_timeline_for_period(
-        self, start_date: date, end_date: date, db: Session
+        self, start_date: date, end_date: date, db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """
         Get all timeline events within a date range
@@ -281,16 +284,17 @@ class TimelineConstructionService:
             List of timeline events
         """
         events = (
-            db.query(TimelineEvent)
-            .filter(
-                and_(
-                    TimelineEvent.event_date >= start_date,
-                    TimelineEvent.event_date <= end_date,
+            await db.execute(
+                select(TimelineEvent)
+                .where(
+                    and_(
+                        TimelineEvent.event_date >= start_date,
+                        TimelineEvent.event_date <= end_date,
+                    )
                 )
+                .order_by(TimelineEvent.event_date)
             )
-            .order_by(TimelineEvent.event_date)
-            .all()
-        )
+        ).scalars().all()
 
         return [
             {
@@ -305,7 +309,7 @@ class TimelineConstructionService:
         ]
 
     async def suggest_timeline_insights(
-        self, db: Session, limit: int = 10
+        self, db: AsyncSession, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Suggest interesting timeline insights and patterns
@@ -320,21 +324,22 @@ class TimelineConstructionService:
         insights = []
 
         # Find most connected entities over time
-        from sqlalchemy import func
-
         # Get top entities by relationship count
         top_entities = (
-            db.query(Entity).order_by(Entity.relationship_count.desc()).limit(20).all()
-        )
+            await db.execute(
+                select(Entity).order_by(Entity.relationship_count.desc()).limit(20)
+            )
+        ).scalars().all()
 
         for entity in top_entities[:5]:
             # Get first and last mentions
             mentions = (
-                db.query(TimelineEvent)
-                .filter(TimelineEvent.entity_ids.contains([str(entity.id)]))
-                .order_by(TimelineEvent.event_date)
-                .all()
-            )
+                await db.execute(
+                    select(TimelineEvent)
+                    .where(TimelineEvent.entity_ids.contains([str(entity.id)]))
+                    .order_by(TimelineEvent.event_date)
+                )
+            ).scalars().all()
 
             if mentions:
                 first = mentions[0]

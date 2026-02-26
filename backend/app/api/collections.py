@@ -7,8 +7,8 @@ Provides endpoints for creating, managing, and querying Smart Collections.
 import logging
 
 from fastapi import status, APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, or_, desc, select, func
 from typing import Optional, List
 from uuid import UUID
 
@@ -49,8 +49,8 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 logger = logging.getLogger(__name__)
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: UUID,
     action: AuditAction,
     resource_type: str,
@@ -67,9 +67,9 @@ def create_audit_log(
             details=json.dumps(details) if details else None,
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         import logging
 
         logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ def create_audit_log(
 async def create_collection(
     collection_data: CollectionCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new Smart Collection from natural language query
@@ -104,7 +104,7 @@ async def create_collection(
 async def preview_collection(
     request: CollectionPreviewRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Preview a collection without saving it
@@ -140,7 +140,7 @@ async def list_collections(
     pinned_only: bool = False,
     favorites_only: bool = False,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List user's collections with pagination and filtering
@@ -150,12 +150,9 @@ async def list_collections(
     - Public collections from other users
     - Shared collections (for superusers and admins)
     """
-    # Build base query
-    from sqlalchemy import or_, and_, desc
-
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 
-    query = db.query(Collection).filter(
+    stmt = select(Collection).where(
         or_(
             Collection.user_id == current_user.id,
             Collection.visibility.in_(visibility_filter),
@@ -164,26 +161,28 @@ async def list_collections(
 
     # Apply filters
     if visibility:
-        query = query.filter(Collection.visibility == visibility)
+        stmt = stmt.where(Collection.visibility == visibility)
 
     if collection_type:
-        query = query.filter(Collection.collection_type == collection_type)
+        stmt = stmt.where(Collection.collection_type == collection_type)
 
     if pinned_only:
-        query = query.filter(Collection.is_pinned == True)
+        stmt = stmt.where(Collection.is_pinned == True)
 
     if favorites_only:
-        query = query.filter(Collection.is_favorite == True)
-
-    # Order: pinned first, then by created_at desc
-    query = query.order_by(desc(Collection.is_pinned), desc(Collection.created_at))
+        stmt = stmt.where(Collection.is_favorite == True)
 
     # Get total count
-    total = query.count()
+    count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = count_result.scalar_one()
 
-    # Apply pagination
+    # Order: pinned first, then by created_at desc, apply pagination
     offset = (page - 1) * page_size
-    collections = query.offset(offset).limit(page_size).all()
+    result = await db.execute(
+        stmt.order_by(desc(Collection.is_pinned), desc(Collection.created_at))
+        .offset(offset).limit(page_size)
+    )
+    collections = result.scalars().all()
 
     return CollectionListResponse(
         collections=collections, total=total, page=page, page_size=page_size
@@ -192,7 +191,7 @@ async def list_collections(
 
 @router.get("/stats", response_model=CollectionStatsResponse)
 async def get_collection_stats(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     """
     Get statistics about user's collections
@@ -210,7 +209,7 @@ async def get_collection_stats(
 async def get_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get collection details with items
@@ -218,13 +217,10 @@ async def get_collection(
     Returns full collection information including all documents
     in the collection with their relevance scores and notes.
     """
-    from sqlalchemy import or_
-
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(
                 Collection.id == collection_id,
                 or_(
@@ -233,19 +229,19 @@ async def get_collection(
                 ),
             )
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Get collection items with document info
-    items = (
-        db.query(CollectionItem)
-        .filter(CollectionItem.collection_id == collection_id)
+    items_result = await db.execute(
+        select(CollectionItem)
+        .where(CollectionItem.collection_id == collection_id)
         .order_by(CollectionItem.order_index)
-        .all()
     )
+    items = items_result.scalars().all()
 
     # Check for confidential documents and log access
     confidential_items = [
@@ -258,7 +254,7 @@ async def get_collection(
             {"id": str(item.document.id), "filename": item.document.filename}
             for item in confidential_items
         ]
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -296,20 +292,19 @@ async def update_collection(
     collection_id: UUID,
     update_data: CollectionUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update collection metadata
 
     Can update name, description, visibility, pinned status, and favorite status.
     """
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
@@ -326,8 +321,8 @@ async def update_collection(
     if update_data.is_favorite is not None:
         collection.is_favorite = update_data.is_favorite
 
-    db.commit()
-    db.refresh(collection)
+    await db.commit()
+    await db.refresh(collection)
 
     return collection
 
@@ -336,26 +331,25 @@ async def update_collection(
 async def delete_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete a collection
 
     Only the collection owner can delete it.
     """
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
-    db.delete(collection)
-    db.commit()
+    await db.delete(collection)
+    await db.commit()
 
     return None
 
@@ -365,7 +359,7 @@ async def refresh_collection(
     collection_id: UUID,
     refresh_data: Optional[CollectionRefreshRequest] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Refresh collection documents
@@ -396,7 +390,7 @@ async def add_collection_item(
     collection_id: UUID,
     item_data: CollectionItemCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Manually add a document to a collection
@@ -404,41 +398,40 @@ async def add_collection_item(
     Allows manual curation of collections beyond AI-generated results.
     """
     # Verify collection ownership
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Check if item already exists
-    existing = (
-        db.query(CollectionItem)
-        .filter(
+    exist_result = await db.execute(
+        select(CollectionItem).where(
             and_(
                 CollectionItem.collection_id == collection_id,
                 CollectionItem.document_id == item_data.document_id,
             )
         )
-        .first()
     )
+    existing = exist_result.scalar_one_or_none()
 
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document already in collection")
 
     # Get current max order
-    max_order = (
-        db.query(CollectionItem.order_index)
-        .filter(CollectionItem.collection_id == collection_id)
+    max_result = await db.execute(
+        select(CollectionItem.order_index)
+        .where(CollectionItem.collection_id == collection_id)
         .order_by(CollectionItem.order_index.desc())
-        .first()
+        .limit(1)
     )
+    max_order = max_result.scalar_one_or_none()
 
-    order_index = (max_order[0] + 1) if max_order else collection.document_count
+    order_index = (max_order + 1) if max_order is not None else collection.document_count
 
     # Create item
     item = CollectionItem(
@@ -457,8 +450,8 @@ async def add_collection_item(
     # Update collection count
     collection.document_count += 1
 
-    db.commit()
-    db.refresh(item)
+    await db.commit()
+    await db.refresh(item)
 
     return item
 
@@ -469,7 +462,7 @@ async def update_collection_item(
     item_id: UUID,
     update_data: CollectionItemUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update collection item metadata
@@ -477,28 +470,26 @@ async def update_collection_item(
     Can update relevance score, notes, highlight status, and order.
     """
     # Verify collection ownership
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Get item
-    item = (
-        db.query(CollectionItem)
-        .filter(
+    item_result = await db.execute(
+        select(CollectionItem).where(
             and_(
                 CollectionItem.id == item_id,
                 CollectionItem.collection_id == collection_id,
             )
         )
-        .first()
     )
+    item = item_result.scalar_one_or_none()
 
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -513,8 +504,8 @@ async def update_collection_item(
     if update_data.order_index is not None:
         item.order_index = update_data.order_index
 
-    db.commit()
-    db.refresh(item)
+    await db.commit()
+    await db.refresh(item)
 
     return item
 
@@ -524,44 +515,42 @@ async def remove_collection_item(
     collection_id: UUID,
     item_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Remove a document from a collection
     """
     # Verify collection ownership
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     # Get item
-    item = (
-        db.query(CollectionItem)
-        .filter(
+    item_result = await db.execute(
+        select(CollectionItem).where(
             and_(
                 CollectionItem.id == item_id,
                 CollectionItem.collection_id == collection_id,
             )
         )
-        .first()
     )
+    item = item_result.scalar_one_or_none()
 
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
-    db.delete(item)
+    await db.delete(item)
 
     # Update collection count
     collection.document_count = max(0, collection.document_count - 1)
 
-    db.commit()
+    await db.commit()
 
     return None
 
@@ -570,23 +559,22 @@ async def remove_collection_item(
 async def pin_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Toggle collection pinned status"""
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     collection.is_pinned = not collection.is_pinned
-    db.commit()
-    db.refresh(collection)
+    await db.commit()
+    await db.refresh(collection)
 
     return collection
 
@@ -595,23 +583,22 @@ async def pin_collection(
 async def favorite_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Toggle collection favorite status"""
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(Collection.id == collection_id, Collection.user_id == current_user.id)
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     collection.is_favorite = not collection.is_favorite
-    db.commit()
-    db.refresh(collection)
+    await db.commit()
+    await db.refresh(collection)
 
     return collection
 
@@ -621,7 +608,7 @@ async def chat_with_collection(
     collection_id: UUID,
     chat_data: CollectionChatCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Send a message to a collection-scoped chat
@@ -629,14 +616,11 @@ async def chat_with_collection(
     The chat is scoped to documents in the collection and uses
     context caching for cost optimization on recurring queries.
     """
-    from sqlalchemy import or_
-
     # Verify user has access to collection
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(
                 Collection.id == collection_id,
                 or_(
@@ -645,8 +629,8 @@ async def chat_with_collection(
                 ),
             )
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
@@ -673,7 +657,7 @@ async def export_collection(
         "json", pattern="^(pdf|json)$", description="Export format: pdf or json"
     ),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Export a collection in PDF or JSON format.
@@ -697,16 +681,14 @@ async def export_collection(
         403: If user lacks permission to export collection with confidential docs
         404: If collection not found
     """
-    from sqlalchemy import or_
     from datetime import datetime
     import io
     from fastapi.responses import StreamingResponse
 
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 
-    collection = (
-        db.query(Collection)
-        .filter(
+    coll_result = await db.execute(
+        select(Collection).where(
             and_(
                 Collection.id == collection_id,
                 or_(
@@ -715,18 +697,18 @@ async def export_collection(
                 ),
             )
         )
-        .first()
     )
+    collection = coll_result.scalar_one_or_none()
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
-    items = (
-        db.query(CollectionItem)
-        .filter(CollectionItem.collection_id == collection_id)
+    items_result = await db.execute(
+        select(CollectionItem)
+        .where(CollectionItem.collection_id == collection_id)
         .order_by(CollectionItem.order_index)
-        .all()
     )
+    items = items_result.scalars().all()
 
     confidential_items = [
         item
@@ -745,7 +727,7 @@ async def export_collection(
                 detail="Forbidden: Cannot export collection containing confidential documents",
             )
 
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -1002,17 +984,17 @@ async def export_collection(
 async def get_collection_chat_sessions(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all chat sessions for a collection"""
     from app.models.collection import CollectionChatSession
 
-    sessions = (
-        db.query(CollectionChatSession)
-        .filter(CollectionChatSession.collection_id == collection_id)
+    sessions_result = await db.execute(
+        select(CollectionChatSession)
+        .where(CollectionChatSession.collection_id == collection_id)
         .order_by(CollectionChatSession.created_at.desc())
-        .all()
     )
+    sessions = sessions_result.scalars().all()
 
     return {
         "sessions": [

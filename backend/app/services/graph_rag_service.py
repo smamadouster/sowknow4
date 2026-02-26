@@ -10,7 +10,7 @@ import logging
 from typing import List, Dict, Any, Optional, Set, Tuple
 from collections import defaultdict
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, select
 
 from app.models.knowledge_graph import (
     Entity,
@@ -47,7 +47,7 @@ class GraphRAGService:
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
-    def _extract_bucket_from_results(
+    async def _extract_bucket_from_results(
         self, results: List[Dict[str, Any]], db: Session
     ) -> DocumentBucket:
         """Extract document bucket from search results"""
@@ -55,7 +55,7 @@ class GraphRAGService:
             for result in results[:5]:
                 doc_id = result.get("document_id")
                 if doc_id:
-                    doc = db.query(Document).filter(Document.id == doc_id).first()
+                    doc = (await db.execute(select(Document).where(Document.id == doc_id))).scalar_one_or_none()
                     if doc and doc.bucket == DocumentBucket.CONFIDENTIAL:
                         return DocumentBucket.CONFIDENTIAL
         except Exception as e:
@@ -143,9 +143,7 @@ class GraphRAGService:
         entities = []
 
         # Get all entities and check if their names appear in query
-        all_entities = (
-            db.query(Entity).filter(Entity.document_count > 0).limit(100).all()
-        )
+        all_entities = (await db.execute(select(Entity).where(Entity.document_count > 0).limit(100))).scalars().all()
 
         query_lower = query.lower()
         for entity in all_entities:
@@ -166,11 +164,7 @@ class GraphRAGService:
                 continue
 
             # Get entity mentions for this document
-            mentions = (
-                db.query(EntityMention)
-                .filter(EntityMention.document_id == document_id)
-                .all()
-            )
+            mentions = (await db.execute(select(EntityMention).where(EntityMention.document_id == document_id))).scalars().all()
 
             for mention in mentions:
                 entity_scores[mention.entity_id] += (
@@ -198,18 +192,14 @@ class GraphRAGService:
                 continue
 
             # Get outgoing relationships
-            outgoing = (
-                db.query(EntityRelationship)
-                .filter(EntityRelationship.source_id == current_id)
-                .all()
-            )
+            outgoing = (await db.execute(select(EntityRelationship).where(EntityRelationship.source_id == current_id))).scalars().all()
 
             for rel in outgoing:
                 target_id = str(rel.target_id)
                 if target_id not in visited:
                     visited.add(target_id)
 
-                    target = db.query(Entity).get(target_id)
+                    target = await db.get(Entity, target_id)
                     if target:
                         related_entities.append(
                             {
@@ -224,18 +214,14 @@ class GraphRAGService:
                         queue.append((target_id, depth + 1))
 
             # Get incoming relationships
-            incoming = (
-                db.query(EntityRelationship)
-                .filter(EntityRelationship.target_id == current_id)
-                .all()
-            )
+            incoming = (await db.execute(select(EntityRelationship).where(EntityRelationship.target_id == current_id))).scalars().all()
 
             for rel in incoming:
                 source_id = str(rel.source_id)
                 if source_id not in visited:
                     visited.add(source_id)
 
-                    source = db.query(Entity).get(source_id)
+                    source = await db.get(Entity, source_id)
                     if source:
                         related_entities.append(
                             {
@@ -264,7 +250,7 @@ class GraphRAGService:
 
         # Get details of core entities
         for entity_id in core_entities:
-            entity = db.query(Entity).get(entity_id)
+            entity = await db.get(Entity, entity_id)
             if entity:
                 context["core_entities"].append(
                     {
@@ -279,32 +265,28 @@ class GraphRAGService:
         # Get relationships between core entities
         for i, id1 in enumerate(core_entities):
             for id2 in core_entities[i + 1 :]:
-                rel = (
-                    db.query(EntityRelationship)
-                    .filter(
+                rel = (await db.execute(
+                    select(EntityRelationship).where(
                         and_(
                             EntityRelationship.source_id == id1,
                             EntityRelationship.target_id == id2,
                         )
                     )
-                    .first()
-                )
+                )).scalar_one_or_none()
 
                 if not rel:
-                    rel = (
-                        db.query(EntityRelationship)
-                        .filter(
+                    rel = (await db.execute(
+                        select(EntityRelationship).where(
                             and_(
                                 EntityRelationship.source_id == id2,
                                 EntityRelationship.target_id == id1,
                             )
                         )
-                        .first()
-                    )
+                    )).scalar_one_or_none()
 
                 if rel:
-                    e1 = db.query(Entity).get(id1)
-                    e2 = db.query(Entity).get(id2)
+                    e1 = await db.get(Entity, id1)
+                    e2 = await db.get(Entity, id2)
                     if e1 and e2:
                         context["relationships"].append(
                             {
@@ -333,16 +315,14 @@ class GraphRAGService:
 
             if document_id:
                 # Get entity mentions for this document
-                mentions = (
-                    db.query(EntityMention)
-                    .filter(
+                mentions = (await db.execute(
+                    select(EntityMention).where(
                         and_(
                             EntityMention.document_id == document_id,
                             EntityMention.entity_id.in_(all_entity_ids),
                         )
                     )
-                    .all()
-                )
+                )).scalars().all()
 
                 for mention in mentions:
                     # Boost score based on entity relevance
@@ -392,7 +372,7 @@ class GraphRAGService:
             # Auto-detect bucket from results if not provided
             if bucket is None:
                 results = enhanced_results.get("results", [])
-                bucket = self._extract_bucket_from_results(results, db)
+                bucket = await self._extract_bucket_from_results(results, db)
 
             # Determine LLM routing based on bucket
             use_ollama = bucket == DocumentBucket.CONFIDENTIAL
@@ -509,17 +489,9 @@ Key Principles:
         from collections import deque
 
         # Find entities
-        source = (
-            db.query(Entity)
-            .filter(Entity.name.ilike(f"%{source_entity_name}%"))
-            .first()
-        )
+        source = (await db.execute(select(Entity).where(Entity.name.ilike(f"%{source_entity_name}%")))).scalar_one_or_none()
 
-        target = (
-            db.query(Entity)
-            .filter(Entity.name.ilike(f"%{target_entity_name}%"))
-            .first()
-        )
+        target = (await db.execute(select(Entity).where(Entity.name.ilike(f"%{target_entity_name}%")))).scalar_one_or_none()
 
         if not source or not target:
             return []
@@ -540,16 +512,14 @@ Key Principles:
                 continue
 
             # Get neighbors
-            relationships = (
-                db.query(EntityRelationship)
-                .filter(
+            relationships = (await db.execute(
+                select(EntityRelationship).where(
                     or_(
                         EntityRelationship.source_id == current_id,
                         EntityRelationship.target_id == current_id,
                     )
                 )
-                .all()
-            )
+            )).scalars().all()
 
             for rel in relationships:
                 next_id = (
@@ -559,7 +529,7 @@ Key Principles:
 
                 if next_id_str not in visited:
                     visited.add(next_id_str)
-                    entity = db.query(Entity).get(next_id)
+                    entity = await db.get(Entity, next_id)
                     if entity:
                         new_path = path + [
                             {
@@ -591,7 +561,7 @@ Key Principles:
         Returns:
             Neighborhood graph data
         """
-        entity = db.query(Entity).filter(Entity.name.ilike(f"%{entity_name}%")).first()
+        entity = (await db.execute(select(Entity).where(Entity.name.ilike(f"%{entity_name}%")))).scalar_one_or_none()
 
         if not entity:
             return {"error": "Entity not found"}
@@ -610,15 +580,11 @@ Key Principles:
 
             for node_id in current_frontier:
                 # Get outgoing relationships
-                outgoing = (
-                    db.query(EntityRelationship)
-                    .filter(EntityRelationship.source_id == node_id)
-                    .all()
-                )
+                outgoing = (await db.execute(select(EntityRelationship).where(EntityRelationship.source_id == node_id))).scalars().all()
 
                 for rel in outgoing:
                     target_id = str(rel.target_id)
-                    target = db.query(Entity).get(target_id)
+                    target = await db.get(Entity, target_id)
 
                     if target and target_id not in visited:
                         visited.add(target_id)
@@ -638,15 +604,11 @@ Key Principles:
                     )
 
                 # Get incoming relationships
-                incoming = (
-                    db.query(EntityRelationship)
-                    .filter(EntityRelationship.target_id == node_id)
-                    .all()
-                )
+                incoming = (await db.execute(select(EntityRelationship).where(EntityRelationship.target_id == node_id))).scalars().all()
 
                 for rel in incoming:
                     source_id = str(rel.source_id)
-                    source = db.query(Entity).get(source_id)
+                    source = await db.get(Entity, source_id)
 
                     if source and source_id not in visited:
                         visited.add(source_id)

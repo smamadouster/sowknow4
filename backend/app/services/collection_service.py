@@ -14,8 +14,9 @@ import logging
 import uuid
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
+from sqlalchemy import and_, or_, desc, select, func
 
 # Redis-backed cache invalidation for collection LLM responses
 try:
@@ -150,8 +151,8 @@ class CollectionService:
             )
             db.add(item)
 
-        db.commit()
-        db.refresh(collection)
+        await db.commit()
+        await db.refresh(collection)
 
         logger.info(
             f"Created collection '{collection.name}' with {len(documents)} documents for user {user.email}"
@@ -232,11 +233,12 @@ class CollectionService:
         Returns:
             Updated Collection
         """
-        collection = (
-            db.query(Collection)
-            .filter(and_(Collection.id == collection_id, Collection.user_id == user.id))
-            .first()
+        result = await db.execute(
+            select(Collection).where(
+                and_(Collection.id == collection_id, Collection.user_id == user.id)
+            )
         )
+        collection = result.scalar_one_or_none()
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
@@ -258,9 +260,12 @@ class CollectionService:
         )
 
         # Remove existing items
-        db.query(CollectionItem).filter(
-            CollectionItem.collection_id == collection_id
-        ).delete()
+        from sqlalchemy import delete as sql_delete
+        await db.execute(
+            sql_delete(CollectionItem).where(
+                CollectionItem.collection_id == collection_id
+            )
+        )
 
         # Add new items
         for idx, doc in enumerate(documents):
@@ -291,8 +296,8 @@ class CollectionService:
         collection.parsed_intent = parsed_intent.to_dict()
         collection.filter_criteria = parsed_intent.to_search_filter()
 
-        db.commit()
-        db.refresh(collection)
+        await db.commit()
+        await db.refresh(collection)
 
         logger.info(
             f"Refreshed collection '{collection.name}' with {len(documents)} documents"
@@ -314,11 +319,11 @@ class CollectionService:
             List of matching documents
         """
         # Build base query
-        query = db.query(Document).filter(Document.status == DocumentStatus.INDEXED)
+        stmt = select(Document).where(Document.status == DocumentStatus.INDEXED)
 
         # Apply bucket filter based on user role
         if user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
-            query = query.filter(Document.bucket == DocumentBucket.PUBLIC)
+            stmt = stmt.where(Document.bucket == DocumentBucket.PUBLIC)
 
         # Apply document type filter
         if intent.document_types and "all" not in intent.document_types:
@@ -346,7 +351,7 @@ class CollectionService:
                     mime_types.extend(mime_type_map[doc_type])
 
             if mime_types:
-                query = query.filter(Document.mime_type.in_(mime_types))
+                stmt = stmt.where(Document.mime_type.in_(mime_types))
 
         # Apply date range filter
         if intent.date_range:
@@ -376,7 +381,7 @@ class CollectionService:
                 except (TypeError, ValueError):
                     start_date = end_date = None
                 if start_date and end_date:
-                    query = query.filter(
+                    stmt = stmt.where(
                         and_(
                             Document.created_at >= start_date,
                             Document.created_at < end_date,
@@ -395,10 +400,11 @@ class CollectionService:
             doc_ids = list(set(r.document_id for r in search_result["results"]))
 
             if doc_ids:
-                query = query.filter(Document.id.in_(doc_ids))
+                stmt = stmt.where(Document.id.in_(doc_ids))
 
         # Execute query with limit
-        documents = query.limit(100).all()
+        result = await db.execute(stmt.limit(100))
+        documents = result.scalars().all()
 
         return documents
 
@@ -526,20 +532,19 @@ Generate a concise summary describing what this collection contains and its key 
             logger.error(f"Failed to generate collection summary: {e}")
             return f"Collection of {len(documents)} documents related to: {query}"
 
-    def get_collection_stats(self, user: User, db: Session) -> Dict[str, Any]:
+    async def get_collection_stats(self, user: User, db: Session) -> Dict[str, Any]:
         """Get statistics about user's collections"""
         visibility_filter = self._get_user_visibility_filter(user)
 
-        collections = (
-            db.query(Collection)
-            .filter(
+        result = await db.execute(
+            select(Collection).where(
                 or_(
                     Collection.user_id == user.id,
                     Collection.visibility.in_(visibility_filter),
                 )
             )
-            .all()
         )
+        collections = result.scalars().all()
 
         total_docs = sum(c.document_count for c in collections)
         avg_docs = total_docs / len(collections) if collections else 0

@@ -31,3 +31,4 @@ class SearchResponse(BaseModel):
     llm_used: Optional[str] = None  # "kimi" or "ollama" if routing occurred
     partial: bool = False  # True when results are incomplete due to timeout
     warning: Optional[str] = None  # Human-readable reason when partial=True
+    next_cursor: Optional[str] = None  # Cursor for next page (T09)

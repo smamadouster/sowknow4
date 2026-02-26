@@ -9,8 +9,8 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import date, datetime, timedelta
 from collections import defaultdict
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, or_, desc, select
 
 from app.models.knowledge_graph import Entity, TimelineEvent, EntityMention, EntityType
 from app.models.document import Document
@@ -40,7 +40,7 @@ class TemporalReasoningService:
         pass
 
     async def reason_about_temporal_relationships(
-        self, event_id: str, db: Session, time_window_days: int = 365
+        self, event_id: str, db: AsyncSession, time_window_days: int = 365
     ) -> Dict[str, Any]:
         """
         Reason about temporal relationships for a specific event
@@ -55,7 +55,7 @@ class TemporalReasoningService:
         """
         try:
             # Get the target event
-            target_event = db.query(TimelineEvent).get(event_id)
+            target_event = await db.get(TimelineEvent, event_id)
             if not target_event:
                 return {"error": "Event not found"}
 
@@ -67,9 +67,9 @@ class TemporalReasoningService:
             end_date = target_event.event_date + timedelta(days=time_window_days)
 
             # Get nearby events
-            nearby_events = (
-                db.query(TimelineEvent)
-                .filter(
+            nearby_events_result = await db.execute(
+                select(TimelineEvent)
+                .where(
                     and_(
                         TimelineEvent.event_date >= start_date,
                         TimelineEvent.event_date <= end_date,
@@ -77,8 +77,8 @@ class TemporalReasoningService:
                     )
                 )
                 .order_by(TimelineEvent.event_date)
-                .all()
             )
+            nearby_events = nearby_events_result.scalars().all()
 
             # Categorize relationships
             before_events = []
@@ -173,7 +173,7 @@ class TemporalReasoningService:
         self,
         target_event: TimelineEvent,
         before_events: List[Dict[str, Any]],
-        db: Session,
+        db: AsyncSession,
     ) -> List[Dict[str, Any]]:
         """Infer potential causal relationships from earlier events"""
         causal_candidates = []
@@ -182,7 +182,7 @@ class TemporalReasoningService:
         target_entity_ids = set(target_event.entity_ids or [])
 
         for before_event in before_events[:5]:  # Check top 5 candidates
-            before_event_obj = db.query(TimelineEvent).get(before_event["id"])
+            before_event_obj = await db.get(TimelineEvent, before_event["id"])
             if before_event_obj:
                 before_entity_ids = set(before_event_obj.entity_ids or [])
 
@@ -202,7 +202,7 @@ class TemporalReasoningService:
         return sorted(causal_candidates, key=lambda x: x["confidence"], reverse=True)
 
     async def _get_entity_temporal_context(
-        self, event: TimelineEvent, db: Session
+        self, event: TimelineEvent, db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """Get temporal context for entities involved in the event"""
         context = []
@@ -210,22 +210,24 @@ class TemporalReasoningService:
         entity_ids = event.entity_ids or []
 
         for entity_id in entity_ids[:5]:  # Limit to 5 entities
-            entity = db.query(Entity).get(entity_id)
+            entity = await db.get(Entity, entity_id)
             if entity:
                 # Get first and last mentions
                 first_mention = (
-                    db.query(TimelineEvent)
-                    .filter(TimelineEvent.entity_ids.contains([entity_id]))
-                    .order_by(TimelineEvent.event_date)
-                    .first()
-                )
+                    await db.execute(
+                        select(TimelineEvent)
+                        .where(TimelineEvent.entity_ids.contains([entity_id]))
+                        .order_by(TimelineEvent.event_date)
+                    )
+                ).scalar_one_or_none()
 
                 last_mention = (
-                    db.query(TimelineEvent)
-                    .filter(TimelineEvent.entity_ids.contains([entity_id]))
-                    .order_by(desc(TimelineEvent.event_date))
-                    .first()
-                )
+                    await db.execute(
+                        select(TimelineEvent)
+                        .where(TimelineEvent.entity_ids.contains([entity_id]))
+                        .order_by(desc(TimelineEvent.event_date))
+                    )
+                ).scalar_one_or_none()
 
                 context.append(
                     {
@@ -248,7 +250,7 @@ class TemporalReasoningService:
         return context
 
     async def analyze_evolution(
-        self, entity_name: str, db: Session, time_months: int = 12
+        self, entity_name: str, db: AsyncSession, time_months: int = 12
     ) -> Dict[str, Any]:
         """
         Analyze how an entity/concept evolves over time
@@ -262,7 +264,9 @@ class TemporalReasoningService:
             Evolution analysis with stages and trends
         """
         # Find matching entities
-        entities = db.query(Entity).filter(Entity.name.ilike(f"%{entity_name}%")).all()
+        entities = (
+            await db.execute(select(Entity).where(Entity.name.ilike(f"%{entity_name}%")))
+        ).scalars().all()
 
         if not entities:
             return {"error": "Entity not found"}
@@ -274,15 +278,15 @@ class TemporalReasoningService:
         start_date = end_date - timedelta(days=time_months * 30)
 
         events = (
-            db.query(TimelineEvent)
-            .filter(
-                and_(
-                    TimelineEvent.event_date >= start_date,
-                    TimelineEvent.event_date <= end_date,
+            await db.execute(
+                select(TimelineEvent).where(
+                    and_(
+                        TimelineEvent.event_date >= start_date,
+                        TimelineEvent.event_date <= end_date,
+                    )
                 )
             )
-            .all()
-        )
+        ).scalars().all()
 
         # Filter events involving our entities
         relevant_events = []
@@ -438,7 +442,7 @@ class TemporalReasoningService:
         }
 
     async def find_temporal_patterns(
-        self, db: Session, min_occurrences: int = 3
+        self, db: AsyncSession, min_occurrences: int = 3
     ) -> List[Dict[str, Any]]:
         """
         Find recurring temporal patterns in the knowledge graph
@@ -452,8 +456,10 @@ class TemporalReasoningService:
         """
         # Get all events
         events = (
-            db.query(TimelineEvent).filter(TimelineEvent.event_date.isnot(None)).all()
-        )
+            await db.execute(
+                select(TimelineEvent).where(TimelineEvent.event_date.isnot(None))
+            )
+        ).scalars().all()
 
         # Group by month
         monthly_events = defaultdict(list)
@@ -523,8 +529,8 @@ class TemporalReasoningService:
 
         for pair, count in entity_cooccurrence.items():
             if count >= min_occurrences:
-                e1 = db.query(Entity).get(pair[0])
-                e2 = db.query(Entity).get(pair[1])
+                e1 = await db.get(Entity, pair[0])
+                e2 = await db.get(Entity, pair[1])
                 if e1 and e2:
                     patterns.append(
                         {

@@ -17,7 +17,8 @@ from fastapi import (
     Header,
     Request,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from typing import Optional, List
 import uuid
 import mimetypes
@@ -59,8 +60,8 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: uuid.UUID,
     action: AuditAction,
     resource_type: str,
@@ -81,9 +82,9 @@ def create_audit_log(
             user_agent=user_agent,
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Audit logging failed: {str(e)}")
 
 
@@ -184,7 +185,7 @@ async def upload_document(
     tags: Optional[str] = Form(None),
     x_bot_api_key: Optional[str] = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Upload a document to the specified bucket
@@ -320,8 +321,8 @@ async def upload_document(
     )
 
     db.add(document)
-    db.commit()
-    db.refresh(document)
+    await db.commit()
+    await db.refresh(document)
 
     # Step 3b: Persist user-supplied tags (e.g. hashtags from Telegram caption)
     if tags:
@@ -335,7 +336,7 @@ async def upload_document(
             )
             db.add(document_tag)
         if tag_names:
-            db.commit()
+            await db.commit()
             logger.info(f"Added {len(tag_names)} user tag(s) to document {document.id}: {tag_names}")
 
     # Step 4: Register hash for future deduplication checks
@@ -350,7 +351,7 @@ async def upload_document(
 
     # Log confidential document upload
     if bucket == "confidential":
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.CONFIDENTIAL_UPLOADED,
@@ -369,7 +370,7 @@ async def upload_document(
         document.status = DocumentStatus.PROCESSING
         document.document_metadata = document.document_metadata or {}
         document.document_metadata["celery_task_id"] = task.id
-        db.commit()
+        await db.commit()
 
         logger.info(f"Document {document.id} queued successfully with task {task.id}")
 
@@ -388,7 +389,7 @@ async def upload_document(
         metadata = document.document_metadata or {}
         metadata["processing_error"] = f"Failed to queue for processing: {str(e)}"
         document.document_metadata = metadata
-        db.commit()
+        await db.commit()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -400,7 +401,7 @@ async def process_single_file_upload(
     file: UploadFile,
     bucket: str,
     current_user: User,
-    db: Session,
+    db: AsyncSession,
     batch_id: Optional[str] = None,
 ) -> tuple[Optional[DocumentUploadResponse], Optional[str]]:
     """Helper function to process a single file upload within a batch."""
@@ -460,8 +461,8 @@ async def process_single_file_upload(
         )
 
         db.add(document)
-        db.commit()
-        db.refresh(document)
+        await db.commit()
+        await db.refresh(document)
 
         deduplication_service.register_upload(
             file_hash=file_hash,
@@ -472,7 +473,7 @@ async def process_single_file_upload(
         )
 
         if bucket == "confidential":
-            create_audit_log(
+            await create_audit_log(
                 db=db,
                 user_id=current_user.id,
                 action=AuditAction.CONFIDENTIAL_UPLOADED,
@@ -491,7 +492,7 @@ async def process_single_file_upload(
             document.status = DocumentStatus.PROCESSING
             document.document_metadata = document.document_metadata or {}
             document.document_metadata["celery_task_id"] = task.id
-            db.commit()
+            await db.commit()
             logger.info(
                 f"Document {document.id} queued successfully with task {task.id}"
             )
@@ -501,7 +502,7 @@ async def process_single_file_upload(
             metadata = document.document_metadata or {}
             metadata["processing_error"] = f"Failed to queue for processing: {str(e)}"
             document.document_metadata = metadata
-            db.commit()
+            await db.commit()
 
         return DocumentUploadResponse(
             document_id=document.id,
@@ -524,7 +525,7 @@ async def upload_batch_documents(
     bucket: str = Form("public"),
     x_bot_api_key: Optional[str] = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Upload multiple documents in a single request (batch upload)
@@ -645,21 +646,20 @@ async def upload_batch_documents(
 async def get_batch_status(
     batch_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get processing status for all documents in a batch upload.
 
     Returns aggregate progress and per-document statuses.
     """
-    documents = (
-        db.query(Document)
-        .filter(
+    result = await db.execute(
+        select(Document).where(
             Document.batch_id == batch_id,
             Document.uploaded_by == current_user.id,
         )
-        .all()
     )
+    documents = result.scalars().all()
 
     if not documents:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
@@ -697,7 +697,7 @@ async def list_documents(
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List documents with pagination and filtering
@@ -705,43 +705,43 @@ async def list_documents(
     - Non-admin users only see public documents
     - Admin users see all documents unless bucket is specified
     """
-    query = db.query(Document)
+    stmt = select(Document)
 
     # Apply bucket filter based on user role
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
         # Non-admins and non-superusers only see public documents
-        query = query.filter(Document.bucket == DocumentBucket.PUBLIC)
+        stmt = stmt.where(Document.bucket == DocumentBucket.PUBLIC)
     elif bucket:
         # Admin can filter by bucket
         if bucket in ["public", "confidential"]:
-            query = query.filter(Document.bucket == DocumentBucket(bucket))
+            stmt = stmt.where(Document.bucket == DocumentBucket(bucket))
 
     # Apply status filter
     if status:
         try:
             status_enum = DocumentStatus(status)
-            query = query.filter(Document.status == status_enum)
+            stmt = stmt.where(Document.status == status_enum)
         except ValueError:
             pass
 
     # Apply search filter
     if search:
-        query = query.filter(Document.original_filename.ilike(f"%{search}%"))
+        stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
 
     # Get total count
-    total = query.count()
+    count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = count_result.scalar_one()
 
     # Apply pagination
     offset = (page - 1) * page_size
-    documents = (
-        query.order_by(Document.created_at.desc()).offset(offset).limit(page_size).all()
-    )
+    result = await db.execute(stmt.order_by(Document.created_at.desc()).offset(offset).limit(page_size))
+    documents = result.scalars().all()
 
     # Audit: log a summary entry when admin/superuser receives confidential documents
     if current_user.role in [UserRole.ADMIN, UserRole.SUPERUSER]:
         confidential_docs = [d for d in documents if d.bucket == DocumentBucket.CONFIDENTIAL]
         if confidential_docs:
-            create_audit_log(
+            await create_audit_log(
                 db=db,
                 user_id=current_user.id,
                 action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -768,7 +768,7 @@ async def list_documents(
 async def get_document(
     document_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get a specific document by ID
@@ -776,7 +776,8 @@ async def get_document(
     SECURITY: Returns 404 (not 403) for confidential documents accessed by
     regular users to prevent document enumeration.
     """
-    document = db.query(Document).filter(Document.id == document_id).first()
+    db_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -790,7 +791,7 @@ async def get_document(
 
     # Log confidential document access
     if document.bucket == DocumentBucket.CONFIDENTIAL:
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -806,7 +807,7 @@ async def get_document(
 async def get_document_status(
     document_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get the processing status of a specific document.
@@ -816,7 +817,8 @@ async def get_document_status(
     """
     from app.models.processing import ProcessingQueue
 
-    document = db.query(Document).filter(Document.id == document_id).first()
+    db_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -829,11 +831,10 @@ async def get_document_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Pull processing details from ProcessingQueue if available
-    processing_task = (
-        db.query(ProcessingQueue)
-        .filter(ProcessingQueue.document_id == document_id)
-        .first()
+    pq_result = await db.execute(
+        select(ProcessingQueue).where(ProcessingQueue.document_id == document_id)
     )
+    processing_task = pq_result.scalar_one_or_none()
 
     error_message: Optional[str] = None
     retry_count: int = 0
@@ -870,7 +871,7 @@ async def get_document_status(
 async def download_document(
     document_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Download a document file
@@ -880,7 +881,8 @@ async def download_document(
     """
     from fastapi.responses import Response
 
-    document = db.query(Document).filter(Document.id == document_id).first()
+    db_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -894,7 +896,7 @@ async def download_document(
 
     # Log confidential document access
     if document.bucket == DocumentBucket.CONFIDENTIAL:
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -925,14 +927,15 @@ async def update_document(
     document_id: uuid.UUID,
     updates: DocumentUpdate,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update document metadata (admin only)
 
     SECURITY: Admin-only operation. SuperUsers cannot modify documents.
     """
-    document = db.query(Document).filter(Document.id == document_id).first()
+    db_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -945,8 +948,8 @@ async def update_document(
     if updates.language is not None:
         document.language = DocumentLanguage(updates.language)
 
-    db.commit()
-    db.refresh(document)
+    await db.commit()
+    await db.refresh(document)
 
     return DocumentResponse.model_validate(document)
 
@@ -955,7 +958,7 @@ async def update_document(
 async def delete_document(
     document_id: uuid.UUID,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete a document (admin only)
@@ -963,7 +966,8 @@ async def delete_document(
     SECURITY: Admin-only operation. SuperUsers cannot delete documents.
     """
 
-    document = db.query(Document).filter(Document.id == document_id).first()
+    db_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -974,8 +978,8 @@ async def delete_document(
     )
 
     # Delete database record (cascade will handle tags, chunks, etc.)
-    db.delete(document)
-    db.commit()
+    await db.delete(document)
+    await db.commit()
 
     return {"message": "Document deleted successfully"}
 
@@ -985,7 +989,7 @@ async def get_similar_documents(
     document_id: uuid.UUID,
     limit: int = Query(default=6, ge=1, le=20),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Return documents similar to the given document, ranked by embedding cosine similarity.
@@ -998,7 +1002,8 @@ async def get_similar_documents(
     """
     from app.services.similarity_service import similarity_service
 
-    document = db.query(Document).filter(Document.id == document_id).first()
+    db_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -1031,7 +1036,7 @@ async def reprocess_document(
     regenerate_embeddings: bool = True,
     reason: Optional[str] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Reprocess a document (e.g., after fixing errors or upgrading models).
@@ -1053,11 +1058,8 @@ async def reprocess_document(
     from app.tasks.document_tasks import process_document
     from app.tasks.embedding_tasks import recompute_embeddings_for_document
 
-    document = (
-        db.query(Document)
-        .filter(Document.id == document_id)
-        .first()
-    )
+    db_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = db_result.scalar_one_or_none()
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
@@ -1087,7 +1089,7 @@ async def reprocess_document(
     meta["reprocess_reason"] = reason or "manual"
     meta["reprocess_by"] = str(current_user.id)
     document.document_metadata = meta
-    db.commit()
+    await db.commit()
 
     # Queue appropriate task
     if regenerate_embeddings:

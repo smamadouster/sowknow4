@@ -10,8 +10,8 @@ import logging
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, or_, desc, select
 
 from app.models.collection import (
     Collection,
@@ -43,7 +43,7 @@ class SmartFolderService:
         length: str = "medium",
         include_confidential: bool = False,
         user: User = None,
-        db: Session = None,
+        db: AsyncSession = None,
     ) -> Dict[str, Any]:
         """
         Generate a Smart Folder with AI-generated content
@@ -140,8 +140,8 @@ class SmartFolderService:
             )
             db.add(item)
 
-        db.commit()
-        db.refresh(collection)
+        await db.commit()
+        await db.refresh(collection)
 
         return {
             "collection_id": str(collection.id),
@@ -160,7 +160,7 @@ class SmartFolderService:
         }
 
     async def _search_documents_for_topic(
-        self, topic: str, include_confidential: bool, user: User, db: Session
+        self, topic: str, include_confidential: bool, user: User, db: AsyncSession
     ) -> List[Document]:
         """Search for documents relevant to the topic"""
         # Use hybrid search
@@ -175,18 +175,18 @@ class SmartFolderService:
             return []
 
         # Fetch documents
-        query = db.query(Document).filter(
+        stmt = select(Document).where(
             and_(Document.id.in_(doc_ids), Document.status == DocumentStatus.INDEXED)
         )
 
         # Apply confidential filter
         if not include_confidential:
-            query = query.filter(Document.bucket == DocumentBucket.PUBLIC)
+            stmt = stmt.where(Document.bucket == DocumentBucket.PUBLIC)
 
-        return query.all()[:20]  # Top 20 documents
+        return (await db.execute(stmt)).scalars().all()[:20]  # Top 20 documents
 
     async def _build_document_context(
-        self, documents: List[Document], db: Session
+        self, documents: List[Document], db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """Build context from documents for content generation"""
         context = []
@@ -195,12 +195,13 @@ class SmartFolderService:
             from app.models.document import DocumentChunk
 
             chunks = (
-                db.query(DocumentChunk)
-                .filter(DocumentChunk.document_id == doc.id)
-                .order_by(DocumentChunk.chunk_index)
-                .limit(5)
-                .all()
-            )
+                await db.execute(
+                    select(DocumentChunk)
+                    .where(DocumentChunk.document_id == doc.id)
+                    .order_by(DocumentChunk.chunk_index)
+                    .limit(5)
+                )
+            ).scalars().all()
 
             doc_info = {
                 "filename": doc.filename,

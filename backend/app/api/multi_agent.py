@@ -6,7 +6,8 @@ with clarification, research, verification, and answer generation.
 """
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Optional, List
 from uuid import UUID
 import logging
@@ -43,8 +44,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/multi-agent", tags=["multi-agent"])
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: UUID,
     action: AuditAction,
     resource_type: str,
@@ -61,9 +62,9 @@ def create_audit_log(
             details=json.dumps(details) if details else None
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Audit logging failed: {str(e)}")
 
 
@@ -75,7 +76,7 @@ async def multi_agent_search(
     require_verification: bool = True,
     answer_style: str = Query("comprehensive", regex="^(comprehensive|concise|conversational)$"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Perform multi-agent search with full orchestration
@@ -102,7 +103,7 @@ async def multi_agent_search(
             if isinstance(s, dict) and s.get("bucket") == "confidential"
         ]
         if confidential_sources:
-            create_audit_log(
+            await create_audit_log(
                 db=db,
                 user_id=current_user.id,
                 action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -146,7 +147,7 @@ async def multi_agent_search_stream(
     query: str,
     context: Optional[str] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Stream multi-agent search progress
@@ -183,7 +184,7 @@ async def clarify_query(
     context: Optional[str] = None,
     conversation_history: Optional[List[dict]] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Clarify an ambiguous query
@@ -218,7 +219,7 @@ async def research_query(
     max_results: int = Query(20, ge=5, le=50),
     use_graph: bool = True,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Conduct deep research on a query
@@ -257,7 +258,7 @@ async def verify_claim(
     claim: str,
     source_ids: Optional[List[str]] = Query(None),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Verify a claim against available sources
@@ -270,7 +271,7 @@ async def verify_claim(
     if source_ids:
         from app.models.document import Document
         for doc_id in source_ids:
-            doc = db.query(Document).get(doc_id)
+            doc = await db.get(Document, doc_id)
             if doc:
                 sources.append({
                     "document_id": str(doc.id),
@@ -315,7 +316,7 @@ async def generate_answer(
     verification: Optional[List[dict]] = None,
     answer_style: str = Query("comprehensive", regex="^(comprehensive|concise|conversational)$"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Generate an answer from research findings
@@ -361,7 +362,7 @@ async def explore_entity_connections(
     entity_name: str,
     max_depth: int = Query(2, ge=1, le=3),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Explore connections around an entity
@@ -382,7 +383,7 @@ async def explore_entity_connections(
 async def detect_inconsistencies(
     document_ids: List[str],
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Detect inconsistencies between documents
@@ -395,7 +396,7 @@ async def detect_inconsistencies(
     sources = []
     confidential_docs = []
     for doc_id in document_ids:
-        doc = db.query(Document).get(doc_id)
+        doc = await db.get(Document, doc_id)
         if doc:
             sources.append({
                 "document_id": str(doc.id),
@@ -410,7 +411,7 @@ async def detect_inconsistencies(
 
     # AUDIT LOG: Log confidential document access in inconsistency detection
     if confidential_docs:
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -438,7 +439,7 @@ async def suggest_search_improvements(
     query: str,
     result_count: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Suggest ways to improve search results

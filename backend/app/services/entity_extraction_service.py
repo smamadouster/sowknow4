@@ -11,8 +11,9 @@ import json
 import warnings
 from typing import List, Dict, Any, Optional, Set
 from datetime import datetime, date
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, select
 from collections import defaultdict
 
 from app.models.knowledge_graph import (
@@ -159,7 +160,7 @@ class EntityExtractionService:
                     event_data=event_data, document_id=document.id, db=db
                 )
 
-            db.commit()
+            await db.commit()
 
             logger.info(
                 f"Extracted {len(extracted.get('entities', []))} entities from {document.filename}"
@@ -346,11 +347,12 @@ Extract all entities, relationships, and dated events now:"""
             return None
 
         # Check for existing entity (same name and type)
-        entity = (
-            db.query(Entity)
-            .filter(and_(Entity.name == name, Entity.entity_type == entity_type))
-            .first()
+        result = await db.execute(
+            select(Entity).where(
+                and_(Entity.name == name, Entity.entity_type == entity_type)
+            )
         )
+        entity = result.scalar_one_or_none()
 
         if not entity:
             # Create new entity
@@ -400,17 +402,16 @@ Extract all entities, relationships, and dated events now:"""
             return
 
         # Check for existing relationship
-        existing = (
-            db.query(EntityRelationship)
-            .filter(
+        result = await db.execute(
+            select(EntityRelationship).where(
                 and_(
                     EntityRelationship.source_id == source_entity.id,
                     EntityRelationship.target_id == target_entity.id,
                     EntityRelationship.relation_type == relation_type,
                 )
             )
-            .first()
         )
+        existing = result.scalar_one_or_none()
 
         if existing:
             existing.document_count += 1
@@ -477,12 +478,13 @@ Extract all entities, relationships, and dated events now:"""
         Returns:
             Graph data with nodes and edges
         """
-        query = db.query(Entity)
+        stmt = select(Entity)
 
         if entity_type:
-            query = query.filter(Entity.entity_type == entity_type)
+            stmt = stmt.where(Entity.entity_type == entity_type)
 
-        entities = query.order_by(Entity.document_count.desc()).limit(limit).all()
+        result = await db.execute(stmt.order_by(Entity.document_count.desc()).limit(limit))
+        entities = result.scalars().all()
 
         # Build nodes
         nodes = []
@@ -499,16 +501,15 @@ Extract all entities, relationships, and dated events now:"""
 
         # Get relationships
         entity_ids = [e.id for e in entities]
-        relationships = (
-            db.query(EntityRelationship)
-            .filter(
+        rel_result = await db.execute(
+            select(EntityRelationship).where(
                 and_(
                     EntityRelationship.source_id.in_(entity_ids),
                     EntityRelationship.target_id.in_(entity_ids),
                 )
             )
-            .all()
         )
+        relationships = rel_result.scalars().all()
 
         # Build edges
         edges = []

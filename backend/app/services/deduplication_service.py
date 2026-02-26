@@ -7,10 +7,11 @@ Supports SHA256 hashing with metadata tracking for file integrity.
 
 import logging
 import hashlib
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_, select
 
 from app.models.document import Document
 from app.models.base import Base
@@ -71,7 +72,7 @@ class DeduplicationService:
             sha256.update(chunk)
         return sha256.hexdigest()
 
-    def is_duplicate(
+    async def is_duplicate(
         self, file_hash: str, filename: str, size: int, db: Session
     ) -> Optional[Document]:
         """
@@ -93,18 +94,20 @@ class DeduplicationService:
             if cached.size == size:
                 logger.debug(f"Duplicate found in cache: {filename}")
                 # Fetch the actual document
-                doc = (
-                    db.query(Document).filter(Document.id == cached.document_id).first()
+                result = await db.execute(
+                    select(Document).where(Document.id == cached.document_id)
                 )
+                doc = result.scalar_one_or_none()
                 return doc
 
         # Check database using metadata
         # We store hash in document metadata for fast lookup
-        doc = (
-            db.query(Document)
-            .filter(Document.document_metadata["sha256_hash"].astext == file_hash)
-            .first()
+        result = await db.execute(
+            select(Document).where(
+                Document.document_metadata["sha256_hash"].astext == file_hash
+            )
         )
+        doc = result.scalar_one_or_none()
 
         if doc:
             # Verify size matches
@@ -118,8 +121,8 @@ class DeduplicationService:
 
         return None
 
-    def register_upload(
-        self, file_hash: str, filename: str, size: int, document_id: str, db: Session
+    async def register_upload(
+        self, file_hash: str, filename: str, size: int, document_id: str, db: AsyncSession
     ) -> None:
         """
         Register a new file upload to prevent future duplicates
@@ -132,7 +135,8 @@ class DeduplicationService:
             db: Database session
         """
         # Update document metadata with hash
-        doc = db.query(Document).filter(Document.id == document_id).first()
+        result = await db.execute(select(Document).where(Document.id == document_id))
+        doc = result.scalar_one_or_none()
         if doc:
             metadata = doc.document_metadata or {}
             metadata["sha256_hash"] = file_hash
@@ -155,8 +159,8 @@ class DeduplicationService:
 
         self.hash_cache[file_hash] = FileHash(file_hash, filename, size, document_id)
 
-    def find_similar_files(
-        self, filename: str, db: Session, threshold: float = 0.8
+    async def find_similar_files(
+        self, filename: str, db: AsyncSession, threshold: float = 0.8
     ) -> list[Document]:
         """
         Find files with similar names (potential duplicates)
@@ -172,7 +176,8 @@ class DeduplicationService:
         from difflib import SequenceMatcher
 
         # Get all documents and compare names
-        all_docs = db.query(Document).all()
+        result = await db.execute(select(Document))
+        all_docs = result.scalars().all()
 
         similar = []
         for doc in all_docs:
@@ -187,7 +192,7 @@ class DeduplicationService:
 
         return [doc for doc, _ in similar[:10]]
 
-    def scan_for_duplicates(self, db: Session) -> Dict[str, any]:
+    async def scan_for_duplicates(self, db: AsyncSession) -> Dict[str, any]:
         """
         Scan all documents for potential duplicates
 
@@ -198,18 +203,17 @@ class DeduplicationService:
             Dictionary with duplicate statistics
         """
         # Group documents by size (quick filter)
-        from sqlalchemy import func
-
-        size_groups = (
-            db.query(Document.size, func.count(Document.id).label("count"))
+        size_groups_result = await db.execute(
+            select(Document.size, func.count(Document.id).label("count"))
             .group_by(Document.size)
             .having(func.count(Document.id) > 1)
-            .all()
         )
+        size_groups = size_groups_result.all()
 
         potential_duplicates = []
         for size, count in size_groups:
-            docs = db.query(Document).filter(Document.size == size).all()
+            docs_result = await db.execute(select(Document).where(Document.size == size))
+            docs = docs_result.scalars().all()
             if len(docs) > 1:
                 potential_duplicates.append(
                     {
@@ -222,11 +226,10 @@ class DeduplicationService:
         # Calculate full hash duplicates
         hash_duplicates = []
         # Get documents with hashes in metadata
-        docs_with_hashes = (
-            db.query(Document)
-            .filter(Document.document_metadata["sha256_hash"].astext != None)
-            .all()
+        docs_with_hashes_result = await db.execute(
+            select(Document).where(Document.document_metadata["sha256_hash"].astext != None)
         )
+        docs_with_hashes = docs_with_hashes_result.scalars().all()
 
         hash_map: Dict[str, List[Document]] = {}
         for doc in docs_with_hashes:
@@ -255,7 +258,7 @@ class DeduplicationService:
             "total_duplicates": sum(g["count"] - 1 for g in hash_duplicates),
         }
 
-    def cleanup_duplicates(self, db: Session, dry_run: bool = True) -> Dict[str, any]:
+    async def cleanup_duplicates(self, db: AsyncSession, dry_run: bool = True) -> Dict[str, any]:
         """
         Remove duplicate documents, keeping the oldest
 
@@ -266,7 +269,7 @@ class DeduplicationService:
         Returns:
             Dictionary with cleanup results
         """
-        duplicate_groups = self.scan_for_duplicates(db)
+        duplicate_groups = await self.scan_for_duplicates(db)
         removed_count = 0
         kept_count = 0
         space_freed = 0
@@ -274,12 +277,12 @@ class DeduplicationService:
         for group in duplicate_groups.get("hash_duplicate_groups", []):
             # Sort by created_at, keep oldest
             doc_ids = group["document_ids"]
-            docs = (
-                db.query(Document)
-                .filter(Document.id.in_(doc_ids))
+            docs_result = await db.execute(
+                select(Document)
+                .where(Document.id.in_(doc_ids))
                 .order_by(Document.created_at.asc())
-                .all()
             )
+            docs = docs_result.scalars().all()
 
             if len(docs) <= 1:
                 continue

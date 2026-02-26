@@ -4,7 +4,8 @@ from jose import JWTError, jwt, ExpiredSignatureError
 import bcrypt as _bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session  # noqa: F401 — kept for type-compat in non-async callers
+from sqlalchemy import select
 import os
 from dotenv import load_dotenv
 
@@ -62,6 +63,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """Hash a password"""
     return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt(rounds=12)).decode("utf-8")
+
+
+def hash_password(plain: str) -> str:
+    """Alias for get_password_hash — use this in new code."""
+    return get_password_hash(plain)
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
@@ -143,7 +149,9 @@ async def get_current_user(
     if email is None:
         raise credentials_exception
 
-    user = db.query(User).filter(User.email == email).first()
+    user = (
+        await db.execute(select(User).where(User.email == email))
+    ).scalar_one_or_none()
     if user is None:
         raise credentials_exception
 

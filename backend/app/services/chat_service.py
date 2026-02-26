@@ -14,6 +14,7 @@ from typing import AsyncGenerator, List, Dict, Any, Optional
 from uuid import UUID
 
 import httpx
+from sqlalchemy import select
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
@@ -160,12 +161,13 @@ class ChatService:
     ) -> List[Dict[str, str]]:
         """Get conversation history for context"""
         messages = (
-            db.query(ChatMessage)
-            .filter(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.created_at.asc())
-            .limit(self.max_context_messages)
-            .all()
-        )
+            await db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session_id)
+                .order_by(ChatMessage.created_at.asc())
+                .limit(self.max_context_messages)
+            )
+        ).scalars().all()
 
         history = []
         for msg in messages:
@@ -192,7 +194,9 @@ class ChatService:
             )
 
         # Get session to check document scope
-        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        session = (
+            await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+        ).scalar_one_or_none()
 
         # Perform search
         search_result = await search_service.hybrid_search(

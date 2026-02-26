@@ -137,6 +137,15 @@ try:
 except ImportError:
     _collection_schemas = []
 
+from app.schemas.pagination import (
+    PaginationParams,
+    PaginatedResponse,
+    CursorPaginationParams,
+    CursorPaginatedResponse,
+    encode_cursor,
+    decode_cursor,
+)
+
 __all__ = [
     "UserCreate",
     "UserPublic",
@@ -144,6 +153,12 @@ __all__ = [
     "UserRole",
     "Token",
     "TokenPayload",
+    "PaginationParams",
+    "PaginatedResponse",
+    "CursorPaginationParams",
+    "CursorPaginatedResponse",
+    "encode_cursor",
+    "decode_cursor",
     *_document_schemas,
     *_chat_schemas,
     *_search_schemas,

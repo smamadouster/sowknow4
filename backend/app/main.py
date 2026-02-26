@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -5,6 +7,9 @@ from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.limiter import limiter
 import time
 import os
 from collections import defaultdict
@@ -17,8 +22,7 @@ from app.api import auth, admin, search, documents
 # from app.api import documents
 from app.api import collections, smart_folders, knowledge_graph, graph_rag, multi_agent
 from app.api import chat
-from app.database import engine, init_pgvector
-from app.models.base import Base
+from app.database import engine, init_pgvector, create_all_tables
 from app.models.user import User
 from app.services.openrouter_service import openrouter_service
 # TODO: Import other models once database is set up
@@ -66,6 +70,15 @@ class ErrorRateTracker:
 
 _error_rate_tracker = ErrorRateTracker(window_seconds=300)
 
+# ---- Request-ID middleware (T01) ----
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
 
 class ErrorRateMiddleware(BaseHTTPMiddleware):
     """Middleware to track 5xx error rates."""
@@ -85,14 +98,14 @@ class ErrorRateMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     # Startup: Initialize database
     print("Starting up...")
-    init_pgvector()  # Initialize pgvector extension
-    Base.metadata.create_all(bind=engine)
+    await init_pgvector()  # Initialize pgvector extension
+    await create_all_tables()
     print("Database tables created/verified")
     yield
     # Shutdown: release resources gracefully
     print("Shutting down...")
     try:
-        engine.dispose()
+        await engine.dispose()
         print("Database connection pool disposed")
     except Exception as exc:
         print(f"Error disposing DB pool: {exc}")
@@ -114,6 +127,10 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     lifespan=lifespan
 )
+
+# Attach rate limiter to app state (T04)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _is_production = os.getenv("APP_ENV", "development").lower() == "production"
 
@@ -257,6 +274,17 @@ app.add_middleware(
     max_age=600,  # Cache preflight responses for 10 minutes
 )
 
+# Request-ID Middleware — injects X-Request-ID into every response (T01)
+app.add_middleware(RequestIDMiddleware)
+
+# Transaction Middleware — auto-commit on 2xx, rollback on 4xx/5xx (T11)
+from app.middleware.transaction import TransactionMiddleware
+app.add_middleware(TransactionMiddleware)
+
+# RLS context middleware (P2-9) — sets app.user_id / app.user_role session vars
+from app.middleware.rls import set_rls_context  # noqa: E402
+app.add_middleware(BaseHTTPMiddleware, dispatch=set_rls_context)
+
 # Error Rate Tracking Middleware - Tracks 5xx errors per PRD
 app.add_middleware(ErrorRateMiddleware)
 
@@ -313,8 +341,8 @@ async def health():
     ollama_status = "disconnected"
 
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
         db_status = "connected"
     except Exception as e:
         db_status = f"error: {str(e)}"

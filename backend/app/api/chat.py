@@ -1,14 +1,16 @@
 """
 Chat API endpoints for AI-powered conversations with RAG
 """
-from fastapi import status, APIRouter, Depends, HTTPException
+from fastapi import status, APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from app.limiter import limiter
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from typing import Optional, List
 from uuid import uuid4, UUID
 import json
 
-from app.database import get_db, SessionLocal
+from app.database import get_db, AsyncSessionLocal
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.api.deps import get_current_user
@@ -40,10 +42,12 @@ def determine_llm_provider(has_confidential: bool) -> LLMProvider:
 
 
 @router.post("/sessions", response_model=ChatSessionResponse)
+@limiter.limit("20/minute")
 async def create_chat_session(
+    http_request: Request,
     session_data: ChatSessionCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Create a new chat session"""
     try:
@@ -56,13 +60,13 @@ async def create_chat_session(
         )
 
         db.add(session)
-        db.commit()
-        db.refresh(session)
+        await db.commit()
+        await db.refresh(session)
 
         return ChatSessionResponse.model_validate(session)
 
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error creating session: {str(e)}")
 
 
@@ -71,18 +75,22 @@ async def list_chat_sessions(
     limit: int = 50,
     offset: int = 0,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """List user's chat sessions"""
-    sessions = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id
-    ).order_by(
-        ChatSession.updated_at.desc()
-    ).offset(offset).limit(limit).all()
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.user_id == current_user.id)
+        .order_by(ChatSession.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    sessions = result.scalars().all()
 
-    total = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id
-    ).count()
+    count_result = await db.execute(
+        select(func.count()).select_from(ChatSession).where(ChatSession.user_id == current_user.id)
+    )
+    total = count_result.scalar_one()
 
     return ChatSessionListResponse(
         sessions=[ChatSessionResponse.model_validate(s) for s in sessions],
@@ -94,13 +102,16 @@ async def list_chat_sessions(
 async def get_chat_session(
     session_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get a specific chat session"""
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id
-    ).first()
+    result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id
+        )
+    )
+    session = result.scalar_one_or_none()
 
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -114,7 +125,7 @@ async def send_message(
     message_data: ChatMessageCreate,
     stream: bool = True,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Send a message to the chat session
@@ -123,10 +134,13 @@ async def send_message(
     If stream=False, returns complete response.
     """
     # Verify session exists and belongs to user
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id
-    ).first()
+    result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id
+        )
+    )
+    session = result.scalar_one_or_none()
 
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -139,15 +153,13 @@ async def send_message(
         content=message_data.content
     )
     db.add(user_message)
-    db.commit()
+    await db.commit()
 
     if stream:
-        # Use a dedicated session for the streaming generator so the lifecycle
+        # Use a dedicated async session for the streaming generator so the lifecycle
         # is tied to the generator itself, not the request dependency scope.
-        stream_db = SessionLocal()
-
         async def _stream_with_session():
-            try:
+            async with AsyncSessionLocal() as stream_db:
                 async for chunk in chat_service.generate_chat_response_stream(
                     session_id=session_id,
                     user_message=message_data.content,
@@ -155,8 +167,6 @@ async def send_message(
                     current_user=current_user,
                 ):
                     yield chunk
-            finally:
-                stream_db.close()
 
         return StreamingResponse(
             _stream_with_session(),
@@ -185,7 +195,7 @@ async def send_message(
                 total_tokens=response_data.get("total_tokens")
             )
             db.add(assistant_message)
-            db.commit()
+            await db.commit()
 
             return ChatMessageResponse.model_validate(assistant_message)
 
@@ -196,29 +206,41 @@ async def send_message(
 @router.get("/sessions/{session_id}/messages", response_model=ChatMessageListResponse)
 async def get_session_messages(
     session_id: UUID,
-    limit: int = 100,
+    limit: int = 50,
+    offset: int = 0,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """Get all messages in a session"""
+    """Get messages in a session with offset-based pagination."""
     # Verify session ownership
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id
-    ).first()
+    session_result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id
+        )
+    )
+    session = session_result.scalar_one_or_none()
 
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-    messages = db.query(ChatMessage).filter(
-        ChatMessage.session_id == session_id
-    ).order_by(
-        ChatMessage.created_at.asc()
-    ).limit(limit).all()
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.asc())
+        .offset(offset)
+        .limit(limit)
+    )
+    messages = result.scalars().all()
+
+    count_result = await db.execute(
+        select(func.count()).select_from(ChatMessage).where(ChatMessage.session_id == session_id)
+    )
+    total = count_result.scalar_one()
 
     return ChatMessageListResponse(
         messages=[ChatMessageResponse.model_validate(m) for m in messages],
-        total=len(messages)
+        total=total
     )
 
 
@@ -226,18 +248,21 @@ async def get_session_messages(
 async def delete_chat_session(
     session_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Delete a chat session"""
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id
-    ).first()
+    result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id
+        )
+    )
+    session = result.scalar_one_or_none()
 
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-    db.delete(session)
-    db.commit()
+    await db.delete(session)
+    await db.commit()
 
     return {"message": "Session deleted successfully"}

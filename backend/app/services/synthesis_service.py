@@ -9,7 +9,8 @@ creating comprehensive insights and summaries.
 import logging
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from collections import defaultdict
 
 from app.models.document import Document, DocumentChunk, DocumentBucket
@@ -95,7 +96,7 @@ class SynthesisPipelineService:
     async def synthesize(
         self,
         request: SynthesisRequest,
-        db: Session,
+        db: AsyncSession,
         on_progress: Optional[Callable[[str, float], None]] = None,
     ) -> SynthesisResult:
         """
@@ -123,7 +124,7 @@ class SynthesisPipelineService:
                 on_progress("Extracting key information...", 0.3)
 
             mapped_results = await self._map_documents(
-                documents, request.topic, request.synthesis_type, on_progress
+                documents, request.topic, request.synthesis_type, db, on_progress
             )
 
             # Step 3: Gather related entities if requested
@@ -184,12 +185,12 @@ class SynthesisPipelineService:
             raise
 
     async def _fetch_documents(
-        self, document_ids: List[str], db: Session
+        self, document_ids: List[str], db: AsyncSession
     ) -> List[Document]:
         """Fetch documents from database"""
         documents = []
         for doc_id in document_ids:
-            doc = db.query(Document).get(doc_id)
+            doc = await db.get(Document, doc_id)
             if doc:
                 documents.append(doc)
         return documents
@@ -199,6 +200,7 @@ class SynthesisPipelineService:
         documents: List[Document],
         topic: str,
         synthesis_type: str,
+        db: AsyncSession,
         on_progress: Optional[Callable[[str, float], None]] = None,
     ) -> List[Dict[str, Any]]:
         """
@@ -212,11 +214,12 @@ class SynthesisPipelineService:
             try:
                 # Get document chunks for content
                 chunks = (
-                    db.query(DocumentChunk)
-                    .filter(DocumentChunk.document_id == doc.id)
-                    .limit(10)
-                    .all()
-                )
+                    await db.execute(
+                        select(DocumentChunk)
+                        .where(DocumentChunk.document_id == doc.id)
+                        .limit(10)
+                    )
+                ).scalars().all()
 
                 content = "\n\n".join([c.chunk_text[:500] for c in chunks])
 
@@ -324,7 +327,7 @@ Extract all relevant information about "{topic}" from this document:"""
             }
 
     async def _gather_entities(
-        self, documents: List[Document], db: Session
+        self, documents: List[Document], db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """Gather entities mentioned in the documents"""
         from app.models.knowledge_graph import EntityMention
@@ -334,15 +337,15 @@ Extract all relevant information about "{topic}" from this document:"""
 
         for doc in documents:
             mentions = (
-                db.query(EntityMention)
-                .filter(EntityMention.document_id == doc.id)
-                .all()
-            )
+                await db.execute(
+                    select(EntityMention).where(EntityMention.document_id == doc.id)
+                )
+            ).scalars().all()
 
             for mention in mentions:
                 entity_counts[mention.entity_id] += 1
                 if mention.entity_id not in entity_details:
-                    entity = db.query(Entity).get(mention.entity_id)
+                    entity = await db.get(Entity, mention.entity_id)
                     if entity:
                         entity_details[mention.entity_id] = {
                             "id": str(entity.id),
@@ -363,17 +366,17 @@ Extract all relevant information about "{topic}" from this document:"""
         ]
 
     async def _build_timeline(
-        self, documents: List[Document], db: Session
+        self, documents: List[Document], db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """Build timeline from documents"""
         events_by_date = defaultdict(list)
 
         for doc in documents:
             events = (
-                db.query(TimelineEvent)
-                .filter(TimelineEvent.document_id == doc.id)
-                .all()
-            )
+                await db.execute(
+                    select(TimelineEvent).where(TimelineEvent.document_id == doc.id)
+                )
+            ).scalars().all()
 
             for event in events:
                 events_by_date[event.event_date].append(
@@ -658,7 +661,7 @@ Extract the key points:"""
     async def batch_synthesize(
         self,
         requests: List[SynthesisRequest],
-        db: Session,
+        db: AsyncSession,
         on_progress: Optional[Callable[[int, int, str], None]] = None,
     ) -> List[SynthesisResult]:
         """

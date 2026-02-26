@@ -7,7 +7,8 @@ creating professional PDF reports from collections.
 import json
 import logging
 from fastapi import status, APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Optional
 from uuid import UUID
 
@@ -29,8 +30,8 @@ router = APIRouter(prefix="/smart-folders", tags=["smart-folders"])
 logger = logging.getLogger(__name__)
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: UUID,
     action: AuditAction,
     resource_type: str,
@@ -47,9 +48,9 @@ def create_audit_log(
             details=json.dumps(details) if details else None
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Audit logging failed: {str(e)}")
 
 
@@ -57,7 +58,7 @@ def create_audit_log(
 async def generate_smart_folder(
     request: SmartFolderGenerateRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Generate a Smart Folder with AI-created content
@@ -95,7 +96,7 @@ async def generate_smart_folder(
                 if doc.get("bucket") == "confidential"
             ]
             if confidential_docs:
-                create_audit_log(
+                await create_audit_log(
                     db=db,
                     user_id=current_user.id,
                     action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -121,7 +122,7 @@ async def generate_smart_folder(
 async def generate_collection_report(
     request: CollectionReportRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Generate a PDF report from a collection
@@ -155,7 +156,7 @@ async def generate_collection_report(
 
         # AUDIT LOG: Log confidential document access in report generation
         if result.get("has_confidential"):
-            create_audit_log(
+            await create_audit_log(
                 db=db,
                 user_id=current_user.id,
                 action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -235,7 +236,7 @@ async def get_report_templates(
 async def get_report(
     report_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get a previously generated report"""
     # In a real implementation, this would fetch from a reports table

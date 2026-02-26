@@ -3,9 +3,10 @@ Search API endpoints for hybrid semantic and keyword search
 """
 import asyncio
 import json
-from fastapi import status, APIRouter, Depends, HTTPException, Query
+from fastapi import status, APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Optional
 import logging
 import uuid
@@ -14,8 +15,10 @@ from app.database import get_db
 from app.models.user import User
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.search import SearchRequest, SearchResponse, SearchResultChunk
+from app.schemas.pagination import encode_cursor, decode_cursor, CursorPaginatedResponse
 from app.services.search_service import search_service
 from app.api.deps import get_current_user
+from app.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +36,8 @@ SEARCH_TIMEOUT_SECONDS = 3.0
 router = APIRouter(prefix="/search", tags=["search"])
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: uuid.UUID,
     action: AuditAction,
     resource_type: str,
@@ -43,7 +46,7 @@ def create_audit_log(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None
 ):
-    """Helper function to create audit log entries for search"""
+    """Helper function to create audit log entries for search."""
     try:
         audit_entry = AuditLog(
             user_id=user_id,
@@ -55,17 +58,20 @@ def create_audit_log(
             user_agent=user_agent
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Audit logging failed: {str(e)}")
 
 
 @router.post("", response_model=SearchResponse)
+@limiter.limit("30/minute")
 async def search_documents(
+    http_request: Request,
     request: SearchRequest,
+    cursor: Optional[str] = Query(None, description="Cursor for pagination (base64 encoded)"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Perform hybrid search combining semantic and keyword search.
@@ -87,6 +93,14 @@ async def search_documents(
     """
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Search query cannot be empty")
+
+    # Cursor overrides offset when provided (T09)
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            request.offset = cursor_data.get("offset", 0)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
 
     # -----------------------------------------------------------------------
     # Concurrency check — non-blocking.  If all slots are taken, reject with
@@ -132,7 +146,7 @@ async def search_documents(
                     f"Role: {current_user.role.value}) | Query: {request.query[:100]} | "
                     f"Results: {len(result['results'])} items"
                 )
-                create_audit_log(
+                await create_audit_log(
                     db=db,
                     user_id=current_user.id,
                     action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -165,6 +179,10 @@ async def search_documents(
                     keyword_score=round(r.keyword_score, 4)
                 ))
 
+            # Build next cursor when there may be more results
+            next_offset = request.offset + request.limit
+            next_cursor = encode_cursor({"offset": next_offset}) if len(search_results) == request.limit else None
+
             return SearchResponse(
                 query=request.query,
                 results=search_results,
@@ -172,6 +190,7 @@ async def search_documents(
                 llm_used=llm_used,
                 partial=result.get("partial", False),
                 warning=result.get("warning"),
+                next_cursor=next_cursor,
             )
 
         except Exception as e:
@@ -182,7 +201,7 @@ async def search_documents(
 async def search_suggestions(
     q: str = Query(..., min_length=2, max_length=100),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get search suggestions based on partial query
@@ -201,14 +220,17 @@ async def search_suggestions(
             buckets = [DocumentBucket.PUBLIC, DocumentBucket.CONFIDENTIAL]
 
         # Get filename suggestions
-        suggestions = db.query(Document.filename).filter(
-            Document.bucket.in_(buckets),
-            Document.filename.ilike(f"%{q}%")
-        ).limit(10).all()
+        result = await db.execute(
+            select(Document.filename).where(
+                Document.bucket.in_(buckets),
+                Document.filename.ilike(f"%{q}%")
+            ).limit(10)
+        )
+        suggestions = result.scalars().all()
 
         return {
             "query": q,
-            "suggestions": [s.filename for s in suggestions]
+            "suggestions": list(suggestions)
         }
 
     except Exception as e:

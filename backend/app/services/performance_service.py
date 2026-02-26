@@ -10,8 +10,8 @@ import time
 import psutil
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select, desc
 
 from app.models.document import Document, DocumentChunk, DocumentStatus
 from app.models.chat import ChatSession, ChatMessage, LLMProvider
@@ -153,7 +153,7 @@ class PerformanceTuningService:
         return recommendations
 
     async def optimize_embedding_batch_size(
-        self, db: Session, target_memory_mb: int = 1200
+        self, db: AsyncSession, target_memory_mb: int = 1200
     ) -> Dict[str, Any]:
         """
         Determine optimal embedding batch size based on available memory
@@ -190,7 +190,7 @@ class PerformanceTuningService:
         }
 
     async def optimize_minimax_cache(
-        self, db: Session, collection_id: str = None
+        self, db: AsyncSession, collection_id: str = None
     ) -> Dict[str, Any]:
         """
         Optimize Gemini context caching for collections
@@ -204,14 +204,13 @@ class PerformanceTuningService:
         """
         # Get frequently accessed collections
         from app.models.collection import Collection
-        from sqlalchemy import desc
 
-        query = db.query(Collection).order_by(desc(Collection.document_count))
+        stmt = select(Collection).order_by(desc(Collection.document_count))
 
         if collection_id:
-            query = query.filter(Collection.id == collection_id)
+            stmt = stmt.where(Collection.id == collection_id)
 
-        collections = query.limit(10).all()
+        collections = (await db.execute(stmt.limit(10))).scalars().all()
 
         recommendations = []
         for collection in collections:
@@ -235,7 +234,7 @@ class PerformanceTuningService:
             "recommendations": recommendations,
         }
 
-    async def profile_embedding_memory(self, db: Session) -> Dict[str, Any]:
+    async def profile_embedding_memory(self, db: AsyncSession) -> Dict[str, Any]:
         """
         Profile memory usage of embedding service
 
@@ -246,7 +245,8 @@ class PerformanceTuningService:
             Dictionary with memory profiling results
         """
         # Count chunks with embeddings
-        chunk_count = db.query(func.count(DocumentChunk.id)).scalar()
+        result = await db.execute(select(func.count(DocumentChunk.id)))
+        chunk_count = result.scalar()
 
         # Each embedding is 1024 floats * 4 bytes = 4KB
         embedding_storage_mb = (chunk_count * 4) / 1024

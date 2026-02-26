@@ -3,12 +3,13 @@ Admin API endpoints for user management, dashboard, stats, and audit logging
 """
 
 from fastapi import status, APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, and_, or_, desc, select, text
 from datetime import datetime, timedelta
 from typing import List, Optional
 import uuid
 import json
+import os
 
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -38,8 +39,8 @@ from app.schemas.user import UserPublic
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: uuid.UUID,
     action: AuditAction,
     resource_type: str,
@@ -47,7 +48,7 @@ def create_audit_log(
     details: Optional[dict] = None,
     request: Optional[Request] = None,
 ):
-    """Helper function to create audit log entries"""
+    """Helper function to create audit log entries."""
     try:
         audit_entry = AuditLog(
             user_id=user_id,
@@ -59,10 +60,9 @@ def create_audit_log(
             user_agent=request.headers.get("user-agent") if request else None,
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        # Don't fail the main operation if audit logging fails
-        db.rollback()
+        await db.rollback()
         print(f"Audit logging failed: {str(e)}")
 
 
@@ -79,19 +79,11 @@ async def list_users(
     role: Optional[UserRole] = Query(None, description="Filter by role"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """
-    List all users with pagination and filtering (Admin only)
-
-    - SuperUser will receive 403 Forbidden
-    - Supports search by email or full name
-    - Filter by role and active status
-    - Returns paginated results
-    """
-    # Log the admin action
-    create_audit_log(
+    """List all users with pagination and filtering (Admin only)."""
+    await create_audit_log(
         db=db,
         user_id=current_user.id,
         action=AuditAction.SYSTEM_ACTION,
@@ -105,30 +97,32 @@ async def list_users(
         request=request,
     )
 
-    # Build query
-    query = db.query(User)
+    # Build base query
+    stmt = select(User)
+    count_stmt = select(func.count()).select_from(User)
 
-    # Apply search filter
     if search:
         search_pattern = f"%{search}%"
-        query = query.filter(
-            or_(User.email.ilike(search_pattern), User.full_name.ilike(search_pattern))
-        )
+        condition = or_(User.email.ilike(search_pattern), User.full_name.ilike(search_pattern))
+        stmt = stmt.where(condition)
+        count_stmt = count_stmt.where(condition)
 
-    # Apply role filter
     if role:
-        query = query.filter(User.role == role)
+        stmt = stmt.where(User.role == role)
+        count_stmt = count_stmt.where(User.role == role)
 
-    # Apply active status filter
     if is_active is not None:
-        query = query.filter(User.is_active == is_active)
+        stmt = stmt.where(User.is_active == is_active)
+        count_stmt = count_stmt.where(User.is_active == is_active)
 
-    # Get total count
-    total = query.count()
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar_one()
 
-    # Apply pagination
     offset = (page - 1) * page_size
-    users = query.order_by(User.created_at.desc()).offset(offset).limit(page_size).all()
+    result = await db.execute(
+        stmt.order_by(User.created_at.desc()).offset(offset).limit(page_size)
+    )
+    users = result.scalars().all()
 
     return UserListResponse(
         users=[UserManagementResponse.model_validate(user) for user in users],
@@ -142,23 +136,17 @@ async def list_users(
 async def get_user_details(
     user_id: uuid.UUID,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """
-    Get detailed information about a specific user (Admin only)
-
-    - SuperUser will receive 403 Forbidden
-    - Returns full user details including permissions
-    """
-    user = db.query(User).filter(User.id == user_id).first()
+    """Get detailed information about a specific user (Admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
 
     if not user:
-        # Use generic error message to prevent user enumeration
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Log the admin action
-    create_audit_log(
+    await create_audit_log(
         db=db,
         user_id=current_user.id,
         action=AuditAction.SYSTEM_ACTION,
@@ -174,28 +162,19 @@ async def get_user_details(
 async def create_user(
     user_data: UserCreateByAdmin,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """
-    Create a new user (Admin only)
-
-    - SuperUser will receive 403 Forbidden
-    - Admin can set initial role and permissions
-    - Password must be at least 8 characters
-    """
-    # Check if user already exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    """Create a new user (Admin only)."""
+    result = await db.execute(select(User).where(User.email == user_data.email))
+    existing_user = result.scalar_one_or_none()
     if existing_user:
-        # Generic error message to prevent user enumeration
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists"
         )
 
-    # Hash the password
     hashed_password = get_password_hash(user_data.password)
 
-    # Create new user
     new_user = User(
         email=user_data.email,
         hashed_password=hashed_password,
@@ -206,11 +185,10 @@ async def create_user(
     )
 
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    await db.commit()
+    await db.refresh(new_user)
 
-    # Log the admin action
-    create_audit_log(
+    await create_audit_log(
         db=db,
         user_id=current_user.id,
         action=AuditAction.USER_CREATED,
@@ -232,37 +210,27 @@ async def update_user(
     user_id: uuid.UUID,
     updates: UserUpdateByAdmin,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """
-    Update user role, status, or permissions (Admin only)
-
-    - SuperUser will receive 403 Forbidden
-    - Cannot modify own role (prevents locking yourself out)
-    - Ensures at least one admin remains
-    """
-    user = db.query(User).filter(User.id == user_id).first()
+    """Update user role, status, or permissions (Admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Prevent self-modification of critical fields
     if user.id == current_user.id and updates.role is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify your own role")
 
-    # Track changes for audit log
     changes = {}
 
-    # Update role
     if updates.role is not None and user.role != updates.role:
-        # Check if this would leave no admins
         if user.role == UserRole.ADMIN and updates.role != UserRole.ADMIN:
-            admin_count = (
-                db.query(func.count(User.id))
-                .filter(User.role == UserRole.ADMIN)
-                .scalar()
+            count_result = await db.execute(
+                select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
             )
+            admin_count = count_result.scalar_one()
             if admin_count <= 1:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -273,7 +241,6 @@ async def update_user(
         user.role = updates.role
         changes["role"] = {"old": old_role, "new": updates.role.value}
 
-    # Update confidential access
     if (
         updates.can_access_confidential is not None
         and user.can_access_confidential != updates.can_access_confidential
@@ -284,22 +251,20 @@ async def update_user(
             "new": updates.can_access_confidential,
         }
 
-    # Update active status
     if updates.is_active is not None and user.is_active != updates.is_active:
         user.is_active = updates.is_active
         changes["is_active"] = {"old": not updates.is_active, "new": updates.is_active}
 
-    # Update full name
     if updates.full_name is not None and user.full_name != updates.full_name:
+        old_name = user.full_name
         user.full_name = updates.full_name
-        changes["full_name"] = {"old": user.full_name, "new": updates.full_name}
+        changes["full_name"] = {"old": old_name, "new": updates.full_name}
 
     if changes:
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
 
-        # Log the admin action
-        create_audit_log(
+        await create_audit_log(
             db=db,
             user_id=current_user.id,
             action=AuditAction.USER_UPDATED,
@@ -316,50 +281,40 @@ async def update_user(
 async def delete_user(
     user_id: uuid.UUID,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """
-    Delete a user (Admin only)
-
-    - SuperUser will receive 403 Forbidden
-    - Cannot delete yourself
-    - Ensures at least one admin remains
-    - User's documents and collections are also deleted (cascade)
-    """
-    user = db.query(User).filter(User.id == user_id).first()
+    """Delete a user (Admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Prevent self-deletion
     if user.id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
 
-    # Check if this would leave no admins
     if user.role == UserRole.ADMIN:
-        admin_count = (
-            db.query(func.count(User.id)).filter(User.role == UserRole.ADMIN).scalar()
+        count_result = await db.execute(
+            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
         )
+        admin_count = count_result.scalar_one()
         if admin_count <= 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete user: At least one admin must remain",
             )
 
-    # Store user info for audit before deletion
     user_info = {
         "email": user.email,
         "role": user.role.value,
         "full_name": user.full_name,
     }
 
-    # Delete user (cascade will handle related records)
-    db.delete(user)
-    db.commit()
+    await db.delete(user)
+    await db.commit()
 
-    # Log the admin action
-    create_audit_log(
+    await create_audit_log(
         db=db,
         user_id=current_user.id,
         action=AuditAction.USER_DELETED,
@@ -377,30 +332,20 @@ async def reset_user_password(
     user_id: uuid.UUID,
     password_data: PasswordReset,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """
-    Reset a user's password (Admin only)
-
-    - SuperUser will receive 403 Forbidden
-    - Password must be at least 8 characters
-    - Action is logged in audit trail
-    """
-    user = db.query(User).filter(User.id == user_id).first()
+    """Reset a user's password (Admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Hash the new password
-    hashed_password = get_password_hash(password_data.new_password)
+    user.hashed_password = get_password_hash(password_data.new_password)
+    await db.commit()
 
-    # Update user's password
-    user.hashed_password = hashed_password
-    db.commit()
-
-    # Log the admin action
-    create_audit_log(
+    await create_audit_log(
         db=db,
         user_id=current_user.id,
         action=AuditAction.USER_UPDATED,
@@ -425,27 +370,16 @@ async def get_audit_logs(
     action: Optional[str] = Query(None, description="Filter by action type"),
     resource_type: Optional[str] = Query(None, description="Filter by resource type"),
     user_id: Optional[uuid.UUID] = Query(None, description="Filter by user ID"),
-    days: Optional[int] = Query(
-        30, ge=1, le=365, description="Number of days to look back"
-    ),
+    days: Optional[int] = Query(30, ge=1, le=365, description="Number of days to look back"),
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """
-    Get audit log for confidential access and admin actions (Admin only)
-
-    - SuperUser will receive 403 Forbidden
-    - View all administrative actions
-    - Track confidential document access
-    - Filterable by action, resource type, user, and date range
-    """
-    # Calculate date cutoff
+    """Get audit log for confidential access and admin actions (Admin only)."""
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
-    # Build query with join to get user email
-    query = (
-        db.query(
+    stmt = (
+        select(
             AuditLog.id,
             AuditLog.user_id,
             AuditLog.action,
@@ -457,47 +391,51 @@ async def get_audit_logs(
             User.email.label("user_email"),
         )
         .outerjoin(User, AuditLog.user_id == User.id)
-        .filter(AuditLog.created_at >= cutoff_date)
+        .where(AuditLog.created_at >= cutoff_date)
+    )
+    count_stmt = (
+        select(func.count())
+        .select_from(AuditLog)
+        .where(AuditLog.created_at >= cutoff_date)
     )
 
-    # Apply filters
     if action:
-        query = query.filter(AuditLog.action == action)
+        stmt = stmt.where(AuditLog.action == action)
+        count_stmt = count_stmt.where(AuditLog.action == action)
 
     if resource_type:
-        query = query.filter(AuditLog.resource_type == resource_type)
+        stmt = stmt.where(AuditLog.resource_type == resource_type)
+        count_stmt = count_stmt.where(AuditLog.resource_type == resource_type)
 
     if user_id:
-        query = query.filter(AuditLog.user_id == user_id)
+        stmt = stmt.where(AuditLog.user_id == user_id)
+        count_stmt = count_stmt.where(AuditLog.user_id == user_id)
 
-    # Get total count
-    total = query.count()
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar_one()
 
-    # Apply pagination
     offset = (page - 1) * page_size
-    logs = (
-        query.order_by(desc(AuditLog.created_at)).offset(offset).limit(page_size).all()
+    result = await db.execute(
+        stmt.order_by(desc(AuditLog.created_at)).offset(offset).limit(page_size)
     )
+    logs = result.all()
 
-    # Format response
-    log_entries = []
-    for log in logs:
-        log_entries.append(
-            AuditLogEntry(
-                id=log.id,
-                user_id=log.user_id,
-                action=log.action.value,
-                resource_type=log.resource_type,
-                resource_id=log.resource_id,
-                details=log.details,
-                ip_address=log.ip_address,
-                created_at=log.created_at,
-                user_email=log.user_email,
-            )
+    log_entries = [
+        AuditLogEntry(
+            id=log.id,
+            user_id=log.user_id,
+            action=log.action.value,
+            resource_type=log.resource_type,
+            resource_id=log.resource_id,
+            details=log.details,
+            ip_address=log.ip_address,
+            created_at=log.created_at,
+            user_email=log.user_email,
         )
+        for log in logs
+    ]
 
-    # Log this audit view access
-    create_audit_log(
+    await create_audit_log(
         db=db,
         user_id=current_user.id,
         action=AuditAction.SYSTEM_ACTION,
@@ -515,9 +453,7 @@ async def get_audit_logs(
         request=request,
     )
 
-    return AuditLogResponse(
-        logs=log_entries, total=total, page=page, page_size=page_size
-    )
+    return AuditLogResponse(logs=log_entries, total=total, page=page, page_size=page_size)
 
 
 # ============================================================================
@@ -527,59 +463,45 @@ async def get_audit_logs(
 
 @router.get("/stats", response_model=SystemStats)
 async def get_system_stats(
-    current_user: User = Depends(require_admin_only), db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get system statistics for admin dashboard (Admin only)"""
-    # Get today's date
+    """Get system statistics for admin dashboard (Admin only)."""
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Document counts
-    total_documents = db.query(func.count(Document.id)).scalar()
-    public_documents = (
-        db.query(func.count(Document.id))
-        .filter(Document.bucket == DocumentBucket.PUBLIC)
-        .scalar()
+    async def count(stmt):
+        r = await db.execute(stmt)
+        return r.scalar_one()
+
+    total_documents = await count(select(func.count(Document.id)))
+    public_documents = await count(
+        select(func.count(Document.id)).where(Document.bucket == DocumentBucket.PUBLIC)
     )
-    confidential_documents = (
-        db.query(func.count(Document.id))
-        .filter(Document.bucket == DocumentBucket.CONFIDENTIAL)
-        .scalar()
+    confidential_documents = await count(
+        select(func.count(Document.id)).where(Document.bucket == DocumentBucket.CONFIDENTIAL)
     )
-    indexed_documents = (
-        db.query(func.count(Document.id))
-        .filter(Document.status == DocumentStatus.INDEXED)
-        .scalar()
+    indexed_documents = await count(
+        select(func.count(Document.id)).where(Document.status == DocumentStatus.INDEXED)
     )
-    processing_documents = (
-        db.query(func.count(Document.id))
-        .filter(Document.status == DocumentStatus.PROCESSING)
-        .scalar()
+    processing_documents = await count(
+        select(func.count(Document.id)).where(Document.status == DocumentStatus.PROCESSING)
     )
-    error_documents = (
-        db.query(func.count(Document.id))
-        .filter(Document.status == DocumentStatus.ERROR)
-        .scalar()
+    error_documents = await count(
+        select(func.count(Document.id)).where(Document.status == DocumentStatus.ERROR)
     )
 
-    # Get chunk and tag counts from their respective tables
     from app.models.document import DocumentTag, DocumentChunk
 
-    total_chunks = db.query(func.count(DocumentChunk.id)).scalar()
-    total_tags = db.query(func.count(DocumentTag.id)).scalar()
-
-    # Uploads today
-    uploads_today = (
-        db.query(func.count(Document.id)).filter(Document.created_at >= today).scalar()
+    total_chunks = await count(select(func.count(DocumentChunk.id)))
+    total_tags = await count(select(func.count(DocumentTag.id)))
+    uploads_today = await count(
+        select(func.count(Document.id)).where(Document.created_at >= today)
     )
-
-    # User count
-    total_users = db.query(func.count(User.id)).scalar()
-
-    # Active sessions (last 24 hours)
-    active_sessions = (
-        db.query(func.count(ChatSession.id))
-        .filter(ChatSession.updated_at >= datetime.utcnow() - timedelta(hours=24))
-        .scalar()
+    total_users = await count(select(func.count(User.id)))
+    active_sessions = await count(
+        select(func.count(ChatSession.id)).where(
+            ChatSession.updated_at >= datetime.utcnow() - timedelta(hours=24)
+        )
     )
 
     return SystemStats(
@@ -599,39 +521,33 @@ async def get_system_stats(
 
 @router.get("/stats/extended", response_model=AdminStatsResponse)
 async def get_extended_admin_stats(
-    current_user: User = Depends(require_admin_only), db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get extended admin statistics including user counts and audit info (Admin only)"""
-    # User statistics
-    total_users = db.query(func.count(User.id)).scalar()
-    active_users = db.query(func.count(User.id)).filter(User.is_active == True).scalar()
-    admin_count = (
-        db.query(func.count(User.id)).filter(User.role == UserRole.ADMIN).scalar()
-    )
-    superuser_count = (
-        db.query(func.count(User.id)).filter(User.role == UserRole.SUPERUSER).scalar()
-    )
-    regular_user_count = (
-        db.query(func.count(User.id)).filter(User.role == UserRole.USER).scalar()
-    )
-    confidential_access_users = (
-        db.query(func.count(User.id))
-        .filter(User.can_access_confidential == True)
-        .scalar()
-    )
+    """Get extended admin statistics (Admin only)."""
+    async def count(stmt):
+        r = await db.execute(stmt)
+        return r.scalar_one()
 
-    # Audit log statistics
-    total_audit_logs = db.query(func.count(AuditLog.id)).scalar()
+    total_users = await count(select(func.count(User.id)))
+    active_users = await count(select(func.count(User.id)).where(User.is_active == True))
+    admin_count = await count(select(func.count(User.id)).where(User.role == UserRole.ADMIN))
+    superuser_count = await count(
+        select(func.count(User.id)).where(User.role == UserRole.SUPERUSER)
+    )
+    regular_user_count = await count(
+        select(func.count(User.id)).where(User.role == UserRole.USER)
+    )
+    confidential_access_users = await count(
+        select(func.count(User.id)).where(User.can_access_confidential == True)
+    )
+    total_audit_logs = await count(select(func.count(AuditLog.id)))
 
-    # Recent admin actions (last 7 days)
     week_ago = datetime.utcnow() - timedelta(days=7)
-    recent_admin_actions = (
-        db.query(func.count(AuditLog.id))
-        .filter(AuditLog.created_at >= week_ago)
-        .scalar()
+    recent_admin_actions = await count(
+        select(func.count(AuditLog.id)).where(AuditLog.created_at >= week_ago)
     )
 
-    # System health check
     health_status = {
         "database": "healthy",
         "redis": "unknown",
@@ -639,16 +555,13 @@ async def get_extended_admin_stats(
         "ollama": "unknown",
     }
 
-    # Check database
     try:
-        db.execute("SELECT 1")
+        await db.execute(text("SELECT 1"))
     except Exception:
         health_status["database"] = "unhealthy"
 
-    # Check Redis
     try:
         import redis
-        import os
 
         r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         r.ping()
@@ -671,37 +584,39 @@ async def get_extended_admin_stats(
 
 @router.get("/queue-stats", response_model=QueueStats)
 async def get_queue_stats(
-    current_user: User = Depends(require_admin_only), db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get processing queue statistics"""
-    # Count tasks by status
-    pending_tasks = (
-        db.query(func.count(ProcessingQueue.id))
-        .filter(ProcessingQueue.status == TaskStatus.PENDING)
-        .scalar()
+    """Get processing queue statistics."""
+    async def count(stmt):
+        r = await db.execute(stmt)
+        return r.scalar_one()
+
+    pending_tasks = await count(
+        select(func.count(ProcessingQueue.id)).where(
+            ProcessingQueue.status == TaskStatus.PENDING
+        )
     )
-    in_progress_tasks = (
-        db.query(func.count(ProcessingQueue.id))
-        .filter(ProcessingQueue.status == TaskStatus.IN_PROGRESS)
-        .scalar()
+    in_progress_tasks = await count(
+        select(func.count(ProcessingQueue.id)).where(
+            ProcessingQueue.status == TaskStatus.IN_PROGRESS
+        )
     )
-    completed_tasks = (
-        db.query(func.count(ProcessingQueue.id))
-        .filter(ProcessingQueue.status == TaskStatus.COMPLETED)
-        .scalar()
+    completed_tasks = await count(
+        select(func.count(ProcessingQueue.id)).where(
+            ProcessingQueue.status == TaskStatus.COMPLETED
+        )
     )
-    failed_tasks = (
-        db.query(func.count(ProcessingQueue.id))
-        .filter(ProcessingQueue.status == TaskStatus.FAILED)
-        .scalar()
+    failed_tasks = await count(
+        select(func.count(ProcessingQueue.id)).where(
+            ProcessingQueue.status == TaskStatus.FAILED
+        )
     )
 
-    # Calculate average wait time for pending tasks
-    pending_with_created = (
-        db.query(ProcessingQueue)
-        .filter(ProcessingQueue.status == TaskStatus.PENDING)
-        .all()
+    pending_result = await db.execute(
+        select(ProcessingQueue).where(ProcessingQueue.status == TaskStatus.PENDING)
     )
+    pending_with_created = pending_result.scalars().all()
 
     if pending_with_created:
         total_wait_minutes = sum(
@@ -712,13 +627,13 @@ async def get_queue_stats(
     else:
         average_wait_time = None
 
-    # Find longest running task
-    longest_running = (
-        db.query(ProcessingQueue)
-        .filter(ProcessingQueue.status == TaskStatus.IN_PROGRESS)
+    longest_result = await db.execute(
+        select(ProcessingQueue)
+        .where(ProcessingQueue.status == TaskStatus.IN_PROGRESS)
         .order_by(ProcessingQueue.started_at.asc())
-        .first()
+        .limit(1)
     )
+    longest_running = longest_result.scalar_one_or_none()
 
     longest_running_task = None
     if longest_running and longest_running.started_at:
@@ -737,33 +652,29 @@ async def get_queue_stats(
 
 @router.get("/anomalies", response_model=AnomalyBucketResponse)
 async def get_anomalies(
-    current_user: User = Depends(require_admin_only), db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get documents stuck in processing for more than 24 hours
-
-    This is the same report generated by the daily Celery Beat task
-    """
+    """Get documents stuck in processing for more than 24 hours."""
     cutoff_time = datetime.utcnow() - timedelta(hours=24)
 
-    stuck_documents = (
-        db.query(Document)
+    stuck_result = await db.execute(
+        select(Document)
         .join(ProcessingQueue, Document.id == ProcessingQueue.document_id)
-        .filter(
+        .where(
             Document.status == DocumentStatus.PROCESSING,
             ProcessingQueue.created_at < cutoff_time,
             ProcessingQueue.status.in_([TaskStatus.IN_PROGRESS, TaskStatus.PENDING]),
         )
-        .all()
     )
+    stuck_documents = stuck_result.scalars().all()
 
     anomalies = []
     for doc in stuck_documents:
-        processing_task = (
-            db.query(ProcessingQueue)
-            .filter(ProcessingQueue.document_id == doc.id)
-            .first()
+        task_result = await db.execute(
+            select(ProcessingQueue).where(ProcessingQueue.document_id == doc.id).limit(1)
         )
+        processing_task = task_result.scalar_one_or_none()
 
         duration_hours = (datetime.utcnow() - doc.created_at).total_seconds() / 3600
 
@@ -775,12 +686,8 @@ async def get_anomalies(
                 status=doc.status.value,
                 created_at=doc.created_at,
                 stuck_duration_hours=round(duration_hours, 2),
-                last_task_type=processing_task.task_type.value
-                if processing_task
-                else None,
-                error_message=processing_task.error_message
-                if processing_task
-                else None,
+                last_task_type=processing_task.task_type.value if processing_task else None,
+                error_message=processing_task.error_message if processing_task else None,
             )
         )
 
@@ -793,13 +700,13 @@ async def get_anomalies(
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
-    current_user: User = Depends(require_admin_only), db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get complete admin dashboard data"""
+    """Get complete admin dashboard data."""
     stats = await get_system_stats(current_user, db)
     queue_stats = await get_queue_stats(current_user, db)
 
-    # System health check
     health_status = {
         "database": "healthy",
         "redis": "unknown",
@@ -807,16 +714,13 @@ async def get_dashboard(
         "kimi_api": "unknown",
     }
 
-    # Check database
     try:
-        db.execute("SELECT 1")
+        await db.execute(text("SELECT 1"))
     except Exception:
         health_status["database"] = "unhealthy"
 
-    # Check Redis
     try:
         import redis
-        import os
 
         r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         r.ping()
@@ -824,20 +728,16 @@ async def get_dashboard(
     except Exception:
         health_status["redis"] = "unhealthy"
 
-    # Check Ollama
     try:
         import httpx
 
         ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-        response = httpx.get(f"{ollama_url}/api/tags", timeout=2)
-        if response.status_code == 200:
-            health_status["ollama"] = "healthy"
-        else:
-            health_status["ollama"] = "degraded"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{ollama_url}/api/tags", timeout=2.0)
+            health_status["ollama"] = "healthy" if response.status_code == 200 else "degraded"
     except Exception:
         health_status["ollama"] = "unreachable"
 
-    # Check Kimi (Moonshot AI) API
     if os.getenv("KIMI_API_KEY"):
         health_status["kimi_api"] = "configured"
     else:
@@ -856,33 +756,34 @@ async def get_dashboard(
 # ============================================================================
 
 
-@router.get("/failed-tasks")  # admin: list failed tasks in the Dead Letter Queue
+@router.get("/failed-tasks")
 async def list_failed_tasks(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=200, description="Items per page"),
     task_name: Optional[str] = Query(None, description="Filter by task name"),
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    List permanently failed Celery tasks stored in the Dead Letter Queue.
-
-    Admin only. Returns paginated results ordered by failure time (newest first).
-    """
+    """List permanently failed Celery tasks in the Dead Letter Queue (Admin only)."""
     from app.models.failed_task import FailedCeleryTask
-    from sqlalchemy import desc
 
-    query = db.query(FailedCeleryTask)
+    stmt = select(FailedCeleryTask)
+    count_stmt = select(func.count()).select_from(FailedCeleryTask)
+
     if task_name:
-        query = query.filter(FailedCeleryTask.task_name.ilike(f"%{task_name}%"))
+        condition = FailedCeleryTask.task_name.ilike(f"%{task_name}%")
+        stmt = stmt.where(condition)
+        count_stmt = count_stmt.where(condition)
 
-    total = query.count()
-    items = (
-        query.order_by(desc(FailedCeleryTask.failed_at))
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar_one()
+
+    result = await db.execute(
+        stmt.order_by(desc(FailedCeleryTask.failed_at))
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .all()
     )
+    items = result.scalars().all()
 
     return {
         "total": total,
@@ -908,16 +809,15 @@ async def list_failed_tasks(
 async def get_failed_task(
     task_id: str,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a single failed task with full traceback (Admin only)."""
     from app.models.failed_task import FailedCeleryTask
 
-    item = (
-        db.query(FailedCeleryTask)
-        .filter(FailedCeleryTask.task_id == task_id)
-        .first()
+    result = await db.execute(
+        select(FailedCeleryTask).where(FailedCeleryTask.task_id == task_id)
     )
+    item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Failed task not found")
 
@@ -940,21 +840,20 @@ async def get_failed_task(
 async def delete_failed_task(
     task_id: str,
     current_user: User = Depends(require_admin_only),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a single failed task from the DLQ (Admin only)."""
     from app.models.failed_task import FailedCeleryTask
 
-    item = (
-        db.query(FailedCeleryTask)
-        .filter(FailedCeleryTask.task_id == task_id)
-        .first()
+    result = await db.execute(
+        select(FailedCeleryTask).where(FailedCeleryTask.task_id == task_id)
     )
+    item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Failed task not found")
 
-    db.delete(item)
-    db.commit()
+    await db.delete(item)
+    await db.commit()
 
 
 # ============================================================================
@@ -967,12 +866,7 @@ async def test_alert(
     severity: str = "HIGH",
     current_user: User = Depends(require_admin_only),
 ):
-    """
-    Send a test alert to all configured notification channels.
-
-    Useful for verifying Telegram bot token and admin chat ID are correct.
-    Severity must be one of: CRITICAL, HIGH, MEDIUM, LOW, INFO.
-    """
+    """Send a test alert to all configured notification channels."""
     from app.services.alert_service import alert_service
 
     valid = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}

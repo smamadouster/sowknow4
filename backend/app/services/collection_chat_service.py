@@ -10,8 +10,8 @@ import uuid
 import json
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
-from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
 from app.models.collection import Collection, CollectionChatSession
 from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
@@ -25,8 +25,8 @@ from app.services.llm_router import llm_router
 logger = logging.getLogger(__name__)
 
 
-def create_audit_log(
-    db: Session,
+async def create_audit_log(
+    db: AsyncSession,
     user_id: uuid.UUID,
     action: AuditAction,
     resource_type: str,
@@ -43,9 +43,9 @@ def create_audit_log(
             details=json.dumps(details) if details else None,
         )
         db.add(audit_entry)
-        db.commit()
+        await db.commit()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Audit logging failed: {str(e)}")
 
 
@@ -60,7 +60,7 @@ class CollectionChatService:
         self,
         collection_id: uuid.UUID,
         user: User,
-        db: Session,
+        db: AsyncSession,
         session_name: Optional[str] = None,
     ) -> tuple[ChatSession, bool]:
         """
@@ -76,7 +76,7 @@ class CollectionChatService:
             Tuple of (ChatSession, created)
         """
         # Get collection
-        collection = db.query(Collection).filter(Collection.id == collection_id).first()
+        collection = (await db.execute(select(Collection).where(Collection.id == collection_id))).scalar_one_or_none()
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
@@ -84,10 +84,10 @@ class CollectionChatService:
         # Check for existing session
         if collection.chat_session_id:
             session = (
-                db.query(ChatSession)
-                .filter(ChatSession.id == collection.chat_session_id)
-                .first()
-            )
+                await db.execute(
+                    select(ChatSession).where(ChatSession.id == collection.chat_session_id)
+                )
+            ).scalar_one_or_none()
             if session:
                 return session, False
 
@@ -114,8 +114,8 @@ class CollectionChatService:
         )
         db.add(collection_chat)
 
-        db.commit()
-        db.refresh(session)
+        await db.commit()
+        await db.refresh(session)
 
         logger.info(f"Created chat session {session.id} for collection {collection_id}")
         return session, True
@@ -125,7 +125,7 @@ class CollectionChatService:
         collection_id: uuid.UUID,
         message: str,
         user: User,
-        db: Session,
+        db: AsyncSession,
         session_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -147,7 +147,7 @@ class CollectionChatService:
         )
 
         # Get collection documents for context
-        collection = db.query(Collection).filter(Collection.id == collection_id).first()
+        collection = (await db.execute(select(Collection).where(Collection.id == collection_id))).scalar_one_or_none()
 
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
@@ -156,12 +156,13 @@ class CollectionChatService:
         from app.models.collection import CollectionItem
 
         collection_items = (
-            db.query(CollectionItem)
-            .filter(CollectionItem.collection_id == collection_id)
-            .order_by(CollectionItem.relevance_score.desc())
-            .limit(20)
-            .all()
-        )
+            await db.execute(
+                select(CollectionItem)
+                .where(CollectionItem.collection_id == collection_id)
+                .order_by(CollectionItem.relevance_score.desc())
+                .limit(20)
+            )
+        ).scalars().all()
 
         # Gather document context
         document_context = await self._build_document_context(collection_items, db)
@@ -180,7 +181,7 @@ class CollectionChatService:
                 for item in collection_items
                 if item.document and item.document.bucket.value == "confidential"
             ]
-            create_audit_log(
+            await create_audit_log(
                 db=db,
                 user_id=user.id,
                 action=AuditAction.CONFIDENTIAL_ACCESSED,
@@ -242,17 +243,18 @@ class CollectionChatService:
         session.title = session.title  # Triggers updated_at
 
         # Update collection chat stats
-        collection_chat = (
-            db.query(CollectionChatSession)
-            .filter(CollectionChatSession.collection_id == collection_id)
-            .first()
+        result = await db.execute(
+            select(CollectionChatSession).where(
+                CollectionChatSession.collection_id == collection_id
+            )
         )
+        collection_chat = result.scalar_one_or_none()
         if collection_chat:
             collection_chat.message_count += 1
             collection_chat.llm_used = response_data["llm_used"]
             collection_chat.total_tokens_used += response_data.get("total_tokens", 0)
 
-        db.commit()
+        await db.commit()
 
         return {
             "session_id": str(session.id),
@@ -264,7 +266,7 @@ class CollectionChatService:
         }
 
     async def _build_document_context(
-        self, collection_items: List[Any], db: Session
+        self, collection_items: List[Any], db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """Build document context from collection items"""
         context = []
@@ -277,11 +279,12 @@ class CollectionChatService:
             from app.models.document import DocumentChunk
 
             chunks = (
-                db.query(DocumentChunk)
-                .filter(DocumentChunk.document_id == item.document_id)
-                .limit(3)
-                .all()
-            )  # Top 3 chunks per document
+                await db.execute(
+                    select(DocumentChunk)
+                    .where(DocumentChunk.document_id == item.document_id)
+                    .limit(3)
+                )
+            ).scalars().all()  # Top 3 chunks per document
 
             doc_info = {
                 "id": str(item.document.id),
@@ -303,7 +306,7 @@ class CollectionChatService:
         collection: Collection,
         document_context: List[Dict[str, Any]],
         session: ChatSession,
-        db: Session,
+        db: AsyncSession,
     ) -> Dict[str, Any]:
         """Chat with MiniMax for public collections"""
 
@@ -332,12 +335,13 @@ When answering:
 
         # Get conversation history
         history = (
-            db.query(ChatMessage)
-            .filter(ChatMessage.session_id == session.id)
-            .order_by(ChatMessage.created_at)
-            .limit(10)
-            .all()
-        )
+            await db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session.id)
+                .order_by(ChatMessage.created_at)
+                .limit(10)
+            )
+        ).scalars().all()
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -389,7 +393,7 @@ When answering:
         collection: Collection,
         document_context: List[Dict[str, Any]],
         session: ChatSession,
-        db: Session,
+        db: AsyncSession,
     ) -> Dict[str, Any]:
         """Chat with Ollama for confidential collections"""
 

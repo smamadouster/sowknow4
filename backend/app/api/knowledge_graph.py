@@ -5,7 +5,8 @@ Provides endpoints for entity extraction, relationship mapping, timeline
 construction, and graph visualization data.
 """
 from fastapi import status, APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from typing import Optional, List
 from uuid import UUID
 
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/knowledge-graph", tags=["knowledge-graph"])
 async def extract_entities_from_document(
     document_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Extract entities from a document using Gemini Flash
@@ -35,17 +36,15 @@ async def extract_entities_from_document(
     from app.models.document import Document, DocumentChunk, DocumentStatus
 
     # Get document
-    document = db.query(Document).filter(
-        Document.id == document_id
-    ).first()
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    document = result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Get document chunks
-    chunks = db.query(DocumentChunk).filter(
-        DocumentChunk.document_id == document_id
-    ).all()
+    result = await db.execute(select(DocumentChunk).where(DocumentChunk.document_id == document_id))
+    chunks = result.scalars().all()
 
     if not chunks:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document has no extracted text")
@@ -67,33 +66,35 @@ async def list_entities(
     page_size: int = Query(50, ge=1, le=100),
     search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     List all entities in the knowledge graph
 
     Can filter by type, search by name, and paginate results.
     """
-    query = db.query(Entity)
+    stmt = select(Entity)
 
     # Apply type filter
     if entity_type:
         try:
             entity_type_enum = EntityType(entity_type)
-            query = query.filter(Entity.entity_type == entity_type_enum)
+            stmt = stmt.where(Entity.entity_type == entity_type_enum)
         except ValueError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid entity type: {entity_type}")
 
     # Apply search filter
     if search:
-        query = query.filter(Entity.name.ilike(f"%{search}%"))
+        stmt = stmt.where(Entity.name.ilike(f"%{search}%"))
 
     # Get total count
-    total = query.count()
+    count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = count_result.scalar_one()
 
     # Apply pagination
     offset = (page - 1) * page_size
-    entities = query.offset(offset).limit(page_size).all()
+    result = await db.execute(stmt.offset(offset).limit(page_size))
+    entities = result.scalars().all()
 
     return {
         "entities": [
@@ -119,32 +120,32 @@ async def list_entities(
 async def get_entity_details(
     entity_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get detailed information about a specific entity
 
     Includes relationships, mentions, and related documents.
     """
-    entity = db.query(Entity).filter(Entity.id == entity_id).first()
+    result = await db.execute(select(Entity).where(Entity.id == entity_id))
+    entity = result.scalar_one_or_none()
 
     if not entity:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found")
 
     # Get relationships
-    outgoing = db.query(EntityRelationship).filter(
-        EntityRelationship.source_id == entity_id
-    ).all()
+    result = await db.execute(select(EntityRelationship).where(EntityRelationship.source_id == entity_id))
+    outgoing = result.scalars().all()
 
-    incoming = db.query(EntityRelationship).filter(
-        EntityRelationship.target_id == entity_id
-    ).all()
+    result = await db.execute(select(EntityRelationship).where(EntityRelationship.target_id == entity_id))
+    incoming = result.scalars().all()
 
     # Get mentions
     from app.models.knowledge_graph import EntityMention
-    mentions = db.query(EntityMention).filter(
-        EntityMention.entity_id == entity_id
-        ).limit(20).all()
+    result = await db.execute(
+        select(EntityMention).where(EntityMention.entity_id == entity_id).limit(20)
+    )
+    mentions = result.scalars().all()
 
     return {
         "entity": {
@@ -198,7 +199,7 @@ async def get_knowledge_graph(
     entity_type: Optional[str] = None,
     limit: int = Query(100, ge=10, le=500),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get knowledge graph data for visualization
@@ -218,7 +219,7 @@ async def get_knowledge_graph(
 async def get_entity_connections(
     entity_name: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get all entities connected to a given entity
@@ -239,7 +240,7 @@ async def get_entity_neighbors(
     entity_id: UUID,
     relation_type: Optional[str] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get direct neighbors of an entity
@@ -260,7 +261,7 @@ async def get_shortest_path(
     source_name: str,
     target_name: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Find shortest path between two entities
@@ -284,7 +285,7 @@ async def get_timeline(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get timeline events within a date range
@@ -322,7 +323,7 @@ async def get_timeline(
 async def get_entity_timeline(
     entity_name: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get timeline for a specific entity
@@ -345,7 +346,7 @@ async def get_entity_timeline(
 async def get_timeline_insights(
     limit: int = Query(10, ge=1, le=20),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get timeline insights and patterns
@@ -364,7 +365,7 @@ async def get_timeline_insights(
 async def get_entity_clusters(
     min_size: int = Query(2, ge=2, le=10),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get clusters of highly connected entities
@@ -386,7 +387,7 @@ async def get_entity_clusters(
 async def extract_entities_batch(
     document_ids: List[UUID],
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Extract entities from multiple documents in batch
@@ -403,14 +404,13 @@ async def extract_entities_batch(
     }
 
     for doc_id in document_ids:
-        document = db.query(Document).get(doc_id)
+        document = await db.get(Document, doc_id)
         if not document:
             results["failed"] += 1
             continue
 
-        chunks = db.query(DocumentChunk).filter(
-            DocumentChunk.document_id == doc_id
-        ).all()
+        result = await db.execute(select(DocumentChunk).where(DocumentChunk.document_id == doc_id))
+        chunks = result.scalars().all()
 
         if not chunks:
             results["failed"] += 1

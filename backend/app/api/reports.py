@@ -8,35 +8,16 @@ GET  /reports/status/{task_id} — poll task status
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import status, APIRouter, Depends
-from pydantic import BaseModel
 
 from app.api.deps import get_current_user
 from app.models.user import User
+from app.schemas.reports import GenerateReportRequest, GenerateReportResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
-
-
-class GenerateReportRequest(BaseModel):
-    """Request body for POST /reports/generate."""
-
-    report_type: str = "system_summary"
-    format: str = "pdf"
-    filters: dict = {}
-    output_filename: Optional[str] = None
-
-
-class GenerateReportResponse(BaseModel):
-    """Response returned by POST /reports/generate."""
-
-    task_id: str
-    status: str = "processing"
-    status_url: str
-    message: str = "Report generation queued"
 
 
 @router.post("/generate", status_code=status.HTTP_202_ACCEPTED)

@@ -18,7 +18,8 @@ Token Blacklist:
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from datetime import timedelta
 from typing import Any
 import uuid
@@ -47,6 +48,7 @@ from app.utils.security import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from app.api.deps import get_current_user
+from app.limiter import limiter
 
 load_dotenv()
 
@@ -259,7 +261,7 @@ def get_refresh_token_from_request(request: Request) -> str | None:
     return request.cookies.get(COOKIE_REFRESH_TOKEN_NAME)
 
 
-def authenticate_user(db: Session, email: str, password: str):
+async def authenticate_user(db: AsyncSession, email: str, password: str):
     """
     Authenticate a user with email and password.
 
@@ -267,14 +269,15 @@ def authenticate_user(db: Session, email: str, password: str):
     user enumeration. Generic error message used in responses.
 
     Args:
-        db: Database session
+        db: Async database session
         email: User email
         password: Plain text password
 
     Returns:
         User object if authenticated, False otherwise
     """
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
     if not user:
         return False
     if not verify_password(password, user.hashed_password):
@@ -305,8 +308,8 @@ def authenticate_user(db: Session, email: str, password: str):
 @router.post(
     "/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED
 )
-# RATE_LIMIT: 10/minute (prevent automated account creation)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def register(request: Request, user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """
     Register a new user.
 
@@ -327,7 +330,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         HTTPException 400: If user already exists or password validation fails
     """
     # Check if user already exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    result = await db.execute(select(User).where(User.email == user_data.email))
+    existing_user = result.scalar_one_or_none()
     if existing_user:
         # Generic error message prevents email enumeration
         raise HTTPException(
@@ -347,19 +351,20 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     )
 
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
 
     logger.info(f"New user registered: {db_user.email}")
     return UserPublic.from_orm(db_user)
 
 
 @router.post("/login", response_model=LoginResponse)
-# RATE_LIMIT: 100/minute (prevents brute force attacks)
+@limiter.limit("20/minute")
 async def login(
+    request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Login and set httpOnly cookies with tokens.
@@ -426,9 +431,9 @@ async def login(
 
 
 @router.post("/refresh", response_model=LoginResponse)
-# RATE_LIMIT: 200/minute (refresh may happen frequently)
+@limiter.limit("60/minute")
 async def refresh_token(
-    request: Request, response: Response, db: Session = Depends(get_db)
+    request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ):
     """
     Refresh access token using refresh token from httpOnly cookie.
@@ -485,7 +490,8 @@ async def refresh_token(
 
     # Verify user still exists and is active
     email = payload.get("sub")
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -593,11 +599,11 @@ async def logout(request: Request, response: Response):
 # =============================================================================
 
 @router.post("/forgot-password")
-# RATE_LIMIT: 3/hour per IP (prevent enumeration and abuse)
+@limiter.limit("5/minute")
 async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Request a password reset link.
@@ -645,10 +651,11 @@ async def forgot_password(
 
     # --- Generate reset token (stored in Redis; no email sent) ---
     email = payload.email.strip().lower()
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
 
     if user and user.is_active:
-        reset_token = _secrets.token_urlsafe(32)
+        reset_token = secrets.token_urlsafe(32)
         if redis_client:
             try:
                 redis_client.setex(
@@ -686,7 +693,7 @@ EMAIL_VERIFY_TTL = 86400  # 24 hours
 
 
 @router.post("/verify-email/{token}")
-async def verify_email(token: str, db: Session = Depends(get_db)):
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
     """
     Verify a user's email address using the token from Redis.
 
@@ -719,7 +726,8 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
             detail="Invalid or expired verification token",
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -735,7 +743,7 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
         return {"message": "Email already verified"}
 
     user.email_verified = True
-    db.commit()
+    await db.commit()
 
     try:
         redis_client.delete(f"email_verify:{token}")
@@ -750,7 +758,7 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
 async def resend_verification(
     request: Request,
     payload: ResendVerificationRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Generate a new email verification token (admin-managed delivery).
@@ -782,7 +790,8 @@ async def resend_verification(
             logger.error(f"Rate limit check failed: {e}")
 
     email = payload.email.strip().lower()
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
 
     if user and user.is_active and not user.email_verified:
         verify_token = secrets.token_urlsafe(32)
@@ -820,7 +829,7 @@ async def telegram_auth(
     response: Response,
     request: Request,
     auth_data: TelegramAuthRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Authenticate or create a user via Telegram.
@@ -875,7 +884,8 @@ async def telegram_auth(
     email = f"telegram_{telegram_id_hash}@sowknow.local"
 
     # Check if user exists
-    user = db.query(User).filter(User.email == email).first()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
 
     if not user:
         # Create new user from Telegram data
@@ -897,8 +907,8 @@ async def telegram_auth(
         )
 
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
 
         logger.info(f"New Telegram user created: {email}")
 

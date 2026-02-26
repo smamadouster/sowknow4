@@ -8,6 +8,7 @@ a knowledge graph for graph-augmented retrieval.
 
 import logging
 import json
+import warnings
 from typing import List, Dict, Any, Optional, Set
 from datetime import datetime, date
 from sqlalchemy.orm import Session
@@ -260,6 +261,13 @@ Extract all entities, relationships, and dated events now:"""
             response_parts = []
 
             # Route to appropriate LLM based on document confidentiality
+            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
+            warnings.warn(
+                "EntityExtractionService uses inline LLM routing. "
+                "Migrate to llm_router.select_provider() to remove this warning.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             if use_ollama:
                 llm_service = self._get_ollama_service()
                 async for chunk in llm_service.chat_completion(

@@ -6,6 +6,7 @@ and language from documents during the ingestion pipeline.
 """
 
 import logging
+import warnings
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -188,6 +189,13 @@ Extract the tags now:"""
         try:
             response_parts = []
             # Use MiniMax for public documents
+            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
+            warnings.warn(
+                "AutoTaggingService uses inline LLM routing. "
+                "Migrate to llm_router.select_provider() to remove this warning.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             llm_service = self.minimax_service
             async for chunk in llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.3, max_tokens=1000
@@ -253,6 +261,13 @@ Extract the tags now:"""
         ]
 
         try:
+            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
+            warnings.warn(
+                "AutoTaggingService uses inline LLM routing (confidential path). "
+                "Migrate to llm_router.select_provider() to remove this warning.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             llm_service = self._get_ollama_service()
             response_parts = []
             async for chunk in llm_service.chat_completion(

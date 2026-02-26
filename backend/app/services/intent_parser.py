@@ -8,6 +8,7 @@ including keywords, date ranges, entities, and document types.
 import os
 import logging
 import json
+import warnings
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from enum import Enum
@@ -424,6 +425,13 @@ Now parse the user's query:"""
             ]
 
             # Route to appropriate LLM based on confidentiality
+            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
+            warnings.warn(
+                "IntentParser uses inline LLM routing. "
+                "Migrate to llm_router.select_provider() to remove this warning.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             response_parts = []
             if use_ollama:
                 llm_service = self._get_ollama_service()

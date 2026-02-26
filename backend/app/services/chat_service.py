@@ -306,9 +306,9 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Build RAG context
         messages = self.build_rag_context(user_message, sources, history)
 
-        # Select LLM based on confidentiality — unified routing for all public interactions
-        # 1. Confidential docs -> Ollama (privacy guarantee)
-        # 2. All public (RAG + general) -> MiniMax M2.5 (direct) -> Kimi K2.5 (OpenRouter) -> Ollama
+        # Select LLM via centralized llm_router (single source of truth for routing).
+        # Confidential docs → Ollama only (privacy guarantee).
+        # Public docs/general → fallback chain per llm_router.fallback_chains.
 
         if has_confidential:
             ollama_health = await self.ollama_service.health_check()
@@ -316,7 +316,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 logger.error(
                     f"Ollama unavailable for confidential query: {ollama_health.get('error', 'unknown')}"
                 )
-                # Enqueue via llm_router / DeferredQueryService so the query is retried
+                # Enqueue via DeferredQueryService so the query is retried when Ollama recovers
                 deferred_id = await deferred_query_service.enqueue(
                     user_id=str(current_user.id),
                     query_text=query,
@@ -340,22 +340,22 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                     "queued": True,
                     "deferred_id": deferred_id,
                 }
+
+        # Delegate provider selection to llm_router — no inline routing here
+        try:
+            routing_decision = await llm_router.select_provider(
+                query=user_message,
+                context_chunks=sources,
+                has_confidential=has_confidential,
+            )
+            llm_service = routing_decision.service
+            llm_provider = LLMProvider(routing_decision.provider_name)
+            routing_reason = routing_decision.reason.value
+        except RuntimeError as routing_err:
+            logger.error(f"llm_router.select_provider failed, falling back to Ollama: {routing_err}")
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
-            routing_reason = "confidential_docs"
-        elif self.minimax_service and self.minimax_service.api_key:
-            llm_service = self.minimax_service
-            llm_provider = LLMProvider.MINIMAX
-            routing_reason = "minimax_m25_direct"
-        elif self.openrouter_service:
-            # Kimi K2.5 via OpenRouter
-            llm_service = self.openrouter_service
-            llm_provider = LLMProvider.OPENROUTER
-            routing_reason = "kimi_k25_openrouter"
-        else:
-            llm_service = self.ollama_service
-            llm_provider = LLMProvider.OLLAMA
-            routing_reason = "final_fallback_ollama"
+            routing_reason = "emergency_fallback"
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
@@ -429,22 +429,22 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 yield f"data: {json.dumps({'type': 'message', 'content': error_msg})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
+
+        # Delegate provider selection to llm_router — no inline routing here
+        try:
+            routing_decision = await llm_router.select_provider(
+                query=query,
+                context_chunks=sources,
+                has_confidential=has_confidential,
+            )
+            llm_service = routing_decision.service
+            llm_provider = LLMProvider(routing_decision.provider_name)
+            routing_reason = routing_decision.reason.value
+        except RuntimeError as routing_err:
+            logger.error(f"llm_router.select_provider failed (stream), falling back to Ollama: {routing_err}")
             llm_service = self.ollama_service
             llm_provider = LLMProvider.OLLAMA
-            routing_reason = "confidential_docs"
-        elif self.minimax_service and self.minimax_service.api_key:
-            llm_service = self.minimax_service
-            llm_provider = LLMProvider.MINIMAX
-            routing_reason = "minimax_m25_direct"
-        elif self.openrouter_service:
-            # Kimi K2.5 via OpenRouter
-            llm_service = self.openrouter_service
-            llm_provider = LLMProvider.OPENROUTER
-            routing_reason = "kimi_k25_openrouter"
-        else:
-            llm_service = self.ollama_service
-            llm_provider = LLMProvider.OLLAMA
-            routing_reason = "final_fallback_ollama"
+            routing_reason = "emergency_fallback"
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 

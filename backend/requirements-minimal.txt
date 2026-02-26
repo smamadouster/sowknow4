@@ -47,6 +47,9 @@ paddleocr==2.7.3
 paddlepaddle==2.6.2
 opencv-python-headless==4.8.1.78
 
+# Rate limiting
+slowapi>=0.1.9
+
 # Utilities
 pydantic==2.5.0
 pydantic-settings==2.1.0

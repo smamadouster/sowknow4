@@ -47,6 +47,20 @@ SESSION_KEY_PREFIX = "telegram_session:"
 
 (SELECTING_BUCKET, CHECKING_DUPLICATE) = range(2)
 
+# ---------------------------------------------------------------------------
+# Media-group (album) accumulator
+# When a user selects multiple files in Telegram, each file arrives as a
+# separate message sharing the same media_group_id.  We buffer them for
+# MEDIA_GROUP_WINDOW seconds, then show ONE bucket-selection keyboard for
+# the whole batch.
+# ---------------------------------------------------------------------------
+import asyncio as _asyncio
+
+MEDIA_GROUP_WINDOW = 2.0  # seconds to wait for stragglers
+
+# _media_groups[media_group_id] = {"files": [...], "task": asyncio.Task, "context": ctx, "user": user}
+_media_groups: dict = {}
+
 _SENSITIVE_HEADERS = {"authorization", "x-bot-api-key"}
 
 
@@ -507,6 +521,49 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_html(help_text)
 
 
+async def _flush_media_group(media_group_id: str, chat_id: int, context) -> None:
+    """Called after MEDIA_GROUP_WINDOW seconds — process all buffered files as a batch."""
+    await _asyncio.sleep(MEDIA_GROUP_WINDOW)
+
+    group = _media_groups.pop(media_group_id, None)
+    if not group:
+        return
+
+    user = group["user"]
+    files = group["files"]  # list of {"file_bytes": bytes, "filename": str, "tags": list}
+
+    session = await session_manager.get_session(user.id)
+    if not session:
+        await context.bot.send_message(chat_id, "❌ Session expired. Please use /start again.")
+        return
+
+    # Duplicate check for each file
+    summary_lines = []
+    for f in files:
+        dup = await bot_client.check_duplicate(f["filename"], session["access_token"])
+        flag = "⚠️ dup" if dup.get("exists") else "✅"
+        summary_lines.append(f"{flag} {f['filename']}")
+
+    count = len(files)
+    summary = "\n".join(f"📄 {line}" for line in summary_lines)
+
+    await session_manager.update_session(user.id, {"pending_batch": files, "pending_file": None})
+
+    keyboard = [
+        [InlineKeyboardButton("📄 Public", callback_data="bucket_public")],
+        [InlineKeyboardButton("🔒 Confidential", callback_data="bucket_confidential")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="bucket_cancel")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id,
+        f"📦 <b>{count} file{'s' if count > 1 else ''} ready</b>\n\n{summary}\n\n"
+        f"🔐 Where should {'these files' if count > 1 else 'this file'} go?",
+        parse_mode="HTML",
+        reply_markup=reply_markup,
+    )
+
+
 async def handle_document_upload(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -528,76 +585,87 @@ async def handle_document_upload(
     else:
         return
 
-    # Parse hashtags from caption (e.g. "#urgent #invoice → ["urgent", "invoice"])
+    # Parse hashtags from caption
     caption = update.message.caption or ""
     parsed_tags: List[str] = re.findall(r"#(\w+)", caption)
-    if parsed_tags:
-        logger.info(f"Parsed {len(parsed_tags)} tag(s) from caption: {parsed_tags}")
 
     try:
         file_obj = await file.get_file()
-        file_bytes = await file_obj.download_as_bytearray()
-
-        await session_manager.update_session(
-            user.id,
-            {
-                "pending_file": {
-                    "file": bytes(file_bytes),
-                    "filename": filename,
-                    "tags": parsed_tags,
-                }
-            },
-        )
-
-        await update.message.reply_text(
-            f"📄 <b>{filename}</b>\n\n⏳ Checking for duplicates...", parse_mode="HTML"
-        )
-
-        session = await session_manager.get_session(user.id)
-        if not session:
-            await update.message.reply_text(
-                "❌ Session expired. Please use /start again."
-            )
-            return
-
-        duplicate_check = await bot_client.check_duplicate(
-            filename, session["access_token"]
-        )
-
-        if duplicate_check.get("exists"):
-            dupes = duplicate_check.get("documents", [])
-            dupe_list = "\n".join(
-                [f"• {d.get('title', 'Untitled')}" for d in dupes[:3]]
-            )
-            await update.message.reply_text(
-                f"⚠️ <b>Duplicate found!</b>\n\n"
-                f"Similar documents:\n{dupe_list}\n\n"
-                f"Do you still want to upload this file?",
-                parse_mode="HTML",
-            )
-        else:
-            await update.message.reply_text(
-                f"✅ No duplicates found!\n\n"
-                f"<b>{filename}</b>\n\n"
-                f"🔐 Where should this file go?",
-                parse_mode="HTML",
-            )
-
-        keyboard = [
-            [InlineKeyboardButton("📄 Public", callback_data="bucket_public")],
-            [
-                InlineKeyboardButton(
-                    "🔒 Confidential", callback_data="bucket_confidential"
-                )
-            ],
-            [InlineKeyboardButton("❌ Cancel", callback_data="bucket_cancel")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Choose visibility:", reply_markup=reply_markup)
-
+        file_bytes = bytes(await file_obj.download_as_bytearray())
     except Exception as e:
         logger.error(f"File download error: {str(e)}")
-        await update.message.reply_text(f"❌ Error preparing file: {str(e)}")
+        await update.message.reply_text(f"❌ Error downloading file: {str(e)}")
+        return
+
+    media_group_id = update.message.media_group_id
+
+    # ── BATCH MODE: multiple files selected together ──────────────────────────
+    if media_group_id:
+        if media_group_id not in _media_groups:
+            _media_groups[media_group_id] = {
+                "files": [],
+                "user": user,
+                "task": None,
+            }
+            await update.message.reply_text(
+                f"📦 <b>Receiving files…</b>", parse_mode="HTML"
+            )
+        group = _media_groups[media_group_id]
+        group["files"].append({"file_bytes": file_bytes, "filename": filename, "tags": parsed_tags})
+
+        # Cancel previous timer and restart it (wait for last file in group)
+        if group["task"] and not group["task"].done():
+            group["task"].cancel()
+        group["task"] = _asyncio.ensure_future(
+            _flush_media_group(media_group_id, update.message.chat_id, context)
+        )
+        return
+
+    # ── SINGLE FILE MODE ──────────────────────────────────────────────────────
+    await session_manager.update_session(
+        user.id,
+        {
+            "pending_file": {
+                "file": file_bytes,
+                "filename": filename,
+                "tags": parsed_tags,
+            },
+            "pending_batch": None,
+        },
+    )
+
+    await update.message.reply_text(
+        f"📄 <b>{filename}</b>\n\n⏳ Checking for duplicates...", parse_mode="HTML"
+    )
+
+    session = await session_manager.get_session(user.id)
+    if not session:
+        await update.message.reply_text("❌ Session expired. Please use /start again.")
+        return
+
+    duplicate_check = await bot_client.check_duplicate(filename, session["access_token"])
+
+    if duplicate_check.get("exists"):
+        dupes = duplicate_check.get("documents", [])
+        dupe_list = "\n".join([f"• {d.get('title', d.get('original_filename', 'Untitled'))}" for d in dupes[:3]])
+        await update.message.reply_text(
+            f"⚠️ <b>Duplicate found!</b>\n\nSimilar documents:\n{dupe_list}\n\n"
+            f"Do you still want to upload this file?",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            f"✅ No duplicates found!\n\n<b>{filename}</b>\n\n🔐 Where should this file go?",
+            parse_mode="HTML",
+        )
+
+    keyboard = [
+        [InlineKeyboardButton("📄 Public", callback_data="bucket_public")],
+        [InlineKeyboardButton("🔒 Confidential", callback_data="bucket_confidential")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="bucket_cancel")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Choose visibility:", reply_markup=reply_markup)
 
 
 async def bucket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -611,20 +679,74 @@ async def bucket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     pending = session.get("pending_file")
-    if not pending:
+    pending_batch = session.get("pending_batch")
+
+    if not pending and not pending_batch:
         await query.edit_message_text("❌ No file pending. Please upload a file first.")
         return
 
     bucket_data = query.data
 
     if bucket_data == "bucket_cancel":
-        await session_manager.clear_pending_file(user.id)
+        await session_manager.update_session(user.id, {"pending_file": None, "pending_batch": None})
         await query.edit_message_text("❌ Upload cancelled.")
         return
 
     bucket = "confidential" if bucket_data == "bucket_confidential" else "public"
     bucket_emoji = "🔒" if bucket == "confidential" else "📄"
 
+    # ── BATCH UPLOAD ──────────────────────────────────────────────────────────
+    if pending_batch:
+        count = len(pending_batch)
+        await query.edit_message_text(
+            f"⏳ Uploading {count} file{'s' if count > 1 else ''} to {bucket_emoji} {bucket}..."
+        )
+        await session_manager.update_session(user.id, {"pending_batch": None, "pending_file": None})
+
+        success, failed = 0, 0
+        for item in pending_batch:
+            res = await bot_client.upload_document(
+                file_bytes=item["file_bytes"],
+                filename=item["filename"],
+                bucket=bucket,
+                access_token=session["access_token"],
+                tags=item.get("tags") or None,
+            )
+            if "error" in res:
+                failed += 1
+                logger.error(f"Batch upload failed for {item['filename']}: {res['error']}")
+            else:
+                success += 1
+                doc_id = res.get("document_id", "N/A")
+                file_size_mb = len(item["file_bytes"]) / (1024 * 1024)
+                estimated_time = max(30, int(30 + file_size_mb * 5))
+                msg = await query.message.reply_text(
+                    f"✅ <b>{item['filename']}</b>\n"
+                    f"🆔 {doc_id} • {bucket_emoji} {bucket}\n"
+                    f"⏱️ Est. {estimated_time // 60}m {estimated_time % 60}s",
+                    parse_mode="HTML",
+                )
+                document_tracking[doc_id] = {
+                    "chat_id": query.message.chat_id,
+                    "message_id": msg.message_id,
+                    "filename": item["filename"],
+                    "bucket_emoji": bucket_emoji,
+                    "access_token": session["access_token"],
+                    "last_status": "processing",
+                    "check_count": 0,
+                }
+                context.job_queue.run_once(
+                    check_document_status, when=5, data=doc_id,
+                    name=f"status_check_{doc_id}",
+                )
+
+        summary = f"✅ {success} uploaded"
+        if failed:
+            summary += f", ❌ {failed} failed"
+        await query.edit_message_text(f"📦 Batch complete: {summary}")
+        return
+
+    # ── SINGLE FILE UPLOAD ────────────────────────────────────────────────────
     await query.edit_message_text(
         f"⏳ Uploading {bucket_emoji} {pending['filename']}..."
     )

@@ -9,6 +9,7 @@ ARCHITECTURE: Redis-backed session storage for resilience
 - Class alias: UserContextStore = RedisSessionManager (backward-compatible)
 """
 
+import base64
 import os
 import logging
 import sys
@@ -96,6 +97,32 @@ class RedisSessionManager:
         """Generate Redis key for user session."""
         return f"{SESSION_KEY_PREFIX}{telegram_user_id}"
 
+    @staticmethod
+    def _encode_session(session_data: Dict[str, Any]) -> str:
+        """JSON-serialize session, base64-encoding any bytes values (e.g. pending_file.file)."""
+        def _encode(obj):
+            if isinstance(obj, (bytes, bytearray)):
+                return {"__b64__": base64.b64encode(obj).decode("ascii")}
+            if isinstance(obj, dict):
+                return {k: _encode(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_encode(i) for i in obj]
+            return obj
+        return json.dumps(_encode(session_data))
+
+    @staticmethod
+    def _decode_session(raw: str) -> Dict[str, Any]:
+        """Reverse _encode_session — restore base64 markers back to bytes."""
+        def _decode(obj):
+            if isinstance(obj, dict):
+                if "__b64__" in obj:
+                    return base64.b64decode(obj["__b64__"])
+                return {k: _decode(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_decode(i) for i in obj]
+            return obj
+        return _decode(json.loads(raw))
+
     async def get_session(self, telegram_user_id: int) -> Optional[Dict[str, Any]]:
         """
         Retrieve user session from Redis, or in-memory fallback if Redis is down.
@@ -109,7 +136,7 @@ class RedisSessionManager:
             key = self._get_key(telegram_user_id)
             data = await self._redis.get(key)
             if data:
-                return json.loads(data)
+                return self._decode_session(data)
             return None
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode session for user {telegram_user_id}: {e}")
@@ -138,7 +165,7 @@ class RedisSessionManager:
 
         try:
             key = self._get_key(telegram_user_id)
-            data = json.dumps(session_data)
+            data = self._encode_session(session_data)
             await self._redis.setex(key, SESSION_TTL_SECONDS, data)
             logger.debug(f"Session stored for user {telegram_user_id}")
             return True

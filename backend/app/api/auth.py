@@ -386,7 +386,7 @@ async def login(
         HTTPException 401: If credentials are invalid (generic message)
     """
     # Authenticate user
-    user = authenticate_user(db, form_data.username, form_data.password)
+    user = await authenticate_user(db, form_data.username, form_data.password)
     if not user:
         # Generic error message prevents user enumeration
         raise HTTPException(

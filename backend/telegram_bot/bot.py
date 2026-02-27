@@ -35,7 +35,8 @@ import redis.asyncio as redis_async
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+from app.core.redis_url import safe_redis_url
+REDIS_URL = safe_redis_url()
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO

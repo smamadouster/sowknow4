@@ -211,8 +211,8 @@ async def health():
         db_status = f"error: {str(e)}"
 
     try:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        r = redis.from_url(redis_url)
+        from app.core.redis_url import safe_redis_url
+        r = redis.from_url(safe_redis_url())
         r.ping()
         redis_status = "connected"
     except Exception as e:

@@ -98,7 +98,8 @@ async def unified_health_check():
     try:
         import redis as _redis
 
-        r = _redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+        from app.core.redis_url import safe_redis_url
+        r = _redis.from_url(safe_redis_url())
         r.ping()
         results["components"]["redis"] = {"status": "healthy"}
     except Exception as exc:

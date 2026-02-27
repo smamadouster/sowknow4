@@ -115,7 +115,8 @@ async def verify_telegram_user(telegram_user_id: int, bot_token: str) -> bool:
 # TOKEN BLACKLIST (Redis)
 # =============================================================================
 # Redis connection for token blacklist
-_redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+from app.core.redis_url import safe_redis_url
+_redis_url = safe_redis_url()
 try:
     redis_client = redis.from_url(_redis_url, decode_responses=True)
     redis_client.ping()  # Test connection

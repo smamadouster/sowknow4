@@ -31,7 +31,8 @@ OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamte
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
 # Redis configuration for context caching
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+from app.core.redis_url import safe_redis_url
+REDIS_URL = safe_redis_url()
 CACHE_TTL_SECONDS = 3600  # 1 hour TTL for cached responses
 CACHE_KEY_PREFIX = "sowknow:openrouter:cache:"
 

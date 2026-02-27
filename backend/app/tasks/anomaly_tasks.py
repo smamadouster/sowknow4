@@ -356,7 +356,8 @@ def system_health_check() -> dict:
 
         # Check Redis connection
         try:
-            r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+            from app.core.redis_url import safe_redis_url
+            r = redis.from_url(safe_redis_url())
             r.ping()
             health_status["checks"]["redis"] = {
                 "status": "healthy",

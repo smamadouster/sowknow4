@@ -563,7 +563,8 @@ async def get_extended_admin_stats(
     try:
         import redis
 
-        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        from app.core.redis_url import safe_redis_url
+        r = redis.from_url(safe_redis_url())
         r.ping()
         health_status["redis"] = "healthy"
     except Exception:
@@ -722,7 +723,8 @@ async def get_dashboard(
     try:
         import redis
 
-        r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        from app.core.redis_url import safe_redis_url
+        r = redis.from_url(safe_redis_url())
         r.ping()
         health_status["redis"] = "healthy"
     except Exception:

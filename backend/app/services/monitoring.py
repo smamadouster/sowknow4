@@ -621,8 +621,8 @@ def get_queue_monitor() -> QueueMonitor:
     """Get or create global queue monitor instance."""
     global _queue_monitor
     if _queue_monitor is None:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        _queue_monitor = QueueMonitor(redis_url=redis_url)
+        from app.core.redis_url import safe_redis_url
+        _queue_monitor = QueueMonitor(redis_url=safe_redis_url())
     return _queue_monitor
 
 

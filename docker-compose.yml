@@ -84,7 +84,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.minimal
-    container_name: sowknow4-backend
+    container_name: sowknow-backend
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -222,7 +222,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: sowknow4-frontend
+    container_name: sowknow-frontend
     restart: unless-stopped
     logging: *default-logging
     environment:

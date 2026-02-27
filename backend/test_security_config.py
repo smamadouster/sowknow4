@@ -6,7 +6,6 @@ This script tests that the security middleware is properly configured.
 
 import os
 import sys
-import re
 from pathlib import Path
 
 def test_production_security():
@@ -24,7 +23,6 @@ def test_production_security():
 
     try:
         # Import will fail with ValueError if security is enforced
-        import importlib
         if 'app.main_minimal' in sys.modules:
             del sys.modules['app.main_minimal']
 

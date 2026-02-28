@@ -108,14 +108,14 @@ async def get_chat_session(
     return ChatSessionResponse.model_validate(session)
 
 
-@router.post("/sessions/{session_id}/message")
+@router.post("/sessions/{session_id}/message", response_model=None)
 async def send_message(
     session_id: UUID,
     message_data: ChatMessageCreate,
     stream: bool = True,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> StreamingResponse | ChatMessageResponse:
+):
     """
     Send a message to the chat session
 

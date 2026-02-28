@@ -66,7 +66,7 @@ async def create_audit_log(
         logger.error(f"Audit logging failed: {str(e)}")
 
 
-@router.post("", response_model=SearchResponse)
+@router.post("", response_model=None)
 @limiter.limit("30/minute")
 async def search_documents(
     request: Request,
@@ -74,7 +74,7 @@ async def search_documents(
     cursor: str | None = Query(None, description="Cursor for pagination (base64 encoded)"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> SearchResponse | JSONResponse:
+):
     """
     Perform hybrid search combining semantic and keyword search.
 

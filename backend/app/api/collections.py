@@ -623,13 +623,13 @@ async def chat_with_collection(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Chat error: {str(e)}")
 
 
-@router.get("/{collection_id}/export")
+@router.get("/{collection_id}/export", response_model=None)
 async def export_collection(
     collection_id: UUID,
     format: str = Query("json", pattern="^(pdf|json)$", description="Export format: pdf or json"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> StreamingResponse | CollectionExportResponse:
+):
     """
     Export a collection in PDF or JSON format.
 

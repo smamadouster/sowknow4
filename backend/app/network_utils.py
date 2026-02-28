@@ -2,19 +2,16 @@
 Network utilities with retry logic for SOWKNOW services
 Provides resilient HTTP client with exponential backoff and circuit breaker
 """
+
 import asyncio
 import functools
 import logging
 import time
-from typing import Any, Callable, Optional, Tuple, Type
+from collections.abc import Callable
+from typing import Any
+
 import httpx
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-    before_sleep_log
-)
+from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -34,20 +31,21 @@ def with_retry(
     max_attempts: int = 3,
     min_wait: float = 1,
     max_wait: float = 10,
-    retry_exceptions: Tuple[Type[Exception], ...] = RETRYABLE_EXCEPTIONS,
+    retry_exceptions: tuple[type[Exception], ...] = RETRYABLE_EXCEPTIONS,
 ) -> Callable:
     """
     Decorator factory for adding retry logic to async network functions.
-    
+
     Args:
         max_attempts: Maximum number of retry attempts
         min_wait: Minimum wait time between retries (exponential backoff)
         max_wait: Maximum wait time between retries
         retry_exceptions: Tuple of exception types to retry on
-        
+
     Returns:
         Decorated function with retry logic
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         @retry(
@@ -63,14 +61,16 @@ def with_retry(
             except Exception as e:
                 logger.warning(f"Attempt failed for {func.__name__}: {str(e)}")
                 raise
+
         return wrapper
+
     return decorator
 
 
 class CircuitBreaker:
     """
     Circuit breaker to prevent cascading failures.
-    
+
     States:
     - CLOSED: Normal operation, requests pass through
     - OPEN: Too many failures, requests fail immediately
@@ -88,7 +88,7 @@ class CircuitBreaker:
         self.half_open_success_threshold = half_open_success_threshold
         self.failure_count = 0
         self.success_count = 0
-        self.last_failure_time: Optional[float] = None
+        self.last_failure_time: float | None = None
         self.state = "CLOSED"
 
     def _can_execute(self) -> bool:
@@ -160,7 +160,7 @@ class ResilientAsyncClient:
     ):
         self.base_url = base_url
         self.timeout = timeout
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._circuit_breaker = CircuitBreaker() if enable_circuit_breaker else None
 
         self._max_attempts = max_attempts
@@ -191,12 +191,10 @@ class ResilientAsyncClient:
         Make HTTP request with retry and circuit breaker.
         """
         if self._circuit_breaker and not self._circuit_breaker._can_execute():
-            raise CircuitBreakerOpenError(
-                f"Circuit breaker is {self._circuit_breaker.state}"
-            )
+            raise CircuitBreakerOpenError(f"Circuit breaker is {self._circuit_breaker.state}")
 
         client = await self._get_client()
-        last_exception: Optional[Exception] = None
+        last_exception: Exception | None = None
 
         for attempt in range(1, self._max_attempts + 1):
             try:
@@ -209,15 +207,10 @@ class ResilientAsyncClient:
 
             except RETRYABLE_EXCEPTIONS as e:
                 last_exception = e
-                logger.warning(
-                    f"Request attempt {attempt}/{self._max_attempts} failed: {str(e)}"
-                )
+                logger.warning(f"Request attempt {attempt}/{self._max_attempts} failed: {str(e)}")
 
                 if attempt < self._max_attempts:
-                    wait_time = min(
-                        self._min_wait * (2 ** (attempt - 1)),
-                        self._max_wait
-                    )
+                    wait_time = min(self._min_wait * (2 ** (attempt - 1)), self._max_wait)
                     logger.info(f"Retrying in {wait_time}s...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -248,7 +241,7 @@ class ResilientAsyncClient:
         """DELETE request with retry."""
         return await self.request("DELETE", url, **kwargs)
 
-    def get_circuit_breaker_status(self) -> Optional[dict]:
+    def get_circuit_breaker_status(self) -> dict | None:
         """Get circuit breaker status if enabled."""
         if self._circuit_breaker:
             return self._circuit_breaker.status
@@ -257,6 +250,7 @@ class ResilientAsyncClient:
 
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and request is rejected."""
+
     pass
 
 

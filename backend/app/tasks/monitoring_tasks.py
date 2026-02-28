@@ -25,14 +25,14 @@ from app.services.alert_service import alert_service
 logger = logging.getLogger(__name__)
 
 # Memory thresholds in MB
-_WARN_THRESHOLD_MB: int = 1024   # 80% of 1280m container limit
-_CRIT_THRESHOLD_MB: int = 1152   # 90% of 1280m container limit
+_WARN_THRESHOLD_MB: int = 1024  # 80% of 1280m container limit
+_CRIT_THRESHOLD_MB: int = 1152  # 90% of 1280m container limit
 
 
 @celery_app.task(
     bind=True,
     name="app.tasks.monitoring_tasks.check_worker_memory",
-    max_retries=0,          # monitoring tasks should not retry
+    max_retries=0,  # monitoring tasks should not retry
     ignore_result=True,
 )
 def check_worker_memory(self) -> dict:

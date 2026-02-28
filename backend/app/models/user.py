@@ -1,13 +1,17 @@
-from sqlalchemy import Column, String, Boolean, Enum
-from sqlalchemy.orm import relationship
-import uuid
-from app.models.base import Base, TimestampMixin, GUIDType
 import enum
+import uuid
 
-class UserRole(str, enum.Enum):
+from sqlalchemy import Boolean, Column, Enum, String
+from sqlalchemy.orm import relationship
+
+from app.models.base import Base, GUIDType, TimestampMixin
+
+
+class UserRole(enum.StrEnum):
     USER = "user"
     ADMIN = "admin"
     SUPERUSER = "superuser"
+
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"
@@ -17,7 +21,11 @@ class User(Base, TimestampMixin):
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255))
-    role = Column(Enum(UserRole, native_enum=False, values_callable=lambda x: [e.value for e in UserRole]), default=UserRole.USER, nullable=False)
+    role = Column(
+        Enum(UserRole, native_enum=False, values_callable=lambda x: [e.value for e in UserRole]),
+        default=UserRole.USER,
+        nullable=False,
+    )
     is_superuser = Column(Boolean, nullable=False, default=False)
     can_access_confidential = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
@@ -26,5 +34,5 @@ class User(Base, TimestampMixin):
     # Relationships
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"

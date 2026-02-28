@@ -48,8 +48,9 @@ class TestTokenRefreshRolePropagation:
 
         This verifies the fix is in place by inspecting the source code.
         """
-        from app.api.auth import refresh_token
         import inspect
+
+        from app.api.auth import refresh_token
 
         source = inspect.getsource(refresh_token)
 
@@ -72,8 +73,9 @@ class TestTokenRefreshRolePropagation:
 
         Both access and refresh tokens should reflect the current database role.
         """
-        from app.api.auth import refresh_token
         import inspect
+
+        from app.api.auth import refresh_token
 
         source = inspect.getsource(refresh_token)
 
@@ -181,8 +183,9 @@ class TestTokenRefreshRolePropagation:
 
         The fix should include a comment explaining why we fetch role from DB.
         """
-        from app.api.auth import refresh_token
         import inspect
+
+        from app.api.auth import refresh_token
 
         source = inspect.getsource(refresh_token)
 
@@ -211,8 +214,9 @@ class TestTokenRefreshRolePropagation:
 
         This should NOT be present in the code anymore.
         """
-        from app.api.auth import refresh_token
         import inspect
+
+        from app.api.auth import refresh_token
 
         source = inspect.getsource(refresh_token)
 

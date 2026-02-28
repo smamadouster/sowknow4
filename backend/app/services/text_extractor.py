@@ -3,8 +3,8 @@ Text extraction service for various document formats
 """
 
 import logging
-from typing import Dict, Any, List
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class TextExtractor:
     """Service for extracting text from various document formats"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.supported_formats = {
             ".pdf": self._extract_from_pdf,
             ".docx": self._extract_from_docx,
@@ -31,7 +31,7 @@ class TextExtractor:
         """Get file extension from filename"""
         return Path(filename).suffix.lower()
 
-    async def extract_text(self, file_path: str, filename: str) -> Dict[str, Any]:
+    async def extract_text(self, file_path: str, filename: str) -> dict[str, Any]:
         """
         Extract text from a document file
 
@@ -71,7 +71,7 @@ class TextExtractor:
                 "success": False,
             }
 
-    async def _extract_from_pdf(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_pdf(self, file_path: str) -> dict[str, Any]:
         """Extract text from PDF file"""
         try:
             import PyPDF2
@@ -96,7 +96,7 @@ class TextExtractor:
             logger.error(f"Error extracting from PDF: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
-    async def _extract_from_docx(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_docx(self, file_path: str) -> dict[str, Any]:
         """Extract text from DOCX file"""
         try:
             from docx import Document
@@ -121,7 +121,7 @@ class TextExtractor:
             logger.error(f"Error extracting from DOCX: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
-    async def _extract_from_doc(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_doc(self, file_path: str) -> dict[str, Any]:
         """Extract text from legacy DOC file (requires conversion)"""
         # DOC files require conversion tools - for now return placeholder
         return {
@@ -131,7 +131,7 @@ class TextExtractor:
             "source": "error",
         }
 
-    async def _extract_from_pptx(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_pptx(self, file_path: str) -> dict[str, Any]:
         """Extract text from PPTX file"""
         try:
             from pptx import Presentation
@@ -147,9 +147,7 @@ class TextExtractor:
                         slide_text_parts.append(shape.text)
 
                 if slide_text_parts:
-                    text_parts.append(
-                        f"[Slide {slide_num + 1}]\n" + "\n".join(slide_text_parts)
-                    )
+                    text_parts.append(f"[Slide {slide_num + 1}]\n" + "\n".join(slide_text_parts))
 
             return {
                 "text": "\n\n".join(text_parts),
@@ -161,7 +159,7 @@ class TextExtractor:
             logger.error(f"Error extracting from PPTX: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
-    async def _extract_from_ppt(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_ppt(self, file_path: str) -> dict[str, Any]:
         """Extract text from legacy PPT file"""
         return {
             "text": "",
@@ -170,7 +168,7 @@ class TextExtractor:
             "source": "error",
         }
 
-    async def _extract_from_xlsx(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_xlsx(self, file_path: str) -> dict[str, Any]:
         """Extract text from XLSX file"""
         try:
             from openpyxl import load_workbook
@@ -184,9 +182,7 @@ class TextExtractor:
                 sheet_text_parts = [f"[Sheet: {sheet_name}]"]
 
                 for row in sheet.iter_rows(values_only=True):
-                    row_text = " | ".join(
-                        [str(cell) if cell is not None else "" for cell in row]
-                    )
+                    row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
                     empty_row = " | " * (len(row) - 1)
                     if row_text.strip() and row_text != empty_row:
                         sheet_text_parts.append(row_text)
@@ -204,7 +200,7 @@ class TextExtractor:
             logger.error(f"Error extracting from XLSX: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
-    async def _extract_from_xls(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_xls(self, file_path: str) -> dict[str, Any]:
         """Extract text from legacy XLS file"""
         return {
             "text": "",
@@ -213,15 +209,15 @@ class TextExtractor:
             "source": "error",
         }
 
-    async def _extract_from_txt(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_txt(self, file_path: str) -> dict[str, Any]:
         """Extract text from TXT or MD file"""
         try:
             # Try UTF-8 first, fallback to latin-1
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     text = f.read()
             except UnicodeDecodeError:
-                with open(file_path, "r", encoding="latin-1") as f:
+                with open(file_path, encoding="latin-1") as f:
                     text = f.read()
 
             return {"text": text, "pages": 0, "source": "file"}
@@ -230,12 +226,12 @@ class TextExtractor:
             logger.error(f"Error extracting from TXT: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
-    async def _extract_from_json(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_json(self, file_path: str) -> dict[str, Any]:
         """Extract text from JSON file"""
         try:
             import json
 
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Convert JSON to readable text
@@ -247,7 +243,7 @@ class TextExtractor:
             logger.error(f"Error extracting from JSON: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
-    async def _extract_from_epub(self, file_path: str) -> Dict[str, Any]:
+    async def _extract_from_epub(self, file_path: str) -> dict[str, Any]:
         """Extract text from EPUB file"""
         try:
             from ebooklib import epub
@@ -272,7 +268,7 @@ class TextExtractor:
             logger.error(f"Error extracting from EPUB: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
-    async def extract_images_from_pdf(self, file_path: str) -> List[bytes]:
+    async def extract_images_from_pdf(self, file_path: str) -> list[bytes]:
         """
         Extract images from PDF for OCR processing
 
@@ -289,7 +285,7 @@ class TextExtractor:
             with open(file_path, "rb") as file:
                 pdf_reader = PyPDF2.PdfReader(file)
 
-                for page_num, page in enumerate(pdf_reader.pages):
+                for _page_num, page in enumerate(pdf_reader.pages):
                     if "/XObject" in page["/Resources"]:
                         xObject = page["/Resources"]["/XObject"].get_object()
 

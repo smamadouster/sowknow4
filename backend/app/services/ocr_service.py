@@ -9,13 +9,14 @@ Implements three processing modes:
 All processing is done locally - zero PII sent to cloud APIs.
 """
 
+import io
+import logging
 import os
 import time
-import logging
-from enum import Enum
-from typing import Optional, Dict, Any, List, Literal
+from enum import StrEnum
+from typing import Any, Literal
+
 from PIL import Image
-import io
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,13 @@ OCR_DEFAULT_MODE = os.getenv("OCR_DEFAULT_MODE", "base")
 OCR_FALLBACK_ENABLED = os.getenv("OCR_FALLBACK_ENABLED", "true").lower() == "true"
 
 
-class OCRMode(str, Enum):
+class OCRMode(StrEnum):
     BASE = "base"
     LARGE = "large"
     GUNDAM = "gundam"
 
 
-class OCREngine(str, Enum):
+class OCREngine(StrEnum):
     PADDLE = "paddle"
     TESSERACT = "tesseract"
     NONE = "none"
@@ -139,20 +140,19 @@ class OCRService:
             img = Image.open(image_path)
             w, h = img.size
             if w > 2000 or h > 2000:
-                logger.info(
-                    f"Auto-upgrading OCR mode to 'gundam' — image {w}×{h}px exceeds 2000px"
-                )
+                logger.info(f"Auto-upgrading OCR mode to 'gundam' — image {w}×{h}px exceeds 2000px")
                 return "gundam"
         except Exception:
             pass
         return requested_mode
 
-    def _count_pages(self, file_path: str, mime_type: Optional[str] = None) -> int:
+    def _count_pages(self, file_path: str, mime_type: str | None = None) -> int:
         """Count document pages. PDFs use PyPDF2; images always return 1."""
         if mime_type and mime_type.startswith("image/"):
             return 1
         try:
             import PyPDF2
+
             with open(file_path, "rb") as f:
                 reader = PyPDF2.PdfReader(f)
                 return len(reader.pages)
@@ -164,7 +164,7 @@ class OCRService:
         image_path: str,
         mode: Literal["base", "large", "gundam"] = "base",
         language: str = "french",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Internal extraction returning full metadata dict."""
         start_time = time.time()
         with open(image_path, "rb") as f:
@@ -207,6 +207,7 @@ class OCRService:
         # Wire cost tracking
         try:
             from app.services.monitoring import get_cost_tracker
+
             pages = self._count_pages(image_path)
             get_cost_tracker().track_ocr_operation(
                 method=result.get("engine", "paddle"),
@@ -217,9 +218,7 @@ class OCRService:
             pass  # cost tracking is non-critical
         return result.get("text", "")
 
-    async def _extract_with_paddle(
-        self, image_bytes: bytes, language: str, mode: OCRMode
-    ) -> Dict[str, Any]:
+    async def _extract_with_paddle(self, image_bytes: bytes, language: str, mode: OCRMode) -> dict[str, Any]:
         """Extract text using PaddleOCR with mode-specific processing"""
         try:
             import cv2
@@ -245,7 +244,7 @@ class OCRService:
             logger.error(f"Error in PaddleOCR: {str(e)}")
             raise
 
-    async def _gundam_mode_paddle(self, img_cv, ocr, language: str) -> Dict[str, Any]:
+    async def _gundam_mode_paddle(self, img_cv, ocr, language: str) -> dict[str, Any]:
         """Multi-pass OCR with result merging - for complex documents"""
         import cv2  # noqa: PLC0415
 
@@ -293,11 +292,11 @@ class OCRService:
             "blocks": merged_text["block_count"],
         }
 
-    def _merge_ocr_results(self, results: List[tuple]) -> Dict[str, Any]:
+    def _merge_ocr_results(self, results: list[tuple]) -> dict[str, Any]:
         """Merge OCR results from multiple passes using confidence scoring"""
         text_blocks = {}
 
-        for result_data, scale in results:
+        for result_data, _scale in results:
             for line in result_data:
                 if not line:
                     continue
@@ -332,13 +331,11 @@ class OCRService:
 
         return {
             "text": "\n".join(text_lines),
-            "avg_confidence": (
-                sum(all_confidences) / len(all_confidences) if all_confidences else 0
-            ),
+            "avg_confidence": (sum(all_confidences) / len(all_confidences) if all_confidences else 0),
             "block_count": len(text_blocks),
         }
 
-    def _parse_paddle_result(self, result, language: str) -> Dict[str, Any]:
+    def _parse_paddle_result(self, result, language: str) -> dict[str, Any]:
         """Parse PaddleOCR result into standard format"""
         if not result or not result[0]:
             return {
@@ -372,9 +369,7 @@ class OCRService:
             "blocks": len(text_lines),
         }
 
-    async def _extract_with_tesseract(
-        self, image_bytes: bytes, language: str, mode: OCRMode
-    ) -> Dict[str, Any]:
+    async def _extract_with_tesseract(self, image_bytes: bytes, language: str, mode: OCRMode) -> dict[str, Any]:
         """Fallback OCR using Tesseract with real per-word confidence measurement"""
         try:
             import pytesseract
@@ -388,14 +383,12 @@ class OCRService:
             text = pytesseract.image_to_string(img, lang=tess_lang)
 
             # Use image_to_data to get real per-word confidence scores
-            data = pytesseract.image_to_data(
-                img, lang=tess_lang, output_type=pytesseract.Output.DICT
-            )
+            data = pytesseract.image_to_data(img, lang=tess_lang, output_type=pytesseract.Output.DICT)
 
             # Collect confidence scores for valid words only (conf == -1 means no word)
             word_confidences = []
             word_lengths = []
-            for conf, word in zip(data["conf"], data["text"]):
+            for conf, word in zip(data["conf"], data["text"], strict=False):
                 if conf != -1 and str(word).strip():
                     word_confidences.append(float(conf))
                     word_lengths.append(len(str(word).strip()))
@@ -405,8 +398,7 @@ class OCRService:
                 total_weight = sum(word_lengths)
                 if total_weight > 0:
                     avg_confidence = (
-                        sum(c * w for c, w in zip(word_confidences, word_lengths))
-                        / total_weight
+                        sum(c * w for c, w in zip(word_confidences, word_lengths, strict=False)) / total_weight
                     )
                 else:
                     avg_confidence = sum(word_confidences) / len(word_confidences)
@@ -415,10 +407,7 @@ class OCRService:
             else:
                 avg_confidence = 0.0
 
-            logger.debug(
-                f"Tesseract: {len(word_confidences)} words, "
-                f"confidence={avg_confidence:.2%}"
-            )
+            logger.debug(f"Tesseract: {len(word_confidences)} words, confidence={avg_confidence:.2%}")
 
             return {
                 "text": text.strip(),
@@ -457,8 +446,8 @@ class OCRService:
     def should_use_ocr(
         self,
         mime_type: str,
-        extracted_text: Optional[str] = None,
-        file_path: Optional[str] = None,
+        extracted_text: str | None = None,
+        file_path: str | None = None,
     ) -> tuple[bool, str]:
         """
         Determine whether OCR processing is required for a document.
@@ -509,7 +498,7 @@ class OCRService:
 
     async def extract_from_pdf_page(
         self, pdf_path: str, page_number: int = 0, language: str = "auto"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Extract text from a specific PDF page"""
         try:
             import PyPDF2
@@ -547,9 +536,9 @@ class OCRService:
                 "source": "error",
             }
 
-    def get_available_modes(self) -> Dict[str, Any]:
+    def get_available_modes(self) -> dict[str, Any]:
         """Return available OCR modes and their configurations"""
-        return {mode: config for mode, config in self.MODE_CONFIGS.items()}
+        return dict(self.MODE_CONFIGS.items())
 
     def get_default_mode(self) -> str:
         """Return default OCR mode"""

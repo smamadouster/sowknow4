@@ -9,11 +9,11 @@ Validates the core privacy guarantee:
 """
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.llm_router import LLMRouter, RoutingReason
+import pytest
 
+from app.services.llm_router import LLMRouter, RoutingReason
 
 # ---------------------------------------------------------------------------
 # Helpers

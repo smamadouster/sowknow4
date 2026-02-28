@@ -1,18 +1,18 @@
-from pydantic import BaseModel, Field
-from uuid import UUID
 from datetime import datetime
-from typing import Optional, List
-from enum import Enum
+from enum import StrEnum
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     MINIMAX = "minimax"
     KIMI = "kimi"
     OLLAMA = "ollama"
     OPENROUTER = "openrouter"
 
 
-class MessageRole(str, Enum):
+class MessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
@@ -21,16 +21,16 @@ class MessageRole(str, Enum):
 # Chat Session Schemas
 class ChatSessionCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=512)
-    document_scope: Optional[List[UUID]] = None
-    model_preference: Optional[str] = None
+    document_scope: list[UUID] | None = None
+    model_preference: str | None = None
 
 
 class ChatSessionResponse(BaseModel):
     id: UUID
     user_id: UUID
     title: str
-    document_scope: List[UUID] = []
-    model_preference: Optional[str] = None
+    document_scope: list[UUID] = []
+    model_preference: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -39,7 +39,7 @@ class ChatSessionResponse(BaseModel):
 
 
 class ChatSessionListResponse(BaseModel):
-    sessions: List[ChatSessionResponse]
+    sessions: list[ChatSessionResponse]
     total: int
 
 
@@ -61,12 +61,12 @@ class ChatMessageResponse(BaseModel):
     session_id: UUID
     role: MessageRole
     content: str
-    llm_used: Optional[LLMProvider] = None
-    sources: Optional[List[SourceDocument]] = None
-    confidence_score: Optional[int] = None
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
+    llm_used: LLMProvider | None = None
+    sources: list[SourceDocument] | None = None
+    confidence_score: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
     created_at: datetime
 
     class Config:
@@ -74,14 +74,14 @@ class ChatMessageResponse(BaseModel):
 
 
 class ChatMessageListResponse(BaseModel):
-    messages: List[ChatMessageResponse]
+    messages: list[ChatMessageResponse]
     total: int
 
 
 # Stream Response Schema
 class ChatStreamChunk(BaseModel):
     type: str  # "token", "source", "error", "done"
-    content: Optional[str] = None
-    sources: Optional[List[SourceDocument]] = None
-    llm_used: Optional[LLMProvider] = None
-    error: Optional[str] = None
+    content: str | None = None
+    sources: list[SourceDocument] | None = None
+    llm_used: LLMProvider | None = None
+    error: str | None = None

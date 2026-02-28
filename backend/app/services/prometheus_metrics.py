@@ -5,11 +5,12 @@ Exposes metrics in Prometheus format for scraping by Prometheus server.
 Per PRD requirements for observability.
 """
 
-import time
 import logging
-from typing import Dict, Callable, Optional
-from functools import wraps
+import time
 from collections import defaultdict
+from collections.abc import Callable
+from functools import wraps
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class Metric:
         self.name = name
         self.help_text = help_text
         self.labels = labels or []
-        self._values: Dict[tuple, float] = {}
+        self._values: dict[tuple, float] = {}
 
     def _key(self, label_values: dict) -> tuple:
         """Convert label dict to tuple key."""
@@ -58,9 +59,7 @@ class Metric:
 
         for key, value in self._values.items():
             if self.labels and key:
-                label_str = ",".join(
-                    f'{k}="{v}"' for k, v in zip(self.labels, key) if v
-                )
+                label_str = ",".join(f'{k}="{v}"' for k, v in zip(self.labels, key, strict=False) if v)
                 lines.append(f"{self.name}{{{label_str}}} {value}")
             else:
                 lines.append(f"{self.name} {value}")
@@ -80,9 +79,7 @@ class Counter(Metric):
 
         for key, value in self._values.items():
             if self.labels and key:
-                label_str = ",".join(
-                    f'{k}="{v}"' for k, v in zip(self.labels, key) if v
-                )
+                label_str = ",".join(f'{k}="{v}"' for k, v in zip(self.labels, key, strict=False) if v)
                 lines.append(f"{self.name}{{{label_str}}} {value}")
             else:
                 lines.append(f"{self.name} {value}")
@@ -108,12 +105,10 @@ class Histogram(Metric):
         float("inf"),
     ]
 
-    def __init__(
-        self, name: str, help_text: str, labels: list = None, buckets: list = None
-    ):
+    def __init__(self, name: str, help_text: str, labels: list = None, buckets: list = None):
         super().__init__(name, help_text, labels)
         self.buckets = buckets or self.DEFAULT_BUCKETS
-        self._observations: Dict[tuple, list] = defaultdict(list)
+        self._observations: dict[tuple, list] = defaultdict(list)
 
     def observe(self, value: float, labels: dict = None) -> None:
         """Observe a value."""
@@ -141,23 +136,15 @@ class Histogram(Metric):
                 bucket_str = "+Inf" if bucket == float("inf") else str(bucket)
 
                 if self.labels:
-                    label_str = ",".join(
-                        f'{k}="{v}"' for k, v in zip(self.labels, key) if v
-                    )
-                    lines.append(
-                        f'{self.name}{{{label_str},{bucket_label}="{bucket_str}"}} {bucket_count}'
-                    )
+                    label_str = ",".join(f'{k}="{v}"' for k, v in zip(self.labels, key, strict=False) if v)
+                    lines.append(f'{self.name}{{{label_str},{bucket_label}="{bucket_str}"}} {bucket_count}')
                 else:
-                    lines.append(
-                        f'{self.name}{{{bucket_label}="{bucket_str}"}} {bucket_count}'
-                    )
+                    lines.append(f'{self.name}{{{bucket_label}="{bucket_str}"}} {bucket_count}')
 
             # Add sum and count
             sum_val = sum(sorted_obs)
             if self.labels:
-                label_str = ",".join(
-                    f'{k}="{v}"' for k, v in zip(self.labels, key) if v
-                )
+                label_str = ",".join(f'{k}="{v}"' for k, v in zip(self.labels, key, strict=False) if v)
                 lines.append(f"{self.name}_sum{{{label_str}}} {sum_val}")
                 lines.append(f"{self.name}_count{{{label_str}}} {total_count}")
             else:
@@ -178,7 +165,7 @@ class PrometheusMetrics:
 
     def __init__(self):
         """Initialize metrics registry."""
-        self._metrics: Dict[str, Metric] = {}
+        self._metrics: dict[str, Metric] = {}
         self._start_time = time.time()
 
     @classmethod
@@ -220,9 +207,7 @@ class PrometheusMetrics:
             self._metrics[name] = Metric(name, help_text, labels)
         return self._metrics[name]
 
-    def histogram(
-        self, name: str, help_text: str, labels: list = None, buckets: list = None
-    ) -> Histogram:
+    def histogram(self, name: str, help_text: str, labels: list = None, buckets: list = None) -> Histogram:
         """
         Get or create a histogram metric.
 
@@ -255,9 +240,7 @@ class PrometheusMetrics:
         lines.append(f"sowknow_uptime_seconds {uptime:.2f}")
 
         # Add export timestamp
-        lines.append(
-            "# HELP sowknow_export_timestamp_seconds Unix timestamp of last export"
-        )
+        lines.append("# HELP sowknow_export_timestamp_seconds Unix timestamp of last export")
         lines.append("# TYPE sowknow_export_timestamp_seconds gauge")
         lines.append(f"sowknow_export_timestamp_seconds {time.time():.2f}")
 
@@ -309,9 +292,7 @@ def setup_standard_metrics() -> None:
     )
 
     # Queue metrics
-    m.gauge(
-        "sowknow_celery_queue_depth", "Number of tasks in Celery queue", ["queue_name"]
-    )
+    m.gauge("sowknow_celery_queue_depth", "Number of tasks in Celery queue", ["queue_name"])
 
     m.gauge("sowknow_celery_workers_active", "Number of active Celery workers")
 
@@ -338,7 +319,7 @@ def setup_standard_metrics() -> None:
     m.counter(
         "sowknow_llm_tokens_total",
         "Total number of tokens processed",
-        ["service", "model", "type"],  # type: input, output, cached
+        ["service", "model", "type"],  # values: input, output, cached
     )
 
     m.histogram(
@@ -355,9 +336,7 @@ def setup_standard_metrics() -> None:
 
     m.counter("sowknow_cache_hits_total", "Total number of cache hits", ["cache_type"])
 
-    m.counter(
-        "sowknow_cache_misses_total", "Total number of cache misses", ["cache_type"]
-    )
+    m.counter("sowknow_cache_misses_total", "Total number of cache misses", ["cache_type"])
 
     # Document processing metrics
     m.counter(
@@ -426,12 +405,8 @@ def track_http_request(func: Callable) -> Callable:
 
         # Record metrics
         m = get_metrics()
-        m.counter("sowknow_http_requests_total").inc(
-            1, {"method": method, "endpoint": endpoint, "status": status}
-        )
-        m.histogram("sowknow_http_request_duration_seconds").observe(
-            duration, {"method": method, "endpoint": endpoint}
-        )
+        m.counter("sowknow_http_requests_total").inc(1, {"method": method, "endpoint": endpoint, "status": status})
+        m.histogram("sowknow_http_request_duration_seconds").observe(duration, {"method": method, "endpoint": endpoint})
 
         return result
 

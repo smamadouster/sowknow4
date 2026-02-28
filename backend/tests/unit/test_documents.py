@@ -2,8 +2,9 @@
 Unit tests for document endpoints
 """
 
-from fastapi.testclient import TestClient
 from io import BytesIO
+
+from fastapi.testclient import TestClient
 
 
 def test_upload_document_unauthorized(client: TestClient):

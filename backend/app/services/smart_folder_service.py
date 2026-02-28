@@ -8,10 +8,11 @@ based on user-provided topics.
 
 import logging
 import uuid
-from typing import List, Dict, Any
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
+
 from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.collection import (
     Collection,
@@ -44,7 +45,7 @@ class SmartFolderService:
         include_confidential: bool = False,
         user: User = None,
         db: AsyncSession = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate a Smart Folder with AI-generated content
 
@@ -63,10 +64,7 @@ class SmartFolderService:
         documents = await self._search_documents_for_topic(
             topic=topic,
             include_confidential=include_confidential
-            and (
-                user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
-                or user.can_access_confidential
-            ),
+            and (user.role in [UserRole.ADMIN, UserRole.SUPERUSER] or user.can_access_confidential),
             user=user,
             db=db,
         )
@@ -81,9 +79,7 @@ class SmartFolderService:
             }
 
         # Check if confidential documents are present
-        has_confidential = any(
-            doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents
-        )
+        has_confidential = any(doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents)
 
         # Gather document context
         document_context = await self._build_document_context(documents, db)
@@ -161,23 +157,19 @@ class SmartFolderService:
 
     async def _search_documents_for_topic(
         self, topic: str, include_confidential: bool, user: User, db: AsyncSession
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Search for documents relevant to the topic"""
         # Use hybrid search
-        search_result = await self.search_service.hybrid_search(
-            query=topic, limit=50, offset=0, db=db, user=user
-        )
+        search_result = await self.search_service.hybrid_search(query=topic, limit=50, offset=0, db=db, user=user)
 
         # Extract unique document IDs
-        doc_ids = list(set(r.document_id for r in search_result["results"]))
+        doc_ids = list({r.document_id for r in search_result["results"]})
 
         if not doc_ids:
             return []
 
         # Fetch documents
-        stmt = select(Document).where(
-            and_(Document.id.in_(doc_ids), Document.status == DocumentStatus.INDEXED)
-        )
+        stmt = select(Document).where(and_(Document.id.in_(doc_ids), Document.status == DocumentStatus.INDEXED))
 
         # Apply confidential filter
         if not include_confidential:
@@ -185,9 +177,7 @@ class SmartFolderService:
 
         return (await db.execute(stmt)).scalars().all()[:20]  # Top 20 documents
 
-    async def _build_document_context(
-        self, documents: List[Document], db: AsyncSession
-    ) -> List[Dict[str, Any]]:
+    async def _build_document_context(self, documents: list[Document], db: AsyncSession) -> list[dict[str, Any]]:
         """Build context from documents for content generation"""
         context = []
 
@@ -195,21 +185,22 @@ class SmartFolderService:
             from app.models.document import DocumentChunk
 
             chunks = (
-                await db.execute(
-                    select(DocumentChunk)
-                    .where(DocumentChunk.document_id == doc.id)
-                    .order_by(DocumentChunk.chunk_index)
-                    .limit(5)
+                (
+                    await db.execute(
+                        select(DocumentChunk)
+                        .where(DocumentChunk.document_id == doc.id)
+                        .order_by(DocumentChunk.chunk_index)
+                        .limit(5)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             doc_info = {
                 "filename": doc.filename,
                 "created_at": doc.created_at.isoformat(),
-                "chunks": [
-                    {"text": chunk.chunk_text, "page": chunk.page_number}
-                    for chunk in chunks
-                ],
+                "chunks": [{"text": chunk.chunk_text, "page": chunk.page_number} for chunk in chunks],
             }
             context.append(doc_info)
 
@@ -218,7 +209,7 @@ class SmartFolderService:
     async def _generate_with_minimax(
         self,
         topic: str,
-        document_context: List[Dict[str, Any]],
+        document_context: list[dict[str, Any]],
         style: str,
         length: str,
     ) -> str:
@@ -228,9 +219,7 @@ class SmartFolderService:
         context_text = "\n\n".join(
             [
                 f"Document: {doc['filename']}\n"
-                + "\n".join(
-                    [f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]]
-                )
+                + "\n".join([f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]])
                 for doc in document_context
             ]
         )
@@ -287,7 +276,7 @@ Generate the article now:"""
     async def _generate_with_ollama(
         self,
         topic: str,
-        document_context: List[Dict[str, Any]],
+        document_context: list[dict[str, Any]],
         style: str,
         length: str,
     ) -> str:

@@ -21,14 +21,14 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 # ---------------------------------------------------------------------------
@@ -39,11 +39,10 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("APP_ENV", "test")
 
 from app.models.base import Base
-from app.models.document import Document, DocumentBucket, DocumentStatus, DocumentChunk
-from app.models.processing import ProcessingQueue, TaskType, TaskStatus
+from app.models.document import Document, DocumentBucket, DocumentChunk, DocumentStatus
+from app.models.processing import ProcessingQueue, TaskStatus, TaskType
 from app.models.user import User, UserRole
 from app.utils.security import get_password_hash
-
 
 # ---------------------------------------------------------------------------
 # SQLite test database — schema/type adaptation
@@ -317,7 +316,7 @@ class TestErrorHandling:
 
         with patch("app.tasks.document_tasks.SessionLocal", return_value=db_session):
             # Task will fail; eager mode raises after max retries
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="."):
                 process_document(str(doc.id), "full_pipeline")
 
         db_session.expire_all()
@@ -332,7 +331,7 @@ class TestErrorHandling:
         from app.tasks.document_tasks import process_document
 
         with patch("app.tasks.document_tasks.SessionLocal", return_value=db_session):
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="."):
                 process_document(str(doc.id), "full_pipeline")
 
         db_session.expire_all()

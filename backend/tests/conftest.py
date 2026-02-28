@@ -13,16 +13,18 @@ spins up a DockerContainer (testcontainers.postgres.PostgresContainer) with
 the pgvector/pgvector:pg16 image and enables the vector extension.
 """
 
-import pytest
 import os
+
+import pytest
 
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["APP_ENV"] = "development"
 
-from typing import Generator, Dict
+from collections.abc import Generator
+
 from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-from sqlalchemy.orm import sessionmaker, Session
 
 # ---------------------------------------------------------------------------
 # Full-stack imports — only available when all Docker dependencies are
@@ -30,12 +32,13 @@ from sqlalchemy.orm import sessionmaker, Session
 # ---------------------------------------------------------------------------
 try:
     from fastapi.testclient import TestClient
-    from app.models.base import Base
-    from app.models.user import User, UserRole
-    from app.models.document import Document, DocumentBucket, DocumentStatus
-    from app.utils.security import create_access_token, get_password_hash
-    from app.main import app
+
     from app.database import get_db
+    from app.main import app
+    from app.models.base import Base
+    from app.models.document import Document, DocumentBucket, DocumentStatus
+    from app.models.user import User, UserRole
+    from app.utils.security import create_access_token, get_password_hash
     _FULL_STACK_AVAILABLE = True
 except (ImportError, Exception):
     # Full-stack dependencies (slowapi, asyncpg, etc.) not installed.
@@ -84,7 +87,7 @@ TestingSessionLocal = (
 )
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def db() -> Generator[Session, None, None]:
     """Create a fresh database for each test"""
     if not _FULL_STACK_AVAILABLE:
@@ -104,7 +107,7 @@ def db() -> Generator[Session, None, None]:
         Base.metadata.drop_all(bind=test_engine)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def client(db: Session) -> Generator:
     """Create a test client with database override"""
     if not _FULL_STACK_AVAILABLE:
@@ -257,7 +260,7 @@ def confidential_document(db: Session) -> "Document":
     return document
 
 
-def get_auth_headers_for_user(user: "User") -> Dict[str, str]:
+def get_auth_headers_for_user(user: "User") -> dict[str, str]:
     """Helper to create auth headers for a user"""
     token = create_access_token(
         data={"sub": user.email, "role": user.role.value, "user_id": str(user.id)}

@@ -5,11 +5,11 @@ This module provides comprehensive monitoring of cache hit/miss rates,
 token savings, and daily statistics for cost optimization tracking.
 """
 
+import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
 from threading import Lock
-import json
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class DailyCacheStats:
             return 0.0
         return self._hits / total
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert stats to dictionary."""
         return {
             "date": self.date.isoformat(),
@@ -100,7 +100,7 @@ class CacheMonitor:
             retention_days: Number of days to retain statistics (default: 30)
         """
         self._retention_days = retention_days
-        self._daily_stats: Dict[datetime.date, DailyCacheStats] = {}
+        self._daily_stats: dict[datetime.date, DailyCacheStats] = {}
         self._lock = Lock()
         self._cache_keys_seen: set = set()
 
@@ -121,16 +121,12 @@ class CacheMonitor:
         """Remove statistics older than retention period."""
         cutoff_date = (datetime.now() - timedelta(days=self._retention_days)).date()
         with self._lock:
-            old_dates = [
-                date for date in self._daily_stats.keys() if date < cutoff_date
-            ]
+            old_dates = [date for date in self._daily_stats.keys() if date < cutoff_date]
             for date in old_dates:
                 del self._daily_stats[date]
                 logger.debug(f"Cleaned up cache stats for {date}")
 
-    def record_cache_hit(
-        self, cache_key: str, tokens_saved: int, user_id: Optional[str] = None
-    ) -> None:
+    def record_cache_hit(self, cache_key: str, tokens_saved: int, user_id: str | None = None) -> None:
         """
         Record a cache hit event.
 
@@ -140,9 +136,7 @@ class CacheMonitor:
             user_id: Optional user ID for per-user tracking
         """
         if tokens_saved < 0:
-            logger.warning(
-                f"Invalid tokens_saved value: {tokens_saved}. Must be non-negative."
-            )
+            logger.warning(f"Invalid tokens_saved value: {tokens_saved}. Must be non-negative.")
             return
 
         stats = self._get_or_create_today_stats()
@@ -151,13 +145,9 @@ class CacheMonitor:
 
         self._cache_keys_seen.add(cache_key)
 
-        logger.debug(
-            f"Cache hit: key='{cache_key[:50]}...', "
-            f"tokens_saved={tokens_saved}, "
-            f"user_id={user_id}"
-        )
+        logger.debug(f"Cache hit: key='{cache_key[:50]}...', tokens_saved={tokens_saved}, user_id={user_id}")
 
-    def record_cache_miss(self, cache_key: str, user_id: Optional[str] = None) -> None:
+    def record_cache_miss(self, cache_key: str, user_id: str | None = None) -> None:
         """
         Record a cache miss event.
 
@@ -206,7 +196,7 @@ class CacheMonitor:
         logger.debug(f"Hit rate for {days} day(s): {hit_rate:.4f}")
         return hit_rate
 
-    def get_stats_summary(self, days: int = 7) -> Dict[str, Any]:
+    def get_stats_summary(self, days: int = 7) -> dict[str, Any]:
         """
         Get comprehensive statistics summary.
 
@@ -279,7 +269,7 @@ class CacheMonitor:
 
         return summary
 
-    def get_today_stats(self) -> Dict[str, Any]:
+    def get_today_stats(self) -> dict[str, Any]:
         """
         Get statistics for today only.
 
@@ -336,7 +326,7 @@ class CacheMonitor:
             # Create fresh stats
             self._daily_stats[today] = DailyCacheStats(datetime.now())
 
-    def get_all_dates(self) -> List[str]:
+    def get_all_dates(self) -> list[str]:
         """
         Get list of all dates with recorded statistics.
 

@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings
@@ -35,7 +34,8 @@ logger = logging.getLogger(__name__)
 # Docker-secrets helper
 # ---------------------------------------------------------------------------
 
-def load_secret(env_key: str) -> Optional[str]:
+
+def load_secret(env_key: str) -> str | None:
     """
     Return the secret value for *env_key*.
 
@@ -49,8 +49,7 @@ def load_secret(env_key: str) -> Optional[str]:
         if p.is_file():
             return p.read_text(encoding="utf-8").strip()
         logger.warning(
-            "load_secret: %s_FILE points to '%s' which does not exist; "
-            "falling back to env var.",
+            "load_secret: %s_FILE points to '%s' which does not exist; falling back to env var.",
             env_key,
             file_path,
         )
@@ -60,6 +59,7 @@ def load_secret(env_key: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Settings class
 # ---------------------------------------------------------------------------
+
 
 class Settings(BaseSettings):
     """
@@ -87,8 +87,7 @@ class Settings(BaseSettings):
     DATABASE_NAME: str = "sowknow"
     DATABASE_URL: str = Field(
         default="",
-        description="Full async DATABASE_URL. If provided, takes precedence over "
-                    "the individual DATABASE_* fields.",
+        description="Full async DATABASE_URL. If provided, takes precedence over the individual DATABASE_* fields.",
     )
 
     # ------------------------------------------------------------------
@@ -100,12 +99,30 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
 
     # ------------------------------------------------------------------
+    # HashiCorp Vault
+    # ------------------------------------------------------------------
+
+    VAULT_ADDR: str = "http://vault:8200"
+    VAULT_TOKEN: str = ""
+
+    # ------------------------------------------------------------------
+    # NATS (JetStream)
+    # ------------------------------------------------------------------
+
+    NATS_URL: str = "nats://nats:4222"
+
+    # ------------------------------------------------------------------
     # Application
     # ------------------------------------------------------------------
 
     APP_ENV: str = "development"
     APP_NAME: str = "SOWKNOW"
     APP_VERSION: str = "1.0.0"
+
+    # CSRF double-submit cookie secret.  A random key is generated at
+    # startup when blank (fine for single-process dev); set explicitly in
+    # production so the token survives restarts / multi-worker deploys.
+    CSRF_SECRET_KEY: str = ""
 
     # ------------------------------------------------------------------
     # Validators
@@ -132,10 +149,7 @@ class Settings(BaseSettings):
     @property
     def REDIS_URL(self) -> str:
         """Authenticated Redis URL constructed from individual settings."""
-        return (
-            f"redis://:{self.REDIS_PASSWORD}@"
-            f"{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-        )
+        return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     @property
     def ASYNC_DATABASE_URL(self) -> str:

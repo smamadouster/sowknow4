@@ -5,11 +5,12 @@ Hybrid search service combining vector and keyword search
 import asyncio
 import logging
 import re
-from typing import List, Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, func, desc
+from typing import Any
 
-from app.models.document import Document, DocumentChunk, DocumentBucket
+from sqlalchemy import desc, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.document import Document, DocumentBucket, DocumentChunk
 from app.models.user import User, UserRole
 from app.services.embedding_service import embedding_service
 from app.services.pii_detection_service import pii_detection_service
@@ -28,7 +29,7 @@ class SearchResult:
         document_bucket: str,
         chunk_text: str,
         chunk_index: int,
-        page_number: Optional[int],
+        page_number: int | None,
         semantic_score: float,
         keyword_score: float,
         final_score: float,
@@ -58,7 +59,7 @@ class HybridSearchService:
         self.keyword_weight = keyword_weight
         self.min_score_threshold = min_score_threshold
 
-    def _get_user_bucket_filter(self, user: User) -> List[str]:
+    def _get_user_bucket_filter(self, user: User) -> list[str]:
         """
         Get allowed buckets for user based on role.
 
@@ -106,7 +107,7 @@ class HybridSearchService:
         offset: int = 0,
         db: AsyncSession = None,
         user: User = None,
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         """
         Perform vector similarity search using pgvector.
 
@@ -138,11 +139,7 @@ class HybridSearchService:
         embedding_array = ",".join(map(str, query_embedding))
 
         # Get user bucket filter
-        bucket_filter = (
-            self._get_user_bucket_filter(user)
-            if user
-            else [DocumentBucket.PUBLIC.value]
-        )
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
         # Build SQL query for vector similarity using pgvector's cosine distance operator
         # Uses embedding_vector column for pgvector operations
@@ -200,7 +197,7 @@ class HybridSearchService:
         offset: int = 0,
         db: AsyncSession = None,
         user: User = None,
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         """
         Perform keyword full-text search using PostgreSQL tsvector.
 
@@ -218,11 +215,7 @@ class HybridSearchService:
         Returns:
             List of search results ordered by ts_rank_cd descending
         """
-        bucket_filter = (
-            self._get_user_bucket_filter(user)
-            if user
-            else [DocumentBucket.PUBLIC.value]
-        )
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
         # plainto_tsquery converts free-form text to a tsquery (automatic AND,
         # stemming, stop-word removal) — safe with parameterised input.
@@ -280,9 +273,7 @@ class HybridSearchService:
                     page_number=row.page_number,
                     semantic_score=0.0,
                     keyword_score=float(row.rank),
-                    final_score=float(
-                        row.rank
-                    ),  # Will be recalculated by hybrid_search
+                    final_score=float(row.rank),  # Will be recalculated by hybrid_search
                 )
             )
 
@@ -296,7 +287,7 @@ class HybridSearchService:
         db: AsyncSession = None,
         user: User = None,
         timeout: float = 3.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Perform hybrid search combining semantic and keyword results.
 
@@ -327,14 +318,10 @@ class HybridSearchService:
 
         # Run both searches concurrently; return partial results on timeout
         semantic_task = asyncio.create_task(
-            self.semantic_search(
-                query=query, limit=limit * 2, offset=0, db=db, user=user
-            )
+            self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
         keyword_task = asyncio.create_task(
-            self.keyword_search(
-                query=query, limit=limit * 2, offset=0, db=db, user=user
-            )
+            self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
 
         done, pending = await asyncio.wait(
@@ -348,23 +335,15 @@ class HybridSearchService:
 
         is_partial = bool(pending)
         if is_partial:
-            completed_names = [
-                "semantic" if t is semantic_task else "keyword" for t in done
-            ]
-            missed_names = [
-                "semantic" if t is semantic_task else "keyword" for t in pending
-            ]
+            completed_names = ["semantic" if t is semantic_task else "keyword" for t in done]
+            missed_names = ["semantic" if t is semantic_task else "keyword" for t in pending]
             logger.warning(
                 f"Search timeout ({timeout}s): completed={completed_names}, "
                 f"cancelled={missed_names}. Returning partial results."
             )
 
-        semantic_results: List[SearchResult] = (
-            semantic_task.result() if semantic_task in done else []
-        )
-        keyword_results: List[SearchResult] = (
-            keyword_task.result() if keyword_task in done else []
-        )
+        semantic_results: list[SearchResult] = semantic_task.result() if semantic_task in done else []
+        keyword_results: list[SearchResult] = keyword_task.result() if keyword_task in done else []
 
         # Merge results using RRF (Reciprocal Rank Fusion)
         merged_scores = {}
@@ -405,27 +384,22 @@ class HybridSearchService:
                 )
 
         # Calculate final scores
-        for chunk_id, data in merged_scores.items():
+        for _chunk_id, data in merged_scores.items():
             result = data["result"]
             semantic = data["semantic_score"]
             keyword = data["keyword_score"]
 
             # Combined score using weights
-            final_score = (
-                self.semantic_weight * semantic + self.keyword_weight * keyword
-            )
+            final_score = self.semantic_weight * semantic + self.keyword_weight * keyword
             result.final_score = final_score
 
         # Sort by final score and apply pagination
-        sorted_results = sorted(
-            merged_scores.values(), key=lambda x: x["result"].final_score, reverse=True
-        )
+        sorted_results = sorted(merged_scores.values(), key=lambda x: x["result"].final_score, reverse=True)
 
         paginated_results = sorted_results[offset : offset + limit]
 
         warning = (
-            "Search timeout: results may be incomplete (partial keyword and/or "
-            "semantic results returned)"
+            "Search timeout: results may be incomplete (partial keyword and/or semantic results returned)"
             if is_partial
             else None
         )
@@ -441,7 +415,6 @@ class HybridSearchService:
             "partial": is_partial,
             "warning": warning,
         }
-
 
     # ──────────────────────────────────────────────────────────────────────
     # ORM-style helper methods for tsvector full-text search
@@ -466,7 +439,7 @@ class HybridSearchService:
         user: User,
         limit: int = 50,
         language: str = "french",
-    ) -> List:
+    ) -> list:
         """ORM-style tsvector keyword search.
 
         Applies RBAC bucket filtering and a visibility filter: 'public'
@@ -495,16 +468,12 @@ class HybridSearchService:
         rank_expr = func.ts_rank_cd(
             DocumentChunk.search_vector,
             tsquery,
-            32  # normalization: divide rank by document length + unique words
+            32,  # normalization: divide rank by document length + unique words
         )
 
         # visibility filter: 'public' bucket for Users; all buckets for Admin/SuperUser
         # TODO: add organization_id == user.organization_id filter for multi-tenant
-        buckets = (
-            self._get_user_bucket_filter(user)
-            if user
-            else [DocumentBucket.PUBLIC.value]
-        )
+        buckets = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
         stmt = (
             select(DocumentChunk, Document, rank_expr.label("rank"))
@@ -524,7 +493,7 @@ class HybridSearchService:
         user: User,
         limit: int = 50,
         language: str = "french",
-    ) -> List:
+    ) -> list:
         """Keyword search across both chunk_text and JSONB metadata fields.
 
         Uses func.greatest to combine the tsvector rank from the chunk body and
@@ -550,28 +519,20 @@ class HybridSearchService:
         text_rank = func.ts_rank_cd(
             DocumentChunk.search_vector,
             tsquery,
-            32  # normalization flag
+            32,  # normalization flag
         )
         meta_rank = func.ts_rank_cd(
             func.to_tsvector(
                 language,
-                func.coalesce(
-                    DocumentChunk.document_metadata["title"].astext, ""
-                )
+                func.coalesce(DocumentChunk.document_metadata["title"].astext, "")
                 + " "
-                + func.coalesce(
-                    DocumentChunk.document_metadata["source"].astext, ""
-                ),
+                + func.coalesce(DocumentChunk.document_metadata["source"].astext, ""),
             ),
             tsquery,
         )
         combined_rank = func.greatest(text_rank, meta_rank)
 
-        buckets = (
-            self._get_user_bucket_filter(user)
-            if user
-            else [DocumentBucket.PUBLIC.value]
-        )
+        buckets = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
         stmt = (
             select(DocumentChunk, Document, combined_rank.label("rank"))

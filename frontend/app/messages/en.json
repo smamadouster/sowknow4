@@ -52,6 +52,7 @@
     "has_account": "Already have an account?",
     "login_success": "Login successful",
     "register_success": "Account created successfully",
+    "session_expired": "Your session expired due to inactivity. Please log in again.",
     "login_error": "Invalid email or password",
     "register_error": "Error creating account",
     "forgot_password": "Forgot password?",

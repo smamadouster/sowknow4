@@ -5,13 +5,13 @@ Uses MiniMax to extract structured intent from natural language queries,
 including keywords, date ranges, entities, and document types.
 """
 
-import logging
 import json
+import logging
+import re
 import warnings
-from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from enum import Enum
-import re
+from typing import Any
 
 from app.services.minimax_service import minimax_service
 
@@ -52,11 +52,11 @@ class ParsedIntent:
     def __init__(
         self,
         query: str,
-        keywords: List[str] = None,
-        date_range: Optional[Dict[str, Any]] = None,
-        entities: List[Dict[str, str]] = None,
-        document_types: List[str] = None,
-        collection_name: Optional[str] = None,
+        keywords: list[str] = None,
+        date_range: dict[str, Any] | None = None,
+        entities: list[dict[str, str]] = None,
+        document_types: list[str] = None,
+        collection_name: str | None = None,
         confidence: float = 0.0,
         raw_response: str = "",
     ):
@@ -69,7 +69,7 @@ class ParsedIntent:
         self.confidence = confidence
         self.raw_response = raw_response
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary"""
         return {
             "query": self.query,
@@ -81,7 +81,7 @@ class ParsedIntent:
             "confidence": self.confidence,
         }
 
-    def to_search_filter(self) -> Dict[str, Any]:
+    def to_search_filter(self) -> dict[str, Any]:
         """Convert to search filter for document queries"""
         filter_dict = {"keywords": self.keywords, "document_types": self.document_types}
 
@@ -95,7 +95,7 @@ class ParsedIntent:
 
         return filter_dict
 
-    def _resolve_date_range(self) -> Optional[Dict[str, str]]:
+    def _resolve_date_range(self) -> dict[str, str] | None:
         """Resolve date range to actual start/end dates"""
         if not self.date_range or self.date_range.get("type") == DateRange.CUSTOM.value:
             return self.date_range.get("custom")
@@ -126,28 +126,18 @@ class ParsedIntent:
                 end = start.replace(month=start.month + 1, day=1)
         elif range_type == DateRange.LAST_MONTH.value:
             # First day of this month
-            this_month_start = now.replace(
-                day=1, hour=0, minute=0, second=0, microsecond=0
-            )
+            this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             end = this_month_start
             # First day of last month
             if this_month_start.month == 1:
-                start = this_month_start.replace(
-                    year=this_month_start.year - 1, month=12, day=1
-                )
+                start = this_month_start.replace(year=this_month_start.year - 1, month=12, day=1)
             else:
-                start = this_month_start.replace(
-                    month=this_month_start.month - 1, day=1
-                )
+                start = this_month_start.replace(month=this_month_start.month - 1, day=1)
         elif range_type == DateRange.THIS_YEAR.value:
-            start = now.replace(
-                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
-            )
+            start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
             end = start.replace(year=start.year + 1)
         elif range_type == DateRange.LAST_YEAR.value:
-            this_year_start = now.replace(
-                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
-            )
+            this_year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
             end = this_year_start
             start = this_year_start.replace(year=this_year_start.year - 1)
         else:
@@ -277,7 +267,9 @@ Now parse the user's query:"""
     def _extract_current_year_context(self) -> str:
         """Get current year/month context for relative date parsing"""
         now = datetime.utcnow()
-        return f"Current date: {now.strftime('%Y-%m-%d')}\nCurrent year: {now.year}\nCurrent month: {now.strftime('%B')}"
+        return (
+            f"Current date: {now.strftime('%Y-%m-%d')}\nCurrent year: {now.year}\nCurrent month: {now.strftime('%B')}"
+        )
 
     def _fallback_parse(self, query: str) -> ParsedIntent:
         """
@@ -321,15 +313,11 @@ Now parse the user's query:"""
         # Document type detection
         if any(word in query_lower for word in ["pdf", "document"]):
             document_types.append("pdf")
-        if any(
-            word in query_lower for word in ["photo", "image", "picture", "jpg", "png"]
-        ):
+        if any(word in query_lower for word in ["photo", "image", "picture", "jpg", "png"]):
             document_types.append("image")
         if any(word in query_lower for word in ["spreadsheet", "excel", "xls"]):
             document_types.append("spreadsheet")
-        if any(
-            word in query_lower for word in ["presentation", "powerpoint", "slides"]
-        ):
+        if any(word in query_lower for word in ["presentation", "powerpoint", "slides"]):
             document_types.append("presentation")
 
         if len(document_types) > 1:
@@ -387,9 +375,7 @@ Now parse the user's query:"""
             raw_response="fallback_parsing",
         )
 
-    async def parse_intent(
-        self, query: str, user_language: str = "en", use_ollama: bool = False
-    ) -> ParsedIntent:
+    async def parse_intent(self, query: str, user_language: str = "en", use_ollama: bool = False) -> ParsedIntent:
         """
         Parse natural language query into structured intent
 
@@ -425,8 +411,7 @@ Now parse the user's query:"""
             # Route to appropriate LLM based on confidentiality
             # TODO: migrate to llm_router.select_provider() (M1 tech debt)
             warnings.warn(
-                "IntentParser uses inline LLM routing. "
-                "Migrate to llm_router.select_provider() to remove this warning.",
+                "IntentParser uses inline LLM routing. Migrate to llm_router.select_provider() to remove this warning.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -436,22 +421,14 @@ Now parse the user's query:"""
                 async for chunk in llm_service.chat_completion(
                     messages=messages, stream=False, temperature=0.3, num_predict=1024
                 ):
-                    if (
-                        chunk
-                        and not chunk.startswith("Error:")
-                        and not chunk.startswith("__USAGE__")
-                    ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                         response_parts.append(chunk)
             else:
                 llm_service = self._get_openrouter_service()
                 async for chunk in llm_service.chat_completion(
                     messages=messages, stream=False, temperature=0.3, max_tokens=1024
                 ):
-                    if (
-                        chunk
-                        and not chunk.startswith("Error:")
-                        and not chunk.startswith("__USAGE__")
-                    ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                         response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
@@ -469,16 +446,12 @@ Now parse the user's query:"""
                     date_range=intent_data.get("date_range", {"type": "all_time"}),
                     entities=intent_data.get("entities", []),
                     document_types=intent_data.get("document_types", ["all"]),
-                    collection_name=intent_data.get(
-                        "collection_name", self._generate_fallback_name(query)
-                    ),
+                    collection_name=intent_data.get("collection_name", self._generate_fallback_name(query)),
                     confidence=0.9,  # High confidence for LLM-parsed intent
                     raw_response=json_text,
                 )
             else:
-                logger.warning(
-                    f"Failed to extract JSON from LLM response: {response_text}"
-                )
+                logger.warning(f"Failed to extract JSON from LLM response: {response_text}")
                 return self._fallback_parse(query)
 
         except json.JSONDecodeError as e:
@@ -488,7 +461,7 @@ Now parse the user's query:"""
             logger.error(f"Error parsing intent: {e}", exc_info=True)
             return self._fallback_parse(query)
 
-    def _extract_json(self, text: str) -> Optional[str]:
+    def _extract_json(self, text: str) -> str | None:
         """Extract JSON from response, handling markdown code blocks"""
         text = text.strip()
 
@@ -530,9 +503,7 @@ Now parse the user's query:"""
         meaningful = [w for w in words if len(w) > 2][:5]
         return " ".join(meaningful).title() if meaningful else "My Collection"
 
-    async def parse_batch_intents(
-        self, queries: List[str], user_language: str = "en"
-    ) -> List[ParsedIntent]:
+    async def parse_batch_intents(self, queries: list[str], user_language: str = "en") -> list[ParsedIntent]:
         """
         Parse multiple queries in batch
 

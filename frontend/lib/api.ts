@@ -24,6 +24,20 @@ class ApiClient {
     // No need to read tokens from JavaScript
   }
 
+  /**
+   * Read the CSRF double-submit cookie set by the backend on login/refresh.
+   * The cookie is non-httpOnly so JS can read it and echo it back in a header.
+   */
+  private getCsrfToken(): string {
+    if (typeof document === 'undefined') return '';
+    return (
+      document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('csrf_token='))
+        ?.split('=')[1] ?? ''
+    );
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -37,6 +51,15 @@ class ApiClient {
     // Only set Content-Type if not already set (e.g., for FormData)
     if (!headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
+    }
+
+    // CSRF: echo the double-submit cookie back in a header on unsafe methods
+    const unsafeMethods = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
+    if (unsafeMethods.has((options.method ?? 'GET').toUpperCase())) {
+      const csrfToken = this.getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
     }
 
     // Note: Backend uses httpOnly cookies for authentication
@@ -77,7 +100,10 @@ class ApiClient {
           } catch (refreshError) {
             // Refresh failed, redirect to login
           }
-          window.location.href = '/login';
+          // Extract locale from current path (e.g. /fr/chat → fr)
+          const pathLocale = window.location.pathname.split('/')[1];
+          const locale = ['fr', 'en'].includes(pathLocale) ? pathLocale : 'fr';
+          window.location.href = `/${locale}/login`;
         }
         return { status, error: 'Unauthorized' };
       }
@@ -228,11 +254,17 @@ class ApiClient {
     const url = `${this.baseUrl}/v1/chat/sessions/${sessionId}/message?stream=true`;
 
     try {
+      const streamHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      const csrfToken = this.getCsrfToken();
+      if (csrfToken) {
+        streamHeaders['X-CSRF-Token'] = csrfToken;
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: streamHeaders,
         credentials: 'include', // httpOnly cookies sent automatically
         body: JSON.stringify({ content }),
       });
@@ -439,6 +471,17 @@ class ApiClient {
 export const api = new ApiClient(API_BASE);
 export default api;
 
-export function getTokenFromCookie(): string | null {
-  return null;
+/**
+ * Read the CSRF double-submit cookie (non-httpOnly, set by backend on login).
+ * Use this when making state-changing requests (POST/PUT/DELETE/PATCH)
+ * via raw fetch() instead of the api client.
+ */
+export function getCsrfToken(): string {
+  if (typeof document === 'undefined') return '';
+  return (
+    document.cookie
+      .split('; ')
+      .find((row) => row.startsWith('csrf_token='))
+      ?.split('=')[1] ?? ''
+  );
 }

@@ -12,23 +12,22 @@ Tests the complete collection export flow end-to-end:
 All external LLM / AI calls are mocked. reportlab runs for real to verify PDF generation.
 """
 import json
-import pytest
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.audit import AuditAction, AuditLog
 from app.models.collection import (
     Collection,
     CollectionItem,
-    CollectionVisibility,
     CollectionType,
+    CollectionVisibility,
 )
-from app.models.audit import AuditLog, AuditAction
+from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.user import User, UserRole
 from app.utils.security import create_access_token
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

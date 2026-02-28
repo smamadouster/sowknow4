@@ -5,21 +5,24 @@ Provides health checks, queue depth monitoring, cost tracking,
 and alerting capabilities per PRD requirements.
 """
 
-import os
 import logging
-import psutil
+import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List
+from typing import Any
+
+import psutil
 
 try:
     from prometheus_client import Histogram
+
     _prometheus_available = True
 except ImportError:
     Histogram = None  # type: ignore[assignment,misc]
     _prometheus_available = False
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
 from threading import Lock
+
 import redis
 
 logger = logging.getLogger(__name__)
@@ -66,8 +69,8 @@ class AlertState:
     """Track alert state to prevent duplicate notifications."""
 
     alert_name: str
-    triggered_at: Optional[datetime] = None
-    resolved_at: Optional[datetime] = None
+    triggered_at: datetime | None = None
+    resolved_at: datetime | None = None
     notification_sent: bool = False
 
 
@@ -96,8 +99,8 @@ class CostTracker:
 
     # OCR pricing — PaddleOCR cloud reference rates (local usage is always free)
     OCR_PRICING = {
-        "base":   0.001,  # $0.001/page — standard 1024×1024 mode
-        "large":  0.002,  # $0.002/page — high-res 1280×1280 mode
+        "base": 0.001,  # $0.001/page — standard 1024×1024 mode
+        "large": 0.002,  # $0.002/page — high-res 1280×1280 mode
         "gundam": 0.003,  # $0.003/page — multi-pass mode
     }
 
@@ -112,9 +115,9 @@ class CostTracker:
             daily_budget_usd: Daily budget cap in USD (default: $5.00)
         """
         self._daily_budget = daily_budget_usd
-        self._cost_records: List[APICostRecord] = []
+        self._cost_records: list[APICostRecord] = []
         self._lock = Lock()
-        self._daily_totals: Dict[str, float] = defaultdict(float)
+        self._daily_totals: dict[str, float] = defaultdict(float)
 
     def record_api_call(
         self,
@@ -142,12 +145,8 @@ class CostTracker:
         cost = 0.0
 
         if service == "openrouter":
-            pricing = self.OPENROUTER_PRICING.get(
-                model, self.OPENROUTER_PRICING["minimax/minimax-01"]
-            )
-            cost = (input_tokens / 1000) * pricing["input"] + (
-                output_tokens / 1000
-            ) * pricing["output"]
+            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING["minimax/minimax-01"])
+            cost = (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
         elif service in ("paddleocr", "tesseract"):
             # Local OCR - no API cost, just compute resources
             cost = 0.0  # Free open source OCR
@@ -171,13 +170,12 @@ class CostTracker:
             self._daily_totals[key] += cost
 
         logger.debug(
-            f"API cost recorded: {service}.{operation} = ${cost:.6f} "
-            f"(in: {input_tokens}, out: {output_tokens})"
+            f"API cost recorded: {service}.{operation} = ${cost:.6f} (in: {input_tokens}, out: {output_tokens})"
         )
 
         return cost
 
-    def get_daily_cost(self, service: Optional[str] = None) -> float:
+    def get_daily_cost(self, service: str | None = None) -> float:
         """
         Get total cost for today.
 
@@ -198,10 +196,10 @@ class CostTracker:
 
         return total
 
-    def get_daily_cost_breakdown(self) -> Dict[str, float]:
+    def get_daily_cost_breakdown(self) -> dict[str, float]:
         """Get cost breakdown by service for today."""
         today = datetime.now().date()
-        breakdown: Dict[str, float] = defaultdict(float)
+        breakdown: dict[str, float] = defaultdict(float)
 
         with self._lock:
             for record in self._cost_records:
@@ -218,7 +216,7 @@ class CostTracker:
         """Get remaining daily budget."""
         return max(0, self._daily_budget - self.get_daily_cost())
 
-    def get_stats(self, days: int = 7) -> Dict[str, Any]:
+    def get_stats(self, days: int = 7) -> dict[str, Any]:
         """
         Get cost statistics for the specified period.
 
@@ -229,8 +227,8 @@ class CostTracker:
             Dictionary with cost statistics
         """
         cutoff_date = datetime.now() - timedelta(days=days)
-        daily_costs: Dict[str, float] = defaultdict(float)
-        service_totals: Dict[str, float] = defaultdict(float)
+        daily_costs: dict[str, float] = defaultdict(float)
+        service_totals: dict[str, float] = defaultdict(float)
         total_cost = 0.0
 
         with self._lock:
@@ -253,7 +251,6 @@ class CostTracker:
             "over_budget": self.is_over_budget(),
         }
 
-
     def track_ocr_operation(
         self,
         method: str,
@@ -272,9 +269,7 @@ class CostTracker:
             Cost in USD (0.0 for local engines)
         """
         cost = self._record_cost(method, mode, pages)
-        logger.debug(
-            f"OCR cost tracked: {method}/{mode} × {pages} page(s) = ${cost:.4f}"
-        )
+        logger.debug(f"OCR cost tracked: {method}/{mode} × {pages} page(s) = ${cost:.4f}")
         return cost
 
     def _record_cost(self, method: str, mode: str, pages: int) -> float:
@@ -308,7 +303,7 @@ class QueueMonitor:
             redis_url: Redis connection URL
         """
         self._redis_url = redis_url
-        self._redis_client: Optional[redis.Redis] = None
+        self._redis_client: redis.Redis | None = None
         self._lock = Lock()
 
     def _get_redis(self) -> redis.Redis:
@@ -316,9 +311,7 @@ class QueueMonitor:
         if self._redis_client is None:
             with self._lock:
                 if self._redis_client is None:
-                    self._redis_client = redis.from_url(
-                        self._redis_url, decode_responses=True
-                    )
+                    self._redis_client = redis.from_url(self._redis_url, decode_responses=True)
         return self._redis_client
 
     def get_queue_depth(self, queue_name: str = "celery") -> int:
@@ -343,7 +336,7 @@ class QueueMonitor:
             logger.error(f"Failed to get queue depth: {e}")
             return 0
 
-    def get_all_queue_depths(self) -> Dict[str, int]:
+    def get_all_queue_depths(self) -> dict[str, int]:
         """Get depths for all Celery queues."""
         depths = {}
         try:
@@ -375,7 +368,7 @@ class QueueMonitor:
         """
         return self.get_queue_depth() > threshold
 
-    def get_worker_status(self) -> Dict[str, Any]:
+    def get_worker_status(self) -> dict[str, Any]:
         """
         Get status of active workers.
 
@@ -406,7 +399,7 @@ class SystemMonitor:
     """Monitor system resources including memory, CPU, and disk."""
 
     @staticmethod
-    def get_memory_usage() -> Dict[str, Any]:
+    def get_memory_usage() -> dict[str, Any]:
         """Get current memory usage statistics."""
         mem = psutil.virtual_memory()
         swap = psutil.swap_memory()
@@ -423,7 +416,7 @@ class SystemMonitor:
         }
 
     @staticmethod
-    def get_cpu_usage() -> Dict[str, Any]:
+    def get_cpu_usage() -> dict[str, Any]:
         """Get current CPU usage statistics."""
         return {
             "percent": psutil.cpu_percent(interval=0.1),
@@ -432,7 +425,7 @@ class SystemMonitor:
         }
 
     @staticmethod
-    def get_disk_usage(path: str = "/") -> Dict[str, Any]:
+    def get_disk_usage(path: str = "/") -> dict[str, Any]:
         """Get disk usage statistics."""
         try:
             disk = psutil.disk_usage(path)
@@ -449,7 +442,7 @@ class SystemMonitor:
             return {"error": str(e)}
 
     @staticmethod
-    def get_container_stats() -> Dict[str, Any]:
+    def get_container_stats() -> dict[str, Any]:
         """
         Get Docker container stats.
 
@@ -533,8 +526,8 @@ class AlertManager:
     """Manage monitoring alerts and notifications."""
 
     def __init__(self):
-        self._alerts: Dict[str, AlertConfig] = {}
-        self._alert_states: Dict[str, AlertState] = {}
+        self._alerts: dict[str, AlertConfig] = {}
+        self._alert_states: dict[str, AlertState] = {}
         self._lock = Lock()
 
     def register_alert(self, config: AlertConfig) -> None:
@@ -573,9 +566,7 @@ class AlertManager:
 
         if triggered and state.triggered_at is None:
             state.triggered_at = datetime.now()
-            logger.warning(
-                f"Alert triggered: {name} (value: {current_value}, threshold: {config.threshold})"
-            )
+            logger.warning(f"Alert triggered: {name} (value: {current_value}, threshold: {config.threshold})")
             return True
         elif not triggered and state.triggered_at is not None:
             state.resolved_at = datetime.now()
@@ -585,7 +576,7 @@ class AlertManager:
 
         return False
 
-    def get_active_alerts(self) -> List[Dict[str, Any]]:
+    def get_active_alerts(self) -> list[dict[str, Any]]:
         """Get list of currently triggered alerts."""
         active = []
         with self._lock:
@@ -603,8 +594,8 @@ class AlertManager:
 
 
 # Global instances
-_cost_tracker: Optional[CostTracker] = None
-_queue_monitor: Optional[QueueMonitor] = None
+_cost_tracker: CostTracker | None = None
+_queue_monitor: QueueMonitor | None = None
 _alert_manager = AlertManager()
 
 
@@ -622,6 +613,7 @@ def get_queue_monitor() -> QueueMonitor:
     global _queue_monitor
     if _queue_monitor is None:
         from app.core.redis_url import safe_redis_url
+
         _queue_monitor = QueueMonitor(redis_url=safe_redis_url())
     return _queue_monitor
 
@@ -636,9 +628,7 @@ def setup_default_alerts() -> None:
     manager = get_alert_manager()
 
     defaults = [
-        AlertConfig(
-            "sowknow_memory_gb", 6.0, "gt", 300
-        ),  # PRD: SOWKNOW containers >6GB
+        AlertConfig("sowknow_memory_gb", 6.0, "gt", 300),  # PRD: SOWKNOW containers >6GB
         AlertConfig("vps_memory_percent", 80.0, "gt", 300),  # PRD: VPS memory >80%
         AlertConfig("disk_high", 85.0, "gt", 300),
         AlertConfig("queue_congested", 100.0, "gt", 300),

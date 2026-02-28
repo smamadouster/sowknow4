@@ -16,10 +16,9 @@ Usage:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from app.services.telegram_notifier import TelegramNotifier
 from app.services.email_notifier import EmailNotifier
+from app.services.telegram_notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +43,8 @@ class AlertService:
         self,
         message: str,
         severity: str = "INFO",
-        title: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        title: str | None = None,
+        metadata: dict | None = None,
     ) -> dict[str, bool]:
         """
         Send an alert to all channels appropriate for the given severity.
@@ -88,15 +87,8 @@ class AlertService:
                 results[channel] = False
 
         # Always log, regardless of external delivery
-        log_fn = (
-            logger.critical
-            if severity == "CRITICAL"
-            else (logger.error if severity == "HIGH" else logger.warning)
-        )
-        log_fn(
-            f"[ALERT/{severity}] {subject} | channels={list(results.keys())} | "
-            f"results={results}"
-        )
+        log_fn = logger.critical if severity == "CRITICAL" else (logger.error if severity == "HIGH" else logger.warning)
+        log_fn(f"[ALERT/{severity}] {subject} | channels={list(results.keys())} | results={results}")
 
         return results
 
@@ -106,7 +98,7 @@ class AlertService:
         task_id: str,
         exception: str,
         retry_count: int = 0,
-        extra_metadata: Optional[dict] = None,
+        extra_metadata: dict | None = None,
     ) -> dict[str, bool]:
         """Convenience method for task failure alerts (always HIGH severity)."""
         metadata = {
@@ -128,7 +120,7 @@ class AlertService:
         anomaly_type: str,
         details: str,
         severity: str = "MEDIUM",
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> dict[str, bool]:
         """Convenience method for anomaly detection alerts."""
         return await self.send_alert(

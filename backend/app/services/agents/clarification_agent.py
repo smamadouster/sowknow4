@@ -6,11 +6,11 @@ to understand intent, context, and scope.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any
 
-from app.services.ollama_service import ollama_service
 from app.services.minimax_service import minimax_service
+from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,11 @@ class ClarificationRequest:
     """Request for clarification"""
 
     query: str
-    context: Optional[str] = None
-    conversation_history: Optional[List[Dict[str, str]]] = None
-    user_preferences: Optional[Dict[str, Any]] = None
+    context: str | None = None
+    conversation_history: list[dict[str, str]] | None = None
+    user_preferences: dict[str, Any] | None = None
     # Sources from a prior retrieval step (used for auto-detecting confidential docs)
-    sources: Optional[List[Dict[str, Any]]] = None
+    sources: list[dict[str, Any]] | None = None
     # Explicit override: set to True when the caller already knows confidential
     # content is involved (e.g. first-turn clarification with no sources yet)
     has_confidential: bool = False
@@ -36,10 +36,10 @@ class ClarificationResult:
 
     is_clear: bool
     confidence: float
-    clarified_query: Optional[str] = None
-    questions: List[str] = None
-    assumptions: List[str] = None
-    suggested_filters: Dict[str, Any] = None
+    clarified_query: str | None = None
+    questions: list[str] = None
+    assumptions: list[str] = None
+    suggested_filters: dict[str, Any] = None
     reasoning: str = ""
 
     def __post_init__(self):
@@ -64,9 +64,7 @@ class ClarificationAgent:
         self.ollama_service = ollama_service
         self.minimax_service = minimax_service
 
-    def _has_confidential_documents(
-        self, sources: Optional[List[Dict[str, Any]]]
-    ) -> bool:
+    def _has_confidential_documents(self, sources: list[dict[str, Any]] | None) -> bool:
         """Check if any sources contain confidential documents."""
         if not sources:
             return False
@@ -80,10 +78,7 @@ class ClarificationAgent:
         2. request.has_confidential explicitly set to True → Ollama
         3. Otherwise → MiniMax (public / general-chat)
         """
-        if (
-            self._has_confidential_documents(request.sources)
-            or request.has_confidential
-        ):
+        if self._has_confidential_documents(request.sources) or request.has_confidential:
             logger.info("ClarificationAgent: Using Ollama for confidential context")
             return self.ollama_service
         return self.minimax_service
@@ -144,11 +139,7 @@ Return a JSON object with:
             async for chunk in llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.3, max_tokens=1024
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
@@ -184,9 +175,7 @@ Return a JSON object with:
                 reasoning="Error during clarification, proceeding with original query",
             )
 
-    def _fallback_clarification(
-        self, request: ClarificationRequest
-    ) -> ClarificationResult:
+    def _fallback_clarification(self, request: ClarificationRequest) -> ClarificationResult:
         """Fallback clarification using rule-based analysis"""
         query = request.query.lower()
         questions = []
@@ -225,9 +214,7 @@ Return a JSON object with:
 
         if not is_clear:
             if word_count < 4:
-                questions.append(
-                    "Could you provide more details about what you're looking for?"
-                )
+                questions.append("Could you provide more details about what you're looking for?")
             if not has_question_word:
                 questions.append("What specific question are you trying to answer?")
 
@@ -274,8 +261,8 @@ Return a JSON object with:
         return text
 
     async def suggest_search_improvements(
-        self, query: str, results: List[Dict[str, Any]], result_count: int
-    ) -> List[str]:
+        self, query: str, results: list[dict[str, Any]], result_count: int
+    ) -> list[str]:
         """
         Suggest ways to improve the search based on results
 
@@ -301,9 +288,7 @@ Return a JSON object with:
             avg_score = sum(scores) / len(scores) if scores else 0
 
             if avg_score < 0.5:
-                suggestions.append(
-                    "Results have low relevance. Try rephrasing your query."
-                )
+                suggestions.append("Results have low relevance. Try rephrasing your query.")
                 suggestions.append("Consider adding specific entities or dates")
 
         # Check query characteristics

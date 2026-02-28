@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { getTokenFromCookie } from "@/lib/api";
+import { getCsrfToken } from "@/lib/api";
 
 interface CollectionItem {
   id: string;
@@ -52,13 +52,10 @@ export default function CollectionDetailPage() {
 
   const fetchCollection = async () => {
     try {
-      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}`,
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: 'include',
         }
       );
 
@@ -81,14 +78,12 @@ export default function CollectionDetailPage() {
     if (!collection) return;
 
     try {
-      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}/refresh`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "X-CSRF-Token": getCsrfToken() },
+          credentials: "include",
         }
       );
 
@@ -107,15 +102,15 @@ export default function CollectionDetailPage() {
     setToast(null);
 
     try {
-      const token = getTokenFromCookie();
       const locale = params.locale || 'en';
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/reports/generate`,
         {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            "X-CSRF-Token": getCsrfToken(),
           },
           body: JSON.stringify({
             collection_id: collection.id,
@@ -165,14 +160,14 @@ export default function CollectionDetailPage() {
     setChatLoading(true);
 
     try {
-      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}/chat`,
         {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            "X-CSRF-Token": getCsrfToken(),
           },
           body: JSON.stringify({
             message: userMessage,

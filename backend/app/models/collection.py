@@ -5,26 +5,31 @@ Users can create collections from natural language queries that gather
 related documents. Collections support AI summaries, follow-up Q&A, and
 can be saved for later reference.
 """
-import uuid
+
 import enum
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Text, Index, event, Enum
+import uuid
+
+from sqlalchemy import Boolean, Column, Enum, ForeignKey, Index, Integer, String, Text, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from app.models.base import Base, TimestampMixin, GUIDType
+
+from app.models.base import Base, GUIDType, TimestampMixin
 
 
-class CollectionVisibility(str, enum.Enum):
+class CollectionVisibility(enum.StrEnum):
     """Collection visibility settings"""
-    PRIVATE = "private"           # Only owner can see
-    SHARED = "shared"             # Owner + SuperUsers can see
-    PUBLIC = "public"             # Everyone can see (with role restrictions)
+
+    PRIVATE = "private"  # Only owner can see
+    SHARED = "shared"  # Owner + SuperUsers can see
+    PUBLIC = "public"  # Everyone can see (with role restrictions)
 
 
-class CollectionType(str, enum.Enum):
+class CollectionType(enum.StrEnum):
     """Types of collections"""
-    SMART = "smart"               # AI-generated from natural language query
-    MANUAL = "manual"             # Manually curated by user
-    FOLDER = "folder"             # Smart Folder with generated content
+
+    SMART = "smart"  # AI-generated from natural language query
+    MANUAL = "manual"  # Manually curated by user
+    FOLDER = "folder"  # Smart Folder with generated content
 
 
 class Collection(Base, TimestampMixin):
@@ -34,21 +39,33 @@ class Collection(Base, TimestampMixin):
     A collection represents a set of documents gathered by a query, with optional
     AI-generated summary and metadata. Collections support follow-up Q&A sessions.
     """
+
     __tablename__ = "collections"
     __table_args__ = {"schema": "sowknow"}
 
     id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # Owner
-    user_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Basic info
     name = Column(String(512), nullable=False, index=True)
     description = Column(Text)  # Optional description
 
     # Collection type and visibility
-    collection_type = Column(Enum(CollectionType, values_callable=lambda obj: [e.value for e in obj]), default=CollectionType.SMART, nullable=False)
-    visibility = Column(Enum(CollectionVisibility, values_callable=lambda obj: [e.value for e in obj]), default=CollectionVisibility.PRIVATE, nullable=False, index=True)
+    collection_type = Column(
+        Enum(CollectionType, values_callable=lambda obj: [e.value for e in obj]),
+        default=CollectionType.SMART,
+        nullable=False,
+    )
+    visibility = Column(
+        Enum(CollectionVisibility, values_callable=lambda obj: [e.value for e in obj]),
+        default=CollectionVisibility.PRIVATE,
+        nullable=False,
+        index=True,
+    )
 
     # Query that generated this collection
     query = Column(Text, nullable=False)  # Original natural language query
@@ -93,7 +110,7 @@ class Collection(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Collection {self.name} ({self.collection_type})>"
 
 
@@ -104,12 +121,17 @@ class CollectionItem(Base, TimestampMixin):
     Represents the relationship between a collection and a document,
     with optional metadata like relevance score and notes.
     """
+
     __tablename__ = "collection_items"
     __table_args__ = {"schema": "sowknow"}
 
     id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    collection_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True)
-    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    collection_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Relevance and ordering
     relevance_score = Column(Integer, default=50)  # 0-100 relevance score
@@ -135,7 +157,7 @@ class CollectionItem(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CollectionItem {self.collection_id}/{self.document_id}>"
 
 
@@ -146,12 +168,17 @@ class CollectionChatSession(Base, TimestampMixin):
     These sessions use context caching for cost efficiency and maintain
     conversation history within the collection's document context.
     """
+
     __tablename__ = "collection_chat_sessions"
     __table_args__ = {"schema": "sowknow"}
 
     id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
-    collection_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True)
+    collection_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.collections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Session metadata
     session_name = Column(String(512))  # Optional name for the Q&A session
@@ -172,17 +199,18 @@ class CollectionChatSession(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<CollectionChatSession {self.collection_id}>"
 
+
 # Set up defaults for test instances
-@event.listens_for(Collection, 'init', propagate=True)
-def _collection_init(target, args, kwargs):
+@event.listens_for(Collection, "init", propagate=True)
+def _collection_init(target, args, kwargs) -> None:
     """Set default values for boolean fields when creating instances"""
-    kwargs.setdefault('is_pinned', False)
-    kwargs.setdefault('is_favorite', False)
-    kwargs.setdefault('is_confidential', False)
-    kwargs.setdefault('document_count', 0)
-    kwargs.setdefault('ai_keywords', [])
-    kwargs.setdefault('ai_entities', [])
-    kwargs.setdefault('filter_criteria', {})
+    kwargs.setdefault("is_pinned", False)
+    kwargs.setdefault("is_favorite", False)
+    kwargs.setdefault("is_confidential", False)
+    kwargs.setdefault("document_count", 0)
+    kwargs.setdefault("ai_keywords", [])
+    kwargs.setdefault("ai_entities", [])
+    kwargs.setdefault("filter_criteria", {})

@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+
 def test_production_security():
     """Test production security configuration"""
     print("Testing Production Security Configuration...")
@@ -183,7 +184,7 @@ def test_nginx_configuration():
                 "Referrer-Policy": "strict-origin-when-cross-origin",
             }
 
-            for header, expected_value in security_headers.items():
+            for header, _expected_value in security_headers.items():
                 if header in content:
                     print(f"    ✓ PASS: {header} header is set")
                 else:

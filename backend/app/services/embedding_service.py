@@ -2,9 +2,10 @@
 Embedding service using multilingual-e5-large model
 """
 
-import os
 import logging
-from typing import List, Optional, Dict, Any
+import os
+from typing import Any
+
 import numpy as np
 
 try:
@@ -87,7 +88,7 @@ class EmbeddingService:
                 f"Semantic search disabled; keyword search will still work."
             )
 
-    def get_memory_stats(self) -> Dict[str, Any]:
+    def get_memory_stats(self) -> dict[str, Any]:
         """Return memory usage statistics for the embedding service process."""
         try:
             import psutil
@@ -118,7 +119,7 @@ class EmbeddingService:
                 "load_error": self._load_error,
             }
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """Return a health status dict including memory stats and load error if any."""
         stats = self.get_memory_stats()
         stats["status"] = "healthy" if self.is_loaded else "model_not_loaded"
@@ -126,9 +127,7 @@ class EmbeddingService:
             stats["status"] = "error"
         return stats
 
-    def encode(
-        self, texts: List[str], batch_size: int = 32, show_progress: bool = False
-    ) -> List[List[float]]:
+    def encode(self, texts: list[str], batch_size: int = 32, show_progress: bool = False) -> list[list[float]]:
         """
         Generate embeddings for a list of texts.
 
@@ -153,10 +152,7 @@ class EmbeddingService:
 
         # Graceful degradation: model not available in backend container
         if not self.can_embed:
-            logger.debug(
-                "Embedding model not available; returning zero vectors "
-                "(semantic search disabled)."
-            )
+            logger.debug("Embedding model not available; returning zero vectors (semantic search disabled).")
             return [[0.0] * self.embedding_dim for _ in texts]
 
         try:
@@ -180,7 +176,7 @@ class EmbeddingService:
             logger.error(f"Error generating embeddings: {str(e)}")
             raise
 
-    def encode_single(self, text: str) -> List[float]:
+    def encode_single(self, text: str) -> list[float]:
         """Generate embedding for a single text"""
         if not text or not text.strip():
             return [0.0] * self.embedding_dim
@@ -188,18 +184,14 @@ class EmbeddingService:
         result = self.encode([text])
         return result[0] if result else [0.0] * self.embedding_dim
 
-    async def encode_async(
-        self, texts: List[str], batch_size: int = 32
-    ) -> List[List[float]]:
+    async def encode_async(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """Async wrapper for encoding (runs in thread pool)"""
         import asyncio
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.encode, texts, batch_size)
 
-    def calculate_similarity(
-        self, embedding1: List[float], embedding2: List[float]
-    ) -> float:
+    def calculate_similarity(self, embedding1: list[float], embedding2: list[float]) -> float:
         """
         Calculate cosine similarity between two embeddings
 
@@ -228,7 +220,7 @@ class EmbeddingService:
             logger.error(f"Error calculating similarity: {str(e)}")
             return 0.0
 
-    def get_average_embedding(self, embeddings: List[List[float]]) -> List[float]:
+    def get_average_embedding(self, embeddings: list[list[float]]) -> list[float]:
         """
         Calculate the average (centroid) of multiple embeddings
 
@@ -258,7 +250,7 @@ class ChunkingService:
         self,
         chunk_size: int = 512,
         chunk_overlap: int = 50,
-        separators: Optional[List[str]] = None,
+        separators: list[str] | None = None,
     ):
         self.chunk_size = chunk_size  # Target token count
         self.chunk_overlap = chunk_overlap  # Overlapping tokens
@@ -277,7 +269,7 @@ class ChunkingService:
         # Rough approximation: ~4 characters per token for English/French
         return len(text) // 4
 
-    def chunk_text(self, text: str, metadata: Optional[dict] = None) -> List[dict]:
+    def chunk_text(self, text: str, metadata: dict | None = None) -> list[dict]:
         """
         Split text into chunks for embedding
 
@@ -330,9 +322,7 @@ class ChunkingService:
 
         return chunks
 
-    def chunk_document(
-        self, text: str, document_id: str, metadata: Optional[dict] = None
-    ) -> List[dict]:
+    def chunk_document(self, text: str, document_id: str, metadata: dict | None = None) -> list[dict]:
         """
         Chunk document text with document metadata
 

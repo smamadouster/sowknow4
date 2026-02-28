@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { getCsrfToken } from '@/lib/api';
 
 interface SearchResult {
   chunk_id: string;
@@ -37,12 +38,6 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const getToken = (): string | null => {
-    if (typeof window === 'undefined') return null;
-    const match = document.cookie.match(/access_token=([^;]+)/);
-    return match ? match[1] : null;
-  };
-
   const handleSearch = async () => {
     if (!query.trim()) return;
 
@@ -53,12 +48,11 @@ export default function SearchPage() {
     setLlmUsed(null);
 
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'X-CSRF-Token': getCsrfToken(),
         },
         credentials: 'include',
         body: JSON.stringify({ 

@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -18,19 +17,15 @@ logger = logging.getLogger(__name__)
 class EmailNotifier:
     """Send HTML alert emails to admins via SendGrid."""
 
-    def __init__(self):
-        self.api_key: Optional[str] = os.getenv("SENDGRID_API_KEY")
+    def __init__(self) -> None:
+        self.api_key: str | None = os.getenv("SENDGRID_API_KEY")
         self.from_email: str = os.getenv("ALERT_FROM_EMAIL", "alerts@sowknow.local")
         admin_emails_raw = os.getenv("ADMIN_EMAILS", "")
-        self.admin_emails = [
-            e.strip() for e in admin_emails_raw.split(",") if e.strip()
-        ]
+        self.admin_emails = [e.strip() for e in admin_emails_raw.split(",") if e.strip()]
         self._enabled = bool(self.api_key and self.admin_emails)
 
         if not self._enabled:
-            logger.debug(
-                "EmailNotifier: SENDGRID_API_KEY or ADMIN_EMAILS not set — disabled."
-            )
+            logger.debug("EmailNotifier: SENDGRID_API_KEY or ADMIN_EMAILS not set — disabled.")
 
     @property
     def is_configured(self) -> bool:
@@ -42,7 +37,7 @@ class EmailNotifier:
         subject: str,
         message: str,
         severity: str = "INFO",
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> bool:
         """
         Send an HTML alert email to all configured admin addresses.
@@ -61,8 +56,8 @@ class EmailNotifier:
             return False
 
         try:
-            from sendgrid import SendGridAPIClient  # type: ignore
-            from sendgrid.helpers.mail import Mail  # type: ignore
+            from sendgrid import SendGridAPIClient
+            from sendgrid.helpers.mail import Mail
         except ImportError:
             logger.warning("EmailNotifier: sendgrid package not installed")
             return False
@@ -81,9 +76,7 @@ class EmailNotifier:
             )
             response = sg.send(mail)
             if response.status_code not in (200, 202):
-                logger.warning(
-                    f"SendGrid returned {response.status_code} for alert: {subject}"
-                )
+                logger.warning(f"SendGrid returned {response.status_code} for alert: {subject}")
                 success = False
             else:
                 logger.debug(f"Email alert sent ({severity}): {subject}")
@@ -98,7 +91,7 @@ def _build_html(
     subject: str,
     message: str,
     severity: str,
-    metadata: Optional[dict],
+    metadata: dict | None,
 ) -> str:
     """Build a simple HTML email body."""
     severity_colors = {
@@ -109,12 +102,14 @@ def _build_html(
         "INFO": "#2563eb",
     }
     color = severity_colors.get(severity.upper(), "#2563eb")
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     meta_rows = ""
     if metadata:
         for k, v in metadata.items():
-            meta_rows += f"<tr><td style='padding:4px 8px;font-weight:bold'>{k}</td><td style='padding:4px 8px'>{v}</td></tr>"
+            meta_rows += (
+                f"<tr><td style='padding:4px 8px;font-weight:bold'>{k}</td><td style='padding:4px 8px'>{v}</td></tr>"
+            )
         meta_section = f"""
         <h3 style="margin-top:20px">Context</h3>
         <table style="border-collapse:collapse;width:100%">{meta_rows}</table>

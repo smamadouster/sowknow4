@@ -5,13 +5,14 @@ Verifies that the agent automatically selects Ollama for confidential
 sources — exactly like ResearcherAgent, AnswerAgent, VerificationAgent —
 without requiring the caller to pass an explicit `use_ollama=True`.
 """
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from app.services.agents.clarification_agent import (
     ClarificationAgent,
     ClarificationRequest,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

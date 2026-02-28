@@ -354,6 +354,7 @@ def test_refresh_token_without_cookie(client: TestClient):
     """Test refresh fails when no cookie is present"""
     # Clear any existing cookies by creating a new client
     from fastapi.testclient import TestClient
+
     from app.main import app
 
     new_client = TestClient(app)
@@ -374,7 +375,7 @@ def test_refresh_token_uses_current_role_from_db(client: TestClient, db: Session
     payload instead of fetching the current role from the database.
     """
     from app.models.user import User, UserRole
-    from app.utils.security import get_password_hash, decode_token
+    from app.utils.security import decode_token, get_password_hash
 
     # Step 1: Create user with "user" role
     password = "SecurePassword123!"
@@ -443,7 +444,7 @@ def test_refresh_token_role_downgrade_from_db(client: TestClient, db: Session):
     This tests the opposite direction - admin demoted to user.
     """
     from app.models.user import User, UserRole
-    from app.utils.security import get_password_hash, decode_token
+    from app.utils.security import decode_token, get_password_hash
 
     # Step 1: Create user with "admin" role
     password = "SecurePassword123!"

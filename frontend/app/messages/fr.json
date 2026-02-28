@@ -52,6 +52,7 @@
     "has_account": "Déjà un compte?",
     "login_success": "Connexion réussie",
     "register_success": "Compte créé avec succès",
+    "session_expired": "Votre session a expiré en raison d'inactivité. Veuillez vous reconnecter.",
     "login_error": "Email ou mot de passe incorrect",
     "register_error": "Erreur lors de la création du compte",
     "forgot_password": "Mot de passe oublié?",

@@ -10,14 +10,15 @@ Tests cover:
 - Redis failure graceful degradation
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from app.services.openrouter_service import (
-    OpenRouterService,
     CACHE_KEY_PREFIX,
     CACHE_TTL_SECONDS,
     COLLECTION_CACHE_KEYS_PREFIX,
+    OpenRouterService,
 )
 
 

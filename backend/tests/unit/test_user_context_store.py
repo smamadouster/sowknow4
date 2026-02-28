@@ -10,9 +10,9 @@ Verifies:
 """
 
 import json
-import pytest
 from unittest.mock import AsyncMock
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -23,8 +23,8 @@ def _make_store(redis_ok: bool = True):
     Return a UserContextStore (RedisSessionManager) with a mocked Redis
     connection.  When redis_ok=False the store falls back to in-memory dict.
     """
-    import sys
     import os
+    import sys
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot"))
 
@@ -122,10 +122,10 @@ async def test_fallback_delete():
 
 def test_user_context_store_alias_is_redis_session_manager():
     """UserContextStore must be an alias for RedisSessionManager."""
-    import sys
     import os
+    import sys
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot"))
-    from bot import UserContextStore, RedisSessionManager  # noqa: E402
+    from bot import RedisSessionManager, UserContextStore  # noqa: E402
 
     assert UserContextStore is RedisSessionManager

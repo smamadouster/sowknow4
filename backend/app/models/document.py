@@ -1,13 +1,13 @@
 from sqlalchemy import (
-    Column,
-    String,
-    Integer,
     BigInteger,
     Boolean,
+    Column,
     Enum,
     ForeignKey,
-    Text,
     Index,
+    Integer,
+    String,
+    Text,
     event,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
@@ -19,19 +19,20 @@ try:
 except ImportError:
     # Fallback for testing with SQLite - use Text column
     Vector = None
-import uuid
 import enum
-from app.models.base import Base, TimestampMixin, GUIDType
+import uuid
+
+from app.models.base import Base, GUIDType, TimestampMixin
 
 
-class DocumentBucket(str, enum.Enum):
+class DocumentBucket(enum.StrEnum):
     """Document storage bucket classification"""
 
     PUBLIC = "public"
     CONFIDENTIAL = "confidential"
 
 
-class DocumentStatus(str, enum.Enum):
+class DocumentStatus(enum.StrEnum):
     """Document processing status"""
 
     PENDING = "pending"
@@ -41,7 +42,7 @@ class DocumentStatus(str, enum.Enum):
     ERROR = "error"
 
 
-class DocumentLanguage(str, enum.Enum):
+class DocumentLanguage(enum.StrEnum):
     """Supported document languages"""
 
     FRENCH = "fr"
@@ -105,15 +106,9 @@ class Document(Base, TimestampMixin):
     document_metadata = Column("metadata", JSONB, default=dict)
 
     # Relationships
-    tags = relationship(
-        "DocumentTag", back_populates="document", cascade="all, delete-orphan"
-    )
-    chunks = relationship(
-        "DocumentChunk", back_populates="document", cascade="all, delete-orphan"
-    )
-    processing_queue = relationship(
-        "ProcessingQueue", back_populates="document", uselist=False
-    )
+    tags = relationship("DocumentTag", back_populates="document", cascade="all, delete-orphan")
+    chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
+    processing_queue = relationship("ProcessingQueue", back_populates="document", uselist=False)
 
     # Indexes
     __table_args__ = (
@@ -123,7 +118,7 @@ class Document(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Document {self.filename} ({self.bucket}/{self.status})>"
 
 
@@ -162,7 +157,7 @@ class DocumentTag(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<DocumentTag {self.tag_name} ({self.tag_type})>"
 
 
@@ -200,9 +195,7 @@ class DocumentChunk(Base, TimestampMixin):
     # Metadata (legacy: also stores embedding in JSONB for backward compatibility)
     token_count = Column(Integer)
     page_number = Column(Integer)  # For PDFs
-    document_metadata = Column(
-        "metadata", JSONB, default=dict
-    )  # For embeddings and other metadata
+    document_metadata = Column("metadata", JSONB, default=dict)  # For embeddings and other metadata
 
     # Full-text search — auto-updated by DB trigger (migration 009)
     # embedding = Column(Vector(1024), nullable=True)  — mapped as embedding_vector above
@@ -232,7 +225,7 @@ class DocumentChunk(Base, TimestampMixin):
             {"schema": "sowknow"},
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         lang = self.search_language or "french"
         return f"<DocumentChunk {self.document_id}/{self.chunk_index} lang={lang}>"
 
@@ -267,7 +260,7 @@ class DocumentChunk(Base, TimestampMixin):
 
 # Set up defaults for test instances
 @event.listens_for(Document, "init", propagate=True)
-def _document_init(target, args, kwargs):
+def _document_init(target, args, kwargs) -> None:
     """Set default values for fields when creating instances"""
     kwargs.setdefault("bucket", DocumentBucket.PUBLIC)
     kwargs.setdefault("status", DocumentStatus.PENDING)
@@ -279,6 +272,6 @@ def _document_init(target, args, kwargs):
 
 
 @event.listens_for(DocumentChunk, "init", propagate=True)
-def _document_chunk_init(target, args, kwargs):
+def _document_chunk_init(target, args, kwargs) -> None:
     """Set default values for DocumentChunk instances"""
     kwargs.setdefault("document_metadata", {})

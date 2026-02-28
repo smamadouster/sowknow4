@@ -10,18 +10,20 @@ Variables set per request:
   app.user_role — Role of the authenticated user (empty string if anonymous)
   app.client_ip — Originating IP address (for audit log)
 """
+
 import logging
 
 from jose import JWTError, jwt
 from starlette.requests import Request
+from starlette.responses import Response
 
 from app.database import AsyncSessionLocal
-from app.utils.security import SECRET_KEY, ALGORITHM
+from app.utils.security import ALGORITHM, SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
 
-async def set_rls_context(request: Request, call_next):
+async def set_rls_context(request: Request, call_next) -> Response:
     """HTTP middleware that injects RLS session variables."""
     user_id = ""
     user_role = ""

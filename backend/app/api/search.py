@@ -1,24 +1,26 @@
 """
 Search API endpoints for hybrid semantic and keyword search
 """
+
 import asyncio
 import json
-from fastapi import status, APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import Optional
 import logging
 import uuid
+from typing import Any
 
-from app.database import get_db
-from app.models.user import User
-from app.models.audit import AuditLog, AuditAction
-from app.schemas.search import SearchRequest, SearchResponse, SearchResultChunk
-from app.schemas.pagination import encode_cursor, decode_cursor
-from app.services.search_service import search_service
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import get_current_user
+from app.database import get_db
 from app.limiter import limiter
+from app.models.audit import AuditAction, AuditLog
+from app.models.user import User
+from app.schemas.pagination import decode_cursor, encode_cursor
+from app.schemas.search import SearchRequest, SearchResponse, SearchResultChunk
+from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +43,11 @@ async def create_audit_log(
     user_id: uuid.UUID,
     action: AuditAction,
     resource_type: str,
-    resource_id: Optional[str] = None,
-    details: Optional[dict] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None
-):
+    resource_id: str | None = None,
+    details: dict | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
     """Helper function to create audit log entries for search."""
     try:
         audit_entry = AuditLog(
@@ -55,7 +57,7 @@ async def create_audit_log(
             resource_id=resource_id,
             details=json.dumps(details) if details else None,
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent,
         )
         db.add(audit_entry)
         await db.commit()
@@ -69,10 +71,10 @@ async def create_audit_log(
 async def search_documents(
     request: Request,
     search_request: SearchRequest,
-    cursor: Optional[str] = Query(None, description="Cursor for pagination (base64 encoded)"),
+    cursor: str | None = Query(None, description="Cursor for pagination (base64 encoded)"),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
+    db: AsyncSession = Depends(get_db),
+) -> SearchResponse | JSONResponse:
     """
     Perform hybrid search combining semantic and keyword search.
 
@@ -135,9 +137,7 @@ async def search_documents(
             )
 
             # Check if any confidential documents are in results
-            has_confidential = any(
-                r.document_bucket == "confidential" for r in result["results"]
-            )
+            has_confidential = any(r.document_bucket == "confidential" for r in result["results"])
 
             # AUDIT LOG: Log confidential searches for compliance
             if has_confidential:
@@ -157,7 +157,7 @@ async def search_documents(
                         "result_count": len(result["results"]),
                         "action": "confidential_search",
                         "partial": result.get("partial", False),
-                    }
+                    },
                 )
 
             # Determine which LLM would be used for follow-up
@@ -166,22 +166,26 @@ async def search_documents(
             # Convert results to response format
             search_results = []
             for r in result["results"]:
-                search_results.append(SearchResultChunk(
-                    chunk_id=r.chunk_id,
-                    document_id=r.document_id,
-                    document_name=r.document_name,
-                    document_bucket=r.document_bucket,
-                    chunk_text=r.chunk_text[:500] + "..." if len(r.chunk_text) > 500 else r.chunk_text,
-                    chunk_index=r.chunk_index,
-                    page_number=r.page_number,
-                    relevance_score=round(r.final_score, 4),
-                    semantic_score=round(r.semantic_score, 4),
-                    keyword_score=round(r.keyword_score, 4)
-                ))
+                search_results.append(
+                    SearchResultChunk(
+                        chunk_id=r.chunk_id,
+                        document_id=r.document_id,
+                        document_name=r.document_name,
+                        document_bucket=r.document_bucket,
+                        chunk_text=r.chunk_text[:500] + "..." if len(r.chunk_text) > 500 else r.chunk_text,
+                        chunk_index=r.chunk_index,
+                        page_number=r.page_number,
+                        relevance_score=round(r.final_score, 4),
+                        semantic_score=round(r.semantic_score, 4),
+                        keyword_score=round(r.keyword_score, 4),
+                    )
+                )
 
             # Build next cursor when there may be more results
             next_offset = search_request.offset + search_request.limit
-            next_cursor = encode_cursor({"offset": next_offset}) if len(search_results) == search_request.limit else None
+            next_cursor = (
+                encode_cursor({"offset": next_offset}) if len(search_results) == search_request.limit else None
+            )
 
             return SearchResponse(
                 query=search_request.query,
@@ -201,8 +205,8 @@ async def search_documents(
 async def search_suggestions(
     q: str = Query(..., min_length=2, max_length=100),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
     """
     Get search suggestions based on partial query
 
@@ -221,17 +225,11 @@ async def search_suggestions(
 
         # Get filename suggestions
         result = await db.execute(
-            select(Document.filename).where(
-                Document.bucket.in_(buckets),
-                Document.filename.ilike(f"%{q}%")
-            ).limit(10)
+            select(Document.filename).where(Document.bucket.in_(buckets), Document.filename.ilike(f"%{q}%")).limit(10)
         )
         suggestions = result.scalars().all()
 
-        return {
-            "query": q,
-            "suggestions": list(suggestions)
-        }
+        return {"query": q, "suggestions": list(suggestions)}
 
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Suggestion error: {str(e)}")

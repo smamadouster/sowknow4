@@ -2,8 +2,10 @@
 Shared slowapi Limiter instance (T04).
 Import this in both main.py and router files.
 """
+
 import os
 from urllib.parse import quote
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

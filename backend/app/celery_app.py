@@ -2,9 +2,10 @@
 Celery application configuration for SOWKNOW async tasks
 """
 
+import os
+
 from celery import Celery
 from celery.schedules import crontab
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,6 +16,7 @@ load_dotenv()
 
 try:
     from app.core.config import settings as _settings
+
     REDIS_URL = _settings.REDIS_URL
 except Exception:
     # Fallback for environments where config.py is not yet bootstrapped
@@ -22,10 +24,7 @@ except Exception:
     # REDIS_URL from env must already include credentials in this path.
     _raw = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     if not _raw.startswith(("redis://", "rediss://", "unix://")):
-        raise ValueError(
-            f"REDIS_URL must start with 'redis://', 'rediss://', or 'unix://'; "
-            f"got: {_raw!r}"
-        )
+        raise ValueError(f"REDIS_URL must start with 'redis://', 'rediss://', or 'unix://'; got: {_raw!r}")
     REDIS_URL = _raw
 
 # ---------------------------------------------------------------------------
@@ -57,14 +56,15 @@ _visibility_timeout = visibility_timeout
 _task_time_limit = task_time_limit
 
 celery_app.conf.update(
-    # Memory optimisation — keep RSS within the 1280m container ceiling
-    worker_concurrency=2,
+    # Memory optimisation — concurrency MUST stay at 1 to prevent OOM from
+    # fork-duplicating the 1.3 GB embedding model.  Matches docker-compose --concurrency=1.
+    worker_concurrency=1,
     worker_max_tasks_per_child=50,
     worker_prefetch_multiplier=1,
     # Serialisation — JSON only; no binary serializers permitted
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
     timezone="UTC",
     enable_utc=True,
     # Task routing

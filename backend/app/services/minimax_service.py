@@ -2,10 +2,10 @@
 MiniMax service for direct API access (no OpenRouter markup)
 """
 
-import os
-import logging
 import json
-from typing import AsyncGenerator, List, Dict, Optional
+import logging
+import os
+from collections.abc import AsyncGenerator
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -43,8 +43,8 @@ class MiniMaxService(BaseLLMService):
         return len(text) // 4
 
     def _truncate_messages(
-        self, messages: List[Dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS
-    ) -> List[Dict[str, str]]:
+        self, messages: list[dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS
+    ) -> list[dict[str, str]]:
         total_tokens = 0
         truncated_messages = []
 
@@ -69,22 +69,20 @@ class MiniMaxService(BaseLLMService):
 
         return truncated_messages
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
 
-    @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        cache_key: Optional[str] = None,
+        cache_key: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using MiniMax API directly
@@ -134,15 +132,11 @@ class MiniMaxService(BaseLLMService):
                     data = response.json()
 
                     if "choices" in data and len(data["choices"]) > 0:
-                        content = (
-                            data["choices"][0].get("message", {}).get("content", "")
-                        )
+                        content = data["choices"][0].get("message", {}).get("content", "")
                         yield content
 
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"MiniMax API error: {e.response.status_code} - {e.response.text}"
-            )
+            logger.error(f"MiniMax API error: {e.response.status_code} - {e.response.text}")
             yield f"Error: MiniMax API returned {e.response.status_code}"
         except Exception as e:
             logger.error(f"MiniMax service error: {str(e)}")
@@ -150,15 +144,13 @@ class MiniMaxService(BaseLLMService):
 
     async def chat_completion_non_stream(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ) -> str:
         """Non-streaming version"""
         result = ""
-        async for chunk in self.chat_completion(
-            messages, stream=False, temperature=temperature, max_tokens=max_tokens
-        ):
+        async for chunk in self.chat_completion(messages, stream=False, temperature=temperature, max_tokens=max_tokens):
             result += chunk
         return result
 

@@ -6,27 +6,28 @@ Answer agents to provide comprehensive, reliable answers.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
+from app.services.agents.answer_agent import AnswerRequest, AnswerResult, answer_agent
 from app.services.agents.clarification_agent import (
-    clarification_agent,
     ClarificationRequest,
     ClarificationResult,
+    clarification_agent,
 )
 from app.services.agents.researcher_agent import (
-    researcher_agent,
     ResearchQuery,
     ResearchResult,
+    researcher_agent,
 )
 from app.services.agents.verification_agent import (
-    verification_agent,
     VerificationRequest,
     VerificationResult,
+    verification_agent,
 )
-from app.services.agents.answer_agent import answer_agent, AnswerRequest, AnswerResult
 from app.services.pii_detection_service import pii_detection_service
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class AgentResult:
     agent_name: str
     state: str
     result: Any = None
-    error: Optional[str] = None
+    error: str | None = None
     duration_ms: int = 0
 
 
@@ -62,13 +63,13 @@ class OrchestratorRequest:
     query: str
     user: Any
     db: Any
-    context: Optional[str] = None
-    conversation_history: List[Dict[str, str]] = field(default_factory=list)
-    user_preferences: Dict[str, Any] = field(default_factory=dict)
+    context: str | None = None
+    conversation_history: list[dict[str, str]] = field(default_factory=list)
+    user_preferences: dict[str, Any] = field(default_factory=dict)
     require_clarification: bool = True
     require_verification: bool = True
     stream: bool = False
-    on_progress: Optional[Callable[[str, OrchestratorState], None]] = None
+    on_progress: Callable[[str, OrchestratorState], None] | None = None
 
 
 @dataclass
@@ -77,13 +78,13 @@ class OrchestratorResult:
 
     query: str
     answer: str
-    clarification: Optional[ClarificationResult] = None
-    research: Optional[ResearchResult] = None
-    verification: Optional[List[VerificationResult]] = None
-    agent_results: List[AgentResult] = field(default_factory=list)
+    clarification: ClarificationResult | None = None
+    research: ResearchResult | None = None
+    verification: list[VerificationResult] | None = None
+    agent_results: list[AgentResult] = field(default_factory=list)
     total_duration_ms: int = 0
     state: OrchestratorState = OrchestratorState.COMPLETE
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     llm_used: str = "unknown"
 
     def __post_init__(self):
@@ -139,9 +140,7 @@ class AgentOrchestrator:
         # Check for PII in the query - if found, use Ollama for privacy protection
         has_pii = pii_detection_service.detect_pii(query)
         if has_pii:
-            logger.info(
-                "Clarification: PII detected in query, using Ollama for privacy protection"
-            )
+            logger.info("Clarification: PII detected in query, using Ollama for privacy protection")
             return True
 
         return False
@@ -165,21 +164,15 @@ class AgentOrchestrator:
             # Step 1: Clarification (if enabled)
             clarification = None
             if request.require_clarification:
-                self._notify_progress(
-                    request, "Clarifying query...", OrchestratorState.CLARIFYING
-                )
+                self._notify_progress(request, "Clarifying query...", OrchestratorState.CLARIFYING)
                 step_start = time.time()
 
                 try:
                     # Determine if Ollama should be used for clarification
                     # Use Ollama only if PII is detected in the query itself
                     # Document-based routing is handled by ResearcherAgent after retrieval
-                    use_ollama_for_clarification = (
-                        self._should_use_ollama_for_clarification(request.query)
-                    )
-                    clarification = await self._run_clarification(
-                        request, use_ollama=use_ollama_for_clarification
-                    )
+                    use_ollama_for_clarification = self._should_use_ollama_for_clarification(request.query)
+                    clarification = await self._run_clarification(request, use_ollama=use_ollama_for_clarification)
                     agent_results.append(
                         AgentResult(
                             agent_name="clarification",
@@ -214,9 +207,7 @@ class AgentOrchestrator:
                     )
 
             # Step 2: Research
-            self._notify_progress(
-                request, "Conducting research...", OrchestratorState.RESEARCHING
-            )
+            self._notify_progress(request, "Conducting research...", OrchestratorState.RESEARCHING)
             step_start = time.time()
 
             try:
@@ -244,9 +235,7 @@ class AgentOrchestrator:
             # Step 3: Verification (if enabled and we have research results)
             verification = []
             if request.require_verification and research and research.findings:
-                self._notify_progress(
-                    request, "Verifying information...", OrchestratorState.VERIFYING
-                )
+                self._notify_progress(request, "Verifying information...", OrchestratorState.VERIFYING)
                 step_start = time.time()
 
                 try:
@@ -271,15 +260,11 @@ class AgentOrchestrator:
                     )
 
             # Step 4: Answer Generation
-            self._notify_progress(
-                request, "Generating answer...", OrchestratorState.ANSWERING
-            )
+            self._notify_progress(request, "Generating answer...", OrchestratorState.ANSWERING)
             step_start = time.time()
 
             try:
-                answer = await self._run_answer_generation(
-                    request, research, verification
-                )
+                answer = await self._run_answer_generation(request, research, verification)
                 agent_results.append(
                     AgentResult(
                         agent_name="answer",
@@ -327,9 +312,7 @@ class AgentOrchestrator:
                 state=OrchestratorState.COMPLETE,
                 metadata={
                     "agent_count": len(agent_results),
-                    "successful_agents": sum(
-                        1 for ar in agent_results if ar.state == "complete"
-                    ),
+                    "successful_agents": sum(1 for ar in agent_results if ar.state == "complete"),
                     "answer_confidence": answer.confidence if answer else 0.0,
                     "source_count": len(answer.sources) if answer else 0,
                 },
@@ -347,9 +330,7 @@ class AgentOrchestrator:
                 metadata={"error": str(e)},
             )
 
-    async def _run_clarification(
-        self, request: OrchestratorRequest, use_ollama: bool = False
-    ) -> ClarificationResult:
+    async def _run_clarification(self, request: OrchestratorRequest, use_ollama: bool = False) -> ClarificationResult:
         """Run the clarification agent
 
         Args:
@@ -378,12 +359,10 @@ class AgentOrchestrator:
             conversation_history=request.conversation_history,
             user_preferences=request.user_preferences,
         )
-        return await self.clarification_agent.clarify(
-            clarification_request, use_ollama=use_ollama
-        )
+        return await self.clarification_agent.clarify(clarification_request, use_ollama=use_ollama)
 
     async def _run_research(
-        self, request: OrchestratorRequest, clarification: Optional[ClarificationResult]
+        self, request: OrchestratorRequest, clarification: ClarificationResult | None
     ) -> ResearchResult:
         """Run the researcher agent"""
         # Use clarified query if available
@@ -397,13 +376,11 @@ class AgentOrchestrator:
             use_graph=True,
             gather_context=True,
         )
-        return await self.researcher_agent.research(
-            request=research_request, user=request.user, db=request.db
-        )
+        return await self.researcher_agent.research(request=research_request, user=request.user, db=request.db)
 
     async def _run_verification(
         self, request: OrchestratorRequest, research: ResearchResult
-    ) -> List[VerificationResult]:
+    ) -> list[VerificationResult]:
         """Run the verification agent on key claims"""
         # Extract claims from research findings
         claims = []
@@ -419,9 +396,7 @@ class AgentOrchestrator:
         # Verify claims
         verification_results = []
         for claim in claims:
-            verification_request = VerificationRequest(
-                claim=claim, sources=research.findings
-            )
+            verification_request = VerificationRequest(claim=claim, sources=research.findings)
             result = await self.verification_agent.verify(verification_request)
             verification_results.append(result)
 
@@ -430,8 +405,8 @@ class AgentOrchestrator:
     async def _run_answer_generation(
         self,
         request: OrchestratorRequest,
-        research: Optional[ResearchResult],
-        verification: List[VerificationResult],
+        research: ResearchResult | None,
+        verification: list[VerificationResult],
     ) -> AnswerResult:
         """Run the answer agent"""
         answer_request = AnswerRequest(
@@ -444,9 +419,7 @@ class AgentOrchestrator:
         )
         return await self.answer_agent.generate_answer(answer_request)
 
-    def _notify_progress(
-        self, request: OrchestratorRequest, message: str, state: OrchestratorState
-    ):
+    def _notify_progress(self, request: OrchestratorRequest, message: str, state: OrchestratorState):
         """Notify progress if callback provided"""
         if request.on_progress:
             try:
@@ -474,12 +447,8 @@ class AgentOrchestrator:
 
         # Use Ollama for clarification only if PII detected in query
         # Document-based routing is handled by ResearcherAgent after retrieval
-        use_ollama_for_clarification = self._should_use_ollama_for_clarification(
-            request.query
-        )
-        clarification = await self._run_clarification(
-            request, use_ollama=use_ollama_for_clarification
-        )
+        use_ollama_for_clarification = self._should_use_ollama_for_clarification(request.query)
+        clarification = await self._run_clarification(request, use_ollama=use_ollama_for_clarification)
 
         if not clarification.is_clear and clarification.questions:
             yield {

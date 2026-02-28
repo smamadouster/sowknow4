@@ -2,10 +2,11 @@
 Performance tests for LLM Routing
 Tests context window limits, concurrent request handling, and token consumption
 """
-import pytest
-import time
 import asyncio
+import time
 from uuid import uuid4
+
+import pytest
 
 from app.services.chat_service import ChatService
 from app.services.pii_detection_service import pii_detection_service

@@ -1,170 +1,191 @@
 """
-Health check endpoints for database, Redis, Celery, disk and memory.
+Comprehensive health check endpoints (PRD §11.4).
+
+/api/v1/health        — checks all infrastructure components
+/api/v1/health/celery — Celery worker status
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-import shutil
+from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import status, APIRouter, HTTPException
+import httpx
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["health"])
+router = APIRouter(prefix="/health", tags=["health"])
+
+_CHECK_TIMEOUT = 5.0
 
 
-@router.get("/health/celery")
-async def celery_health_check():
-    """
-    Check the health of connected Celery workers.
-
-    Returns:
-        200 with worker details when at least one worker is active.
-        503 when no active workers are found.
-    """
-    from app.celery_app import celery_app
-
+async def _check_database() -> str:
     try:
-        inspect = celery_app.control.inspect()
-        active_workers = inspect.active()
-        stats = inspect.stats()
+        from app.database import engine
+
+        async with engine.connect() as conn:
+            await asyncio.wait_for(
+                conn.execute(text("SELECT 1")),
+                timeout=_CHECK_TIMEOUT,
+            )
+        return "ok"
     except Exception as exc:
-        logger.warning(f"Celery inspect failed: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"status": "unhealthy", "message": f"Celery inspect error: {exc}"},
-        )
-
-    if not active_workers:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "status": "unhealthy",
-                "message": "No active Celery workers found",
-                "workers": 0,
-                "worker_details": {},
-                "queue_stats": {},
-            },
-        )
-
-    worker_count = len(active_workers)
-    worker_details = {
-        worker: {"active_tasks": tasks} for worker, tasks in active_workers.items()
-    }
-    queue_stats = stats or {}
-
-    return {
-        "status": "healthy",
-        "workers": worker_count,
-        "worker_details": worker_details,
-        "queue_stats": queue_stats,
-    }
+        logger.warning("Health check: database failed: %s", exc)
+        return "error"
 
 
-@router.get("/health")
-async def unified_health_check():
-    """
-    Unified health check that reports on database, Redis, Celery, disk and memory.
-
-    Returns a summary with component-level status indicators.
-    """
-    results: dict = {
-        "status": "healthy",
-        "components": {},
-    }
-
-    # ── 1. database ──────────────────────────────────────────────────────────
-    try:
-        from app.database import get_db
-
-        db = next(get_db())
-        db.execute("SELECT 1")  # type: ignore[arg-type]
-        results["components"]["database"] = {"status": "healthy"}
-    except Exception as exc:
-        results["components"]["database"] = {
-            "status": "unhealthy",
-            "error": str(exc),
-        }
-        results["status"] = "degraded"
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass
-
-    # ── 2. redis ─────────────────────────────────────────────────────────────
+async def _check_redis() -> str:
     try:
         import redis as _redis
 
         from app.core.redis_url import safe_redis_url
-        r = _redis.from_url(safe_redis_url())
+
+        r = _redis.from_url(safe_redis_url(), socket_timeout=int(_CHECK_TIMEOUT))
         r.ping()
-        results["components"]["redis"] = {"status": "healthy"}
+        return "ok"
     except Exception as exc:
-        results["components"]["redis"] = {
-            "status": "unhealthy",
-            "error": str(exc),
-        }
-        results["status"] = "degraded"
+        logger.warning("Health check: redis failed: %s", exc)
+        return "error"
 
-    # ── 3. celery ────────────────────────────────────────────────────────────
+
+async def _check_vault() -> str:
     try:
-        from app.celery_app import celery_app
-
-        active = celery_app.control.inspect().active()
-        if active:
-            results["components"]["celery"] = {
-                "status": "healthy",
-                "worker_count": len(active),
-            }
-        else:
-            results["components"]["celery"] = {
-                "status": "degraded",
-                "message": "No active workers",
-            }
-            if results["status"] == "healthy":
-                results["status"] = "degraded"
+        vault_addr = os.getenv("VAULT_ADDR", "http://vault:8200")
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{vault_addr}/v1/sys/health",
+                timeout=_CHECK_TIMEOUT,
+            )
+            # 200=active, 429=standby, 472=DR secondary, 473=perf standby
+            if resp.status_code in (200, 429, 472, 473):
+                return "ok"
+            return "error"
     except Exception as exc:
-        results["components"]["celery"] = {
-            "status": "unhealthy",
-            "error": str(exc),
-        }
-        results["status"] = "degraded"
+        logger.warning("Health check: vault failed: %s", exc)
+        return "unavailable"
 
-    # ── 4. disk ──────────────────────────────────────────────────────────────
+
+async def _check_nats() -> str:
     try:
-        usage = shutil.disk_usage("/")
-        free_pct = usage.free / usage.total * 100
-        results["components"]["disk"] = {
-            "status": "healthy" if free_pct > 10 else "warning",
-            "free_percent": round(free_pct, 1),
-            "free_gb": round(usage.free / (1024**3), 2),
-        }
-    except Exception as exc:
-        results["components"]["disk"] = {
-            "status": "unknown",
-            "error": str(exc),
-        }
+        import nats as nats_client
 
-    # ── 5. memory ────────────────────────────────────────────────────────────
+        nats_url = os.getenv("NATS_URL", "nats://nats:4222")
+        nc = await asyncio.wait_for(
+            nats_client.connect(nats_url),
+            timeout=_CHECK_TIMEOUT,
+        )
+        await nc.close()
+        return "ok"
+    except Exception as exc:
+        logger.warning("Health check: nats failed: %s", exc)
+        return "unavailable"
+
+
+async def _check_ollama() -> str:
     try:
-        import psutil  # type: ignore[import]
-
-        mem = psutil.virtual_memory()
-        used_pct = mem.percent
-        results["components"]["memory"] = {
-            "status": "healthy" if used_pct < 85 else "warning",
-            "used_percent": used_pct,
-            "available_gb": round(mem.available / (1024**3), 2),
-        }
-    except ImportError:
-        results["components"]["memory"] = {
-            "status": "unknown",
-            "message": "psutil not available",
-        }
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{ollama_url}/api/tags",
+                timeout=_CHECK_TIMEOUT,
+            )
+            if resp.status_code == 200:
+                return "ok"
+            return "error"
     except Exception as exc:
-        results["components"]["memory"] = {"status": "unknown", "error": str(exc)}
+        logger.warning("Health check: ollama failed: %s", exc)
+        return "unavailable"
 
-    return results
+
+@router.get("", include_in_schema=False)
+async def comprehensive_health() -> JSONResponse:
+    """
+    PRD §11.4 comprehensive health check.
+
+    Runs all infrastructure checks concurrently. Returns flat status
+    object with per-component results. HTTP 503 when critical services
+    (database, redis) are down; 200 otherwise.
+    """
+    results = await asyncio.gather(
+        _check_database(),
+        _check_redis(),
+        _check_vault(),
+        _check_nats(),
+        _check_ollama(),
+        return_exceptions=True,
+    )
+
+    db = results[0] if isinstance(results[0], str) else "error"
+    redis_s = results[1] if isinstance(results[1], str) else "error"
+    vault_s = results[2] if isinstance(results[2], str) else "unavailable"
+    nats_s = results[3] if isinstance(results[3], str) else "unavailable"
+    ollama_s = results[4] if isinstance(results[4], str) else "unavailable"
+
+    critical_ok = db == "ok" and redis_s == "ok"
+    all_ok = all(s == "ok" for s in [db, redis_s, vault_s, nats_s, ollama_s])
+
+    if all_ok:
+        overall = "ok"
+    elif critical_ok:
+        overall = "degraded"
+    else:
+        overall = "error"
+
+    response = {
+        "status": overall,
+        "database": db,
+        "redis": redis_s,
+        "vault": vault_s,
+        "nats": nats_s,
+        "ollama": ollama_s,
+        "checked_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+    http_code = status.HTTP_200_OK if critical_ok else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(content=response, status_code=http_code)
+
+
+@router.get("/celery", include_in_schema=False)
+async def celery_health_check() -> dict[str, Any]:
+    """
+    Check Celery worker availability.
+
+    Returns 200 when at least one worker is active, 503 otherwise.
+    """
+    from app.celery_app import celery_app
+
+    try:
+        inspect = celery_app.control.inspect(timeout=5.0)
+        active_workers = inspect.active() or {}
+        reserved = inspect.reserved() or {}
+
+        worker_count = len(active_workers)
+        if worker_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No active Celery workers found",
+            )
+
+        total_active = sum(len(tasks) for tasks in active_workers.values())
+        total_reserved = sum(len(tasks) for tasks in reserved.values())
+
+        return {
+            "status": "healthy",
+            "workers": worker_count,
+            "active_tasks": total_active,
+            "reserved_tasks": total_reserved,
+            "worker_names": list(active_workers.keys()),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Celery health check failed: {str(exc)}",
+        )

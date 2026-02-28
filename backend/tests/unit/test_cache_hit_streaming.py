@@ -9,11 +9,11 @@ Verifies:
 4. The data payloads include the `type` field so the frontend can dispatch
 """
 
-import pytest
 import json
-from unittest.mock import MagicMock, AsyncMock, patch
-from typing import AsyncGenerator, List, Dict
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # OpenRouterService.check_cache()
@@ -113,7 +113,7 @@ class TestOpenRouterCheckCache:
 # Helper to drain an async generator into a list of parsed SSE data events
 # ---------------------------------------------------------------------------
 
-async def _collect_sse_events(gen: AsyncGenerator) -> List[Dict]:
+async def _collect_sse_events(gen: AsyncGenerator) -> list[dict]:
     """Collect all `data:` lines from an SSE generator and parse their JSON."""
     events = []
     async for line in gen:

@@ -6,7 +6,8 @@ Allows the LLM router to call any provider through a uniform API.
 """
 
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, Dict, Any
+from collections.abc import AsyncGenerator
+from typing import Any
 
 
 class BaseLLMService(ABC):
@@ -15,7 +16,7 @@ class BaseLLMService(ABC):
     @abstractmethod
     async def chat_completion(
         self,
-        messages: list[Dict[str, str]],
+        messages: list[dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 2048,
@@ -41,7 +42,7 @@ class BaseLLMService(ABC):
         """
 
     @abstractmethod
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Check whether the service is reachable and ready.
 

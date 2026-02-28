@@ -10,8 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +27,13 @@ class TelegramNotifier:
     """Send alert messages to a Telegram chat via the Bot API."""
 
     def __init__(self):
-        self.bot_token: Optional[str] = os.getenv("TELEGRAM_BOT_TOKEN")
-        self.chat_id: Optional[str] = os.getenv("TELEGRAM_ADMIN_CHAT_ID")
+        self.bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
+        self.chat_id: str | None = os.getenv("TELEGRAM_ADMIN_CHAT_ID")
         self._enabled = bool(self.bot_token and self.chat_id)
 
         if not self._enabled:
             logger.debug(
-                "TelegramNotifier: TELEGRAM_BOT_TOKEN or TELEGRAM_ADMIN_CHAT_ID "
-                "not set — notifications disabled."
+                "TelegramNotifier: TELEGRAM_BOT_TOKEN or TELEGRAM_ADMIN_CHAT_ID not set — notifications disabled."
             )
 
     @property
@@ -47,8 +45,8 @@ class TelegramNotifier:
         self,
         message: str,
         severity: str = "INFO",
-        metadata: Optional[dict] = None,
-        title: Optional[str] = None,
+        metadata: dict | None = None,
+        title: str | None = None,
     ) -> bool:
         """
         Send an alert message to the configured Telegram chat.
@@ -73,7 +71,7 @@ class TelegramNotifier:
             return False
 
         emoji = _SEVERITY_EMOJI.get(severity.upper(), "ℹ️")
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         parts = [f"{emoji} *{severity.upper()} Alert*"]
         if title:
@@ -108,9 +106,7 @@ class TelegramNotifier:
                     logger.debug(f"Telegram alert sent ({severity}): {message[:60]}")
                     return True
                 else:
-                    logger.warning(
-                        f"Telegram API error {response.status_code}: {response.text[:200]}"
-                    )
+                    logger.warning(f"Telegram API error {response.status_code}: {response.text[:200]}")
                     return False
         except Exception as exc:
             logger.warning(f"TelegramNotifier: failed to send message: {exc}")

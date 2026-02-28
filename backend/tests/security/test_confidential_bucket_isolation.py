@@ -16,18 +16,19 @@ CRITICAL ISSUES TESTED:
 - Audit Logging Gap: CONFIDENTIAL_ACCESSED defined but never used
 - Bot API Key Bypass: Anyone with key can upload to confidential bucket
 """
-import pytest
 import os
-import yaml
 import uuid
+
+import pytest
+import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.user import User, UserRole
+from app.models.audit import AuditAction, AuditLog
 from app.models.document import Document, DocumentBucket, DocumentStatus
-from app.models.audit import AuditLog, AuditAction
-from app.utils.security import create_access_token, get_password_hash
+from app.models.user import User, UserRole
 from app.services.storage_service import StorageService
+from app.utils.security import create_access_token, get_password_hash
 
 
 def get_auth_headers(user: User) -> dict:
@@ -77,7 +78,7 @@ class TestFilesystemIsolation:
         dev_compose_path = "/root/development/src/active/sowknow4/docker-compose.yml"
 
         if os.path.exists(dev_compose_path):
-            with open(dev_compose_path, 'r') as f:
+            with open(dev_compose_path) as f:
                 compose = yaml.safe_load(f)
 
             volumes = compose.get('volumes', {})
@@ -91,7 +92,7 @@ class TestFilesystemIsolation:
         prod_compose_path = "/root/development/src/active/sowknow4/docker-compose.production.yml"
 
         if os.path.exists(prod_compose_path):
-            with open(prod_compose_path, 'r') as f:
+            with open(prod_compose_path) as f:
                 compose = yaml.safe_load(f)
 
             backend_service = compose.get('services', {}).get('backend', {})
@@ -111,7 +112,7 @@ class TestFilesystemIsolation:
         prod_compose_path = "/root/development/src/active/sowknow4/docker-compose.production.yml"
 
         if os.path.exists(prod_compose_path):
-            with open(prod_compose_path, 'r') as f:
+            with open(prod_compose_path) as f:
                 compose = yaml.safe_load(f)
 
             backend_service = compose.get('services', {}).get('backend', {})
@@ -352,6 +353,7 @@ class TestAuditLogging:
         """CRITICAL: Documents API should log confidential access"""
         # Check if documents.py creates audit logs
         import inspect
+
         from app.api import documents
 
         source = inspect.getsource(documents)

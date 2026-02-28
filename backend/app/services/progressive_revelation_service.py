@@ -7,13 +7,14 @@ information disclosure.
 """
 
 import logging
-from typing import List, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_
+from typing import Any
 
-from app.models.user import User
-from app.models.knowledge_graph import Entity, EntityRelationship, TimelineEvent
+from sqlalchemy import and_, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.document import DocumentBucket
+from app.models.knowledge_graph import Entity, EntityRelationship, TimelineEvent
+from app.models.user import User
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,9 @@ class FamilyContext:
 
     def __init__(
         self,
-        family_members: List[Dict[str, Any]],
-        relationships: List[Dict[str, Any]],
-        key_events: List[Dict[str, Any]],
+        family_members: list[dict[str, Any]],
+        relationships: list[dict[str, Any]],
+        key_events: list[dict[str, Any]],
         family_narrative: str,
     ):
         self.family_members = family_members
@@ -72,7 +73,7 @@ class ProgressiveRevelationService:
         user: User,
         layer: str = RevelationLayer.SURFACE,
         db: AsyncSession = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Reveal entity information at the appropriate layer
 
@@ -115,44 +116,40 @@ class ProgressiveRevelationService:
                 "aliases": entity.aliases or [],
                 "document_count": entity.document_count,
                 "relationship_count": entity.relationship_count,
-                "first_seen": (
-                    entity.first_seen_at.isoformat() if entity.first_seen_at else None
-                ),
-                "last_seen": (
-                    entity.last_seen_at.isoformat() if entity.last_seen_at else None
-                ),
+                "first_seen": (entity.first_seen_at.isoformat() if entity.first_seen_at else None),
+                "last_seen": (entity.last_seen_at.isoformat() if entity.last_seen_at else None),
             }
 
         # Layer 3: Detailed - Add attributes and relationship details
         if layer == RevelationLayer.DETAILED:
             # Get relationships
             relationships = (
-                await db.execute(
-                    select(EntityRelationship)
-                    .where(
-                        or_(
-                            EntityRelationship.source_id == entity_id,
-                            EntityRelationship.target_id == entity_id,
+                (
+                    await db.execute(
+                        select(EntityRelationship)
+                        .where(
+                            or_(
+                                EntityRelationship.source_id == entity_id,
+                                EntityRelationship.target_id == entity_id,
+                            )
                         )
+                        .limit(20)
                     )
-                    .limit(20)
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             rel_info = []
             for rel in relationships:
-                other_id = (
-                    rel.target_id if rel.source_id == entity_id else rel.source_id
-                )
+                other_id = rel.target_id if rel.source_id == entity_id else rel.source_id
                 other = await db.get(Entity, other_id)
                 if other:
                     rel_info.append(
                         {
                             "with": other.name,
                             "type": rel.relation_type.value,
-                            "direction": (
-                                "outgoing" if rel.source_id == entity_id else "incoming"
-                            ),
+                            "direction": ("outgoing" if rel.source_id == entity_id else "incoming"),
                         }
                     )
 
@@ -172,12 +169,10 @@ class ProgressiveRevelationService:
             from app.models.knowledge_graph import EntityMention
 
             mentions = (
-                await db.execute(
-                    select(EntityMention)
-                    .where(EntityMention.entity_id == entity_id)
-                    .limit(10)
-                )
-            ).scalars().all()
+                (await db.execute(select(EntityMention).where(EntityMention.entity_id == entity_id).limit(10)))
+                .scalars()
+                .all()
+            )
 
             mention_info = []
             for m in mentions:
@@ -191,13 +186,17 @@ class ProgressiveRevelationService:
 
             # Get timeline events
             timeline_events = (
-                await db.execute(
-                    select(TimelineEvent)
-                    .where(TimelineEvent.entity_ids.contains([entity_id]))
-                    .order_by(TimelineEvent.event_date)
-                    .limit(10)
+                (
+                    await db.execute(
+                        select(TimelineEvent)
+                        .where(TimelineEvent.entity_ids.contains([entity_id]))
+                        .order_by(TimelineEvent.event_date)
+                        .limit(10)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             timeline_info = []
             for te in timeline_events:
@@ -217,12 +216,8 @@ class ProgressiveRevelationService:
                 "confidence": entity.confidence_score,
                 "document_count": entity.document_count,
                 "relationship_count": entity.relationship_count,
-                "first_seen": (
-                    entity.first_seen_at.isoformat() if entity.first_seen_at else None
-                ),
-                "last_seen": (
-                    entity.last_seen_at.isoformat() if entity.last_seen_at else None
-                ),
+                "first_seen": (entity.first_seen_at.isoformat() if entity.first_seen_at else None),
+                "last_seen": (entity.last_seen_at.isoformat() if entity.last_seen_at else None),
                 "mentions": mention_info,
                 "timeline": timeline_info,
             }
@@ -254,8 +249,7 @@ class ProgressiveRevelationService:
             # Find the focus person
             person = (
                 await db.execute(
-                    select(Entity)
-                    .where(
+                    select(Entity).where(
                         and_(
                             Entity.name.ilike(f"%{focus_person}%"),
                             Entity.entity_type == "person",
@@ -305,16 +299,19 @@ class ProgressiveRevelationService:
 
                 # Get relationships
                 relationships = (
-                    await db.execute(
-                        select(EntityRelationship)
-                        .where(
-                            or_(
-                                EntityRelationship.source_id == current_id,
-                                EntityRelationship.target_id == current_id,
+                    (
+                        await db.execute(
+                            select(EntityRelationship).where(
+                                or_(
+                                    EntityRelationship.source_id == current_id,
+                                    EntityRelationship.target_id == current_id,
+                                )
                             )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
                 for rel in relationships:
                     # Check if this is a family-type relationship
@@ -323,11 +320,7 @@ class ProgressiveRevelationService:
                     )
 
                     if is_family:
-                        other_id = str(
-                            rel.target_id
-                            if rel.source_id == current_id
-                            else rel.source_id
-                        )
+                        other_id = str(rel.target_id if rel.source_id == current_id else rel.source_id)
 
                         if other_id not in visited:
                             visited.add(other_id)
@@ -349,21 +342,22 @@ class ProgressiveRevelationService:
             relationships = []
             for member_id in family_ids:
                 rels = (
-                    await db.execute(
-                        select(EntityRelationship)
-                        .where(
-                            or_(
-                                EntityRelationship.source_id == member_id,
-                                EntityRelationship.target_id == member_id,
+                    (
+                        await db.execute(
+                            select(EntityRelationship).where(
+                                or_(
+                                    EntityRelationship.source_id == member_id,
+                                    EntityRelationship.target_id == member_id,
+                                )
                             )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
                 for rel in rels:
-                    other_id = str(
-                        rel.target_id if rel.source_id == member_id else rel.source_id
-                    )
+                    other_id = str(rel.target_id if rel.source_id == member_id else rel.source_id)
 
                     if other_id in family_ids:
                         from_member = await db.get(Entity, member_id)
@@ -383,18 +377,22 @@ class ProgressiveRevelationService:
             key_events = []
             if include_timeline:
                 timeline_events = (
-                    await db.execute(
-                        select(TimelineEvent)
-                        .where(
-                            and_(
-                                TimelineEvent.entity_ids.overlap(list(family_ids)),
-                                TimelineEvent.event_date.isnot(None),
+                    (
+                        await db.execute(
+                            select(TimelineEvent)
+                            .where(
+                                and_(
+                                    TimelineEvent.entity_ids.overlap(list(family_ids)),
+                                    TimelineEvent.event_date.isnot(None),
+                                )
                             )
+                            .order_by(TimelineEvent.event_date)
+                            .limit(20)
                         )
-                        .order_by(TimelineEvent.event_date)
-                        .limit(20)
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
                 for te in timeline_events:
                     # Get participating entities
@@ -408,9 +406,7 @@ class ProgressiveRevelationService:
                     key_events.append(
                         {
                             "title": te.title,
-                            "date": (
-                                te.event_date.isoformat() if te.event_date else None
-                            ),
+                            "date": (te.event_date.isoformat() if te.event_date else None),
                             "type": te.event_type,
                             "participants": participants,
                             "description": te.description,
@@ -441,9 +437,9 @@ class ProgressiveRevelationService:
     async def _generate_family_narrative(
         self,
         focus_person: str,
-        members: List[Dict[str, Any]],
-        relationships: List[Dict[str, Any]],
-        events: List[Dict[str, Any]],
+        members: list[dict[str, Any]],
+        relationships: list[dict[str, Any]],
+        events: list[dict[str, Any]],
         bucket: DocumentBucket = DocumentBucket.PUBLIC,
     ) -> str:
         """Generate a narrative description of the family context"""
@@ -497,21 +493,13 @@ Please write a family narrative that weaves together these relationships and eve
 
         try:
             # Get appropriate LLM service based on bucket
-            llm_service = (
-                self._get_ollama_service()
-                if use_ollama
-                else self._get_openrouter_service()
-            )
+            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
 
             response = []
             async for chunk in llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.8, max_tokens=2048
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
 
             return "".join(response).strip()
@@ -524,7 +512,7 @@ Please write a family narrative that weaves together these relationships and eve
         self,
         user: User,
         entity_id: str,
-        interaction_history: List[Dict[str, Any]],
+        interaction_history: list[dict[str, Any]],
         db: AsyncSession,
     ) -> str:
         """
@@ -547,9 +535,7 @@ Please write a family narrative that weaves together these relationships and eve
         else:
             # Regular users get progressive disclosure
             # Check interaction history
-            entity_interactions = [
-                i for i in interaction_history if i.get("entity_id") == entity_id
-            ]
+            entity_interactions = [i for i in interaction_history if i.get("entity_id") == entity_id]
 
             if len(entity_interactions) > 5:
                 return RevelationLayer.DETAILED
@@ -559,8 +545,8 @@ Please write a family narrative that weaves together these relationships and eve
                 return RevelationLayer.SURFACE
 
     async def get_progressive_search_results(
-        self, query: str, user: User, results: List[Dict[str, Any]], db: AsyncSession
-    ) -> Dict[str, Any]:
+        self, query: str, user: User, results: list[dict[str, Any]], db: AsyncSession
+    ) -> dict[str, Any]:
         """
         Return search results with progressive revelation based on user role
 

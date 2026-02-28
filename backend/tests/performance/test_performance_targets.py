@@ -23,25 +23,23 @@ Resilience Test Matrix:
 - Extremely long chat message (10k chars)
 - Concurrent upload + search + chat
 """
-import pytest
 import asyncio
-import time
 import os
-import httpx
 import statistics
-from typing import Dict
-from unittest.mock import Mock, AsyncMock, patch
+import time
+from unittest.mock import AsyncMock, Mock, patch
+
+import httpx
 import numpy as np
-
-from sqlalchemy.orm import Session
+import pytest
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
+from app.models.document import Document, DocumentBucket, DocumentChunk, DocumentLanguage, DocumentStatus
 from app.models.user import User, UserRole
-from app.models.document import Document, DocumentChunk, DocumentBucket, DocumentStatus, DocumentLanguage
-from app.services.search_service import search_service
 from app.services.minimax_service import MiniMaxService
 from app.services.ollama_service import OllamaService
-
+from app.services.search_service import search_service
 
 # ============================================================================
 # PERFORMANCE TARGETS TESTS
@@ -497,8 +495,9 @@ class TestPerformanceTargets:
     def _get_memory_usage(self) -> int:
         """Get current memory usage in bytes"""
         try:
-            import psutil
             import os
+
+            import psutil
             process = psutil.Process(os.getpid())
             return process.memory_info().rss
         except ImportError:
@@ -743,7 +742,7 @@ class TestResilienceMatrix:
         Status: ☐ PASS
         """
         # Mock disk space check
-        def mock_disk_space(path: str) -> Dict[str, int]:
+        def mock_disk_space(path: str) -> dict[str, int]:
             # Return < 5GB free
             return {
                 'total': 100 * 1024**3,
@@ -975,4 +974,4 @@ def test_db_with_docs(test_db):
             test_db.add(chunk)
 
     test_db.commit()
-    yield test_db
+    return test_db

@@ -10,32 +10,33 @@ ARCHITECTURE: Redis-backed session storage for resilience
 """
 
 import base64
-import os
-import logging
-import sys
 import json
+import logging
+import os
 import re
+import sys
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
-from network_utils import ResilientAsyncClient, CircuitBreakerOpenError
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import redis.asyncio as redis_async
+from network_utils import CircuitBreakerOpenError, ResilientAsyncClient
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
-    ContextTypes,
 )
-from telegram.ext import CallbackQueryHandler
-import redis.asyncio as redis_async
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 from app.core.redis_url import safe_redis_url
+
 REDIS_URL = safe_redis_url()
 
 logging.basicConfig(
@@ -83,10 +84,10 @@ class RedisSessionManager:
 
     def __init__(self, redis_url: str):
         self._redis_url = redis_url
-        self._redis: Optional[redis_async.Redis] = None
+        self._redis: redis_async.Redis | None = None
         # In-memory fallback when Redis is unavailable.
         # Sessions survive the current process but are lost on restart.
-        self._fallback: Dict[int, Dict[str, Any]] = {}
+        self._fallback: dict[int, dict[str, Any]] = {}
 
     async def connect(self) -> bool:
         """Initialize Redis connection. Returns True if successful."""
@@ -113,7 +114,7 @@ class RedisSessionManager:
         return f"{SESSION_KEY_PREFIX}{telegram_user_id}"
 
     @staticmethod
-    def _encode_session(session_data: Dict[str, Any]) -> str:
+    def _encode_session(session_data: dict[str, Any]) -> str:
         """JSON-serialize session, base64-encoding any bytes values (e.g. pending_file.file)."""
         def _encode(obj):
             if isinstance(obj, (bytes, bytearray)):
@@ -126,7 +127,7 @@ class RedisSessionManager:
         return json.dumps(_encode(session_data))
 
     @staticmethod
-    def _decode_session(raw: str) -> Dict[str, Any]:
+    def _decode_session(raw: str) -> dict[str, Any]:
         """Reverse _encode_session — restore base64 markers back to bytes."""
         def _decode(obj):
             if isinstance(obj, dict):
@@ -138,7 +139,7 @@ class RedisSessionManager:
             return obj
         return _decode(json.loads(raw))
 
-    async def get_session(self, telegram_user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_session(self, telegram_user_id: int) -> dict[str, Any] | None:
         """
         Retrieve user session from Redis, or in-memory fallback if Redis is down.
 
@@ -161,7 +162,7 @@ class RedisSessionManager:
             return None
 
     async def set_session(
-        self, telegram_user_id: int, session_data: Dict[str, Any]
+        self, telegram_user_id: int, session_data: dict[str, Any]
     ) -> bool:
         """
         Store user session in Redis with 24-hour TTL.
@@ -204,7 +205,7 @@ class RedisSessionManager:
             return False
 
     async def update_session(
-        self, telegram_user_id: int, updates: Dict[str, Any]
+        self, telegram_user_id: int, updates: dict[str, Any]
     ) -> bool:
         """
         Update specific fields in user session while preserving others.
@@ -246,7 +247,7 @@ UserContextStore = RedisSessionManager
 session_manager = RedisSessionManager(REDIS_URL)
 
 
-def user_context_get(telegram_user_id: int) -> Optional[Dict[str, Any]]:
+def user_context_get(telegram_user_id: int) -> dict[str, Any] | None:
     """Synchronous wrapper for backward compatibility (not recommended for new code)."""
     import asyncio
 
@@ -334,11 +335,11 @@ class TelegramBotClient:
         filename: str,
         bucket: str,
         access_token: str,
-        tags: Optional[List[str]] = None,
+        tags: list[str] | None = None,
     ) -> dict:
         try:
             files = {"file": (filename, file_bytes)}
-            data: Dict[str, Any] = {"bucket": bucket}
+            data: dict[str, Any] = {"bucket": bucket}
             if tags:
                 data["tags"] = ",".join(tags)
             headers = {"Authorization": f"Bearer {access_token}"}
@@ -588,7 +589,7 @@ async def handle_document_upload(
 
     # Parse hashtags from caption
     caption = update.message.caption or ""
-    parsed_tags: List[str] = re.findall(r"#(\w+)", caption)
+    parsed_tags: list[str] = re.findall(r"#(\w+)", caption)
 
     try:
         file_obj = await file.get_file()
@@ -763,7 +764,13 @@ async def bucket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await session_manager.clear_pending_file(user.id)
 
     if "error" in result:
-        await query.edit_message_text(f"❌ Upload failed: {result['error']}")
+        error_msg = result["error"]
+        if "401" in str(error_msg) or "Unauthorized" in str(error_msg):
+            await query.edit_message_text(
+                "❌ Session expired. Please use /start to re-authenticate and try again."
+            )
+        else:
+            await query.edit_message_text(f"❌ Upload failed: {error_msg}")
     else:
         document_id = result.get("document_id", "N/A")
         file_size_mb = len(pending["file"]) / (1024 * 1024)
@@ -1342,7 +1349,21 @@ def main() -> None:
 
     # Add error handlers for polling
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-        logger.error(f"Exception while handling an update: {context.error}")
+        logger.error(f"Exception while handling an update: {context.error}", exc_info=context.error)
+        # Notify the user so they don't see a blank response
+        if isinstance(update, Update):
+            try:
+                if update.callback_query:
+                    await update.callback_query.answer("❌ An error occurred. Please try again.")
+                    await update.callback_query.edit_message_text(
+                        "❌ An error occurred. Please try again or use /start to re-authenticate."
+                    )
+                elif update.message:
+                    await update.message.reply_text(
+                        "❌ An error occurred. Please try again or use /start to re-authenticate."
+                    )
+            except Exception:
+                pass  # Don't let error handler itself crash
 
     application.add_error_handler(error_handler)
 

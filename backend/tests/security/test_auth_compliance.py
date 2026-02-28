@@ -12,25 +12,27 @@ Test Categories:
 Expected: Tests FAIL on violations and PASS when secure.
 """
 
-import pytest
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import sys
+import pytest
+
 sys.path.insert(0, '/root/development/src/active/sowknow4/backend')
 
+from jose import jwt
+
 from app.utils.security import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALGORITHM,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    SECRET_KEY,
     create_access_token,
     create_refresh_token,
     decode_token,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    REFRESH_TOKEN_EXPIRE_DAYS,
-    SECRET_KEY,
-    ALGORITHM
 )
-from jose import jwt
 
 
 class TestFrontendTokenStorageCompliance:
@@ -69,8 +71,9 @@ class TestFrontendTokenStorageCompliance:
         """
         # Verify the SECURE_FLAG logic in auth.py is based on ENVIRONMENT
         # without reloading the module (which would corrupt global state)
-        from app.api import auth
         import inspect
+
+        from app.api import auth
         source = inspect.getsource(auth)
         assert "production" in source, "auth.py must reference 'production' for SECURE_FLAG"
         assert "SECURE_FLAG" in source, "auth.py must define SECURE_FLAG"
@@ -339,8 +342,9 @@ class TestSecurityConfigurationCompliance:
         Actual: Check main.py CORS configuration
         Status: PASS - main.py has explicit origins configured
         """
-        from app.main import app
         from fastapi.middleware.cors import CORSMiddleware
+
+        from app.main import app
 
         cors_configured = False
         for middleware in app.user_middleware:
@@ -378,8 +382,9 @@ class TestTelegramAuthCompliance:
         Actual: Check if telegram_auth endpoint validates bot token
         Status: FAIL - NO BOT API KEY VALIDATION FOUND
         """
-        from app.api.auth import telegram_auth
         import inspect
+
+        from app.api.auth import telegram_auth
 
         source = inspect.getsource(telegram_auth)
 
@@ -411,8 +416,9 @@ class TestTelegramAuthCompliance:
         Actual: Check set_auth_cookies is called
         Status: PASS
         """
-        from app.api.auth import set_auth_cookies
         from unittest.mock import MagicMock
+
+        from app.api.auth import set_auth_cookies
 
         mock_response = MagicMock()
         set_auth_cookies(mock_response, "access", "refresh")

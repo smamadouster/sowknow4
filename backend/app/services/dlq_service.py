@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import traceback as tb
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +21,10 @@ class DeadLetterQueueService:
         args: tuple,
         kwargs: dict,
         exception: Exception,
-        traceback_str: Optional[str] = None,
+        traceback_str: str | None = None,
         retry_count: int = 0,
-        extra_metadata: Optional[dict] = None,
-    ) -> Optional[Any]:
+        extra_metadata: dict | None = None,
+    ) -> Any | None:
         """
         Persist a permanently failed task to the dead letter queue.
 
@@ -72,14 +72,12 @@ class DeadLetterQueueService:
             db.add(record)
             db.commit()
             db.refresh(record)
-            logger.info(
-                f"DLQ: stored failed task {task_name} (task_id={task_id}, "
-                f"retries={retry_count})"
-            )
+            logger.info(f"DLQ: stored failed task {task_name} (task_id={task_id}, retries={retry_count})")
 
             # Fire async alert (best-effort; don't block if event loop unavailable)
             try:
                 import asyncio
+
                 from app.services.alert_service import alert_service
 
                 coro = alert_service.send_task_failure_alert(
@@ -105,9 +103,7 @@ class DeadLetterQueueService:
         except Exception as store_err:
             db.rollback()
             # DLQ storage must never crash the caller
-            logger.error(
-                f"DLQ: failed to store task {task_name} ({task_id}): {store_err}"
-            )
+            logger.error(f"DLQ: failed to store task {task_name} ({task_id}): {store_err}")
             return None
 
         finally:
@@ -117,7 +113,7 @@ class DeadLetterQueueService:
     def list_failed_tasks(
         page: int = 1,
         page_size: int = 50,
-        task_name_filter: Optional[str] = None,
+        task_name_filter: str | None = None,
     ) -> dict:
         """
         Retrieve paginated failed tasks.
@@ -130,24 +126,20 @@ class DeadLetterQueueService:
                 "page_size": int,
             }
         """
+        from sqlalchemy import desc
+
         from app.database import SessionLocal
         from app.models.failed_task import FailedCeleryTask
-        from sqlalchemy import desc
 
         db = SessionLocal()
         try:
             query = db.query(FailedCeleryTask)
             if task_name_filter:
-                query = query.filter(
-                    FailedCeleryTask.task_name.ilike(f"%{task_name_filter}%")
-                )
+                query = query.filter(FailedCeleryTask.task_name.ilike(f"%{task_name_filter}%"))
 
             total = query.count()
             items = (
-                query.order_by(desc(FailedCeleryTask.failed_at))
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-                .all()
+                query.order_by(desc(FailedCeleryTask.failed_at)).offset((page - 1) * page_size).limit(page_size).all()
             )
 
             return {

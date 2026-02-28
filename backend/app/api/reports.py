@@ -8,8 +8,9 @@ GET  /reports/status/{task_id} — poll task status
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from fastapi import status, APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -24,17 +25,15 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 async def generate_report(
     request: GenerateReportRequest,
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Queue an async report generation task.
 
     Returns HTTP 202 Accepted with a task_id and status_url for polling.
     """
-    from app.tasks.report_tasks import generate_pdf_report, generate_excel_export
+    from app.tasks.report_tasks import generate_excel_export, generate_pdf_report
 
-    task_fn = (
-        generate_excel_export if request.format == "excel" else generate_pdf_report
-    )
+    task_fn = generate_excel_export if request.format == "excel" else generate_pdf_report
 
     task = task_fn.delay(
         report_type=request.report_type,
@@ -55,12 +54,13 @@ async def generate_report(
 async def get_report_status(
     task_id: str,
     current_user: User = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Poll the status of an async report generation task.
     """
-    from app.celery_app import celery_app
     from celery.result import AsyncResult
+
+    from app.celery_app import celery_app
 
     result = AsyncResult(task_id, app=celery_app)
 

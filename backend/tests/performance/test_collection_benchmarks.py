@@ -43,9 +43,9 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -65,8 +65,8 @@ pytestmark = [pytest.mark.benchmark, pytest.mark.performance]
 # ---------------------------------------------------------------------------
 REPORT_PATH = Path(__file__).parent / "benchmark_report.json"
 
-_REPORT: Dict[str, Any] = {
-    "generated_at": datetime.now(timezone.utc).isoformat(),
+_REPORT: dict[str, Any] = {
+    "generated_at": datetime.now(UTC).isoformat(),
     "targets": {
         "intent_parsing_s": 3,
         "document_gathering_s": 5,
@@ -105,7 +105,7 @@ class _Timer:
 
     elapsed: float = 0.0
 
-    def __enter__(self) -> "_Timer":
+    def __enter__(self) -> _Timer:
         self._start = time.perf_counter()
         return self
 
@@ -116,7 +116,7 @@ class _Timer:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-def _make_parsed_intent(keywords: List[str]) -> ParsedIntent:
+def _make_parsed_intent(keywords: list[str]) -> ParsedIntent:
     """Build a deterministic ParsedIntent for document gathering tests."""
     return ParsedIntent(
         query=" ".join(keywords),
@@ -147,7 +147,7 @@ class TestIntentParsingBenchmark:
     """
 
     @pytest.mark.asyncio
-    async def test_intent_parsing_perf(self, pg_bench_db: Tuple) -> None:
+    async def test_intent_parsing_perf(self, pg_bench_db: tuple) -> None:
         TARGET = 3.0
 
         mock_json = json.dumps(
@@ -220,7 +220,7 @@ class TestDocumentGatheringBenchmark:
     """
 
     @pytest.mark.asyncio
-    async def test_document_gathering_perf(self, pg_bench_db: Tuple) -> None:
+    async def test_document_gathering_perf(self, pg_bench_db: tuple) -> None:
         TARGET = 5.0
         session, admin = pg_bench_db
 
@@ -283,7 +283,7 @@ class TestAISummaryBenchmark:
     """
 
     @pytest.mark.asyncio
-    async def test_ai_summary_generation_perf(self, pg_bench_db: Tuple) -> None:
+    async def test_ai_summary_generation_perf(self, pg_bench_db: tuple) -> None:
         TARGET = 20.0
         session, admin = pg_bench_db
 
@@ -362,7 +362,7 @@ class TestCollectionCreationE2EBenchmark:
     """
 
     @pytest.mark.asyncio
-    async def test_e2e_collection_creation_perf(self, pg_bench_db: Tuple) -> None:
+    async def test_e2e_collection_creation_perf(self, pg_bench_db: tuple) -> None:
         TARGET = 30.0
         session, admin = pg_bench_db
 
@@ -381,7 +381,7 @@ class TestCollectionCreationE2EBenchmark:
             intent_json,
             "E2E benchmark collection covering solar and energy documents.",
         ]
-        _call_idx: List[int] = [0]   # mutable cell for nonlocal update
+        _call_idx: list[int] = [0]   # mutable cell for nonlocal update
 
         async def _stateful_llm(*_args: Any, **_kwargs: Any):
             """Return the next canned response in sequence."""

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { useTranslations } from 'next-intl';
 import { useAuthStore, useUploadStore, canAccessConfidential } from '@/lib/store';
+import { getCsrfToken } from '@/lib/api';
 
 interface Document {
   id: string;
@@ -102,12 +103,6 @@ export default function DocumentsPage() {
       setSortDir('desc');
     }
     setPage(1);
-  };
-
-  const getToken = (): string | null => {
-    if (typeof window === 'undefined') return null;
-    const match = document.cookie.match(/access_token=([^;]+)/);
-    return match ? match[1] : null;
   };
 
   // Generate unique ID for file items
@@ -216,7 +211,6 @@ export default function DocumentsPage() {
     bucket: string,
   ): Promise<{ success: boolean; error?: string }> => {
     return new Promise((resolve) => {
-      const token = getToken();
       const formData = new FormData();
       formData.append('file', item.file);
       formData.append('bucket', bucket);
@@ -262,9 +256,7 @@ export default function DocumentsPage() {
       };
 
       xhr.open('POST', `${API_BASE}/v1/documents/upload`);
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      }
+      xhr.setRequestHeader('X-CSRF-Token', getCsrfToken());
       xhr.withCredentials = true;
       xhr.send(formData);
     });
@@ -329,7 +321,6 @@ export default function DocumentsPage() {
     setError(null);
 
     try {
-      const token = getToken();
       const params = new URLSearchParams({
         page: page.toString(),
         page_size: pageSize.toString(),
@@ -347,7 +338,6 @@ export default function DocumentsPage() {
 
       const res = await fetch(`${API_BASE}/v1/documents?${params}`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (res.ok) {
@@ -367,10 +357,8 @@ export default function DocumentsPage() {
 
   const handleDownload = async (docId: string, filename: string) => {
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/documents/${docId}/download`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!res.ok) {
@@ -397,10 +385,9 @@ export default function DocumentsPage() {
     if (!confirm(t('delete_confirm'))) return;
 
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/documents/${docId}`, {
         method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { 'X-CSRF-Token': getCsrfToken() },
         credentials: 'include',
       });
 

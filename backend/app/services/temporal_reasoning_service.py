@@ -6,11 +6,12 @@ evolution of concepts across documents.
 """
 
 import logging
-from typing import List, Dict, Any
-from datetime import date, timedelta
 from collections import defaultdict
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import date, timedelta
+from typing import Any
+
 from sqlalchemy import and_, desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_graph import Entity, TimelineEvent
 
@@ -40,7 +41,7 @@ class TemporalReasoningService:
 
     async def reason_about_temporal_relationships(
         self, event_id: str, db: AsyncSession, time_window_days: int = 365
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Reason about temporal relationships for a specific event
 
@@ -94,9 +95,7 @@ class TemporalReasoningService:
                             "title": event.title,
                             "date": event.event_date.isoformat(),
                             "days_before": abs(days_diff),
-                            "relation": self._determine_relation(
-                                target_event, event, days_diff
-                            ),
+                            "relation": self._determine_relation(target_event, event, days_diff),
                         }
                     )
                 elif days_diff > 1:
@@ -106,9 +105,7 @@ class TemporalReasoningService:
                             "title": event.title,
                             "date": event.event_date.isoformat(),
                             "days_after": days_diff,
-                            "relation": self._determine_relation(
-                                target_event, event, days_diff
-                            ),
+                            "relation": self._determine_relation(target_event, event, days_diff),
                         }
                     )
                 else:
@@ -122,9 +119,7 @@ class TemporalReasoningService:
                     )
 
             # Check for causal relationships
-            causal_candidates = await self._infer_causal_relationships(
-                target_event, before_events, db
-            )
+            causal_candidates = await self._infer_causal_relationships(target_event, before_events, db)
 
             # Get temporal context for entities
             entity_context = await self._get_entity_temporal_context(target_event, db)
@@ -151,18 +146,12 @@ class TemporalReasoningService:
             logger.error(f"Temporal reasoning error: {e}")
             return {"error": str(e)}
 
-    def _determine_relation(
-        self, event1: TimelineEvent, event2: TimelineEvent, days_diff: int
-    ) -> str:
+    def _determine_relation(self, event1: TimelineEvent, event2: TimelineEvent, days_diff: int) -> str:
         """Determine the type of temporal relationship"""
         abs_days = abs(days_diff)
 
         if abs_days <= 1:
-            return (
-                TemporalRelation.IMMEDIATELY_BEFORE
-                if days_diff < 0
-                else TemporalRelation.IMMEDIATELY_AFTER
-            )
+            return TemporalRelation.IMMEDIATELY_BEFORE if days_diff < 0 else TemporalRelation.IMMEDIATELY_AFTER
         elif abs_days <= 7:
             return TemporalRelation.BEFORE if days_diff < 0 else TemporalRelation.AFTER
         else:
@@ -171,9 +160,9 @@ class TemporalReasoningService:
     async def _infer_causal_relationships(
         self,
         target_event: TimelineEvent,
-        before_events: List[Dict[str, Any]],
+        before_events: list[dict[str, Any]],
         db: AsyncSession,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Infer potential causal relationships from earlier events"""
         causal_candidates = []
 
@@ -200,9 +189,7 @@ class TemporalReasoningService:
 
         return sorted(causal_candidates, key=lambda x: x["confidence"], reverse=True)
 
-    async def _get_entity_temporal_context(
-        self, event: TimelineEvent, db: AsyncSession
-    ) -> List[Dict[str, Any]]:
+    async def _get_entity_temporal_context(self, event: TimelineEvent, db: AsyncSession) -> list[dict[str, Any]]:
         """Get temporal context for entities involved in the event"""
         context = []
 
@@ -233,14 +220,10 @@ class TemporalReasoningService:
                         "entity": entity.name,
                         "entity_type": entity.entity_type.value,
                         "first_seen": (
-                            first_mention.event_date.isoformat()
-                            if first_mention and first_mention.event_date
-                            else None
+                            first_mention.event_date.isoformat() if first_mention and first_mention.event_date else None
                         ),
                         "last_seen": (
-                            last_mention.event_date.isoformat()
-                            if last_mention and last_mention.event_date
-                            else None
+                            last_mention.event_date.isoformat() if last_mention and last_mention.event_date else None
                         ),
                         "in_event": True,
                     }
@@ -248,9 +231,7 @@ class TemporalReasoningService:
 
         return context
 
-    async def analyze_evolution(
-        self, entity_name: str, db: AsyncSession, time_months: int = 12
-    ) -> Dict[str, Any]:
+    async def analyze_evolution(self, entity_name: str, db: AsyncSession, time_months: int = 12) -> dict[str, Any]:
         """
         Analyze how an entity/concept evolves over time
 
@@ -263,9 +244,7 @@ class TemporalReasoningService:
             Evolution analysis with stages and trends
         """
         # Find matching entities
-        entities = (
-            await db.execute(select(Entity).where(Entity.name.ilike(f"%{entity_name}%")))
-        ).scalars().all()
+        entities = (await db.execute(select(Entity).where(Entity.name.ilike(f"%{entity_name}%")))).scalars().all()
 
         if not entities:
             return {"error": "Entity not found"}
@@ -277,15 +256,19 @@ class TemporalReasoningService:
         start_date = end_date - timedelta(days=time_months * 30)
 
         events = (
-            await db.execute(
-                select(TimelineEvent).where(
-                    and_(
-                        TimelineEvent.event_date >= start_date,
-                        TimelineEvent.event_date <= end_date,
+            (
+                await db.execute(
+                    select(TimelineEvent).where(
+                        and_(
+                            TimelineEvent.event_date >= start_date,
+                            TimelineEvent.event_date <= end_date,
+                        )
                     )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # Filter events involving our entities
         relevant_events = []
@@ -314,19 +297,11 @@ class TemporalReasoningService:
             "time_period_months": time_months,
             "event_count": len(relevant_events),
             "first_event": {
-                "date": (
-                    relevant_events[0].event_date.isoformat()
-                    if relevant_events[0].event_date
-                    else None
-                ),
+                "date": (relevant_events[0].event_date.isoformat() if relevant_events[0].event_date else None),
                 "title": relevant_events[0].title,
             },
             "last_event": {
-                "date": (
-                    relevant_events[-1].event_date.isoformat()
-                    if relevant_events[-1].event_date
-                    else None
-                ),
+                "date": (relevant_events[-1].event_date.isoformat() if relevant_events[-1].event_date else None),
                 "title": relevant_events[-1].title,
             },
             "stages": stages,
@@ -341,9 +316,7 @@ class TemporalReasoningService:
             ],
         }
 
-    def _identify_evolution_stages(
-        self, events: List[TimelineEvent]
-    ) -> List[Dict[str, Any]]:
+    def _identify_evolution_stages(self, events: list[TimelineEvent]) -> list[dict[str, Any]]:
         """Identify distinct stages in entity evolution"""
         if len(events) < 3:
             return []
@@ -387,23 +360,17 @@ class TemporalReasoningService:
                     "type": current_type or "unknown",
                     "event_count": len(current_stage_events),
                     "start_date": (
-                        current_stage_events[0].event_date.isoformat()
-                        if current_stage_events[0].event_date
-                        else None
+                        current_stage_events[0].event_date.isoformat() if current_stage_events[0].event_date else None
                     ),
                     "end_date": (
-                        current_stage_events[-1].event_date.isoformat()
-                        if current_stage_events[-1].event_date
-                        else None
+                        current_stage_events[-1].event_date.isoformat() if current_stage_events[-1].event_date else None
                     ),
                 }
             )
 
         return stages
 
-    def _detect_evolution_trends(
-        self, events: List[TimelineEvent], time_months: int
-    ) -> Dict[str, Any]:
+    def _detect_evolution_trends(self, events: list[TimelineEvent], time_months: int) -> dict[str, Any]:
         """Detect trends in entity evolution"""
         if not events or not events[0].event_date or not events[-1].event_date:
             return {"trend": "insufficient_data"}
@@ -421,9 +388,7 @@ class TemporalReasoningService:
             if event.event_type:
                 type_counts[event.event_type] += 1
 
-        dominant_type = (
-            max(type_counts.items(), key=lambda x: x[1]) if type_counts else (None, 0)
-        )
+        dominant_type = max(type_counts.items(), key=lambda x: x[1]) if type_counts else (None, 0)
 
         # Determine trend
         if len(events) >= time_months * 0.5:  # At least 0.5 events per month on average
@@ -440,9 +405,7 @@ class TemporalReasoningService:
             "type_distribution": dict(type_counts),
         }
 
-    async def find_temporal_patterns(
-        self, db: AsyncSession, min_occurrences: int = 3
-    ) -> List[Dict[str, Any]]:
+    async def find_temporal_patterns(self, db: AsyncSession, min_occurrences: int = 3) -> list[dict[str, Any]]:
         """
         Find recurring temporal patterns in the knowledge graph
 
@@ -454,11 +417,7 @@ class TemporalReasoningService:
             List of discovered patterns
         """
         # Get all events
-        events = (
-            await db.execute(
-                select(TimelineEvent).where(TimelineEvent.event_date.isnot(None))
-            )
-        ).scalars().all()
+        events = (await db.execute(select(TimelineEvent).where(TimelineEvent.event_date.isnot(None)))).scalars().all()
 
         # Group by month
         monthly_events = defaultdict(list)
@@ -496,13 +455,9 @@ class TemporalReasoningService:
             if (
                 sorted_events[i].event_date
                 and sorted_events[i + 1].event_date
-                and (sorted_events[i + 1].event_date - sorted_events[i].event_date).days
-                <= 30
+                and (sorted_events[i + 1].event_date - sorted_events[i].event_date).days <= 30
             ):
-
-                seq_key = (
-                    f"{sorted_events[i].event_type}->{sorted_events[i+1].event_type}"
-                )
+                seq_key = f"{sorted_events[i].event_type}->{sorted_events[i + 1].event_type}"
                 sequences[seq_key] += 1
 
         for seq, count in sequences.items():

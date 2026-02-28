@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -43,20 +43,17 @@ class _InMemoryStore:
     """
 
     def __init__(self) -> None:
-        self._queries: Dict[str, Dict[str, Any]] = {}
+        self._queries: dict[str, dict[str, Any]] = {}
 
-    def add(self, record: Dict[str, Any]) -> None:
+    def add(self, record: dict[str, Any]) -> None:
         self._queries[str(record["id"])] = record
 
-    def get(self, query_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, query_id: str) -> dict[str, Any] | None:
         return self._queries.get(query_id)
 
-    def list_pending(self) -> List[Dict[str, Any]]:
+    def list_pending(self) -> list[dict[str, Any]]:
         now = datetime.utcnow()
-        return [
-            q for q in self._queries.values()
-            if q["status"] == "pending" and q["expires_at"] > now
-        ]
+        return [q for q in self._queries.values() if q["status"] == "pending" and q["expires_at"] > now]
 
     def update(self, query_id: str, **fields: Any) -> None:
         if query_id in self._queries:
@@ -65,10 +62,7 @@ class _InMemoryStore:
 
     def expire_old(self) -> int:
         now = datetime.utcnow()
-        expired = [
-            qid for qid, q in self._queries.items()
-            if q["status"] == "pending" and q["expires_at"] <= now
-        ]
+        expired = [qid for qid, q in self._queries.items() if q["status"] == "pending" and q["expires_at"] <= now]
         for qid in expired:
             self._queries[qid]["status"] = "expired"
         return len(expired)
@@ -93,10 +87,10 @@ class DeferredQueryService:
         self,
         user_id: str,
         query_text: str,
-        document_ids: Optional[List[str]] = None,
-        context_chunks: Optional[List[Dict[str, Any]]] = None,
-        system_prompt: Optional[str] = None,
-        session_id: Optional[str] = None,
+        document_ids: list[str] | None = None,
+        context_chunks: list[dict[str, Any]] | None = None,
+        system_prompt: str | None = None,
+        session_id: str | None = None,
     ) -> str:
         """
         Enqueue a query that could not be processed because Ollama was down.
@@ -107,7 +101,7 @@ class DeferredQueryService:
         now = datetime.utcnow()
         query_id = str(uuid4())
 
-        record: Dict[str, Any] = {
+        record: dict[str, Any] = {
             "id": query_id,
             "user_id": str(user_id),
             "session_id": str(session_id) if session_id else None,
@@ -127,13 +121,10 @@ class DeferredQueryService:
         }
 
         self._store.add(record)
-        logger.info(
-            f"DeferredQuery enqueued: id={query_id} user={user_id} "
-            f"expires={record['expires_at'].isoformat()}"
-        )
+        logger.info(f"DeferredQuery enqueued: id={query_id} user={user_id} expires={record['expires_at'].isoformat()}")
         return query_id
 
-    async def process_pending(self) -> Dict[str, int]:
+    async def process_pending(self) -> dict[str, int]:
         """
         Attempt to process all pending deferred queries using Ollama.
 
@@ -182,7 +173,7 @@ class DeferredQueryService:
 
         return {"processed": processed, "failed": failed, "expired": expired}
 
-    async def get_status(self, query_id: str) -> Optional[Dict[str, Any]]:
+    async def get_status(self, query_id: str) -> dict[str, Any] | None:
         """Return the current state of a deferred query."""
         record = self._store.get(query_id)
         if record is None:
@@ -201,16 +192,16 @@ class DeferredQueryService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _call_ollama(self, record: Dict[str, Any]) -> str:
+    async def _call_ollama(self, record: dict[str, Any]) -> str:
         """Call Ollama to answer the deferred query."""
         from app.services.ollama_service import ollama_service  # lazy import
 
-        messages: List[Dict[str, str]] = []
+        messages: list[dict[str, str]] = []
         if record.get("system_prompt"):
             messages.append({"role": "system", "content": record["system_prompt"]})
         messages.append({"role": "user", "content": record["query_text"]})
 
-        response_parts: List[str] = []
+        response_parts: list[str] = []
         async for chunk in ollama_service.chat_completion(messages, stream=False):
             response_parts.append(chunk)
 

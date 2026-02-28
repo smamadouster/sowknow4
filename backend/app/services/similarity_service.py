@@ -6,11 +6,11 @@ Useful for finding document groups like "all IDs", "all balance sheets", etc.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, select
 import numpy as np
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document, DocumentChunk
 from app.models.user import User, UserRole
@@ -27,9 +27,9 @@ class SimilarityGroup:
         group_id: str,
         name: str,
         description: str,
-        document_ids: List[str],
+        document_ids: list[str],
         similarity_score: float,
-        common_patterns: List[str],
+        common_patterns: list[str],
     ):
         self.group_id = group_id
         self.name = name
@@ -38,7 +38,7 @@ class SimilarityGroup:
         self.similarity_score = similarity_score
         self.common_patterns = common_patterns
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize this similarity group to a JSON-compatible dict."""
         return {
             "group_id": self.group_id,
@@ -64,7 +64,7 @@ class SimilarityGroupingService:
         min_group_size: int = 2,
         max_groups: int = 20,
         similarity_threshold: float = 0.75,
-    ) -> List[SimilarityGroup]:
+    ) -> list[SimilarityGroup]:
         """
         Find groups of similar documents for the user
 
@@ -96,10 +96,8 @@ class SimilarityGroupingService:
         doc_embeddings = []
         for doc in documents:
             chunks = (
-                await db.execute(
-                    select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
-                )
-            ).scalars().all()
+                (await db.execute(select(DocumentChunk).where(DocumentChunk.document_id == doc.id))).scalars().all()
+            )
 
             if chunks:
                 # Get first chunk embedding as representative
@@ -120,9 +118,7 @@ class SimilarityGroupingService:
             return []
 
         # Compute similarity matrix
-        groups = await self._cluster_by_similarity(
-            doc_embeddings, min_group_size, similarity_threshold
-        )
+        groups = await self._cluster_by_similarity(doc_embeddings, min_group_size, similarity_threshold)
 
         # Name the groups based on common patterns
         named_groups = []
@@ -143,10 +139,10 @@ class SimilarityGroupingService:
 
     async def _cluster_by_similarity(
         self,
-        doc_embeddings: List[Dict[str, Any]],
+        doc_embeddings: list[dict[str, Any]],
         min_group_size: int,
         threshold: float,
-    ) -> List[List[str]]:
+    ) -> list[list[str]]:
         """Cluster documents by similarity using simple approach"""
         # Compute pairwise cosine similarity
         n = len(doc_embeddings)
@@ -158,9 +154,7 @@ class SimilarityGroupingService:
                 emb2 = doc_embeddings[j]["embedding"]
 
                 # Cosine similarity
-                similarity = np.dot(emb1, emb2) / (
-                    np.linalg.norm(emb1) * np.linalg.norm(emb2)
-                )
+                similarity = np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
                 similarity_matrix[i][j] = similarity
                 similarity_matrix[j][i] = similarity
 
@@ -194,14 +188,10 @@ class SimilarityGroupingService:
 
         return clusters
 
-    async def _analyze_group(
-        self, document_ids: List[str], db: AsyncSession
-    ) -> Dict[str, Any]:
+    async def _analyze_group(self, document_ids: list[str], db: AsyncSession) -> dict[str, Any]:
         """Analyze a group to determine its theme and patterns"""
         # Get documents
-        documents = (
-            await db.execute(select(Document).where(Document.id.in_(document_ids)))
-        ).scalars().all()
+        documents = (await db.execute(select(Document).where(Document.id.in_(document_ids)))).scalars().all()
 
         if not documents:
             return {
@@ -233,7 +223,7 @@ class SimilarityGroupingService:
             "patterns": common_patterns,
         }
 
-    def _extract_common_patterns(self, filenames: List[str]) -> List[str]:
+    def _extract_common_patterns(self, filenames: list[str]) -> list[str]:
         """Extract common patterns from filenames"""
         patterns = []
 
@@ -275,9 +265,7 @@ class SimilarityGroupingService:
 
         return patterns[:5]
 
-    def _generate_group_name(
-        self, filenames: List[str], mime_types: List[str], patterns: List[str]
-    ) -> str:
+    def _generate_group_name(self, filenames: list[str], mime_types: list[str], patterns: list[str]) -> str:
         """Generate a descriptive name for the group"""
         if not patterns:
             # Use first filename as base
@@ -310,7 +298,7 @@ class SimilarityGroupingService:
 
     async def find_similar_to_document(
         self, document_id: str, user: User, db: AsyncSession, limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Find documents similar to a specific document
 
@@ -327,10 +315,8 @@ class SimilarityGroupingService:
 
         # Get reference document chunks
         ref_chunks = (
-            await db.execute(
-                select(DocumentChunk).where(DocumentChunk.document_id == document_id)
-            )
-        ).scalars().all()
+            (await db.execute(select(DocumentChunk).where(DocumentChunk.document_id == document_id))).scalars().all()
+        )
 
         if not ref_chunks:
             return []
@@ -350,9 +336,7 @@ class SimilarityGroupingService:
         ref_embedding = ref_embedding / len(ref_chunks)
 
         # Get candidate documents
-        stmt = select(Document).where(
-            and_(Document.id != document_id, Document.status == DocumentStatus.INDEXED)
-        )
+        stmt = select(Document).where(and_(Document.id != document_id, Document.status == DocumentStatus.INDEXED))
 
         # Apply bucket filter
         if user.role == UserRole.USER:
@@ -364,9 +348,7 @@ class SimilarityGroupingService:
         similarities = []
         for doc in candidates:
             chunks = (
-                await db.execute(
-                    select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
-                )
+                await db.execute(select(DocumentChunk).where(DocumentChunk.document_id == doc.id))
             ).scalar_one_or_none()
 
             if chunks and chunks.embedding:

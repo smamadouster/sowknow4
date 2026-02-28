@@ -2,9 +2,10 @@
 Celery tasks for anomaly detection and scheduled reports
 """
 
-from celery import shared_task
 import logging
 from datetime import datetime, timedelta
+
+from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,15 @@ def daily_anomaly_report() -> dict:
     Returns:
         dict with comprehensive anomaly report data
     """
+    import os
+
     from app.database import SessionLocal
+    from app.services.cache_monitor import cache_monitor
     from app.services.monitoring import (
+        SystemMonitor,
         get_cost_tracker,
         get_queue_monitor,
-        SystemMonitor,
     )
-    from app.services.cache_monitor import cache_monitor
-    import os
 
     report_time = datetime.now()
     report = {
@@ -74,11 +76,7 @@ def daily_anomaly_report() -> dict:
             for doc in stuck_documents:
                 # Get additional processing info if available
                 try:
-                    processing_task = (
-                        db.query(ProcessingQueue)
-                        .filter(ProcessingQueue.document_id == doc.id)
-                        .first()
-                    )
+                    processing_task = db.query(ProcessingQueue).filter(ProcessingQueue.document_id == doc.id).first()
                 except Exception:
                     processing_task = None
 
@@ -92,12 +90,8 @@ def daily_anomaly_report() -> dict:
                     "filename": doc.filename,
                     "bucket": doc.bucket.value if hasattr(doc, "bucket") else "unknown",
                     "status": doc.status.value,
-                    "created_at": (
-                        doc.created_at.isoformat() if doc.created_at else None
-                    ),
-                    "updated_at": (
-                        doc.updated_at.isoformat() if doc.updated_at else None
-                    ),
+                    "created_at": (doc.created_at.isoformat() if doc.created_at else None),
+                    "updated_at": (doc.updated_at.isoformat() if doc.updated_at else None),
                     "stuck_duration_hours": round(duration_hours, 2),
                     "last_task_type": (
                         processing_task.task_type.value
@@ -114,17 +108,13 @@ def daily_anomaly_report() -> dict:
                 critical_count += 1
 
             if stuck_documents:
-                logger.warning(
-                    f"Found {len(stuck_documents)} documents stuck in processing for >24 hours"
-                )
+                logger.warning(f"Found {len(stuck_documents)} documents stuck in processing for >24 hours")
 
         finally:
             db.close()
 
     except ImportError as e:
-        logger.debug(
-            f"Document models not available, skipping stuck document check: {e}"
-        )
+        logger.debug(f"Document models not available, skipping stuck document check: {e}")
     except Exception as e:
         logger.error(f"Error checking stuck documents: {e}")
 
@@ -256,9 +246,7 @@ def daily_anomaly_report() -> dict:
 
     # Log the report
     if critical_count > 0:
-        logger.error(
-            f"Daily anomaly report: {critical_count} CRITICAL, {warning_count} WARNING issues found"
-        )
+        logger.error(f"Daily anomaly report: {critical_count} CRITICAL, {warning_count} WARNING issues found")
     elif warning_count > 0:
         logger.warning(f"Daily anomaly report: {warning_count} WARNING issues found")
     else:
@@ -268,6 +256,7 @@ def daily_anomaly_report() -> dict:
     if critical_count > 0 or warning_count > 0:
         try:
             import asyncio
+
             from app.services.alert_service import alert_service
 
             severity = "CRITICAL" if critical_count > 0 else "MEDIUM"
@@ -278,8 +267,7 @@ def daily_anomaly_report() -> dict:
             ]
             for anomaly in report["anomalies"][:5]:  # first 5
                 summary_lines.append(
-                    f"  [{anomaly.get('severity', '?')}] {anomaly.get('type', '?')}: "
-                    f"{anomaly.get('message', '')[:80]}"
+                    f"  [{anomaly.get('severity', '?')}] {anomaly.get('type', '?')}: {anomaly.get('message', '')[:80]}"
                 )
             if len(report["anomalies"]) > 5:
                 summary_lines.append(f"  … and {len(report['anomalies']) - 5} more")
@@ -317,15 +305,17 @@ def system_health_check() -> dict:
     Returns:
         dict with system health status
     """
-    from app.services.monitoring import (
-        get_queue_monitor,
-        get_alert_manager,
-        SystemMonitor,
-    )
-    from app.services.cache_monitor import cache_monitor
-    import redis
     import os
+
     import httpx
+    import redis
+
+    from app.services.cache_monitor import cache_monitor
+    from app.services.monitoring import (
+        SystemMonitor,
+        get_alert_manager,
+        get_queue_monitor,
+    )
 
     health_status = {
         "timestamp": datetime.now().isoformat(),
@@ -357,6 +347,7 @@ def system_health_check() -> dict:
         # Check Redis connection
         try:
             from app.core.redis_url import safe_redis_url
+
             r = redis.from_url(safe_redis_url())
             r.ping()
             health_status["checks"]["redis"] = {
@@ -491,16 +482,15 @@ def check_api_costs(daily_budget_threshold: float = 5.0) -> dict:
     Returns:
         dict with cost tracking data
     """
-    from app.services.monitoring import get_cost_tracker, get_alert_manager
     import os
+
+    from app.services.monitoring import get_alert_manager, get_cost_tracker
 
     cost_tracker = get_cost_tracker()
     alert_manager = get_alert_manager()
 
     # Get actual budget from environment
-    daily_budget = float(
-        os.getenv("GEMINI_DAILY_BUDGET_USD", str(daily_budget_threshold))
-    )
+    daily_budget = float(os.getenv("GEMINI_DAILY_BUDGET_USD", str(daily_budget_threshold)))
     daily_cost = cost_tracker.get_daily_cost()
 
     result = {
@@ -508,9 +498,7 @@ def check_api_costs(daily_budget_threshold: float = 5.0) -> dict:
         "daily_cost_usd": round(daily_cost, 4),
         "daily_budget_usd": daily_budget,
         "remaining_budget": round(max(0, daily_budget - daily_cost), 4),
-        "percent_used": (
-            round((daily_cost / daily_budget) * 100, 1) if daily_budget > 0 else 0
-        ),
+        "percent_used": (round((daily_cost / daily_budget) * 100, 1) if daily_budget > 0 else 0),
         "breakdown": cost_tracker.get_daily_cost_breakdown(),
         "over_budget": daily_cost > daily_budget,
     }
@@ -520,9 +508,7 @@ def check_api_costs(daily_budget_threshold: float = 5.0) -> dict:
         alert_manager.check_alert("cost_over_budget", daily_cost)
         logger.warning(f"API cost over budget: ${daily_cost:.2f} > ${daily_budget:.2f}")
     elif daily_cost > daily_budget * 0.8:
-        logger.warning(
-            f"API cost at 80% of budget: ${daily_cost:.2f} / ${daily_budget:.2f}"
-        )
+        logger.warning(f"API cost at 80% of budget: ${daily_cost:.2f} / ${daily_budget:.2f}")
 
     return result
 
@@ -564,20 +550,13 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
         for doc in stuck_documents:
             try:
                 # Get processing task info
-                processing_task = (
-                    db.query(ProcessingQueue)
-                    .filter(ProcessingQueue.document_id == doc.id)
-                    .first()
-                )
+                processing_task = db.query(ProcessingQueue).filter(ProcessingQueue.document_id == doc.id).first()
 
                 # Check if this is a real stuck document or just slow processing
-                stuck_duration = (
-                    datetime.utcnow() - doc.updated_at
-                ).total_seconds() / 60
+                stuck_duration = (datetime.utcnow() - doc.updated_at).total_seconds() / 60
 
                 logger.warning(
-                    f"Document {doc.id} ({doc.filename}) stuck in processing for "
-                    f"{stuck_duration:.1f} minutes"
+                    f"Document {doc.id} ({doc.filename}) stuck in processing for {stuck_duration:.1f} minutes"
                 )
 
                 # Track how many times we've already recovered this document.
@@ -597,22 +576,16 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                         "stuck_duration_minutes": stuck_duration,
                         "recovered_at": datetime.utcnow().isoformat(),
                         "processing_error": (
-                            f"Permanently failed: stuck in processing after "
-                            f"{recovery_count} recovery attempts"
+                            f"Permanently failed: stuck in processing after {recovery_count} recovery attempts"
                         ),
                     }
 
                     if processing_task:
                         processing_task.status = TaskStatus.FAILED
-                        processing_task.error_message = (
-                            f"Exhausted {MAX_RECOVERY_ATTEMPTS} recovery attempts"
-                        )
+                        processing_task.error_message = f"Exhausted {MAX_RECOVERY_ATTEMPTS} recovery attempts"
 
                     db.commit()
-                    logger.error(
-                        f"Document {doc.id} permanently failed after "
-                        f"{recovery_count} recovery attempts"
-                    )
+                    logger.error(f"Document {doc.id} permanently failed after {recovery_count} recovery attempts")
                     failed.append(
                         {
                             "document_id": str(doc.id),
@@ -633,9 +606,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
 
                 if processing_task:
                     processing_task.status = TaskStatus.PENDING
-                    processing_task.error_message = (
-                        f"Recovered from stuck state after {stuck_duration:.1f} minutes"
-                    )
+                    processing_task.error_message = f"Recovered from stuck state after {stuck_duration:.1f} minutes"
                     processing_task.retry_count = 0  # Reset retry count
 
                 db.commit()

@@ -2,19 +2,20 @@
 E2E Test Scenario 5: Smart Collection Creation
 Tests the complete Smart Collection flow including AI analysis and LLM routing.
 """
-import pytest
 import time
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from unittest.mock import patch, MagicMock, AsyncMock
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.collection import Collection, CollectionItem
-from app.services.intent_parser import intent_parser_service
+from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.user import User, UserRole
 from app.services.collection_service import collection_service
+from app.services.intent_parser import intent_parser_service
 
 
 class TestStep1CollectionCreationPublic:

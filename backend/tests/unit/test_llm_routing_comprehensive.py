@@ -3,10 +3,10 @@ Unit tests for LLM Routing Logic - Complete Coverage
 Tests dual-LLM routing based on confidential context detection per PRD table
 """
 
-from app.services.pii_detection_service import pii_detection_service
-from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket
 from app.models.chat import LLMProvider
+from app.models.document import Document, DocumentBucket
+from app.models.user import User, UserRole
+from app.services.pii_detection_service import pii_detection_service
 
 
 class TestDetermineLLMProviderFunction:

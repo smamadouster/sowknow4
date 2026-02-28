@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import os
 import traceback as _tb
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +37,7 @@ def log_task_memory(task_name: str, stage: str) -> float:
 
         if memory_mb > MEMORY_WARNING_THRESHOLD_MB:
             logger.warning(
-                f"[MEMORY] {task_name} @ {stage}: {memory_mb:.1f} MB "
-                f"(above {MEMORY_WARNING_THRESHOLD_MB} MB threshold)"
+                f"[MEMORY] {task_name} @ {stage}: {memory_mb:.1f} MB (above {MEMORY_WARNING_THRESHOLD_MB} MB threshold)"
             )
         else:
             logger.debug(f"[MEMORY] {task_name} @ {stage}: {memory_mb:.1f} MB")
@@ -63,7 +61,7 @@ def base_task_failure_handler(
     kwargs: dict,
     traceback,
     is_critical: bool = False,
-    extra_metadata: Optional[dict] = None,
+    extra_metadata: dict | None = None,
 ) -> None:
     """
     Universal on_failure callback for Celery tasks.
@@ -97,6 +95,7 @@ def base_task_failure_handler(
         if is_critical:
             try:
                 import asyncio
+
                 from app.services.alert_service import alert_service
 
                 coro = alert_service.send_alert(
@@ -123,7 +122,7 @@ def base_task_failure_handler(
 def store_dlq_on_max_retries(
     task_self,
     exception: Exception,
-    extra_metadata: Optional[dict] = None,
+    extra_metadata: dict | None = None,
 ) -> None:
     """
     Call from a task's except block to persist the failure in the DLQ once all

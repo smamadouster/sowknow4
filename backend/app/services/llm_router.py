@@ -15,9 +15,10 @@ Routing strategy
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class RoutingReason(str, Enum):
+class RoutingReason(StrEnum):
     CONFIDENTIAL_DOCS = "confidential_docs"
     PII_DETECTED = "pii_detected"
     PUBLIC_DOCS_RAG = "public_docs_rag"
@@ -35,7 +36,7 @@ class RoutingReason(str, Enum):
     FINAL_FALLBACK = "final_fallback_ollama"
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     """Canonical provider identifiers — single source of truth."""
 
     MINIMAX = "minimax"
@@ -56,7 +57,7 @@ class RoutingDecision:
     provider_name: str  # e.g. "minimax", "ollama"
     reason: RoutingReason
     service: Any  # The actual service instance
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ class LLMRouter:
 
     # Fallback chains per routing scenario.
     # Each chain is an ordered list of provider names tried left-to-right.
-    fallback_chains: Dict[str, List[str]] = {
+    fallback_chains: dict[str, list[str]] = {
         "confidential": ["ollama"],
         "public_docs": ["minimax", "openrouter", "ollama"],
         "general_chat": ["kimi", "minimax", "openrouter", "ollama"],
@@ -102,11 +103,11 @@ class LLMRouter:
 
     async def generate_completion(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         query: str = "",
-        context_chunks: Optional[List[Dict[str, Any]]] = None,
+        context_chunks: list[dict[str, Any]] | None = None,
         *,
-        has_confidential: Optional[bool] = None,
+        has_confidential: bool | None = None,
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 4096,
@@ -138,7 +139,7 @@ class LLMRouter:
     def detect_context_sensitivity(
         self,
         query: str,
-        context_chunks: Optional[List[Dict[str, Any]]] = None,
+        context_chunks: list[dict[str, Any]] | None = None,
     ) -> tuple[bool, str]:
         """
         Determine whether the query or its context is sensitive.
@@ -164,9 +165,9 @@ class LLMRouter:
     async def select_provider(
         self,
         query: str,
-        context_chunks: Optional[List[Dict[str, Any]]] = None,
+        context_chunks: list[dict[str, Any]] | None = None,
         *,
-        has_confidential: Optional[bool] = None,
+        has_confidential: bool | None = None,
     ) -> RoutingDecision:
         """
         Choose the appropriate LLM provider.
@@ -183,9 +184,7 @@ class LLMRouter:
 
         # Determine sensitivity
         if has_confidential is None:
-            is_sensitive, sensitivity_reason = self.detect_context_sensitivity(
-                query, context_chunks
-            )
+            is_sensitive, sensitivity_reason = self.detect_context_sensitivity(query, context_chunks)
         else:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
@@ -197,14 +196,10 @@ class LLMRouter:
 
             health = await self._ollama.health_check()
             if health.get("status") != "healthy":
-                raise RuntimeError(
-                    f"Ollama unavailable for confidential query: {health.get('error', 'unknown')}"
-                )
+                raise RuntimeError(f"Ollama unavailable for confidential query: {health.get('error', 'unknown')}")
 
             reason = (
-                RoutingReason.CONFIDENTIAL_DOCS
-                if "confidential" in sensitivity_reason
-                else RoutingReason.PII_DETECTED
+                RoutingReason.CONFIDENTIAL_DOCS if "confidential" in sensitivity_reason else RoutingReason.PII_DETECTED
             )
             logger.info(f"LLM routing → ollama ({reason.value})")
             return RoutingDecision(
@@ -267,22 +262,17 @@ class LLMServiceAdapter:
         self._service = service
         self._provider = provider_name
 
-    def build_messages(
-        self, messages: List[Dict[str, Any]]
-    ) -> List[Dict[str, str]]:
+    def build_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, str]]:
         """
         Normalise the message list to OpenAI format (role + content dicts).
 
         Strips unknown keys so every provider receives a clean payload.
         """
-        return [
-            {"role": str(m.get("role", "user")), "content": str(m.get("content", ""))}
-            for m in messages
-        ]
+        return [{"role": str(m.get("role", "user")), "content": str(m.get("content", ""))} for m in messages]
 
     async def call_service(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         *,
         stream: bool = False,
         temperature: float = 0.7,

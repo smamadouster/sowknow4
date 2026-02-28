@@ -4,16 +4,20 @@ Knowledge Graph Models for Phase 3
 Stores entities, relationships, and timelines extracted from documents
 for graph-augmented retrieval and knowledge visualization.
 """
-import uuid
+
 import enum
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, Index, Float, Date, Enum
+import uuid
+
+from sqlalchemy import Column, Date, Enum, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from app.models.base import Base, TimestampMixin, GUIDType
+
+from app.models.base import Base, GUIDType, TimestampMixin
 
 
-class EntityType(str, enum.Enum):
+class EntityType(enum.StrEnum):
     """Types of entities that can be extracted"""
+
     PERSON = "person"
     ORGANIZATION = "organization"
     LOCATION = "location"
@@ -25,8 +29,9 @@ class EntityType(str, enum.Enum):
     OTHER = "other"
 
 
-class RelationType(str, enum.Enum):
+class RelationType(enum.StrEnum):
     """Types of relationships between entities"""
+
     WORKS_AT = "works_at"
     FOUNDED = "founded"
     CEO_OF = "ceo_of"
@@ -52,6 +57,7 @@ class Entity(Base, TimestampMixin):
     Represents a person, organization, location, concept, etc.
     mentioned across documents.
     """
+
     __tablename__ = "entities"
     __table_args__ = {"schema": "sowknow"}
 
@@ -59,7 +65,9 @@ class Entity(Base, TimestampMixin):
 
     # Entity identity
     name = Column(String(512), nullable=False, index=True)
-    entity_type = Column(Enum(EntityType, values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True)
+    entity_type = Column(
+        Enum(EntityType, values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True
+    )
     canonical_id = Column(String(256), index=True)  # External ID (Wikidata, etc.)
 
     # Additional metadata
@@ -79,8 +87,12 @@ class Entity(Base, TimestampMixin):
     color = Column(String(7))  # Hex color for visualization
 
     # Relationships
-    source_relationships = relationship("EntityRelationship", foreign_keys="EntityRelationship.source_id", back_populates="source_entity")
-    target_relationships = relationship("EntityRelationship", foreign_keys="EntityRelationship.target_id", back_populates="target_entity")
+    source_relationships = relationship(
+        "EntityRelationship", foreign_keys="EntityRelationship.source_id", back_populates="source_entity"
+    )
+    target_relationships = relationship(
+        "EntityRelationship", foreign_keys="EntityRelationship.target_id", back_populates="target_entity"
+    )
     mentions = relationship("EntityMention", back_populates="entity")
 
     # Indexes
@@ -91,7 +103,7 @@ class Entity(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Entity {self.name} ({self.entity_type})>"
 
 
@@ -101,17 +113,24 @@ class EntityRelationship(Base, TimestampMixin):
 
     Represents how entities are connected (e.g., person works at organization).
     """
+
     __tablename__ = "entity_relationships"
     __table_args__ = {"schema": "sowknow"}
 
     id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # Connected entities
-    source_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
-    target_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    target_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Relationship type and properties
-    relation_type = Column(Enum(RelationType, values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True)
+    relation_type = Column(
+        Enum(RelationType, values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True
+    )
     confidence_score = Column(Integer, default=50)  # 0-100
     attributes = Column(JSONB, default=dict)  # Additional properties (start_date, role, etc.)
 
@@ -132,7 +151,7 @@ class EntityRelationship(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<EntityRelationship {self.source_id} -{self.relation_type}-> {self.target_id}>"
 
 
@@ -142,14 +161,19 @@ class EntityMention(Base, TimestampMixin):
 
     Tracks where and how an entity appears in each document.
     """
+
     __tablename__ = "entity_mentions"
     __table_args__ = {"schema": "sowknow"}
 
     id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
     # References
-    entity_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True)
-    document_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    entity_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.entities.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_id = Column(
+        GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     chunk_id = Column(GUIDType(as_uuid=True), ForeignKey("sowknow.document_chunks.id", ondelete="SET NULL"))
 
     # Mention details
@@ -170,7 +194,7 @@ class EntityMention(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<EntityMention {self.entity_id} in {self.document_id}>"
 
 
@@ -181,6 +205,7 @@ class TimelineEvent(Base, TimestampMixin):
     Represents dated events extracted from documents for timeline
     visualization and evolution tracking.
     """
+
     __tablename__ = "timeline_events"
     __table_args__ = {"schema": "sowknow"}
 
@@ -212,5 +237,5 @@ class TimelineEvent(Base, TimestampMixin):
         {"schema": "sowknow"},
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<TimelineEvent {self.title} ({self.event_date})>"

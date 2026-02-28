@@ -44,7 +44,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2048M
+          # Reduced from 2048M to fit within 6.4GB VPS budget.
+          # 1536M is sufficient for pgvector with 5 concurrent users.
+          memory: 1536M
           cpus: '1.5'
     networks:
       - sowknow-net
@@ -63,14 +65,16 @@ services:
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     deploy:
       resources:
         limits:
-          memory: 512M
+          # Reduced from 512M. Redis 7 Alpine typically uses 30-80MB;
+          # 256M provides ample headroom for session/cache data.
+          memory: 256M
           cpus: '0.5'
     networks:
       - sowknow-net
@@ -95,10 +99,13 @@ services:
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_ROOT_TOKEN:-sowknow-dev-token}
+      - NATS_URL=nats://nats:4222
       # CORS and Cookie Settings (CRITICAL for authentication)
       - APP_ENV=${APP_ENV:-production}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS},backend
       - COOKIE_DOMAIN=${COOKIE_DOMAIN}
     volumes:
       - sowknow-public-data:/data/public
@@ -111,6 +118,10 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+      nats:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -202,7 +213,7 @@ services:
       - postgres
       - redis
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://backend:8000/health || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -210,9 +221,9 @@ services:
     deploy:
       resources:
         limits:
-          # Beat only schedules tasks - 256MB is sufficient.
-          # Reduced from 512MB to stay within 6.4GB total VPS budget.
-          memory: 256M
+          # Beat only schedules tasks - 128MB is sufficient (~30-60MB actual).
+          # Reduced to accommodate Vault + NATS within VPS budget.
+          memory: 128M
           cpus: '0.25'
     networks:
       - sowknow-net
@@ -316,6 +327,65 @@ services:
     networks:
       - sowknow-net
 
+  # HashiCorp Vault — secret management (file backend for persistence)
+  # First run: docker compose exec vault vault operator init -key-shares=1 -key-threshold=1
+  # Then unseal: docker compose exec vault vault operator unseal <UNSEAL_KEY>
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: sowknow4-vault
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - VAULT_ADDR=http://127.0.0.1:8200
+      - VAULT_API_ADDR=http://127.0.0.1:8200
+      - VAULT_LOCAL_CONFIG={"storage":{"file":{"path":"/vault/data"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":"1"}},"disable_mlock":true,"ui":false}
+    command: ["server"]
+    volumes:
+      - sowknow-vault-data:/vault/data
+    ports:
+      - "8200:8200"
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD-SHELL", "vault status -address=http://127.0.0.1:8200 2>&1 | grep -qE 'Sealed.*false|Sealed.*true' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
+  # NATS — lightweight message broker with JetStream
+  nats:
+    image: nats:2.10-alpine
+    container_name: sowknow4-nats
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["--jetstream", "--store_dir=/data", "-m", "8222"]
+    volumes:
+      - sowknow-nats-data:/data
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
   # Prometheus for advanced metrics (optional - enable with --profile monitoring)
   prometheus:
     image: prom/prometheus:latest
@@ -333,6 +403,12 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=15d'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -351,4 +427,6 @@ volumes:
   sowknow-public-data:
   sowknow-confidential-data:
   sowknow-backups:
+  sowknow-nats-data:
+  sowknow-vault-data:
   sowknow-prometheus-data:

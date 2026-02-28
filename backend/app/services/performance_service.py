@@ -6,11 +6,12 @@ and provides memory profiling recommendations.
 """
 
 import logging
-import psutil
-from typing import Dict, List, Any
 from datetime import datetime
+from typing import Any
+
+import psutil
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, select, desc
 
 from app.models.document import DocumentChunk
 from app.services.cache_monitor import cache_monitor_service
@@ -36,9 +37,9 @@ class PerformanceTuningService:
 
     def __init__(self):
         self.metrics = PerformanceMetrics()
-        self.recommendations: List[str] = []
+        self.recommendations: list[str] = []
 
-    async def get_system_metrics(self) -> Dict[str, Any]:
+    async def get_system_metrics(self) -> dict[str, Any]:
         """
         Get current system performance metrics
 
@@ -71,9 +72,7 @@ class PerformanceTuningService:
             "memory": {
                 "used_mb": round(memory_info.rss / 1024 / 1024, 2),
                 "percent": round(memory_percent, 2),
-                "available_mb": round(
-                    psutil.virtual_memory().available / 1024 / 1024, 2
-                ),
+                "available_mb": round(psutil.virtual_memory().available / 1024 / 1024, 2),
             },
             "cpu": {"percent": round(cpu_percent, 2)},
             "disk": {
@@ -87,7 +86,7 @@ class PerformanceTuningService:
             "recommendations": await self._generate_recommendations(),
         }
 
-    async def _get_embedding_stats(self) -> Dict[str, Any]:
+    async def _get_embedding_stats(self) -> dict[str, Any]:
         """Get embedding processing statistics"""
         # This would query actual processing stats
         # For now, return placeholder structure
@@ -98,7 +97,7 @@ class PerformanceTuningService:
             "queue_depth": 0,
         }
 
-    async def _get_cache_stats(self) -> Dict[str, Any]:
+    async def _get_cache_stats(self) -> dict[str, Any]:
         """Get cache performance statistics"""
         stats = cache_monitor_service.get_daily_stats()
         return {
@@ -108,7 +107,7 @@ class PerformanceTuningService:
             "total_cached_tokens": stats.get("total_cached_tokens", 0),
         }
 
-    async def _get_minimax_stats(self) -> Dict[str, Any]:
+    async def _get_minimax_stats(self) -> dict[str, Any]:
         """Get MiniMax API performance statistics"""
         # Calculate average latency from recent chat sessions
         return {
@@ -120,7 +119,7 @@ class PerformanceTuningService:
             "error_rate": 0.0,
         }
 
-    async def _generate_recommendations(self) -> List[str]:
+    async def _generate_recommendations(self) -> list[str]:
         """Generate performance optimization recommendations"""
         recommendations = []
 
@@ -138,21 +137,17 @@ class PerformanceTuningService:
         cache_stats = await self._get_cache_stats()
         if cache_stats["hit_rate"] < 0.3:
             recommendations.append(
-                "Cache hit rate below 30%. Consider pinning frequently accessed collections "
-                "to improve cost efficiency."
+                "Cache hit rate below 30%. Consider pinning frequently accessed collections to improve cost efficiency."
             )
 
         # Embedding recommendations
         recommendations.append(
-            "Enable batch processing for embeddings: process 50-100 documents at a time "
-            "for better throughput."
+            "Enable batch processing for embeddings: process 50-100 documents at a time for better throughput."
         )
 
         return recommendations
 
-    async def optimize_embedding_batch_size(
-        self, db: AsyncSession, target_memory_mb: int = 1200
-    ) -> Dict[str, Any]:
+    async def optimize_embedding_batch_size(self, db: AsyncSession, target_memory_mb: int = 1200) -> dict[str, Any]:
         """
         Determine optimal embedding batch size based on available memory
 
@@ -187,9 +182,7 @@ class PerformanceTuningService:
             f"is recommended for optimal throughput.",
         }
 
-    async def optimize_minimax_cache(
-        self, db: AsyncSession, collection_id: str = None
-    ) -> Dict[str, Any]:
+    async def optimize_minimax_cache(self, db: AsyncSession, collection_id: str = None) -> dict[str, Any]:
         """
         Optimize Gemini context caching for collections
 
@@ -232,7 +225,7 @@ class PerformanceTuningService:
             "recommendations": recommendations,
         }
 
-    async def profile_embedding_memory(self, db: AsyncSession) -> Dict[str, Any]:
+    async def profile_embedding_memory(self, db: AsyncSession) -> dict[str, Any]:
         """
         Profile memory usage of embedding service
 
@@ -252,7 +245,7 @@ class PerformanceTuningService:
         # Get actual model memory
         model_memory_mb = 0
         try:
-            import sentence_transformers # noqa: F401
+            import sentence_transformers  # noqa: F401
 
             # Model would be loaded in worker process
             model_memory_mb = 1300  # e5-large approximate
@@ -271,7 +264,7 @@ class PerformanceTuningService:
             ),
         }
 
-    async def get_cost_analysis(self, days: int = 7) -> Dict[str, Any]:
+    async def get_cost_analysis(self, days: int = 7) -> dict[str, Any]:
         """
         Analyze API costs over time period
 
@@ -305,9 +298,7 @@ class PerformanceTuningService:
             "total_cost_usd": round(total_cost, 4),
             "cache_savings_usd": round(cache_savings, 4),
             "savings_percentage": (
-                round((cache_savings / savings_without_cache * 100), 1)
-                if savings_without_cache > 0
-                else 0
+                round((cache_savings / savings_without_cache * 100), 1) if savings_without_cache > 0 else 0
             ),
             "breakdown": {
                 "input_tokens": total_tokens - cached_tokens,

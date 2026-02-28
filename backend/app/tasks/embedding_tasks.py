@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import List
 
 from app.celery_app import celery_app
 from app.tasks.base import store_dlq_on_max_retries
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 )
 def generate_embeddings_batch(
     self,
-    chunk_ids: List[str],
+    chunk_ids: list[str],
     model_name: str = "default",
 ) -> dict:
     """
@@ -57,9 +56,7 @@ def generate_embeddings_batch(
         }
     """
     if len(chunk_ids) > 100:
-        raise ValueError(
-            f"generate_embeddings_batch: max 100 chunk_ids, got {len(chunk_ids)}"
-        )
+        raise ValueError(f"generate_embeddings_batch: max 100 chunk_ids, got {len(chunk_ids)}")
 
     from app.database import SessionLocal
     from app.models.document import DocumentChunk
@@ -98,9 +95,7 @@ def generate_embeddings_batch(
                 errors.append({"chunk_id": str(chunk.id), "error": str(err)})
 
         db.commit()
-        logger.info(
-            f"generate_embeddings_batch: {success_count} ok, {failed_count} failed"
-        )
+        logger.info(f"generate_embeddings_batch: {success_count} ok, {failed_count} failed")
         return {
             "status": "completed",
             "total": len(chunks),
@@ -112,9 +107,7 @@ def generate_embeddings_batch(
     except Exception as exc:
         db.rollback()
         logger.error(f"generate_embeddings_batch error: {exc}")
-        store_dlq_on_max_retries(
-            self, exc, extra_metadata={"chunk_ids": chunk_ids[:10]}
-        )
+        store_dlq_on_max_retries(self, exc, extra_metadata={"chunk_ids": chunk_ids[:10]})
         raise
 
     finally:
@@ -208,10 +201,7 @@ def recompute_embeddings_for_document(self, document_id: str) -> dict:
         db.commit()
 
         duration = round(time.time() - start, 2)
-        logger.info(
-            f"recompute_embeddings_for_document {document_id}: "
-            f"{updated} updated, {failed} failed, {duration}s"
-        )
+        logger.info(f"recompute_embeddings_for_document {document_id}: {updated} updated, {failed} failed, {duration}s")
         return {
             "document_id": document_id,
             "chunks_updated": updated,
@@ -282,9 +272,7 @@ def upgrade_embeddings_model(
 
         target_model = SentenceTransformer(to_model, device="cpu")
     except Exception as load_err:
-        raise RuntimeError(
-            f"Cannot load target model '{to_model}': {load_err}"
-        ) from load_err
+        raise RuntimeError(f"Cannot load target model '{to_model}': {load_err}") from load_err
 
     db = SessionLocal()
     total_chunks = 0
@@ -292,22 +280,14 @@ def upgrade_embeddings_model(
     failed = 0
 
     try:
-        all_chunks = (
-            db.query(DocumentChunk)
-            .order_by(DocumentChunk.document_id, DocumentChunk.chunk_index)
-            .all()
-        )
+        all_chunks = db.query(DocumentChunk).order_by(DocumentChunk.document_id, DocumentChunk.chunk_index).all()
         total_chunks = len(all_chunks)
-        logger.info(
-            f"upgrade_embeddings_model: migrating {total_chunks} chunks "
-            f"from '{from_model}' → '{to_model}'"
-        )
+        logger.info(f"upgrade_embeddings_model: migrating {total_chunks} chunks from '{from_model}' → '{to_model}'")
 
         for batch_start in range(0, total_chunks, batch_size):
             batch = all_chunks[batch_start : batch_start + batch_size]
             texts = [f"passage: {c.chunk_text}" for c in batch]
             try:
-
                 embeddings = target_model.encode(
                     texts,
                     batch_size=32,
@@ -325,15 +305,10 @@ def upgrade_embeddings_model(
                     updated += 1
 
                 db.commit()
-                logger.debug(
-                    f"upgrade_embeddings_model: committed batch "
-                    f"{batch_start}–{batch_start + len(batch)}"
-                )
+                logger.debug(f"upgrade_embeddings_model: committed batch {batch_start}–{batch_start + len(batch)}")
             except Exception as batch_err:
                 db.rollback()
-                logger.error(
-                    f"upgrade_embeddings_model batch {batch_start} failed: {batch_err}"
-                )
+                logger.error(f"upgrade_embeddings_model batch {batch_start} failed: {batch_err}")
                 failed += len(batch)
 
     except Exception as exc:
@@ -352,10 +327,7 @@ def upgrade_embeddings_model(
 
     duration = round(time.time() - start, 2)
     status = "completed" if failed == 0 else "partial"
-    logger.info(
-        f"upgrade_embeddings_model done: {updated} updated, {failed} failed, "
-        f"{duration}s ({status})"
-    )
+    logger.info(f"upgrade_embeddings_model done: {updated} updated, {failed} failed, {duration}s ({status})")
     return {
         "status": status,
         "from_model": from_model,

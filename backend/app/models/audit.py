@@ -1,15 +1,20 @@
 """
 Audit log model for tracking admin actions and confidential access
 """
-from sqlalchemy import Column, String, Text, ForeignKey, Enum as SQLEnum
-from sqlalchemy.orm import relationship
-from app.models.base import Base, TimestampMixin, GUIDType
+
 import enum
 import uuid
 
+from sqlalchemy import Column, ForeignKey, String, Text
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.orm import relationship
 
-class AuditAction(str, enum.Enum):
+from app.models.base import Base, GUIDType, TimestampMixin
+
+
+class AuditAction(enum.StrEnum):
     """Types of audit actions"""
+
     USER_CREATED = "user_created"
     USER_UPDATED = "user_updated"
     USER_DELETED = "user_deleted"
@@ -27,6 +32,7 @@ class AuditLog(Base, TimestampMixin):
     """
     Audit log for tracking all admin actions and confidential access
     """
+
     __tablename__ = "audit_logs"
     __table_args__ = {"schema": "sowknow"}
 
@@ -42,5 +48,5 @@ class AuditLog(Base, TimestampMixin):
     # Relationships
     user = relationship("User", foreign_keys=[user_id])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AuditLog {self.action.value} by {self.user_id} at {self.created_at}>"

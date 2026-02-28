@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 
@@ -12,6 +12,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showTimeout, setShowTimeout] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reason') === 'timeout') {
+      setShowTimeout(true);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,6 +63,11 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {showTimeout && (
+            <div role="status" className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded">
+              {t('session_expired')}
+            </div>
+          )}
           {error && (
             <div role="alert" id="login-error" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
               {error}

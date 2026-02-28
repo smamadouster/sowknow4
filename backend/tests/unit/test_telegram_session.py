@@ -9,9 +9,10 @@ Validates:
 - Redis connection resilience
 """
 
-import pytest
 import json
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 
 class TestRedisSessionManager:
@@ -32,8 +33,8 @@ class TestRedisSessionManager:
     @pytest.fixture
     def session_manager(self, mock_redis):
         """Create a session manager with mocked Redis."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -47,8 +48,8 @@ class TestRedisSessionManager:
     @pytest.mark.asyncio
     async def test_connect_success(self, mock_redis):
         """Test successful Redis connection."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -63,8 +64,8 @@ class TestRedisSessionManager:
     @pytest.mark.asyncio
     async def test_connect_failure(self):
         """Test Redis connection failure handling."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -218,8 +219,8 @@ class TestRedisSessionManager:
     @pytest.mark.asyncio
     async def test_get_session_redis_unavailable(self):
         """Test get_session returns None when Redis is unavailable."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -235,8 +236,8 @@ class TestRedisSessionManager:
     @pytest.mark.asyncio
     async def test_set_session_redis_unavailable(self):
         """Test set_session falls back to in-memory when Redis is unavailable."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -252,8 +253,8 @@ class TestRedisSessionManager:
     @pytest.mark.asyncio
     async def test_fallback_get_set_roundtrip(self):
         """Test in-memory fallback: set then get returns the same session."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -271,8 +272,8 @@ class TestRedisSessionManager:
     @pytest.mark.asyncio
     async def test_fallback_delete_clears_session(self):
         """Test in-memory fallback delete removes the session."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -289,8 +290,8 @@ class TestRedisSessionManager:
     @pytest.mark.asyncio
     async def test_fallback_count_active_sessions(self):
         """Test count_active_sessions reflects fallback dict size."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -397,8 +398,8 @@ class TestSessionResilience:
     @pytest.mark.asyncio
     async def test_session_survives_bot_restart(self):
         """Test that sessions persist across bot restarts."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")
@@ -425,8 +426,8 @@ class TestSessionResilience:
     @pytest.mark.asyncio
     async def test_upload_flow_continues_after_restart(self):
         """Test that upload flow state is preserved."""
-        import sys
         import os
+        import sys
 
         sys.path.insert(
             0, os.path.join(os.path.dirname(__file__), "..", "..", "telegram_bot")

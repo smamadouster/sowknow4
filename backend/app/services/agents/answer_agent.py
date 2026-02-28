@@ -6,11 +6,11 @@ well-sourced answers for the user.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any
 
-from app.services.ollama_service import ollama_service
 from app.services.minimax_service import minimax_service
+from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,9 @@ class AnswerRequest:
     """Request for answer generation"""
 
     query: str
-    research_findings: List[Dict[str, Any]]
-    verification_results: List[Dict[str, Any]]
-    context: Optional[Dict[str, Any]] = None
+    research_findings: list[dict[str, Any]]
+    verification_results: list[dict[str, Any]]
+    context: dict[str, Any] | None = None
     answer_style: str = "comprehensive"  # comprehensive, concise, conversational
     language: str = "en"
 
@@ -33,11 +33,11 @@ class AnswerResult:
 
     query: str
     answer: str
-    key_points: List[str]
-    sources: List[Dict[str, Any]]
+    key_points: list[str]
+    sources: list[dict[str, Any]]
     confidence: float
-    caveats: List[str]
-    followup_suggestions: List[str]
+    caveats: list[str]
+    followup_suggestions: list[str]
     llm_used: str = "unknown"
 
     def __post_init__(self):
@@ -65,15 +65,13 @@ class AnswerAgent:
         self.ollama_service = ollama_service
         self.minimax_service = minimax_service
 
-    def _has_confidential_documents(self, findings: List[Dict[str, Any]]) -> bool:
+    def _has_confidential_documents(self, findings: list[dict[str, Any]]) -> bool:
         """Check if any findings contain confidential documents"""
         if not findings:
             return False
-        return any(
-            finding.get("document_bucket") == "confidential" for finding in findings
-        )
+        return any(finding.get("document_bucket") == "confidential" for finding in findings)
 
-    def _get_llm_service(self, findings: List[Dict[str, Any]]):
+    def _get_llm_service(self, findings: list[dict[str, Any]]):
         """Get appropriate LLM service based on document confidentiality"""
         if self._has_confidential_documents(findings):
             logger.info("Answer: Using Ollama for confidential documents")
@@ -95,9 +93,7 @@ class AnswerAgent:
         self._use_ollama = self._has_confidential_documents(all_findings)
         if self._use_ollama:
             logger.info("AnswerAgent: Using Ollama for confidential documents")
-        self._llm_service = (
-            self.ollama_service if self._use_ollama else self.minimax_service
-        )
+        self._llm_service = self.ollama_service if self._use_ollama else self.minimax_service
 
         try:
             # Step 1: Analyze what type of answer is needed
@@ -123,19 +119,13 @@ class AnswerAgent:
             sources = self._prepare_sources(request.research_findings)
 
             # Step 6: Generate caveats
-            caveats = await self._generate_caveats(
-                request.verification_results, generation_context
-            )
+            caveats = await self._generate_caveats(request.verification_results, generation_context)
 
             # Step 7: Suggest follow-up questions
-            followup = await self._suggest_followup_questions(
-                request.query, answer, generation_context
-            )
+            followup = await self._suggest_followup_questions(request.query, answer, generation_context)
 
             # Step 8: Calculate confidence
-            confidence = self._calculate_answer_confidence(
-                request.verification_results, generation_context
-            )
+            confidence = self._calculate_answer_confidence(request.verification_results, generation_context)
 
             # Determine which LLM was used
             llm_used = "ollama" if self._use_ollama else "minimax"
@@ -187,11 +177,7 @@ Return just the type name."""
             async for chunk in self._llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.3, max_tokens=256
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
 
             result = "".join(response).strip().lower()
@@ -215,10 +201,10 @@ Return just the type name."""
 
     async def _build_generation_context(
         self,
-        findings: List[Dict[str, Any]],
-        verification: List[Dict[str, Any]],
-        context: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        findings: list[dict[str, Any]],
+        verification: list[dict[str, Any]],
+        context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
         """Build context for answer generation"""
         gen_context = {
             "verified_claims": [],
@@ -257,9 +243,7 @@ Return just the type name."""
 
         return gen_context
 
-    async def _generate_answer_content(
-        self, query: str, context: Dict[str, Any], style: str, language: str
-    ) -> str:
+    async def _generate_answer_content(self, query: str, context: dict[str, Any], style: str, language: str) -> str:
         """Generate the actual answer content"""
         style_instructions = {
             "comprehensive": "Provide a detailed, thorough answer with multiple sections",
@@ -290,9 +274,7 @@ Structure your answer with:
         if context.get("verified_claims"):
             research_parts.append("Verified Information:")
             for claim in context["verified_claims"][:5]:
-                research_parts.append(
-                    f"- {claim['claim']} (confidence: {claim['confidence']:.2f})"
-                )
+                research_parts.append(f"- {claim['claim']} (confidence: {claim['confidence']:.2f})")
 
         if context.get("high_confidence_findings"):
             research_parts.append("\nKey Sources:")
@@ -301,9 +283,7 @@ Structure your answer with:
                 research_parts.append(f"- {filename}")
 
         if context.get("contradicted_info"):
-            research_parts.append(
-                "\nNote: Some sources may contradict on certain points."
-            )
+            research_parts.append("\nNote: Some sources may contradict on certain points.")
 
         research_text = "\n".join(research_parts)
 
@@ -324,22 +304,16 @@ Please provide a comprehensive answer:"""
             async for chunk in self._llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.7, max_tokens=3072
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
 
             return "".join(response).strip()
 
         except Exception as e:
             logger.error(f"Answer content generation error: {e}")
-            return (
-                "I apologize, but I encountered an error while generating the answer."
-            )
+            return "I apologize, but I encountered an error while generating the answer."
 
-    async def _extract_key_points(self, answer: str) -> List[str]:
+    async def _extract_key_points(self, answer: str) -> list[str]:
         """Extract key points from the answer"""
         system_prompt = """Extract 3-5 key points from the answer.
 Return as a JSON array of strings."""
@@ -354,11 +328,7 @@ Return as a JSON array of strings."""
             async for chunk in self._llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.5, max_tokens=512
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
 
             import json
@@ -376,7 +346,7 @@ Return as a JSON array of strings."""
         sentences = re.split(r"[.!?]+", answer)
         return [s.strip() for s in sentences if s.strip()][:5]
 
-    def _prepare_sources(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _prepare_sources(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Prepare source list for answer"""
         sources = []
         seen = set()
@@ -395,16 +365,12 @@ Return as a JSON array of strings."""
 
         return sources[:10]  # Limit to top 10
 
-    async def _generate_caveats(
-        self, verification: List[Dict[str, Any]], context: Dict[str, Any]
-    ) -> List[str]:
+    async def _generate_caveats(self, verification: list[dict[str, Any]], context: dict[str, Any]) -> list[str]:
         """Generate appropriate caveats"""
         caveats = []
 
         # Check for unverified claims
-        unverified_count = len(
-            [v for v in verification if v.get("is_verified") is False]
-        )
+        unverified_count = len([v for v in verification if v.get("is_verified") is False])
         if unverified_count > 0:
             caveats.append(f"{unverified_count} claim(s) could not be fully verified")
 
@@ -415,19 +381,13 @@ Return as a JSON array of strings."""
         # Check reliability
         avg_reliability = 0.0
         if verification:
-            avg_reliability = sum(
-                v.get("reliability_score", 0.5) for v in verification
-            ) / len(verification)
+            avg_reliability = sum(v.get("reliability_score", 0.5) for v in verification) / len(verification)
             if avg_reliability < 0.5:
-                caveats.append(
-                    "Source reliability is moderate - verify important details"
-                )
+                caveats.append("Source reliability is moderate - verify important details")
 
         return caveats if caveats else ["Information based on available sources"]
 
-    async def _suggest_followup_questions(
-        self, query: str, answer: str, context: Dict[str, Any]
-    ) -> List[str]:
+    async def _suggest_followup_questions(self, query: str, answer: str, context: dict[str, Any]) -> list[str]:
         """Suggest relevant follow-up questions"""
         system_prompt = """Based on the original question and answer, suggest 3-5 relevant follow-up questions.
 Return as a JSON array of question strings."""
@@ -448,11 +408,7 @@ Suggest follow-up questions:"""
             async for chunk in self._llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.7, max_tokens=512
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
 
             import json
@@ -471,22 +427,16 @@ Suggest follow-up questions:"""
             "How has this changed over time?",
         ]
 
-    def _calculate_answer_confidence(
-        self, verification: List[Dict[str, Any]], context: Dict[str, Any]
-    ) -> float:
+    def _calculate_answer_confidence(self, verification: list[dict[str, Any]], context: dict[str, Any]) -> float:
         """Calculate overall confidence in the answer"""
         if not verification:
             return 0.5
 
         # Average verification confidence
-        avg_confidence = sum(v.get("confidence", 0.5) for v in verification) / len(
-            verification
-        )
+        avg_confidence = sum(v.get("confidence", 0.5) for v in verification) / len(verification)
 
         # Adjust for reliability
-        avg_reliability = sum(
-            v.get("reliability_score", 0.5) for v in verification
-        ) / len(verification)
+        avg_reliability = sum(v.get("reliability_score", 0.5) for v in verification) / len(verification)
 
         # Combine
         confidence = (avg_confidence * 0.6) + (avg_reliability * 0.4)

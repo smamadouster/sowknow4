@@ -4,23 +4,22 @@ Integration tests for Collection Export endpoint.
 Tests RBAC enforcement, PDF/JSON export functionality, and audit logging.
 """
 
-import pytest
 import json
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.collection import (
     Collection,
     CollectionItem,
-    CollectionVisibility,
     CollectionType,
+    CollectionVisibility,
 )
+from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.user import User, UserRole
 from app.utils.security import create_access_token
-
 
 _FIXTURE_BCRYPT_HASH = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"
 

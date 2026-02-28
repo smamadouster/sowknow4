@@ -218,7 +218,7 @@ def check_env_files():
     for filepath, context in files_to_check:
         print(f"\nChecking {filepath} ({context})...")
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath) as f:
                 content = f.read()
 
                 has_allowed_origins = "ALLOWED_ORIGINS" in content

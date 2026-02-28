@@ -5,9 +5,9 @@ Detects and redacts sensitive information to prevent PII from being sent to clou
 Routes confidential documents to local Ollama when PII is detected.
 """
 
-import re
 import logging
-from typing import List, Dict, Tuple, Any
+import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,7 @@ class PIIDetectionService:
 
     # Compiled regex patterns for PII detection
     PATTERNS = {
-        "email": re.compile(
-            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", re.IGNORECASE
-        ),
+        "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", re.IGNORECASE),
         "ssn": re.compile(
             r"\b\d{3}-\d{2}-\d{4}\b",  # US SSN pattern (more specific with dashes)
         ),
@@ -74,9 +72,7 @@ class PIIDetectionService:
             r"\b\d{5}\b(?:\s+(?:Paris|Lyon|Marseille|Bordeaux|Toulouse|Nice|Nantes|Strasbourg|Montpellier|Lille|Rennes|Reims|Le\s+Havre|Grenoble|Dijon|Angers|Nîmes|Villeurbanne|Le\s+Mans|Clermont-Ferrand|Aix-en-Provence|Brest|Limoges|Tours|Orléans|Caen|Mulhouse|Poitiers|Pau|Souel|Quimper|Créteil|Versailles))?",
             re.IGNORECASE,
         ),
-        "name_indicator": re.compile(
-            r"\b(?:Mr|Mrs|Ms|Dr|Pr|M|Mme|Mlle)\.?\s+[A-Z][a-z]+", re.IGNORECASE
-        ),
+        "name_indicator": re.compile(r"\b(?:Mr|Mrs|Ms|Dr|Pr|M|Mme|Mlle)\.?\s+[A-Z][a-z]+", re.IGNORECASE),
         "birth_date": re.compile(
             r"\b(?:born|naissance|né|née|birthday|birth|date of birth)[:\s]+(?:\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{2,4}[-/]\d{1,2}[-/]\d{1,2})",
             re.IGNORECASE,
@@ -86,7 +82,8 @@ class PIIDetectionService:
             re.IGNORECASE,
         ),
         "passport_number": re.compile(
-            r"\b[A-Z]{1,2}\d{6,9}\b", re.IGNORECASE  # US/UK passport format
+            r"\b[A-Z]{1,2}\d{6,9}\b",
+            re.IGNORECASE,  # US/UK passport format
         ),
         "french_national_id": re.compile(
             r"\b\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}\s?[A-Z]{2}\b",  # French CNI
@@ -149,15 +146,13 @@ class PIIDetectionService:
                                 return True
                 else:
                     pii_count += len(matches)
-                    logger.debug(
-                        f"PII detected: {pattern_name} ({len(matches)} matches) in text"
-                    )
+                    logger.debug(f"PII detected: {pattern_name} ({len(matches)} matches) in text")
                     if pii_count >= self.confidence_threshold:
                         return True
 
         # Check suspicious patterns (lower confidence)
         suspicious_count = 0
-        for pattern_name, pattern in self.SUSPICIOUS_PATTERNS.items():
+        for _pattern_name, pattern in self.SUSPICIOUS_PATTERNS.items():
             if pattern.search(text):
                 suspicious_count += 1
 
@@ -168,7 +163,7 @@ class PIIDetectionService:
 
         return pii_count >= self.confidence_threshold
 
-    def redact_pii(self, text: str) -> Tuple[str, Dict[str, int]]:
+    def redact_pii(self, text: str) -> tuple[str, dict[str, int]]:
         """
         Redact PII from text.
 
@@ -188,9 +183,7 @@ class PIIDetectionService:
         for pattern_name, pattern in self.PATTERNS.items():
             matches = pattern.findall(redacted_text)
             if matches:
-                placeholder = self.REDACTION_PLACEHOLDERS.get(
-                    pattern_name, "[REDACTED]"
-                )
+                placeholder = self.REDACTION_PLACEHOLDERS.get(pattern_name, "[REDACTED]")
                 redacted_text = pattern.sub(placeholder, redacted_text)
                 stats[pattern_name] = len(matches)
                 logger.debug(f"Redacted {len(matches)} instances of {pattern_name}")
@@ -205,7 +198,7 @@ class PIIDetectionService:
 
         return redacted_text, stats
 
-    def get_pii_summary(self, text: str) -> Dict[str, Any]:
+    def get_pii_summary(self, text: str) -> dict[str, Any]:
         """
         Get summary of PII detection in text.
 
@@ -224,8 +217,8 @@ class PIIDetectionService:
             }
 
         detected_types = []
-        details = {}
-        confidence_score = 0
+        details: dict[str, Any] = {}
+        confidence_score: float = 0
 
         # Check high-confidence patterns
         for pattern_name, pattern in self.PATTERNS.items():
@@ -233,9 +226,7 @@ class PIIDetectionService:
             if matches:
                 # Verify credit cards
                 if pattern_name == "credit_card":
-                    valid_matches = [
-                        m for m in matches if self._is_valid_credit_card(m)
-                    ]
+                    valid_matches = [m for m in matches if self._is_valid_credit_card(m)]
                     if valid_matches:
                         detected_types.append(pattern_name)
                         details[pattern_name] = len(valid_matches)
@@ -265,9 +256,7 @@ class PIIDetectionService:
             "details": details,
         }
 
-    def detect_pii_in_chunks(
-        self, chunks: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def detect_pii_in_chunks(self, chunks: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Detect PII across a list of document chunks.
 
@@ -281,7 +270,7 @@ class PIIDetectionService:
                 "pii_chunk_count": int,
             }
         """
-        affected_chunks: List[Dict[str, Any]] = []
+        affected_chunks: list[dict[str, Any]] = []
 
         for idx, chunk in enumerate(chunks):
             text = chunk.get("content") or chunk.get("text") or ""

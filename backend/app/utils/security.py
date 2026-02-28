@@ -1,13 +1,14 @@
+import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-from jose import JWTError, jwt, ExpiredSignatureError
+from typing import Any
+
 import bcrypt as _bcrypt
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session  # noqa: F401 — kept for type-compat in non-async callers
+from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy import select
-import os
-from dotenv import load_dotenv
+from sqlalchemy.orm import Session  # noqa: F401 — kept for type-compat in non-async callers
 
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -28,6 +29,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 # Custom JWT exceptions
 class TokenExpiredError(Exception):
     """Raised when a JWT token has expired"""
+
     def __init__(self, message: str = "Token has expired"):
         self.message = message
         super().__init__(self.message)
@@ -35,6 +37,7 @@ class TokenExpiredError(Exception):
 
 class TokenInvalidError(Exception):
     """Raised when a JWT token is invalid (tampered, malformed, bad signature, etc.)"""
+
     def __init__(self, message: str = "Token is invalid"):
         self.message = message
         super().__init__(self.message)
@@ -43,11 +46,15 @@ class TokenInvalidError(Exception):
 # pwd_context compatibility alias for tests that check password hashing configuration
 class _BcryptContext:
     """Thin wrapper around raw bcrypt to satisfy tests expecting a CryptContext-like object"""
+
     schemes = ["bcrypt"]
+
     def verify(self, plain: str, hashed: str) -> bool:
         return verify_password(plain, hashed)
+
     def hash(self, password: str) -> str:
         return get_password_hash(password)
+
 
 pwd_context = _BcryptContext()
 
@@ -70,7 +77,7 @@ def hash_password(plain: str) -> str:
     return get_password_hash(plain)
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token with a 'type': 'access' claim"""
     to_encode = data.copy()
 
@@ -84,7 +91,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     return encoded_jwt
 
 
-def create_refresh_token(data: Dict[str, Any]) -> str:
+def create_refresh_token(data: dict[str, Any]) -> str:
     """Create a JWT refresh token with a 'type': 'refresh' claim and 7-day expiration"""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
@@ -93,7 +100,7 @@ def create_refresh_token(data: Dict[str, Any]) -> str:
     return encoded_jwt
 
 
-def decode_token(token: str, expected_type: Optional[str] = "access") -> Optional[Dict[str, Any]]:
+def decode_token(token: str, expected_type: str | None = "access") -> dict[str, Any] | None:
     """
     Decode and validate a JWT token.
 
@@ -129,10 +136,7 @@ def decode_token(token: str, expected_type: Optional[str] = "access") -> Optiona
     return payload
 
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-) -> User:
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     """Get current authenticated user from JWT token"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -149,40 +153,25 @@ async def get_current_user(
     if email is None:
         raise credentials_exception
 
-    user = (
-        await db.execute(select(User).where(User.email == email))
-    ).scalar_one_or_none()
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
         raise credentials_exception
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
     return user
 
 
-async def require_admin(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """Require admin or superuser role"""
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     return current_user
 
 
-async def require_admin_only(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def require_admin_only(current_user: User = Depends(get_current_user)) -> User:
     """Require admin role only (superuser gets 403)"""
     if current_user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     return current_user

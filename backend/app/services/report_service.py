@@ -8,11 +8,12 @@ analysis and synthesis.
 
 import logging
 import uuid
-from typing import List, Dict, Any, Optional
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from io import BytesIO
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.collection import Collection, CollectionItem
 from app.models.document import Document
@@ -44,7 +45,7 @@ class ReportService:
         language: str = "en",
         user: User = None,
         db: AsyncSession = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate a report from a collection
 
@@ -67,23 +68,23 @@ class ReportService:
 
         # Get collection items with documents
         items = (
-            await db.execute(
-                select(CollectionItem)
-                .where(CollectionItem.collection_id == collection_id)
-                .join(Document)
-                .order_by(CollectionItem.relevance_score.desc())
+            (
+                await db.execute(
+                    select(CollectionItem)
+                    .where(CollectionItem.collection_id == collection_id)
+                    .join(Document)
+                    .order_by(CollectionItem.relevance_score.desc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # Build document context
         document_context = await self._build_document_context(items, db)
 
         # Check for confidential documents
-        has_confidential = any(
-            item.document.bucket.value == "confidential"
-            for item in items
-            if item.document
-        )
+        has_confidential = any(item.document.bucket.value == "confidential" for item in items if item.document)
 
         # Generate report content
         if has_confidential:
@@ -144,9 +145,7 @@ class ReportService:
 
         return {**report_metadata, "content": report_content, "file_url": file_url}
 
-    async def _build_document_context(
-        self, items: List[CollectionItem], db: AsyncSession
-    ) -> List[Dict[str, Any]]:
+    async def _build_document_context(self, items: list[CollectionItem], db: AsyncSession) -> list[dict[str, Any]]:
         """Build document context from collection items"""
         context = []
 
@@ -157,22 +156,23 @@ class ReportService:
             from app.models.document import DocumentChunk
 
             chunks = (
-                await db.execute(
-                    select(DocumentChunk)
-                    .where(DocumentChunk.document_id == item.document_id)
-                    .order_by(DocumentChunk.chunk_index)
-                    .limit(3)
+                (
+                    await db.execute(
+                        select(DocumentChunk)
+                        .where(DocumentChunk.document_id == item.document_id)
+                        .order_by(DocumentChunk.chunk_index)
+                        .limit(3)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             doc_info = {
                 "filename": item.document.filename,
                 "created_at": item.document.created_at.isoformat(),
                 "relevance": item.relevance_score,
-                "chunks": [
-                    {"text": chunk.chunk_text[:400], "page": chunk.page_number}
-                    for chunk in chunks
-                ],
+                "chunks": [{"text": chunk.chunk_text[:400], "page": chunk.page_number} for chunk in chunks],
             }
             context.append(doc_info)
 
@@ -181,7 +181,7 @@ class ReportService:
     async def _generate_report_with_minimax(
         self,
         collection: Collection,
-        document_context: List[Dict[str, Any]],
+        document_context: list[dict[str, Any]],
         format: str,
         include_citations: bool,
         language: str,
@@ -228,19 +228,10 @@ class ReportService:
         guide = format_guides.get(format, format_guides[ReportFormat.STANDARD])
 
         # Language instruction
-        lang_instruction = (
-            "Write the report in English."
-            if language == "en"
-            else "Rédigez le rapport en français."
-        )
+        lang_instruction = "Write the report in English." if language == "en" else "Rédigez le rapport en français."
 
         # Build document list
-        doc_list = "\n".join(
-            [
-                f"- {doc['filename']} (relevance: {doc['relevance']}%)"
-                for doc in document_context[:10]
-            ]
-        )
+        doc_list = "\n".join([f"- {doc['filename']} (relevance: {doc['relevance']}%)" for doc in document_context[:10]])
 
         system_prompt = f"""You are SOWKNOW, a professional report generator. Create a {guide["length"]} report in {language} about the collection: "{collection.name}"
 
@@ -288,7 +279,7 @@ Generate the complete report now:"""
     async def _generate_report_with_ollama(
         self,
         collection: Collection,
-        document_context: List[Dict[str, Any]],
+        document_context: list[dict[str, Any]],
         format: str,
         include_citations: bool,
         language: str,
@@ -329,9 +320,7 @@ Create a professional report with:
             logger.error(f"Ollama report generation error: {e}")
             return f"Report generation failed: {str(e)}"
 
-    async def _generate_pdf_report(
-        self, content: str, metadata: Dict[str, Any], collection: Collection
-    ) -> Optional[str]:
+    async def _generate_pdf_report(self, content: str, metadata: dict[str, Any], collection: Collection) -> str | None:
         """
         Generate PDF report
 
@@ -339,20 +328,21 @@ Create a professional report with:
         """
         try:
             # Import reportlab here to avoid dependency issues
-            from reportlab.lib.pagesizes import letter, A4  # noqa: F401
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            import os  # noqa: F401
+
+            from reportlab.lib import colors
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT  # noqa: F401
+            from reportlab.lib.pagesizes import A4, letter  # noqa: F401
+            from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
             from reportlab.lib.units import inch  # noqa: F401
             from reportlab.platypus import (  # noqa: F401
-                SimpleDocTemplate,
-                Paragraph,
-                Spacer,
                 PageBreak,
+                Paragraph,
+                SimpleDocTemplate,
+                Spacer,
                 Table,
                 TableStyle,
             )
-            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT  # noqa: F401
-            from reportlab.lib import colors
-            import os  # noqa: F401
 
             # Create buffer
             buffer = BytesIO()
@@ -394,9 +384,7 @@ Create a professional report with:
                 alignment=TA_CENTER,
             )
 
-            generated_date = datetime.fromisoformat(metadata["generated_at"]).strftime(
-                "%B %d, %Y"
-            )
+            generated_date = datetime.fromisoformat(metadata["generated_at"]).strftime("%B %d, %Y")
             story.append(
                 Paragraph(
                     f"Generated: {generated_date} | Documents: {metadata['document_count']}",
@@ -447,9 +435,7 @@ Create a professional report with:
                 story.append(Spacer(1, 12))
 
                 for citation in metadata["citations"][:10]:
-                    citation_text = (
-                        f"{citation['filename']} (Relevance: {citation['relevance']}%)"
-                    )
+                    citation_text = f"{citation['filename']} (Relevance: {citation['relevance']}%)"
                     story.append(Paragraph(f"• {citation_text}", styles["Normal"]))
 
             # Build PDF

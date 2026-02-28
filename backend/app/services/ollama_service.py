@@ -5,9 +5,10 @@ Handles communication with Ollama for confidential document processing.
 This ensures PII and confidential data never leaves the local infrastructure.
 """
 
-import os
 import logging
-from typing import AsyncGenerator, List, Dict, Any
+import os
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -27,8 +28,7 @@ if not os.getenv("OLLAMA_BASE_URL"):
     _env = os.getenv("APP_ENV", "development")
     if _env == "production":
         raise ValueError(
-            "OLLAMA_BASE_URL must be set in production. "
-            "Add it to your .env file or docker-compose environment."
+            "OLLAMA_BASE_URL must be set in production. Add it to your .env file or docker-compose environment."
         )
     logger.warning(
         "OLLAMA_BASE_URL not set — defaulting to http://ollama:11434. "
@@ -43,12 +43,10 @@ class OllamaService(BaseLLMService):
         self.base_url = OLLAMA_BASE_URL
         self.model = OLLAMA_MODEL
 
-    @retry(
-        stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5)
-    )
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
         num_predict: int = 4096,
@@ -86,9 +84,7 @@ class OllamaService(BaseLLMService):
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 if stream:
-                    async with client.stream(
-                        "POST", f"{self.base_url}/api/chat", json=payload
-                    ) as response:
+                    async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                         response.raise_for_status()
 
                         async for line in response.aiter_lines():
@@ -106,9 +102,7 @@ class OllamaService(BaseLLMService):
                                 except json.JSONDecodeError:
                                     continue
                 else:
-                    response = await client.post(
-                        f"{self.base_url}/api/chat", json=payload
-                    )
+                    response = await client.post(f"{self.base_url}/api/chat", json=payload)
                     response.raise_for_status()
                     result = response.json()
 
@@ -119,9 +113,7 @@ class OllamaService(BaseLLMService):
             logger.error(f"Ollama error: {str(e)}")
             yield "Error: Could not connect to Ollama service"
 
-    @retry(
-        stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5)
-    )
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def generate(
         self,
         prompt: str,
@@ -151,9 +143,7 @@ class OllamaService(BaseLLMService):
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{self.base_url}/api/generate", json=payload
-                )
+                response = await client.post(f"{self.base_url}/api/generate", json=payload)
                 response.raise_for_status()
                 result = response.json()
 
@@ -163,7 +153,7 @@ class OllamaService(BaseLLMService):
             logger.error(f"Ollama generation error: {str(e)}")
             raise
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Check Ollama service health.
 

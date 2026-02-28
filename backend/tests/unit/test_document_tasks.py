@@ -3,14 +3,14 @@ Unit tests for document processing Celery tasks.
 Tests stuck document handling, embedding error recovery, and chunk storage transactions.
 """
 
+import uuid
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
-import uuid
 
 from sqlalchemy.orm import Session
 
-from app.models.document import Document, DocumentStatus, DocumentBucket
-from app.models.processing import ProcessingQueue, TaskType, TaskStatus
+from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.processing import ProcessingQueue, TaskStatus, TaskType
 from app.tasks.anomaly_tasks import recover_stuck_documents
 
 
@@ -494,6 +494,7 @@ class TestDocumentRetryPolicy:
     def test_retry_countdown_is_30_seconds(self):
         """Verify fixed 30s countdown (no exponential backoff)"""
         import inspect
+
         import app.tasks.document_tasks as dt_module
 
         source = inspect.getsource(dt_module.process_document)
@@ -503,6 +504,7 @@ class TestDocumentRetryPolicy:
     def test_no_exponential_backoff(self):
         """Verify exponential backoff was removed"""
         import inspect
+
         import app.tasks.document_tasks as dt_module
 
         source = inspect.getsource(dt_module.process_document)

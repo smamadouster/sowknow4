@@ -4,6 +4,7 @@ Smart folders automatically populate themselves based on a rule_config
 (JSONB) evaluated against documents whenever the parent collection is
 refreshed. They are owned by a collection and cascade-delete with it.
 """
+
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String

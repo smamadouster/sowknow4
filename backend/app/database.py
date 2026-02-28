@@ -1,16 +1,16 @@
+import os
+from collections.abc import AsyncGenerator
+from typing import Any
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from typing import AsyncGenerator
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://sowknow:sowknow@localhost:5432/sowknow"
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://sowknow:sowknow@localhost:5432/sowknow")
 
 # Rewrite URL to use asyncpg driver
 if DATABASE_URL.startswith("sqlite"):
@@ -61,7 +61,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def init_pgvector():
+async def init_pgvector() -> None:
     """Initialize pgvector extension if not exists (PostgreSQL only)."""
     if "sqlite" in _async_db_url:
         return
@@ -71,7 +71,7 @@ async def init_pgvector():
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
 
-async def create_all_tables():
+async def create_all_tables() -> None:
     """Create all tables defined in SQLAlchemy metadata."""
     from app.models.base import Base as ModelBase  # noqa: F401 — triggers model imports
 
@@ -79,7 +79,7 @@ async def create_all_tables():
         await conn.run_sync(ModelBase.metadata.create_all)
 
 
-def get_vector_type():
+def get_vector_type() -> Any:
     """Get the vector type from pgvector."""
     from pgvector.sqlalchemy import Vector
 

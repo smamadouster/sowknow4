@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { getCsrfToken } from '@/lib/api';
 
 interface User {
   id: string;
@@ -29,19 +30,11 @@ export default function SettingsPage() {
     loadUsers();
   }, []);
 
-  const getToken = (): string | null => {
-    if (typeof window === 'undefined') return null;
-    const match = document.cookie.match(/access_token=([^;]+)/);
-    return match ? match[1] : null;
-  };
-
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/admin/users`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       
       if (res.ok) {
@@ -59,10 +52,9 @@ export default function SettingsPage() {
   const resetPassword = async (userId: string) => {
     setResettingPassword(userId);
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/admin/users/${userId}/reset-password`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { 'X-CSRF-Token': getCsrfToken() },
         credentials: 'include',
       });
       
@@ -82,10 +74,9 @@ export default function SettingsPage() {
 
   const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/admin/users/${userId}/toggle-status`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { 'X-CSRF-Token': getCsrfToken() },
         credentials: 'include',
       });
       

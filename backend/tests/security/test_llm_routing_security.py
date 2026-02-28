@@ -4,10 +4,10 @@ Tests PII sanitization, confidential routing, and API key exposure prevention
 """
 import os
 
-from app.services.pii_detection_service import pii_detection_service
-from app.services.chat_service import ChatService
-from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket
+from app.models.user import User, UserRole
+from app.services.chat_service import ChatService
+from app.services.pii_detection_service import pii_detection_service
 
 
 class TestPIISanitizationEffectiveness:

@@ -181,6 +181,7 @@ class TestHybridSearchTimeout:
     async def test_timeout_completes_within_deadline(self):
         """Verify that hybrid_search does not exceed timeout + small buffer."""
         import time
+
         from app.services.search_service import HybridSearchService
 
         service = HybridSearchService()
@@ -348,7 +349,7 @@ class TestSearchConcurrencyLimit:
 
         try:
             initial_value = search_module._search_semaphore._value
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="simulated error"):
                 async with search_module._search_semaphore:
                     raise ValueError("simulated error")
 
@@ -372,6 +373,7 @@ class TestConcurrentSearchesWithTimeout:
         (verified by wall clock).  Uses mocked sub-searches to avoid DB.
         """
         import time
+
         from app.services.search_service import HybridSearchService
 
         service = HybridSearchService()

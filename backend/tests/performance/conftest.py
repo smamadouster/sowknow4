@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Generator, Tuple
+from collections.abc import Generator
 
 import numpy as np
 import pytest
@@ -120,14 +120,14 @@ def pg_engine(pg_container):
 
     # Import all models so SQLAlchemy metadata is populated.
     # The import order matters: base → user → document → chat → collection
-    from app.models.base import Base       # noqa: F401
-    import app.models.user                # noqa: F401
-    import app.models.document            # noqa: F401
-    import app.models.chat                # noqa: F401
-    import app.models.audit               # noqa: F401
-    import app.models.processing          # noqa: F401
-    import app.models.knowledge_graph     # noqa: F401
-    import app.models.collection          # noqa: F401
+    import app.models.audit  # noqa: F401
+    import app.models.chat  # noqa: F401
+    import app.models.collection  # noqa: F401
+    import app.models.document  # noqa: F401
+    import app.models.knowledge_graph  # noqa: F401
+    import app.models.processing  # noqa: F401
+    import app.models.user  # noqa: F401
+    from app.models.base import Base  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 
@@ -142,7 +142,7 @@ def pg_engine(pg_container):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def seeded_db(pg_engine) -> Tuple[Session, object]:
+def seeded_db(pg_engine) -> tuple[Session, object]:
     """
     Seed the database with:
       - 1 Admin user
@@ -273,8 +273,8 @@ def seeded_db(pg_engine) -> Tuple[Session, object]:
 # Per-test session (function-scoped)
 # ---------------------------------------------------------------------------
 
-@pytest.fixture()
-def pg_bench_db(pg_engine, seeded_db) -> Generator[Tuple[Session, object], None, None]:
+@pytest.fixture
+def pg_bench_db(pg_engine, seeded_db) -> Generator[tuple[Session, object], None, None]:
     """
     Function-scoped session connected to the seeded Postgres container.
 

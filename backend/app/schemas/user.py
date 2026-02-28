@@ -1,12 +1,13 @@
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, Any
-from datetime import datetime
 import enum
 import re
 import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, EmailStr, field_validator
 
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.StrEnum):
     USER = "user"
     ADMIN = "admin"
     SUPERUSER = "superuser"
@@ -14,13 +15,13 @@ class UserRole(str, enum.Enum):
 
 class UserBase(BaseModel):
     email: EmailStr
-    full_name: Optional[str] = None
+    full_name: str | None = None
 
 
 class UserCreate(UserBase):
     password: str
 
-    @field_validator('password')
+    @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
         """
@@ -37,38 +38,27 @@ class UserCreate(UserBase):
             ValueError: If password does not meet complexity requirements
         """
         if len(v) < 8:
-            raise ValueError(
-                'Password must be at least 8 characters long'
-            )
+            raise ValueError("Password must be at least 8 characters long")
 
-        if not re.search(r'[A-Z]', v):
-            raise ValueError(
-                'Password must contain at least 1 uppercase letter (A-Z)'
-            )
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least 1 uppercase letter (A-Z)")
 
-        if not re.search(r'[a-z]', v):
-            raise ValueError(
-                'Password must contain at least 1 lowercase letter (a-z)'
-            )
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least 1 lowercase letter (a-z)")
 
-        if not re.search(r'\d', v):
-            raise ValueError(
-                'Password must contain at least 1 digit (0-9)'
-            )
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least 1 digit (0-9)")
 
-        if not re.search(r'[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]', v):
-            raise ValueError(
-                'Password must contain at least 1 special character '
-                '(!@#$%^&*()_+-=[]{}|;:,.<>?)'
-            )
+        if not re.search(r"[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]", v):
+            raise ValueError("Password must contain at least 1 special character (!@#$%^&*()_+-=[]{}|;:,.<>?)")
 
         return v
 
 
 class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
-    role: Optional[UserRole] = None
-    can_access_confidential: Optional[bool] = None
+    full_name: str | None = None
+    role: UserRole | None = None
+    can_access_confidential: bool | None = None
 
 
 class UserInDB(UserBase):
@@ -80,7 +70,7 @@ class UserInDB(UserBase):
     created_at: datetime
     updated_at: datetime
 
-    @field_validator('id', mode='before')
+    @field_validator("id", mode="before")
     @classmethod
     def convert_uuid_to_str(cls, v: Any) -> str:
         """Convert UUID to string for API responses"""
@@ -95,11 +85,11 @@ class UserInDB(UserBase):
 class UserPublic(BaseModel):
     id: str
     email: str  # Use str instead of EmailStr to allow internal domains like .local
-    full_name: Optional[str] = None
+    full_name: str | None = None
     role: UserRole
     can_access_confidential: bool
 
-    @field_validator('id', mode='before')
+    @field_validator("id", mode="before")
     @classmethod
     def convert_uuid_to_str(cls, v: Any) -> str:
         """Convert UUID to string for API responses"""

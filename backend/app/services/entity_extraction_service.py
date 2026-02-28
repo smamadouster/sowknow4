@@ -6,23 +6,24 @@ entities (people, organizations, locations, concepts) from documents and build
 a knowledge graph for graph-augmented retrieval.
 """
 
-import logging
 import json
+import logging
 import warnings
-from typing import List, Dict, Any, Optional
-from datetime import datetime, date
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, select
+from datetime import date, datetime
+from typing import Any
 
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
+
+from app.models.document import Document, DocumentBucket, DocumentChunk
 from app.models.knowledge_graph import (
     Entity,
-    EntityRelationship,
     EntityMention,
-    TimelineEvent,
+    EntityRelationship,
     EntityType,
     RelationType,
+    TimelineEvent,
 )
-from app.models.document import Document, DocumentChunk, DocumentBucket
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,9 @@ class ExtractedEntity:
         self,
         name: str,
         entity_type: EntityType,
-        canonical_id: Optional[str] = None,
-        aliases: List[str] = None,
-        attributes: Dict[str, Any] = None,
+        canonical_id: str | None = None,
+        aliases: list[str] = None,
+        attributes: dict[str, Any] = None,
         confidence: int = 50,
     ):
         self.name = name
@@ -57,7 +58,7 @@ class ExtractedRelationship:
         target_name: str,
         relation_type: RelationType,
         confidence: int = 50,
-        attributes: Dict[str, Any] = None,
+        attributes: dict[str, Any] = None,
     ):
         self.source_name = source_name
         self.target_name = target_name
@@ -89,8 +90,8 @@ class EntityExtractionService:
         return self._openrouter_service
 
     async def extract_entities_from_document(
-        self, document: Document, chunks: List[DocumentChunk], db: Session
-    ) -> Dict[str, Any]:
+        self, document: Document, chunks: list[DocumentChunk], db: Session
+    ) -> dict[str, Any]:
         """
         Extract entities from a document using cloud LLM or Ollama (local)
 
@@ -126,9 +127,7 @@ class EntityExtractionService:
             # Store entities
             entity_map = {}  # name -> Entity
             for entity_data in extracted.get("entities", []):
-                entity = await self._get_or_create_entity(
-                    entity_data=entity_data, db=db
-                )
+                entity = await self._get_or_create_entity(entity_data=entity_data, db=db)
                 if entity:
                     entity_map[entity.name] = entity
 
@@ -153,22 +152,18 @@ class EntityExtractionService:
             # Extract timeline events
             events = extracted.get("events", [])
             for event_data in events:
-                await self._create_timeline_event(
-                    event_data=event_data, document_id=document.id, db=db
-                )
+                await self._create_timeline_event(event_data=event_data, document_id=document.id, db=db)
 
             await db.commit()
 
-            logger.info(
-                f"Extracted {len(extracted.get('entities', []))} entities from {document.filename}"
-            )
+            logger.info(f"Extracted {len(extracted.get('entities', []))} entities from {document.filename}")
             return extracted
 
         except Exception as e:
             logger.error(f"Entity extraction error for {document.filename}: {e}")
             return {"entities": [], "relationships": [], "events": []}
 
-    def _prepare_document_text(self, chunks: List[DocumentChunk]) -> str:
+    def _prepare_document_text(self, chunks: list[DocumentChunk]) -> str:
         """Prepare document text for entity extraction"""
         # Combine chunks with page references
         text_parts = []
@@ -182,9 +177,9 @@ class EntityExtractionService:
         self,
         filename: str,
         text: str,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         use_ollama: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Extract entities using cloud LLM (MiniMax/Kimi) or Ollama based on document confidentiality"""
 
         system_prompt = """You are an expert entity extractor for SOWKNOW, a knowledge management system. Extract structured information from documents.
@@ -271,22 +266,14 @@ Extract all entities, relationships, and dated events now:"""
                 async for chunk in llm_service.chat_completion(
                     messages=messages, stream=False, temperature=0.3, num_predict=2048
                 ):
-                    if (
-                        chunk
-                        and not chunk.startswith("Error:")
-                        and not chunk.startswith("__USAGE__")
-                    ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                         response_parts.append(chunk)
             else:
                 llm_service = self._get_openrouter_service()
                 async for chunk in llm_service.chat_completion(
                     messages=messages, stream=False, temperature=0.3, max_tokens=2048
                 ):
-                    if (
-                        chunk
-                        and not chunk.startswith("Error:")
-                        and not chunk.startswith("__USAGE__")
-                    ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                         response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
@@ -301,7 +288,7 @@ Extract all entities, relationships, and dated events now:"""
 
         return None
 
-    def _extract_json(self, text: str) -> Optional[str]:
+    def _extract_json(self, text: str) -> str | None:
         """Extract JSON from LLM response"""
         text = text.strip()
 
@@ -333,9 +320,7 @@ Extract all entities, relationships, and dated events now:"""
 
         return None
 
-    async def _get_or_create_entity(
-        self, entity_data: Dict[str, Any], db: Session
-    ) -> Optional[Entity]:
+    async def _get_or_create_entity(self, entity_data: dict[str, Any], db: Session) -> Entity | None:
         """Get existing entity or create new one"""
         entity_type = EntityType(entity_data.get("type", "other"))
         name = entity_data.get("name", "")
@@ -344,11 +329,7 @@ Extract all entities, relationships, and dated events now:"""
             return None
 
         # Check for existing entity (same name and type)
-        result = await db.execute(
-            select(Entity).where(
-                and_(Entity.name == name, Entity.entity_type == entity_type)
-            )
-        )
+        result = await db.execute(select(Entity).where(and_(Entity.name == name, Entity.entity_type == entity_type)))
         entity = result.scalar_one_or_none()
 
         if not entity:
@@ -374,8 +355,8 @@ Extract all entities, relationships, and dated events now:"""
 
     async def _create_relationship(
         self,
-        rel_data: Dict[str, Any],
-        entity_map: Dict[str, Entity],
+        rel_data: dict[str, Any],
+        entity_map: dict[str, Entity],
         document_id: str,
         db: Session,
     ):
@@ -431,9 +412,7 @@ Extract all entities, relationships, and dated events now:"""
         source_entity.relationship_count += 1
         target_entity.relationship_count += 1
 
-    async def _create_timeline_event(
-        self, event_data: Dict[str, Any], document_id: str, db: Session
-    ):
+    async def _create_timeline_event(self, event_data: dict[str, Any], document_id: str, db: Session):
         """Create timeline event from extracted data"""
         try:
             event_date_str = event_data.get("date")
@@ -462,8 +441,8 @@ Extract all entities, relationships, and dated events now:"""
             logger.error(f"Error creating timeline event: {e}")
 
     async def get_entity_graph(
-        self, db: Session, entity_type: Optional[EntityType] = None, limit: int = 100
-    ) -> Dict[str, Any]:
+        self, db: Session, entity_type: EntityType | None = None, limit: int = 100
+    ) -> dict[str, Any]:
         """
         Get knowledge graph data for visualization
 

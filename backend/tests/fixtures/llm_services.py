@@ -18,10 +18,11 @@ Or use the pytest fixtures directly (requires conftest to import them):
     def test_something(mock_kimi_service):
         ...
 """
-import pytest
+from collections.abc import AsyncGenerator
+from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import AsyncGenerator, List, Dict, Any, Optional
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Response factory helpers
@@ -33,7 +34,7 @@ def llm_response_factory(content: str = "This is a test response.") -> str:
 
 
 async def streaming_response_factory(
-    chunks: List[str] = None,
+    chunks: list[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields response chunks (simulates streaming)."""
     if chunks is None:
@@ -42,12 +43,12 @@ async def streaming_response_factory(
         yield chunk
 
 
-def health_ok_factory(service_name: str = "llm") -> Dict[str, Any]:
+def health_ok_factory(service_name: str = "llm") -> dict[str, Any]:
     """Return a healthy status dict like the real services return."""
     return {"status": "healthy", "service": service_name, "model": "test-model"}
 
 
-def health_error_factory(service_name: str = "llm", error: str = "Connection refused") -> Dict[str, Any]:
+def health_error_factory(service_name: str = "llm", error: str = "Connection refused") -> dict[str, Any]:
     """Return an unhealthy status dict."""
     return {"status": "unhealthy", "service": service_name, "error": error}
 
@@ -59,7 +60,7 @@ def health_error_factory(service_name: str = "llm", error: str = "Connection ref
 def make_mock_kimi_service(
     response_content: str = "Kimi test response.",
     health_status: str = "healthy",
-    raise_on_call: Optional[Exception] = None,
+    raise_on_call: Exception | None = None,
 ) -> MagicMock:
     """
     Create a mock KimiService instance.
@@ -103,7 +104,7 @@ def make_mock_kimi_service(
 def make_mock_minimax_service(
     response_content: str = "MiniMax test response.",
     health_status: str = "healthy",
-    raise_on_call: Optional[Exception] = None,
+    raise_on_call: Exception | None = None,
 ) -> MagicMock:
     """
     Create a mock MiniMaxService instance.
@@ -149,7 +150,7 @@ def make_mock_minimax_service(
 def make_mock_ollama_service(
     response_content: str = "Ollama test response.",
     health_status: str = "healthy",
-    raise_on_call: Optional[Exception] = None,
+    raise_on_call: Exception | None = None,
 ) -> MagicMock:
     """
     Create a mock OllamaService instance.
@@ -211,7 +212,7 @@ def make_mock_openrouter_service(
     response_content: str = "OpenRouter test response.",
     health_status: str = "healthy",
     cache_hit: bool = False,
-    raise_on_call: Optional[Exception] = None,
+    raise_on_call: Exception | None = None,
 ) -> MagicMock:
     """
     Create a mock OpenRouterService instance.

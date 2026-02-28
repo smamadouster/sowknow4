@@ -1,28 +1,42 @@
+import os
+import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from threading import Lock
+from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.exceptions import RequestValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from app.limiter import limiter
-import time
-import os
-from threading import Lock
-from dotenv import load_dotenv
-from contextlib import asynccontextmanager
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import JSONResponse, Response
 
-from app.api import auth, admin, search, documents
 # TODO: Import other routers once their dependencies are set up
 # from app.api import documents
-from app.api import collections, smart_folders, knowledge_graph, graph_rag, multi_agent
-from app.api import chat
-from app.database import engine, init_pgvector, create_all_tables
+from app.api import (
+    admin,
+    auth,
+    chat,
+    collections,
+    documents,
+    graph_rag,
+    knowledge_graph,
+    multi_agent,
+    search,
+    smart_folders,
+)
+from app.api import health as health_router
+from app.database import create_all_tables, engine, init_pgvector
+from app.limiter import limiter
 from app.services.openrouter_service import openrouter_service
+from app.services.prometheus_metrics import get_metrics
+
 # TODO: Import other models once database is set up
 # from app.models.document import Document, DocumentTag, DocumentChunk
 # from app.models.chat import ChatSession, ChatMessage
@@ -40,15 +54,17 @@ class ErrorRateTracker:
         self._requests: list = []
         self._lock = Lock()
 
-    def record_request(self, status_code: int, is_server_error: bool):
+    def record_request(self, status_code: int, is_server_error: bool) -> None:
         """Record a request for error rate calculation."""
         with self._lock:
             now = time.time()
-            self._requests.append({
-                "timestamp": now,
-                "status": status_code,
-                "is_server_error": is_server_error,
-            })
+            self._requests.append(
+                {
+                    "timestamp": now,
+                    "status": status_code,
+                    "is_server_error": is_server_error,
+                }
+            )
             cutoff = now - self._window_seconds
             self._requests = [r for r in self._requests if r["timestamp"] > cutoff]
 
@@ -68,9 +84,10 @@ class ErrorRateTracker:
 
 _error_rate_tracker = ErrorRateTracker(window_seconds=300)
 
+
 # ---- Request-ID middleware (T01) ----
 class RequestIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id
         response = await call_next(request)
@@ -81,7 +98,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 class ErrorRateMiddleware(BaseHTTPMiddleware):
     """Middleware to track 5xx error rates."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start_time = time.time()
         response = await call_next(request)
         duration = time.time() - start_time
@@ -93,7 +110,7 @@ class ErrorRateMiddleware(BaseHTTPMiddleware):
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup: Initialize database
     print("Starting up...")
     await init_pgvector()  # Initialize pgvector extension
@@ -108,13 +125,16 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"Error disposing DB pool: {exc}")
     try:
-        from app.core.redis_url import safe_redis_url
         import redis as _redis
+
+        from app.core.redis_url import safe_redis_url
+
         _redis.from_url(safe_redis_url()).connection_pool.disconnect()
         print("Redis connection pool closed")
     except Exception as exc:
         print(f"Error closing Redis pool: {exc}")
     print("Shutdown complete")
+
 
 app = FastAPI(
     title="SOWKNOW API",
@@ -123,7 +143,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Attach rate limiter to app state (T04)
@@ -225,11 +245,15 @@ if APP_ENV == "production":
         )
 else:
     # Development defaults
-    ALLOWED_ORIGINS = _allowed_origins_str.split(",") if _allowed_origins_str else [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",  # Common alternate port
-    ]
+    ALLOWED_ORIGINS = (
+        _allowed_origins_str.split(",")
+        if _allowed_origins_str
+        else [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",  # Common alternate port
+        ]
+    )
 
 # Parse ALLOWED_HOSTS from environment
 # Format: comma-separated list of hostnames
@@ -247,10 +271,7 @@ else:
 
 # TrustedHost Middleware - Prevents Host header attacks
 # Only allows requests from configured hosts
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=ALLOWED_HOSTS
-)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 # CORS Middleware - Controls cross-origin requests
 # SECURITY: Never use allow_origins=["*"] with allow_credentials=True
@@ -263,24 +284,32 @@ app.add_middleware(
         "Authorization",
         "Content-Type",
         "X-Requested-With",
+        "X-CSRF-Token",
         "Accept",
         "Origin",
         "Access-Control-Request-Method",
         "Access-Control-Request-Headers",
     ],
-    expose_headers=["Content-Range", "X-Total-Count"],
+    expose_headers=["Content-Range", "X-Total-Count", "X-CSRF-Token"],
     max_age=600,  # Cache preflight responses for 10 minutes
 )
 
 # Request-ID Middleware — injects X-Request-ID into every response (T01)
 app.add_middleware(RequestIDMiddleware)
 
+# CSRF Middleware — double-submit cookie validation on state-changing requests (FP8)
+from app.middleware.csrf import CSRFMiddleware  # noqa: E402
+
+app.add_middleware(CSRFMiddleware)
+
 # Transaction Middleware — auto-commit on 2xx, rollback on 4xx/5xx (T11)
 from app.middleware.transaction import TransactionMiddleware
+
 app.add_middleware(TransactionMiddleware)
 
 # RLS context middleware (P2-9) — sets app.user_id / app.user_role session vars
 from app.middleware.rls import set_rls_context  # noqa: E402
+
 app.add_middleware(BaseHTTPMiddleware, dispatch=set_rls_context)
 
 # Error Rate Tracking Middleware - Tracks 5xx errors per PRD
@@ -299,9 +328,17 @@ app.include_router(multi_agent.router, prefix="/api/v1")
 # app.include_router(documents.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(health_router.router, prefix="/api/v1")
+
+
+@app.get("/api/health", include_in_schema=False)
+async def api_health_simple() -> dict[str, str]:
+    """Simple health alias for WebUI upstream checks."""
+    return {"status": "ok"}
+
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, Any]:
     return {
         "message": "SOWKNOW API is running",
         "status": "ok",
@@ -315,24 +352,37 @@ async def root():
                 "login": "/api/v1/auth/login",
                 "register": "/api/v1/auth/register",
                 "me": "/api/v1/auth/me",
-                "refresh": "/api/v1/auth/refresh"
+                "refresh": "/api/v1/auth/refresh",
             },
             "admin": {
                 "users": "/api/v1/admin/users",
                 "user_detail": "/api/v1/admin/users/{id}",
                 "stats": "/api/v1/admin/stats",
                 "audit": "/api/v1/admin/audit",
-                "dashboard": "/api/v1/admin/dashboard"
-            }
-        }
+                "dashboard": "/api/v1/admin/dashboard",
+            },
+        },
     }
 
+
+@app.get("/metrics", include_in_schema=False)
+@app.get("/api/v1/metrics", include_in_schema=False)
+async def prometheus_metrics() -> Response:
+    """Prometheus metrics endpoint for scraping."""
+    metrics = get_metrics()
+    return Response(
+        content=metrics.export(),
+        media_type="text/plain",
+        headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
+    )
+
+
 @app.get("/health")
-async def health():
+async def health() -> dict[str, Any]:
     """Enhanced health check endpoint including OpenRouter API status"""
-    from sqlalchemy import text
-    import redis
     import httpx
+    import redis
+    from sqlalchemy import text
 
     db_status = "disconnected"
     redis_status = "disconnected"
@@ -347,6 +397,7 @@ async def health():
 
     try:
         from app.core.redis_url import safe_redis_url
+
         r = redis.from_url(safe_redis_url())
         r.ping()
         redis_status = "connected"
@@ -368,11 +419,7 @@ async def health():
     try:
         openrouter_health = await openrouter_service.health_check()
     except Exception as e:
-        openrouter_health = {
-            "service": "openrouter",
-            "status": "error",
-            "error": f"Health check failed: {str(e)}"
-        }
+        openrouter_health = {"service": "openrouter", "status": "error", "error": f"Health check failed: {str(e)}"}
 
     overall_status = "healthy"
     if db_status != "connected" or redis_status != "connected":
@@ -391,12 +438,13 @@ async def health():
             "ollama": ollama_status,
             "api": "running",
             "authentication": "enabled",
-            "openrouter": openrouter_health
-        }
+            "openrouter": openrouter_health,
+        },
     }
 
+
 @app.get("/health/celery")
-async def celery_health():
+async def celery_health() -> dict[str, Any]:
     """
     Check Celery worker availability and queue depth.
 
@@ -405,6 +453,7 @@ async def celery_health():
     and the Celery Beat health check.
     """
     from fastapi import HTTPException
+
     from app.celery_app import celery_app as _celery
 
     try:
@@ -442,7 +491,7 @@ async def celery_health():
 
 
 @app.get("/api/v1/status")
-async def api_status():
+async def api_status() -> dict[str, Any]:
     """API status endpoint with OpenRouter integration"""
     # Get OpenRouter statistics
     llm_stats = {"status": "unknown"}
@@ -484,16 +533,18 @@ async def api_status():
             {"name": "Temporal Reasoning", "status": "✅", "description": "Time-based relationship analysis"},
             {"name": "Progressive Revelation", "status": "✅", "description": "Role-based information disclosure"},
             {"name": "Family Context", "status": "✅", "description": "Family narrative generation"},
-            {"name": "Multi-Agent Search", "status": "⏳", "description": "Agentic search architecture"}
+            {"name": "Multi-Agent Search", "status": "⏳", "description": "Agentic search architecture"},
         ],
         "next_steps": [
             "Final system QA and end-to-end testing",
             "Performance optimization and tuning",
             "Documentation updates",
-            "User acceptance testing"
-        ]
+            "User acceptance testing",
+        ],
     }
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # nosec B104

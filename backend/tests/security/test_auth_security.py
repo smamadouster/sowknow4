@@ -13,23 +13,24 @@ This module tests:
 - Token rotation on refresh
 - Tokens NOT in response body (XSS prevention)
 """
-import pytest
 from datetime import datetime, timedelta
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+from jose import jwt
+from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
 from app.utils.security import (
-    verify_password,
-    get_password_hash,
+    ALGORITHM,
+    SECRET_KEY,
     create_access_token,
     create_refresh_token,
     decode_token,
-    SECRET_KEY,
-    ALGORITHM
+    get_password_hash,
+    verify_password,
 )
-from jose import jwt
 
 
 class TestLoginSecurity:

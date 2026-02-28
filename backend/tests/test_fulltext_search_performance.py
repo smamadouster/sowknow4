@@ -18,12 +18,11 @@ Requirements:
 
 import os
 import time
-import pytest
-from typing import Generator
+from collections.abc import Generator
 
+import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Fixtures

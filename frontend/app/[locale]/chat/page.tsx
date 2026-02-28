@@ -6,6 +6,7 @@ import { Link } from '@/i18n/routing';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize from 'rehype-sanitize';
+import { getCsrfToken } from '@/lib/api';
 
 interface Message {
   id: string;
@@ -61,18 +62,10 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const getToken = (): string | null => {
-    if (typeof window === 'undefined') return null;
-    const match = document.cookie.match(/access_token=([^;]+)/);
-    return match ? match[1] : null;
-  };
-
   const loadSessions = async () => {
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/chat/sessions?limit=50`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         const data = await res.json();
@@ -88,10 +81,8 @@ export default function ChatPage() {
 
   const loadMessages = async (sessionId: string) => {
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/chat/sessions/${sessionId}/messages?limit=100`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         const data = await res.json();
@@ -105,13 +96,12 @@ export default function ChatPage() {
 
   const createSession = async () => {
     try {
-      const token = getToken();
       const title = `Conversation ${new Date().toLocaleDateString()}`;
       const res = await fetch(`${API_BASE}/v1/chat/sessions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'X-CSRF-Token': getCsrfToken(),
         },
         credentials: 'include',
         body: JSON.stringify({ title }),
@@ -130,10 +120,9 @@ export default function ChatPage() {
   const deleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/chat/sessions/${sessionId}`, {
         method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { 'X-CSRF-Token': getCsrfToken() },
         credentials: 'include',
       });
       if (res.ok) {
@@ -173,14 +162,13 @@ export default function ChatPage() {
     setStreamingLlm(null);
 
     try {
-      const token = getToken();
       const response = await fetch(
         `${API_BASE}/v1/chat/sessions/${currentSession.id}/message?stream=true`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            'X-CSRF-Token': getCsrfToken(),
           },
           credentials: 'include',
           body: JSON.stringify({ content: userMessage.content }),

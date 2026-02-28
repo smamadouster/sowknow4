@@ -2,12 +2,13 @@
 Dead Letter Queue model for permanently failed Celery tasks
 """
 
-from sqlalchemy import Column, String, Integer, Text, DateTime
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.sql import func
 import uuid
 
-from app.models.base import Base, TimestampMixin, GUIDType
+from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql import func
+
+from app.models.base import Base, GUIDType, TimestampMixin
 
 
 class FailedCeleryTask(Base, TimestampMixin):

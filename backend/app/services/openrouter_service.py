@@ -11,12 +11,13 @@ CONTEXT CACHING:
 - Ollama (confidential) responses are NEVER cached - handled by caller
 """
 
-import os
-import logging
-import json
 import hashlib
-from typing import AsyncGenerator, List, Dict, Any, Optional
+import json
+import logging
+import os
+from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -32,6 +33,7 @@ OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
 # Redis configuration for context caching
 from app.core.redis_url import safe_redis_url
+
 REDIS_URL = safe_redis_url()
 CACHE_TTL_SECONDS = 3600  # 1 hour TTL for cached responses
 CACHE_KEY_PREFIX = "sowknow:openrouter:cache:"
@@ -58,9 +60,7 @@ def _get_redis_client():
             _redis_client.ping()
             logger.info("OpenRouter cache: Redis connection established")
         except Exception as e:
-            logger.warning(
-                f"OpenRouter cache: Redis unavailable, caching disabled: {e}"
-            )
+            logger.warning(f"OpenRouter cache: Redis unavailable, caching disabled: {e}")
             _redis_client = None
     return _redis_client
 
@@ -96,7 +96,7 @@ class OpenRouterService:
         except Exception:
             logger.info("OpenRouter context caching disabled (Redis unavailable)")
 
-    def _generate_cache_key(self, model: str, messages: List[Dict[str, str]]) -> str:
+    def _generate_cache_key(self, model: str, messages: list[dict[str, str]]) -> str:
         """Generate a deterministic cache key from model and messages.
 
         Cache key = SHA256(model + sorted messages content)
@@ -111,9 +111,7 @@ class OpenRouterService:
             SHA256 hash string prefixed with cache namespace
         """
         # Sort messages by role+content for deterministic ordering
-        sorted_messages = sorted(
-            messages, key=lambda m: f"{m.get('role', '')}:{m.get('content', '')}"
-        )
+        sorted_messages = sorted(messages, key=lambda m: f"{m.get('role', '')}:{m.get('content', '')}")
 
         # Create a canonical string representation
         cache_content = f"{model}:{json.dumps(sorted_messages, sort_keys=True)}"
@@ -123,7 +121,7 @@ class OpenRouterService:
 
         return f"{CACHE_KEY_PREFIX}{cache_hash}"
 
-    def check_cache(self, messages: List[Dict[str, str]]) -> Optional[str]:
+    def check_cache(self, messages: list[dict[str, str]]) -> str | None:
         """Check Redis cache for a previously computed non-streaming response.
 
         Used by the streaming pipeline to detect cache hits before issuing an
@@ -152,8 +150,8 @@ class OpenRouterService:
         return len(text) // 4
 
     def _truncate_messages(
-        self, messages: List[Dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS
-    ) -> List[Dict[str, str]]:
+        self, messages: list[dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS
+    ) -> list[dict[str, str]]:
         """Truncate messages to fit within context window"""
         total_tokens = 0
         truncated_messages = []
@@ -179,7 +177,7 @@ class OpenRouterService:
 
         return truncated_messages
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Get headers for OpenRouter API requests"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -191,19 +189,17 @@ class OpenRouterService:
             headers["X-Title"] = self.site_name
         return headers
 
-    @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        cache_key: Optional[str] = None,
-        user_id: Optional[str] = None,
+        cache_key: str | None = None,
+        user_id: str | None = None,
         is_confidential: bool = False,
-        collection_id: Optional[str] = None,
+        collection_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using OpenRouter (OpenAI-compatible API)
@@ -240,12 +236,8 @@ class OpenRouterService:
         truncated_messages = self._truncate_messages(messages)
 
         # Check if truncation occurred
-        original_tokens = sum(
-            self._estimate_tokens(m.get("content", "")) for m in messages
-        )
-        truncated_tokens = sum(
-            self._estimate_tokens(m.get("content", "")) for m in truncated_messages
-        )
+        original_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in messages)
+        truncated_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
 
         if original_tokens > truncated_tokens:
             logger.warning(
@@ -256,9 +248,7 @@ class OpenRouterService:
         # PRIVACY: confidential/PII queries are NEVER cached
         effective_cache_key = None
         if self._cache_enabled and not stream and not is_confidential:
-            effective_cache_key = cache_key or self._generate_cache_key(
-                self.model, truncated_messages
-            )
+            effective_cache_key = cache_key or self._generate_cache_key(self.model, truncated_messages)
 
             # Check cache for non-streaming requests
             redis_client = _get_redis_client()
@@ -266,9 +256,7 @@ class OpenRouterService:
                 try:
                     cached_response = redis_client.get(effective_cache_key)
                     if cached_response and isinstance(cached_response, str):
-                        logger.info(
-                            f"OpenRouter cache HIT: key={effective_cache_key[:50]}..."
-                        )
+                        logger.info(f"OpenRouter cache HIT: key={effective_cache_key[:50]}...")
                         # Record cache hit metrics
                         try:
                             tokens_saved = self._estimate_tokens(cached_response)
@@ -278,9 +266,7 @@ class OpenRouterService:
                                 user_id=user_id,
                             )
                         except Exception as metric_error:
-                            logger.warning(
-                                f"Failed to record cache hit metric: {metric_error}"
-                            )
+                            logger.warning(f"Failed to record cache hit metric: {metric_error}")
 
                         yield str(cached_response)
                         return
@@ -288,9 +274,7 @@ class OpenRouterService:
                     logger.warning(f"Cache read error, proceeding with API call: {e}")
 
             # Record cache miss (we're about to make an API call)
-            logger.debug(
-                f"OpenRouter cache MISS: key={effective_cache_key[:50] if effective_cache_key else 'N/A'}..."
-            )
+            logger.debug(f"OpenRouter cache MISS: key={effective_cache_key[:50] if effective_cache_key else 'N/A'}...")
             try:
                 cache_monitor.record_cache_miss(
                     cache_key=effective_cache_key or "no_key",
@@ -326,10 +310,7 @@ class OpenRouterService:
                                         break
                                     try:
                                         data = json.loads(data_str)
-                                        if (
-                                            "choices" in data
-                                            and len(data["choices"]) > 0
-                                        ):
+                                        if "choices" in data and len(data["choices"]) > 0:
                                             delta = data["choices"][0].get("delta", {})
                                             content = delta.get("content", "")
                                             if content:
@@ -346,9 +327,7 @@ class OpenRouterService:
                     result = response.json()
 
                     if "choices" in result and len(result["choices"]) > 0:
-                        content = (
-                            result["choices"][0].get("message", {}).get("content", "")
-                        )
+                        content = result["choices"][0].get("message", {}).get("content", "")
                         usage = result.get("usage", {})
 
                         # Cache the response for future requests
@@ -369,16 +348,10 @@ class OpenRouterService:
                                     # Track key under collection for bulk invalidation
                                     if collection_id:
                                         tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
-                                        redis_client.sadd(
-                                            tracking_key, effective_cache_key
-                                        )
-                                        redis_client.expire(
-                                            tracking_key, CACHE_TTL_SECONDS
-                                        )
+                                        redis_client.sadd(tracking_key, effective_cache_key)
+                                        redis_client.expire(tracking_key, CACHE_TTL_SECONDS)
                                 except Exception as cache_error:
-                                    logger.warning(
-                                        f"Failed to cache response: {cache_error}"
-                                    )
+                                    logger.warning(f"Failed to cache response: {cache_error}")
 
                         yield content
 
@@ -398,9 +371,7 @@ class OpenRouterService:
 
             # Handle rate limit (429) errors with specific retry trigger
             if e.response.status_code == 429:
-                logger.warning(
-                    "OpenRouter rate limit hit (429), will retry with backoff"
-                )
+                logger.warning("OpenRouter rate limit hit (429), will retry with backoff")
                 # Re-raise to trigger tenacity retry with exponential backoff
                 raise
 
@@ -436,25 +407,19 @@ class OpenRouterService:
         try:
             cache_keys = redis_client.smembers(tracking_key)
             if not cache_keys:
-                logger.debug(
-                    f"Cache invalidation: no keys tracked for collection {collection_id}"
-                )
+                logger.debug(f"Cache invalidation: no keys tracked for collection {collection_id}")
                 return 0
 
             keys_to_delete = list(cache_keys) + [tracking_key]
             redis_client.delete(*keys_to_delete)
             count = len(cache_keys)
-            logger.info(
-                f"Cache invalidation: removed {count} entries for collection {collection_id}"
-            )
+            logger.info(f"Cache invalidation: removed {count} entries for collection {collection_id}")
             return count
         except Exception as e:
-            logger.warning(
-                f"Cache invalidation error for collection {collection_id}: {e}"
-            )
+            logger.warning(f"Cache invalidation error for collection {collection_id}: {e}")
             return 0
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Check OpenRouter service health
 
@@ -478,9 +443,7 @@ class OpenRouterService:
         try:
             test_messages = [{"role": "user", "content": "test"}]
             response_text = ""
-            async for chunk in self.chat_completion(
-                test_messages, stream=False, max_tokens=10
-            ):
+            async for chunk in self.chat_completion(test_messages, stream=False, max_tokens=10):
                 if not chunk.startswith("__USAGE__"):
                     response_text += chunk
 
@@ -498,7 +461,7 @@ class OpenRouterService:
 
         return health_status
 
-    async def get_usage_stats(self) -> Dict[str, Any]:
+    async def get_usage_stats(self) -> dict[str, Any]:
         """
         Get usage statistics for the service
 
@@ -514,7 +477,7 @@ class OpenRouterService:
             "timestamp": datetime.utcnow().isoformat(),
         }
 
-    async def list_models(self) -> List[Dict[str, Any]]:
+    async def list_models(self) -> list[dict[str, Any]]:
         """
         List available models from OpenRouter
 
@@ -526,9 +489,7 @@ class OpenRouterService:
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/models", headers=self._get_headers()
-                )
+                response = await client.get(f"{self.base_url}/models", headers=self._get_headers())
                 response.raise_for_status()
                 result = response.json()
                 return result.get("data", [])

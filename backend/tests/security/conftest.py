@@ -5,12 +5,13 @@ This conftest provides fixtures for security testing without requiring
 the full application to load. Uses SQLite for isolated, fast testing
 without external database dependencies.
 """
-import pytest
 import os
-from typing import Generator, Dict
-from sqlalchemy import create_engine, event, JSON, Text
+from collections.abc import Generator
+
+import pytest
+from sqlalchemy import JSON, Text, create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-from sqlalchemy.orm import sessionmaker, Session
 
 # Set test environment variables before importing anything
 os.environ["JWT_SECRET"] = "test-secret-key-for-security-testing-only"
@@ -25,12 +26,9 @@ os.environ["APP_ENV"] = "development"  # Set development for CORS tests
 
 # Import models (schema stripped for SQLite compatibility)
 from app.models.base import Base
-from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
-from app.utils.security import (
-    get_password_hash,
-    create_access_token
-)
+from app.models.user import User, UserRole
+from app.utils.security import create_access_token, get_password_hash
 
 # Test database URL - SQLite for isolated, fast testing
 TEST_DATABASE_URL = "sqlite:///./security_test.db"
@@ -63,7 +61,7 @@ def _strip_pg_for_sqlite(metadata, connection, **kw):
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def db() -> Generator[Session, None, None]:
     """Create a fresh SQLite database for each security test."""
     Base.metadata.create_all(bind=test_engine)
@@ -76,7 +74,7 @@ def db() -> Generator[Session, None, None]:
         Base.metadata.drop_all(bind=test_engine)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def test_password() -> str:
     """Test password for users"""
     return "TestPassword123!"
@@ -186,7 +184,7 @@ def confidential_document(db: Session) -> Document:
     return document
 
 
-def get_auth_headers_for_user(user: User) -> Dict[str, str]:
+def get_auth_headers_for_user(user: User) -> dict[str, str]:
     """Helper to create auth headers for a user"""
     token = create_access_token(data={
         "sub": user.email,
@@ -221,7 +219,8 @@ def expired_token(regular_user: User) -> str:
 
     expire = datetime.utcnow() - timedelta(minutes=15)
     from jose import jwt
-    from app.utils.security import SECRET_KEY, ALGORITHM
+
+    from app.utils.security import ALGORITHM, SECRET_KEY
 
     payload = {
         "sub": regular_user.email,
@@ -246,16 +245,17 @@ def tampered_token(regular_user: User) -> str:
     return valid_token[:-5] + "ABCDE"
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def test_client(db: Session):
     """
     Create a test client for security tests using the main app
     with SQLite database override for isolated testing.
     """
     from fastapi.testclient import TestClient
-    from app.main import app
-    from app.database import get_db
+
     import app.api.auth as auth_module
+    from app.database import get_db
+    from app.main import app
 
     def override_get_db():
         try:
@@ -282,15 +282,15 @@ def test_client(db: Session):
 
 
 # Keep old security_client for CORS-only tests
-@pytest.fixture(scope="function")
+@pytest.fixture
 def security_client():
     """
     Create a minimal test client for CORS tests only.
     For auth tests, use test_client fixture instead.
     """
     from fastapi import FastAPI
-    from fastapi.testclient import TestClient
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.testclient import TestClient
 
     # Create a minimal FastAPI app for CORS tests
     security_app = FastAPI(

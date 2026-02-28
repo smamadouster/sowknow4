@@ -5,21 +5,22 @@ These schemas define the API contract for creating, managing, and querying
 Smart Collections - AI-generated document groups based on natural language.
 """
 
-from pydantic import BaseModel, Field
-from uuid import UUID
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from enum import Enum
+from enum import StrEnum
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 # Enums
-class CollectionVisibility(str, Enum):
+class CollectionVisibility(StrEnum):
     PRIVATE = "private"
     SHARED = "shared"
     PUBLIC = "public"
 
 
-class CollectionType(str, Enum):
+class CollectionType(StrEnum):
     SMART = "smart"
     MANUAL = "manual"
     FOLDER = "folder"
@@ -30,11 +31,11 @@ class ParsedIntentResponse(BaseModel):
     """Response from intent parsing"""
 
     query: str
-    keywords: List[str] = []
-    date_range: Dict[str, Any] = {}
-    entities: List[Dict[str, str]] = []
-    document_types: List[str] = []
-    collection_name: Optional[str] = None
+    keywords: list[str] = []
+    date_range: dict[str, Any] = {}
+    entities: list[dict[str, str]] = []
+    document_types: list[str] = []
+    collection_name: str | None = None
     confidence: float = 0.0
 
     class Config:
@@ -44,30 +45,28 @@ class ParsedIntentResponse(BaseModel):
 # Collection Schemas
 class CollectionBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=512, description="Collection name")
-    description: Optional[str] = Field(None, description="Optional description")
+    description: str | None = Field(None, description="Optional description")
     visibility: CollectionVisibility = Field(default=CollectionVisibility.PRIVATE)
     collection_type: CollectionType = Field(default=CollectionType.SMART)
 
 
 class CollectionCreate(CollectionBase):
-    query: str = Field(
-        ..., min_length=1, description="Natural language query to generate collection"
-    )
+    query: str = Field(..., min_length=1, description="Natural language query to generate collection")
     save: bool = Field(default=True, description="Whether to save the collection")
 
 
 class CollectionUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=512)
-    description: Optional[str] = None
-    visibility: Optional[CollectionVisibility] = None
-    is_pinned: Optional[bool] = None
-    is_favorite: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=512)
+    description: str | None = None
+    visibility: CollectionVisibility | None = None
+    is_pinned: bool | None = None
+    is_favorite: bool | None = None
 
 
 class CollectionItemBase(BaseModel):
     document_id: UUID
     relevance_score: int = Field(default=50, ge=0, le=100)
-    notes: Optional[str] = None
+    notes: str | None = None
     is_highlighted: bool = False
 
 
@@ -76,10 +75,10 @@ class CollectionItemCreate(CollectionItemBase):
 
 
 class CollectionItemUpdate(BaseModel):
-    relevance_score: Optional[int] = Field(None, ge=0, le=100)
-    notes: Optional[str] = None
-    is_highlighted: Optional[bool] = None
-    order_index: Optional[int] = None
+    relevance_score: int | None = Field(None, ge=0, le=100)
+    notes: str | None = None
+    is_highlighted: bool | None = None
+    order_index: int | None = None
 
 
 class CollectionItemResponse(BaseModel):
@@ -88,14 +87,14 @@ class CollectionItemResponse(BaseModel):
     document_id: UUID
     relevance_score: int
     order_index: int
-    notes: Optional[str] = None
+    notes: str | None = None
     is_highlighted: bool
-    added_by: Optional[str] = None
-    added_reason: Optional[str] = None
+    added_by: str | None = None
+    added_reason: str | None = None
     created_at: datetime
 
     # Include document summary (set after ORM validation)
-    document: Optional[Any] = None
+    document: Any | None = None
 
     class Config:
         from_attributes = True
@@ -105,18 +104,18 @@ class CollectionResponse(BaseModel):
     id: UUID
     user_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     collection_type: CollectionType
     visibility: CollectionVisibility
     query: str
-    parsed_intent: Optional[Dict[str, Any]] = None
-    ai_summary: Optional[str] = None
-    ai_keywords: Optional[List[str]] = []
-    ai_entities: Optional[List[Any]] = []
-    filter_criteria: Optional[Dict[str, Any]] = None
+    parsed_intent: dict[str, Any] | None = None
+    ai_summary: str | None = None
+    ai_keywords: list[str] | None = []
+    ai_entities: list[Any] | None = []
+    filter_criteria: dict[str, Any] | None = None
     document_count: int
-    last_refreshed_at: Optional[str] = None
-    chat_session_id: Optional[UUID] = None
+    last_refreshed_at: str | None = None
+    chat_session_id: UUID | None = None
     is_pinned: bool
     is_favorite: bool
     status: str = "active"  # Collections are always active once created
@@ -130,11 +129,11 @@ class CollectionResponse(BaseModel):
 class CollectionDetailResponse(CollectionResponse):
     """Extended response with items"""
 
-    items: List[CollectionItemResponse] = []
+    items: list[CollectionItemResponse] = []
 
 
 class CollectionListResponse(BaseModel):
-    collections: List[CollectionResponse]
+    collections: list[CollectionResponse]
     total: int
     page: int
     page_size: int
@@ -150,19 +149,17 @@ class CollectionPreviewResponse(BaseModel):
     """Preview of collection before saving"""
 
     intent: ParsedIntentResponse
-    documents: List[Dict[str, Any]] = []
+    documents: list[dict[str, Any]] = []
     estimated_count: int = 0
-    ai_summary: Optional[str] = None
+    ai_summary: str | None = None
     suggested_name: str
 
 
 # Collection Chat Schemas
 class CollectionChatCreate(BaseModel):
-    collection_id: Optional[UUID] = None  # May be provided in path instead of body
+    collection_id: UUID | None = None  # May be provided in path instead of body
     message: str = Field(..., min_length=1, description="User message")
-    session_name: Optional[str] = Field(
-        None, description="Optional name for the Q&A session"
-    )
+    session_name: str | None = Field(None, description="Optional name for the Q&A session")
 
 
 class CollectionChatResponse(BaseModel):
@@ -171,24 +168,18 @@ class CollectionChatResponse(BaseModel):
     message_count: int
     llm_used: str
     response: str
-    sources: List[Dict[str, Any]] = []
+    sources: list[dict[str, Any]] = []
     cache_hit: bool = False
 
 
 # Bulk Operations
 class CollectionBulkAddRequest(BaseModel):
-    document_ids: List[UUID] = Field(
-        ..., min_length=1, description="List of document IDs to add"
-    )
-    relevance_scores: Optional[List[int]] = Field(
-        None, description="Optional relevance scores for each document"
-    )
+    document_ids: list[UUID] = Field(..., min_length=1, description="List of document IDs to add")
+    relevance_scores: list[int] | None = Field(None, description="Optional relevance scores for each document")
 
 
 class CollectionBulkRemoveRequest(BaseModel):
-    document_ids: List[UUID] = Field(
-        ..., min_length=1, description="List of document IDs to remove"
-    )
+    document_ids: list[UUID] = Field(..., min_length=1, description="List of document IDs to remove")
 
 
 class CollectionRefreshRequest(BaseModel):
@@ -205,35 +196,31 @@ class CollectionStatsResponse(BaseModel):
     favorite_collections: int
     total_documents_in_collections: int
     average_documents_per_collection: float
-    collections_by_type: Dict[str, int]
-    recent_activity: List[Dict[str, Any]]
+    collections_by_type: dict[str, int]
+    recent_activity: list[dict[str, Any]]
 
 
 # Smart Folder Generation
 class SmartFolderGenerateRequest(BaseModel):
     topic: str = Field(..., min_length=1, description="Topic for smart folder")
-    include_confidential: bool = Field(
-        default=False, description="Include confidential documents (admin only)"
-    )
+    include_confidential: bool = Field(default=False, description="Include confidential documents (admin only)")
     style: str = Field(
         default="informative",
         description="Writing style: informative, creative, professional, casual",
     )
-    length: str = Field(
-        default="medium", description="Content length: short, medium, long"
-    )
+    length: str = Field(default="medium", description="Content length: short, medium, long")
 
 
 class SmartFolderResponse(BaseModel):
     collection_id: UUID
     generated_content: str
-    sources_used: List[Dict[str, Any]]
+    sources_used: list[dict[str, Any]]
     word_count: int
     llm_used: str
 
 
 # Report Generation
-class ReportFormat(str, Enum):
+class ReportFormat(StrEnum):
     SHORT = "short"
     STANDARD = "standard"
     COMPREHENSIVE = "comprehensive"
@@ -251,12 +238,12 @@ class CollectionReportResponse(BaseModel):
     collection_id: UUID
     format: ReportFormat
     content: str
-    citations: List[Dict[str, Any]] = []
+    citations: list[dict[str, Any]] = []
     generated_at: datetime
-    file_url: Optional[str] = None  # URL to download PDF report
+    file_url: str | None = None  # URL to download PDF report
 
 
-class ExportFormat(str, Enum):
+class ExportFormat(StrEnum):
     PDF = "pdf"
     JSON = "json"
 
@@ -267,7 +254,7 @@ class CollectionExportResponse(BaseModel):
     collection_id: UUID
     collection_name: str
     format: ExportFormat
-    content: Optional[str] = None
-    file_url: Optional[str] = None
+    content: str | None = None
+    file_url: str | None = None
     generated_at: datetime
     document_count: int

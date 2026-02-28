@@ -6,14 +6,14 @@ to gather comprehensive information for a query.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any
 
-from app.services.ollama_service import ollama_service
-from app.services.minimax_service import minimax_service
-from app.services.search_service import search_service
 from app.services.graph_rag_service import graph_rag_service
+from app.services.minimax_service import minimax_service
+from app.services.ollama_service import ollama_service
+from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,8 @@ class ResearchQuery:
     """Query for research agent"""
 
     query: str
-    clarified_query: Optional[str] = None
-    filters: Dict[str, Any] = None
+    clarified_query: str | None = None
+    filters: dict[str, Any] = None
     max_results: int = 20
     use_graph: bool = True
     gather_context: bool = True
@@ -35,14 +35,14 @@ class ResearchResult:
     """Result of research operation"""
 
     query: str
-    findings: List[Dict[str, Any]]
-    entities: List[Dict[str, Any]]
-    relationships: List[Dict[str, Any]]
-    context: Dict[str, Any]
-    sources: List[Dict[str, Any]]
+    findings: list[dict[str, Any]]
+    entities: list[dict[str, Any]]
+    relationships: list[dict[str, Any]]
+    context: dict[str, Any]
+    sources: list[dict[str, Any]]
     confidence: float
-    gaps: List[str]
-    next_queries: List[str]
+    gaps: list[str]
+    next_queries: list[str]
     llm_used: str = "unknown"
 
     def __post_init__(self):
@@ -76,13 +76,11 @@ class ResearcherAgent:
         self.search_service = search_service
         self.graph_rag_service = graph_rag_service
 
-    def _has_confidential_documents(self, findings: List[Dict[str, Any]]) -> bool:
+    def _has_confidential_documents(self, findings: list[dict[str, Any]]) -> bool:
         """Check if any findings contain confidential documents"""
-        return any(
-            finding.get("document_bucket") == "confidential" for finding in findings
-        )
+        return any(finding.get("document_bucket") == "confidential" for finding in findings)
 
-    def _get_llm_service(self, findings: List[Dict[str, Any]]):
+    def _get_llm_service(self, findings: list[dict[str, Any]]):
         """Get appropriate LLM service based on document confidentiality"""
         if self._has_confidential_documents(findings):
             logger.info("Researcher: Using Ollama for confidential documents")
@@ -147,19 +145,13 @@ class ResearcherAgent:
             context = await self._gather_context(search_query, findings, db)
 
             # Determine which LLM was used based on document confidentiality
-            llm_used = (
-                "ollama" if self._has_confidential_documents(findings) else "minimax"
-            )
+            llm_used = "ollama" if self._has_confidential_documents(findings) else "minimax"
 
             # Step 4: Identify gaps
-            gaps = await self._identify_information_gaps(
-                search_query, findings, context
-            )
+            gaps = await self._identify_information_gaps(search_query, findings, context)
 
             # Step 5: Generate follow-up queries
-            next_queries = await self._suggest_followup_queries(
-                search_query, findings, gaps
-            )
+            next_queries = await self._suggest_followup_queries(search_query, findings, gaps)
 
             # Step 6: Prepare sources
             sources = self._prepare_sources(findings)
@@ -196,9 +188,7 @@ class ResearcherAgent:
                 llm_used="error",
             )
 
-    async def _gather_context(
-        self, query: str, findings: List[Dict[str, Any]], db
-    ) -> Dict[str, Any]:
+    async def _gather_context(self, query: str, findings: list[dict[str, Any]], db) -> dict[str, Any]:
         """Gather additional context around findings"""
         context = {
             "related_topics": [],
@@ -231,19 +221,14 @@ class ResearcherAgent:
 
         return context
 
-    async def _extract_themes(
-        self, query: str, findings: List[Dict[str, Any]]
-    ) -> List[str]:
+    async def _extract_themes(self, query: str, findings: list[dict[str, Any]]) -> list[str]:
         """Extract key themes from search results"""
         system_prompt = """Analyze the search results and extract 3-5 key themes.
 Return as a JSON array of theme strings."""
 
         # Build summary of findings
         findings_summary = "\n".join(
-            [
-                f"- {f.get('filename', 'Unknown')}: {f.get('content', '')[:200]}"
-                for f in findings[:10]
-            ]
+            [f"- {f.get('filename', 'Unknown')}: {f.get('content', '')[:200]}" for f in findings[:10]]
         )
 
         user_prompt = f"""Query: {query}
@@ -264,11 +249,7 @@ Extract the key themes:"""
             async for chunk in llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.5, max_tokens=512
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
 
             import json
@@ -282,9 +263,7 @@ Extract the key themes:"""
 
         return []
 
-    async def _find_related_topics(
-        self, query: str, findings: List[Dict[str, Any]], db
-    ) -> List[str]:
+    async def _find_related_topics(self, query: str, findings: list[dict[str, Any]], db) -> list[str]:
         """Find topics related to the query"""
         related = []
 
@@ -302,8 +281,8 @@ Extract the key themes:"""
         return related
 
     async def _identify_information_gaps(
-        self, query: str, findings: List[Dict[str, Any]], context: Dict[str, Any]
-    ) -> List[str]:
+        self, query: str, findings: list[dict[str, Any]], context: dict[str, Any]
+    ) -> list[str]:
         """Identify gaps in the research"""
         gaps = []
 
@@ -316,7 +295,7 @@ Extract the key themes:"""
             pass
 
         # Check for missing entity types
-        found_types = set(e.get("type") for e in context.get("entities", []))
+        found_types = {e.get("type") for e in context.get("entities", [])}
         expected_types = {"person", "organization", "location"}
 
         missing = expected_types - found_types
@@ -326,8 +305,8 @@ Extract the key themes:"""
         return gaps
 
     async def _suggest_followup_queries(
-        self, original_query: str, findings: List[Dict[str, Any]], gaps: List[str]
-    ) -> List[str]:
+        self, original_query: str, findings: list[dict[str, Any]], gaps: list[str]
+    ) -> list[str]:
         """Suggest follow-up queries based on research"""
         system_prompt = """Based on the original query and research findings,
 suggest 3-5 follow-up queries that would help explore the topic deeper.
@@ -335,9 +314,7 @@ suggest 3-5 follow-up queries that would help explore the topic deeper.
 Return as a JSON array of query strings."""
 
         findings_summary = f"Found {len(findings)} relevant documents."
-        gaps_summary = (
-            f"Gaps: {', '.join(gaps)}" if gaps else "No major gaps identified."
-        )
+        gaps_summary = f"Gaps: {', '.join(gaps)}" if gaps else "No major gaps identified."
 
         user_prompt = f"""Original query: {original_query}
 
@@ -357,11 +334,7 @@ Suggest follow-up queries to deepen the research:"""
             async for chunk in llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.7, max_tokens=512
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
 
             import json
@@ -380,7 +353,7 @@ Suggest follow-up queries to deepen the research:"""
             f"What are related topics to {original_query}?",
         ]
 
-    def _prepare_sources(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _prepare_sources(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Prepare source citations"""
         sources = []
         seen = set()
@@ -402,9 +375,9 @@ Suggest follow-up queries to deepen the research:"""
 
     def _calculate_research_confidence(
         self,
-        findings: List[Dict[str, Any]],
-        entities: List[Dict[str, Any]],
-        gaps: List[str],
+        findings: list[dict[str, Any]],
+        entities: list[dict[str, Any]],
+        gaps: list[str],
     ) -> float:
         """Calculate confidence in research results"""
         confidence = 0.5
@@ -420,9 +393,7 @@ Suggest follow-up queries to deepen the research:"""
 
         return max(0.0, min(1.0, confidence))
 
-    async def explore_entity_connections(
-        self, entity_name: str, db, max_depth: int = 3
-    ) -> Dict[str, Any]:
+    async def explore_entity_connections(self, entity_name: str, db, max_depth: int = 3) -> dict[str, Any]:
         """
         Explore connections around a specific entity
 

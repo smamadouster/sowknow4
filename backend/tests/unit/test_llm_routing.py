@@ -4,10 +4,11 @@ Tests tri-LLM routing between MiniMax, Kimi, and Ollama based on PII and documen
 """
 
 from unittest.mock import patch
-from app.services.pii_detection_service import pii_detection_service
-from app.models.user import User, UserRole
-from app.models.document import Document, DocumentBucket
+
 from app.models.chat import LLMProvider
+from app.models.document import Document, DocumentBucket
+from app.models.user import User, UserRole
+from app.services.pii_detection_service import pii_detection_service
 
 
 class TestPIIBasedRouting:

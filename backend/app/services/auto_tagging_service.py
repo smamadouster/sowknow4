@@ -7,10 +7,10 @@ and language from documents during the ingestion pipeline.
 
 import logging
 import warnings
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import Any
 
-from app.models.document import Document, DocumentTag, DocumentLanguage, DocumentBucket
+from app.models.document import Document, DocumentBucket, DocumentLanguage, DocumentTag
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -38,9 +38,7 @@ class AutoTaggingService:
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
-    async def tag_document(
-        self, document: Document, extracted_text: str, db_session=None
-    ) -> List[DocumentTag]:
+    async def tag_document(self, document: Document, extracted_text: str, db_session=None) -> list[DocumentTag]:
         """
         Auto-tag a document with topics, entities, importance, and language
 
@@ -57,19 +55,13 @@ class AutoTaggingService:
             use_ollama = document.bucket == DocumentBucket.CONFIDENTIAL
 
             # Prepare the text for analysis (truncate if too long)
-            analysis_text = self._prepare_text_for_analysis(
-                extracted_text, document.filename
-            )
+            analysis_text = self._prepare_text_for_analysis(extracted_text, document.filename)
 
             # Call appropriate LLM to extract tags
             if use_ollama:
-                tags_data = await self._extract_tags_with_ollama(
-                    analysis_text, document
-                )
+                tags_data = await self._extract_tags_with_ollama(analysis_text, document)
             else:
-                tags_data = await self._extract_tags_with_minimax(
-                    analysis_text, document
-                )
+                tags_data = await self._extract_tags_with_minimax(analysis_text, document)
 
             if not tags_data:
                 logger.warning(f"No tags extracted for document {document.id}")
@@ -148,9 +140,7 @@ class AutoTaggingService:
         # Add filename context
         return f"Filename: {filename}\n\nContent:\n{text_preview}"
 
-    async def _extract_tags_with_minimax(
-        self, text: str, document: Document
-    ) -> Optional[Dict[str, Any]]:
+    async def _extract_tags_with_minimax(self, text: str, document: Document) -> dict[str, Any] | None:
         """Extract tags using MiniMax for public documents"""
 
         system_prompt = """You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:
@@ -200,11 +190,7 @@ Extract the tags now:"""
             async for chunk in llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.3, max_tokens=1000
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
@@ -222,9 +208,7 @@ Extract the tags now:"""
 
         return None
 
-    async def _extract_tags_with_ollama(
-        self, text: str, document: Document
-    ) -> Optional[Dict[str, Any]]:
+    async def _extract_tags_with_ollama(self, text: str, document: Document) -> dict[str, Any] | None:
         """Extract tags using Ollama"""
 
         system_prompt = """You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:
@@ -273,11 +257,7 @@ Extract the tags now:"""
             async for chunk in llm_service.chat_completion(
                 messages=messages, stream=False, temperature=0.3, max_tokens=1000
             ):
-                if (
-                    chunk
-                    and not chunk.startswith("Error:")
-                    and not chunk.startswith("__USAGE__")
-                ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
@@ -294,7 +274,7 @@ Extract the tags now:"""
 
         return None
 
-    def _extract_json(self, text: str) -> Optional[str]:
+    def _extract_json(self, text: str) -> str | None:
         """Extract JSON from response text"""
         text = text.strip()
 
@@ -398,9 +378,7 @@ Extract the tags now:"""
         else:
             return "unknown"
 
-    async def suggest_similar_documents(
-        self, document_id: str, db_session, limit: int = 5
-    ) -> List[Dict[str, Any]]:
+    async def suggest_similar_documents(self, document_id: str, db_session, limit: int = 5) -> list[dict[str, Any]]:
         """
         Suggest similar documents based on tag overlap
 
@@ -412,14 +390,10 @@ Extract the tags now:"""
         Returns:
             List of similar documents with similarity scores
         """
-        from sqlalchemy import func, and_
+        from sqlalchemy import and_, func
 
         # Get tags for the reference document
-        ref_tags = (
-            db_session.query(DocumentTag.tag_name)
-            .filter(DocumentTag.document_id == document_id)
-            .all()
-        )
+        ref_tags = db_session.query(DocumentTag.tag_name).filter(DocumentTag.document_id == document_id).all()
 
         if not ref_tags:
             return []

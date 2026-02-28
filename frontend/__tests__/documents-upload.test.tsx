@@ -83,9 +83,6 @@ const mockDocuments = [
 ];
 
 global.fetch = jest.fn();
-global.document = {
-  cookie: 'access_token=mock_token',
-} as unknown as Document;
 
 describe('DocumentsPage - Drag and Drop Upload', () => {
   beforeEach(() => {

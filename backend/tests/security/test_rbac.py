@@ -16,11 +16,12 @@ Tests verify:
 - User tries to delete → 403
 """
 import uuid
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.user import User, UserRole
 from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.user import User, UserRole
 from app.utils.security import create_access_token, get_password_hash
 
 

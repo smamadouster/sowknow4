@@ -1,29 +1,30 @@
 """
 Unit tests for network utilities with retry logic.
 """
-import pytest
-import httpx
-from unittest.mock import AsyncMock, patch, MagicMock
-import sys
 import os
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend", "app"))
 
 try:
     from app.network_utils import (
-        with_retry,
-        CircuitBreaker,
-        ResilientAsyncClient,
-        CircuitBreakerOpenError,
         RETRYABLE_EXCEPTIONS,
+        CircuitBreaker,
+        CircuitBreakerOpenError,
+        ResilientAsyncClient,
+        with_retry,
     )
 except ImportError:
     from network_utils import (
-        with_retry,
-        CircuitBreaker,
-        ResilientAsyncClient,
-        CircuitBreakerOpenError,
         RETRYABLE_EXCEPTIONS,
+        CircuitBreaker,
+        CircuitBreakerOpenError,
+        ResilientAsyncClient,
+        with_retry,
     )
 
 
@@ -180,7 +181,7 @@ class TestWithRetry:
         async def func():
             return await failing_func()
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="."):
             await func()
 
         assert call_count == 1

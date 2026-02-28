@@ -3,7 +3,8 @@ Performance Optimization Configuration for SOWKNOW
 
 Includes database indexes, query optimizations, and caching strategies.
 """
-from sqlalchemy import Index, DDL
+
+from sqlalchemy import DDL, Index
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 
@@ -14,28 +15,22 @@ PERFORMANCE_CONFIG = {
     "max_overflow": 40,
     "pool_timeout": 30,
     "pool_recycle": 3600,
-
     # Query optimization
     "default_limit": 50,
     "max_limit": 500,
     "enable_query_cache": True,
-
     # Pagination
     "default_page_size": 20,
     "max_page_size": 100,
-
     # Embedding batch size
     "embedding_batch_size": 32,
     "embedding_timeout": 30,
-
     # Search optimization
     "search_parallel_workers": 4,
     "search_result_cache_ttl": 300,
-
     # Knowledge graph cache
     "graph_cache_enabled": True,
     "graph_cache_ttl": 600,
-
     # Multi-agent optimization
     "agent_timeout": 30,
     "max_concurrent_agents": 3,
@@ -50,25 +45,19 @@ def create_performance_indexes(engine):
         Index("ix_documents_status_created", "status", "created_at"),
         Index("ix_documents_bucket_status", "bucket", "status"),
         Index("ix_documents_mime_created", "mime_type", "created_at"),
-
         # Document chunk indexes for search
         Index("ix_chunks_doc_page", "document_id", "page_number"),
-
         # Entity indexes
         Index("ix_entities_type_count", "entity_type", "document_count"),
         Index("ix_entities_name_gin", "name", postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"}),
-
         # Entity relationship indexes
         Index("ix_relationships_source_type", "source_id", "relation_type"),
         Index("ix_relationships_target_type", "target_id", "relation_type"),
         Index("ix_relationships_doc_count", "document_count"),
-
         # Timeline indexes
         Index("ix_timeline_date_type", "event_date", "event_type"),
-
         # Collection indexes
         Index("ix_collections_user_created", "user_id", "created_at"),
-
         # Chat indexes
         Index("ix_chat_sessions_user_updated", "user_id", "updated_at"),
         Index("ix_chat_messages_session_created", "session_id", "created_at"),
@@ -87,31 +76,23 @@ def configure_database_settings(engine):
     settings = [
         # Shared buffers (25% of RAM)
         "SET shared_buffers = '4GB'",
-
         # Effective cache size (75% of RAM)
         "SET effective_cache_size = '12GB'",
-
         # Work memory (per operation)
         "SET work_mem = '64MB'",
-
         # Maintenance work memory
         "SET maintenance_work_mem = '512MB'",
-
         # Random page cost (for SSD)
         "SET random_page_cost = '1.1'",
-
         # Checkpoint settings
         "SET checkpoint_completion_target = '0.9'",
         "SET wal_buffers = '16MB'",
-
         # Query planner
         "SET default_statistics_target = '100'",
-
         # Parallel query
         "SET max_parallel_workers_per_gather = '4'",
         "SET parallel_setup_cost = '100'",
         "SET parallel_tuple_cost = '0.01'",
-
         # Enable JIT compilation
         "SET jit = 'on'",
     ]
@@ -222,9 +203,9 @@ def refresh_materialized_views(engine):
 def setup_query_caching(redis_client):
     """Setup query result caching in Redis"""
 
+    import hashlib
     import json
     from functools import wraps
-    import hashlib
 
     def cache_query(ttl=300):
         """Decorator to cache query results in Redis using JSON serialization."""
@@ -272,7 +253,7 @@ class QueryOptimizer:
             "optimized_query": query,
             "use_hybrid": True,
             "limit": PERFORMANCE_CONFIG["default_limit"],
-            "parallel": PERFORMANCE_CONFIG["search_parallel_workers"] > 1
+            "parallel": PERFORMANCE_CONFIG["search_parallel_workers"] > 1,
         }
 
         # Short queries benefit more from keyword search
@@ -302,11 +283,7 @@ class QueryOptimizer:
     def get_search_hints(query: str) -> dict:
         """Get hints for optimizing search"""
 
-        hints = {
-            "use_cache": False,
-            "parallel": False,
-            "materialized_view": False
-        }
+        hints = {"use_cache": False, "parallel": False, "materialized_view": False}
 
         # Use cache for repeated queries
         common_terms = ["recent", "latest", "all", "summary"]

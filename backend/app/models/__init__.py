@@ -1,26 +1,26 @@
 # Import all models for Alembic autogenerate
+from app.models.audit import AuditAction, AuditLog
 from app.models.base import Base
-from app.models.user import User
-from app.models.document import Document, DocumentTag, DocumentChunk
-from app.models.chat import ChatSession, ChatMessage, LLMProvider, MessageRole
-from app.models.processing import ProcessingQueue, TaskType, TaskStatus
+from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.collection import (
     Collection,
-    CollectionItem,
     CollectionChatSession,
+    CollectionItem,
+    CollectionType,
     CollectionVisibility,
-    CollectionType
 )
+from app.models.document import Document, DocumentChunk, DocumentTag
+from app.models.failed_task import FailedCeleryTask
 from app.models.knowledge_graph import (
     Entity,
-    EntityRelationship,
     EntityMention,
-    TimelineEvent,
+    EntityRelationship,
     EntityType,
-    RelationType
+    RelationType,
+    TimelineEvent,
 )
-from app.models.audit import AuditLog, AuditAction
-from app.models.failed_task import FailedCeleryTask
+from app.models.processing import ProcessingQueue, TaskStatus, TaskType
+from app.models.user import User
 
 __all__ = [
     "Base",

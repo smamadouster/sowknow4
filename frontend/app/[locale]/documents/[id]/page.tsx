@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
+import { getCsrfToken } from '@/lib/api';
 
 interface Tag {
   id: string;
@@ -44,12 +45,6 @@ interface SimilarDocument {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
-
-const getToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  const match = document.cookie.match(/access_token=([^;]+)/);
-  return match ? match[1] : null;
-};
 
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
@@ -128,10 +123,8 @@ export default function DocumentDetailPage() {
     setError(null);
     setNotFound(false);
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/documents/${id}`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.status === 404) {
         setNotFound(true);
@@ -161,10 +154,8 @@ export default function DocumentDetailPage() {
     const fetchSimilar = async () => {
       setSimilarLoading(true);
       try {
-        const token = getToken();
         const res = await fetch(`${API_BASE}/v1/documents/${doc.id}/similar?limit=6`, {
           credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.ok) {
           const data = await res.json();
@@ -182,10 +173,8 @@ export default function DocumentDetailPage() {
   const handleDownload = async () => {
     if (!doc) return;
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/documents/${doc.id}/download`, {
         credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) {
         setError(tCommon('error'));
@@ -222,13 +211,12 @@ export default function DocumentDetailPage() {
     setSaving(true);
     setEditError(null);
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE}/v1/documents/${doc.id}`, {
         method: 'PUT',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'X-CSRF-Token': getCsrfToken(),
         },
         body: JSON.stringify({
           filename: editForm.filename,

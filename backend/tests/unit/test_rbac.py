@@ -3,8 +3,9 @@ Unit tests for Role-Based Access Control (RBAC)
 Tests user roles, permissions, and bucket access control
 """
 import pytest
-from app.models.user import User, UserRole
+
 from app.models.document import Document, DocumentBucket
+from app.models.user import User, UserRole
 from app.services.search_service import HybridSearchService
 
 

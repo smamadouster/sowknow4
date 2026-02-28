@@ -9,8 +9,9 @@ This module tests CORS configuration to ensure:
 - Security headers are present
 """
 import os
-from fastapi.testclient import TestClient
 
+import pytest
+from fastapi.testclient import TestClient
 
 
 class TestCORSPolicy:
@@ -98,7 +99,7 @@ class TestCORSCredentials:
             _allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
             if "*" in _allowed_origins_str.split(","):
                 # This would raise ValueError in production
-                assert False, "SECURITY: Wildcard origins with credentials detected"
+                pytest.fail("SECURITY: Wildcard origins with credentials detected")
 
     def test_credentials_allowed_for_specific_origins(self):
         """Test that credentials are allowed for specific origins"""

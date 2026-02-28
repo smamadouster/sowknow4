@@ -11,16 +11,16 @@ SECURITY: Supports both cookie-based (httpOnly) and Authorization header authent
 Cookie-based auth is preferred for better security (httpOnly prevents XSS).
 """
 
-from typing import Optional
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import logging
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.utils.security import decode_token, TokenInvalidError, TokenExpiredError
+from app.utils.security import TokenExpiredError, TokenInvalidError, decode_token
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ COOKIE_ACCESS_TOKEN_NAME = "access_token"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
-async def get_token_from_request(request: Request) -> Optional[str]:
+async def get_token_from_request(request: Request) -> str | None:
     """
     Extract JWT token from either httpOnly cookie or Authorization header.
 
@@ -61,10 +61,7 @@ async def get_token_from_request(request: Request) -> Optional[str]:
     return None
 
 
-async def get_current_user(
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-) -> User:
+async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
     """
     Extract and validate JWT token from cookie or header, return User object.
 
@@ -112,7 +109,7 @@ async def get_current_user(
         raise credentials_exception
 
     # Extract user identifier
-    email: Optional[str] = payload.get("sub")
+    email: str | None = payload.get("sub")
     if email is None:
         logger.warning("Authentication failed: Token missing subject")
         raise credentials_exception
@@ -127,18 +124,13 @@ async def get_current_user(
     # Check if user is active
     if not user.is_active:
         logger.warning(f"Authentication failed: User {email} is inactive")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Inactive user"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
 
     logger.debug(f"User authenticated: {email} (role: {user.role})")
     return user
 
 
-async def require_admin(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """
     Require ADMIN role for access.
 
@@ -155,20 +147,14 @@ async def require_admin(
     """
     if current_user.role != UserRole.ADMIN:
         logger.warning(
-            f"Authorization failed: User {current_user.email} "
-            f"(role: {current_user.role}) attempted admin-only access"
+            f"Authorization failed: User {current_user.email} (role: {current_user.role}) attempted admin-only access"
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrator access required"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
 
     return current_user
 
 
-async def require_superuser_or_admin(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def require_superuser_or_admin(current_user: User = Depends(get_current_user)) -> User:
     """
     Require SUPERUSER or ADMIN role for access.
 
@@ -189,17 +175,12 @@ async def require_superuser_or_admin(
             f"Authorization failed: User {current_user.email} "
             f"(role: {current_user.role}) attempted privileged view access"
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Elevated privileges required"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Elevated privileges required")
 
     return current_user
 
 
-async def require_admin_only(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def require_admin_only(current_user: User = Depends(get_current_user)) -> User:
     """
     Require ADMIN role for modifying operations.
 
@@ -222,16 +203,13 @@ async def require_admin_only(
             f"(SUPERUSER view-only restriction enforced)"
         )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrator access required for modifications"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required for modifications"
         )
 
     return current_user
 
 
-async def require_confidential_access(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def require_confidential_access(current_user: User = Depends(get_current_user)) -> User:
     """
     Require confidential access permission.
 
@@ -253,17 +231,12 @@ async def require_confidential_access(
             f"(role: {current_user.role}) attempted confidential access "
             f"without permission"
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Confidential access required"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confidential access required")
 
     return current_user
 
 
-async def require_confidential_access_or_admin(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def require_confidential_access_or_admin(current_user: User = Depends(get_current_user)) -> User:
     """
     Require confidential access permission OR admin role.
 
@@ -287,8 +260,7 @@ async def require_confidential_access_or_admin(
             f"without permission or admin role"
         )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Confidential access or administrator role required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Confidential access or administrator role required"
         )
 
     return current_user
@@ -324,6 +296,7 @@ def require_role(*allowed_roles: UserRole):
         async def any_auth(user: User = Depends(require_role(UserRole.USER, UserRole.SUPERUSER, UserRole.ADMIN))):
             ...
     """
+
     async def role_checker(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in allowed_roles:
             logger.warning(
@@ -333,7 +306,7 @@ def require_role(*allowed_roles: UserRole):
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions. Required role(s): {', '.join([r.value for r in allowed_roles])}"
+                detail=f"Insufficient permissions. Required role(s): {', '.join([r.value for r in allowed_roles])}",
             )
         return current_user
 

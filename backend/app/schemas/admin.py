@@ -1,12 +1,16 @@
-from pydantic import BaseModel, EmailStr, validator
-from uuid import UUID
 from datetime import datetime
-from typing import Optional, List
+from uuid import UUID
+
+import re
+
+from pydantic import BaseModel, EmailStr, validator
+
 from app.schemas.user import UserRole
 
 
 class SystemStats(BaseModel):
     """System statistics for admin dashboard"""
+
     total_documents: int
     public_documents: int
     confidential_documents: int
@@ -22,35 +26,39 @@ class SystemStats(BaseModel):
 
 class QueueStats(BaseModel):
     """Processing queue statistics"""
+
     pending_tasks: int
     in_progress_tasks: int
     completed_tasks: int
     failed_tasks: int
-    average_wait_time: Optional[float] = None  # in minutes
-    longest_running_task: Optional[str] = None
+    average_wait_time: float | None = None  # in minutes
+    longest_running_task: str | None = None
 
 
 class AnomalyDocument(BaseModel):
     """Documents stuck in processing for >24h"""
+
     document_id: UUID
     filename: str
     bucket: str
     status: str
     created_at: datetime
     stuck_duration_hours: float
-    last_task_type: Optional[str] = None
-    error_message: Optional[str] = None
+    last_task_type: str | None = None
+    error_message: str | None = None
 
 
 class AnomalyBucketResponse(BaseModel):
     """Daily anomaly report response"""
+
     date: str
     total_anomalies: int
-    anomalies: List[AnomalyDocument]
+    anomalies: list[AnomalyDocument]
 
 
 class DashboardResponse(BaseModel):
     """Complete admin dashboard data"""
+
     stats: SystemStats
     queue_stats: QueueStats
     system_health: dict
@@ -59,15 +67,16 @@ class DashboardResponse(BaseModel):
 
 class UserManagementResponse(BaseModel):
     """User management response"""
+
     id: UUID
     email: EmailStr
-    full_name: Optional[str] = None
+    full_name: str | None = None
     role: UserRole
     is_active: bool
     can_access_confidential: bool
     created_at: datetime
     updated_at: datetime
-    last_login: Optional[datetime] = None
+    last_login: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -75,7 +84,8 @@ class UserManagementResponse(BaseModel):
 
 class UserListResponse(BaseModel):
     """Paginated user list response"""
-    users: List[UserManagementResponse]
+
+    users: list[UserManagementResponse]
     total: int
     page: int
     page_size: int
@@ -83,12 +93,13 @@ class UserListResponse(BaseModel):
 
 class UserUpdateByAdmin(BaseModel):
     """Admin-only user update schema"""
-    full_name: Optional[str] = None
-    role: Optional[UserRole] = None
-    can_access_confidential: Optional[bool] = None
-    is_active: Optional[bool] = None
 
-    @validator('role')
+    full_name: str | None = None
+    role: UserRole | None = None
+    can_access_confidential: bool | None = None
+    is_active: bool | None = None
+
+    @validator("role")
     def validate_role_change(cls, v, values):
         """Prevent role changes that would leave no admin"""
         # This will be validated in the endpoint
@@ -97,30 +108,32 @@ class UserUpdateByAdmin(BaseModel):
 
 class UserCreateByAdmin(BaseModel):
     """Admin-only user creation schema"""
+
     email: EmailStr
-    full_name: Optional[str] = None
+    full_name: str | None = None
     password: str
     role: UserRole = UserRole.USER
     can_access_confidential: bool = False
 
-    @validator('password')
+    @validator("password")
     def validate_password(cls, v):
         if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
+            raise ValueError("Password must be at least 8 characters")
         return v
 
 
 class AuditLogEntry(BaseModel):
     """Audit log entry"""
+
     id: UUID
-    user_id: Optional[UUID] = None
+    user_id: UUID | None = None
     action: str
     resource_type: str
-    resource_id: Optional[str] = None
-    details: Optional[str] = None
-    ip_address: Optional[str] = None
+    resource_id: str | None = None
+    details: str | None = None
+    ip_address: str | None = None
     created_at: datetime
-    user_email: Optional[str] = None  # Joined from user table
+    user_email: str | None = None  # Joined from user table
 
     class Config:
         from_attributes = True
@@ -128,7 +141,8 @@ class AuditLogEntry(BaseModel):
 
 class AuditLogResponse(BaseModel):
     """Audit log response with pagination"""
-    logs: List[AuditLogEntry]
+
+    logs: list[AuditLogEntry]
     total: int
     page: int
     page_size: int
@@ -136,6 +150,7 @@ class AuditLogResponse(BaseModel):
 
 class AdminStatsResponse(BaseModel):
     """Enhanced admin statistics"""
+
     total_users: int
     active_users: int
     admin_count: int
@@ -148,11 +163,22 @@ class AdminStatsResponse(BaseModel):
 
 
 class PasswordReset(BaseModel):
-    """Admin password reset schema"""
+    """Admin password reset schema — enforces same complexity as user registration."""
+
     new_password: str
 
-    @validator('new_password')
+    @validator("new_password")
     def validate_password(cls, v):
         if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
+            raise ValueError("Password must be at least 8 characters long")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least 1 uppercase letter (A-Z)")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least 1 lowercase letter (a-z)")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least 1 digit (0-9)")
+        if not re.search(r"[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]", v):
+            raise ValueError(
+                "Password must contain at least 1 special character (!@#$%^&*()_+-=[]{}|;:,.<>?)"
+            )
         return v

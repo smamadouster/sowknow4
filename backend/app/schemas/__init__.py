@@ -1,19 +1,20 @@
 # Schemas initialization
-from app.schemas.user import UserCreate, UserPublic, UserInDB, UserRole
 from app.schemas.token import Token, TokenPayload
+from app.schemas.user import UserCreate, UserInDB, UserPublic, UserRole
 
 # Document schemas - check if they exist first
 try:
     from app.schemas.document import (
+        DocumentChunkResponse,
         DocumentCreate,
-        DocumentUpdate,
-        DocumentResponse,
         DocumentListResponse,
-        DocumentUploadResponse,
+        DocumentResponse,
         DocumentTagCreate,
         DocumentTagResponse,
-        DocumentChunkResponse,
+        DocumentUpdate,
+        DocumentUploadResponse,
     )
+
     _document_schemas = [
         "DocumentCreate",
         "DocumentUpdate",
@@ -30,16 +31,17 @@ except ImportError:
 # Chat schemas - check if they exist
 try:
     from app.schemas.chat import (
-        ChatSessionCreate,
-        ChatSessionResponse,
-        ChatSessionListResponse,
         ChatMessageCreate,
-        ChatMessageResponse,
         ChatMessageListResponse,
+        ChatMessageResponse,
+        ChatSessionCreate,
+        ChatSessionListResponse,
+        ChatSessionResponse,
         ChatStreamChunk,
         LLMProvider,
         MessageRole,
     )
+
     _chat_schemas = [
         "ChatSessionCreate",
         "ChatSessionResponse",
@@ -57,6 +59,7 @@ except ImportError:
 # Search schemas - check if they exist
 try:
     from app.schemas.search import SearchRequest, SearchResponse, SearchResultChunk
+
     _search_schemas = ["SearchRequest", "SearchResponse", "SearchResultChunk"]
 except ImportError:
     _search_schemas = []
@@ -64,12 +67,13 @@ except ImportError:
 # Admin schemas - check if they exist
 try:
     from app.schemas.admin import (
-        SystemStats,
-        QueueStats,
-        AnomalyDocument,
         AnomalyBucketResponse,
+        AnomalyDocument,
         DashboardResponse,
+        QueueStats,
+        SystemStats,
     )
+
     _admin_schemas = [
         "SystemStats",
         "QueueStats",
@@ -83,31 +87,32 @@ except ImportError:
 # Collection schemas - check if they exist
 try:
     from app.schemas.collection import (
-        ParsedIntentResponse,
+        CollectionBulkAddRequest,
+        CollectionBulkRemoveRequest,
+        CollectionChatCreate,
+        CollectionChatResponse,
         CollectionCreate,
-        CollectionUpdate,
-        CollectionResponse,
         CollectionDetailResponse,
+        CollectionItemCreate,
+        CollectionItemResponse,
+        CollectionItemUpdate,
         CollectionListResponse,
         CollectionPreviewRequest,
         CollectionPreviewResponse,
-        CollectionItemCreate,
-        CollectionItemUpdate,
-        CollectionItemResponse,
-        CollectionChatCreate,
-        CollectionChatResponse,
-        CollectionBulkAddRequest,
-        CollectionBulkRemoveRequest,
         CollectionRefreshRequest,
-        CollectionStatsResponse,
-        SmartFolderGenerateRequest,
-        SmartFolderResponse,
-        ReportFormat,
         CollectionReportRequest,
         CollectionReportResponse,
-        CollectionVisibility,
+        CollectionResponse,
+        CollectionStatsResponse,
         CollectionType,
+        CollectionUpdate,
+        CollectionVisibility,
+        ParsedIntentResponse,
+        ReportFormat,
+        SmartFolderGenerateRequest,
+        SmartFolderResponse,
     )
+
     _collection_schemas = [
         "ParsedIntentResponse",
         "CollectionCreate",
@@ -138,12 +143,12 @@ except ImportError:
     _collection_schemas = []
 
 from app.schemas.pagination import (
-    PaginationParams,
-    PaginatedResponse,
-    CursorPaginationParams,
     CursorPaginatedResponse,
-    encode_cursor,
+    CursorPaginationParams,
+    PaginatedResponse,
+    PaginationParams,
     decode_cursor,
+    encode_cursor,
 )
 
 __all__ = [

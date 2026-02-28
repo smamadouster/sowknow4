@@ -1,21 +1,23 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, Enum
+import enum
+import uuid
+
+from sqlalchemy import Column, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-import uuid
-import enum
-from app.models.base import Base, TimestampMixin, GUIDType
+
+from app.models.base import Base, GUIDType, TimestampMixin
 
 
-class LLMProvider(str, enum.Enum):
+class LLMProvider(enum.StrEnum):
     """LLM providers used for chat responses"""
 
-    MINIMAX = "minimax"    # MiniMax M2.5 — default for all public docs (direct API)
-    KIMI = "kimi"          # Moonshot direct API (legacy / Telegram bot only)
-    OLLAMA = "ollama"      # Local Ollama — confidential documents (privacy guarantee)
+    MINIMAX = "minimax"  # MiniMax M2.5 — default for all public docs (direct API)
+    KIMI = "kimi"  # Moonshot direct API (legacy / Telegram bot only)
+    OLLAMA = "ollama"  # Local Ollama — confidential documents (privacy guarantee)
     OPENROUTER = "openrouter"  # OpenRouter gateway — Kimi K2.5 fallback for public docs
 
 
-class MessageRole(str, enum.Enum):
+class MessageRole(enum.StrEnum):
     """Chat message roles"""
 
     USER = "user"
@@ -59,7 +61,7 @@ class ChatSession(Base, TimestampMixin):
         order_by="ChatMessage.created_at",
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ChatSession {self.title}>"
 
 
@@ -108,5 +110,5 @@ class ChatMessage(Base, TimestampMixin):
     # Relationships
     session = relationship("ChatSession", back_populates="messages")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ChatMessage {self.role} in session {self.session_id}>"

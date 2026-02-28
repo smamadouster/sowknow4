@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore, useChatStore, useUploadStore } from '@/lib/store';
+import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 
 type NavLabelKey =
   | 'search' | 'documents' | 'chat' | 'collections' | 'smart_folders'
@@ -105,6 +106,7 @@ export function Navigation() {
   const locale = useLocale();
   const router = useRouter();
   const { logout } = useAuthStore();
+  useSessionTimeout();
   const isStreaming = useChatStore((s) => s.isStreaming);
   const isUploading = useUploadStore((s) => s.isUploading);
   const [activeTab, setActiveTab] = useState<'all' | 'admin'>('all');
@@ -123,15 +125,12 @@ export function Navigation() {
   useEffect(() => {
     const checkAdmin = async () => {
       try {
-        const token = document.cookie.split('; ').find(row => row.startsWith('access_token='));
-        if (token) {
-          const res = await fetch('/api/v1/auth/me', {
-            credentials: 'include',
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setUserRole(data.role || 'user');
-          }
+        const res = await fetch('/api/v1/auth/me', {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUserRole(data.role || 'user');
         }
       } catch (e) {
         console.error('Error checking user role:', e);

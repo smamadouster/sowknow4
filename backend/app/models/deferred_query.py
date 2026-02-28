@@ -6,16 +6,17 @@ immediately.  The query is persisted and retried once Ollama recovers.
 """
 
 import enum
+import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, Text, DateTime, Enum as SAEnum, JSON
+from sqlalchemy import JSON, Column, DateTime, Integer, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-import uuid
 
 from app.models.base import Base
 
 
-class QueryStatus(str, enum.Enum):
+class QueryStatus(enum.StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

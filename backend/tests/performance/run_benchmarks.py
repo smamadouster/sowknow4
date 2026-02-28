@@ -15,13 +15,14 @@ Run with: python tests/performance/run_benchmarks.py
 Results are printed in markdown table format for easy reporting.
 """
 import asyncio
-import os
-import time
-import statistics
 import json
-from typing import List, Optional
-from datetime import datetime
+import os
+import statistics
+import time
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
 import httpx
 import numpy as np
 
@@ -51,7 +52,7 @@ class PerformanceBenchmark:
     """Performance benchmark suite for SOWKNOW"""
 
     def __init__(self):
-        self.results: List[BenchmarkResult] = []
+        self.results: list[BenchmarkResult] = []
         self.client = None
 
     async def __aenter__(self):
@@ -150,7 +151,7 @@ class PerformanceBenchmark:
             target_met=target_met
         )
 
-    async def test_search_response_time(self, token: Optional[str] = None) -> BenchmarkResult:
+    async def test_search_response_time(self, token: str | None = None) -> BenchmarkResult:
         """
         Test: Search endpoint response time
         Target: p95 < 3s
@@ -218,7 +219,7 @@ class PerformanceBenchmark:
             target_met=target_met
         )
 
-    async def test_concurrent_users(self, token: Optional[str] = None) -> BenchmarkResult:
+    async def test_concurrent_users(self, token: str | None = None) -> BenchmarkResult:
         """
         Test: System handles 5 concurrent users without degradation
         Target: All 5 complete < 2x single-user time
@@ -357,7 +358,7 @@ class PerformanceBenchmark:
     # RUN ALL BENCHMARKS
     # ========================================================================
 
-    async def run_all(self, token: Optional[str] = None) -> List[BenchmarkResult]:
+    async def run_all(self, token: str | None = None) -> list[BenchmarkResult]:
         """Run all benchmark tests"""
         print(f"\n{'='*70}")
         print("SOWKNOW Performance Benchmark")

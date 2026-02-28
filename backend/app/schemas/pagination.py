@@ -4,9 +4,10 @@ Standardized pagination schemas (T05 + T09)
 PaginationParams / PaginatedResponse for offset-based pagination.
 CursorPaginationParams / CursorPaginatedResponse for cursor-based pagination.
 """
+
 import base64
 import json
-from typing import Generic, List, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,7 @@ T = TypeVar("T")
 # ---------------------------------------------------------------------------
 # Offset-based pagination (T05)
 # ---------------------------------------------------------------------------
+
 
 class PaginationParams(BaseModel):
     page: int = Field(default=1, ge=1)
@@ -27,7 +29,7 @@ class PaginationParams(BaseModel):
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    items: List[T]
+    items: list[T]
     total: int
     page: int
     page_size: int
@@ -36,7 +38,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     @classmethod
     def create(
         cls,
-        items: List[T],
+        items: list[T],
         total: int,
         page: int,
         page_size: int,
@@ -54,14 +56,15 @@ class PaginatedResponse(BaseModel, Generic[T]):
 # Cursor-based pagination (T09)
 # ---------------------------------------------------------------------------
 
+
 class CursorPaginationParams(BaseModel):
-    cursor: Optional[str] = None
+    cursor: str | None = None
     limit: int = Field(default=20, ge=1, le=100)
 
 
 class CursorPaginatedResponse(BaseModel, Generic[T]):
-    items: List[T]
-    next_cursor: Optional[str]
+    items: list[T]
+    next_cursor: str | None
     has_more: bool
 
 

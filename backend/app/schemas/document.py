@@ -1,16 +1,16 @@
-from pydantic import BaseModel, Field
-from uuid import UUID
 from datetime import datetime
-from typing import Optional, List
-from enum import Enum
+from enum import StrEnum
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
-class DocumentBucket(str, Enum):
+class DocumentBucket(StrEnum):
     PUBLIC = "public"
     CONFIDENTIAL = "confidential"
 
 
-class DocumentStatus(str, Enum):
+class DocumentStatus(StrEnum):
     PENDING = "pending"
     UPLOADING = "uploading"
     PROCESSING = "processing"
@@ -18,7 +18,7 @@ class DocumentStatus(str, Enum):
     ERROR = "error"
 
 
-class DocumentLanguage(str, Enum):
+class DocumentLanguage(StrEnum):
     FRENCH = "fr"
     ENGLISH = "en"
     MULTILINGUAL = "multi"
@@ -37,9 +37,9 @@ class DocumentCreate(DocumentBase):
 
 
 class DocumentUpdate(BaseModel):
-    filename: Optional[str] = None
-    bucket: Optional[DocumentBucket] = None
-    language: Optional[DocumentLanguage] = None
+    filename: str | None = None
+    bucket: DocumentBucket | None = None
+    language: DocumentLanguage | None = None
 
 
 class DocumentResponse(BaseModel):
@@ -51,8 +51,8 @@ class DocumentResponse(BaseModel):
     status: DocumentStatus
     size: int = Field(..., alias="file_size")
     mime_type: str
-    language: Optional[DocumentLanguage] = None
-    page_count: Optional[int] = None
+    language: DocumentLanguage | None = None
+    page_count: int | None = None
     ocr_processed: bool = False
     embedding_generated: bool = False
     chunk_count: int = 0
@@ -65,7 +65,7 @@ class DocumentResponse(BaseModel):
 
 
 class DocumentListResponse(BaseModel):
-    documents: List[DocumentResponse]
+    documents: list[DocumentResponse]
     total: int
     page: int
     page_size: int
@@ -74,18 +74,18 @@ class DocumentListResponse(BaseModel):
 # Document Tag Schemas
 class DocumentTagCreate(BaseModel):
     tag_name: str
-    tag_type: Optional[str] = "topic"
+    tag_type: str | None = "topic"
     auto_generated: bool = False
-    confidence_score: Optional[int] = None
+    confidence_score: int | None = None
 
 
 class DocumentTagResponse(BaseModel):
     id: UUID
     document_id: UUID
     tag_name: str
-    tag_type: Optional[str] = None
+    tag_type: str | None = None
     auto_generated: bool = False
-    confidence_score: Optional[int] = None
+    confidence_score: int | None = None
     created_at: datetime
 
     class Config:
@@ -106,8 +106,8 @@ class DocumentChunkResponse(BaseModel):
     document_id: UUID
     chunk_index: int
     chunk_text: str
-    token_count: Optional[int] = None
-    page_number: Optional[int] = None
+    token_count: int | None = None
+    page_number: int | None = None
 
     class Config:
         from_attributes = True
@@ -117,20 +117,20 @@ class DocumentChunkResponse(BaseModel):
 class DocumentStatusResponse(BaseModel):
     document_id: UUID
     status: DocumentStatus
-    error_message: Optional[str] = None
+    error_message: str | None = None
     retry_count: int = 0
-    processing_started_at: Optional[datetime] = None
-    last_error_at: Optional[datetime] = None
+    processing_started_at: datetime | None = None
+    last_error_at: datetime | None = None
 
 
 # Batch Upload Schemas
 class BatchUploadResponse(BaseModel):
-    batch_id: Optional[str] = None
+    batch_id: str | None = None
     total_files: int
     successful: int
     failed: int
-    documents: List[DocumentUploadResponse]
-    errors: List[str]
+    documents: list[DocumentUploadResponse]
+    errors: list[str]
     total_size_bytes: int
     batch_limit_exceeded: bool = False
     message: str = "Batch upload processed"
@@ -152,4 +152,4 @@ class ReprocessRequest(BaseModel):
 
     force: bool = False
     regenerate_embeddings: bool = True
-    reason: Optional[str] = None
+    reason: str | None = None

@@ -12,6 +12,7 @@ and silently falls back to localhost:6379, causing ConnectionRefused.
 This module rebuilds the URL from REDIS_PASSWORD with proper
 percent-encoding so every client gets a parseable URI.
 """
+
 import os
 from urllib.parse import quote
 

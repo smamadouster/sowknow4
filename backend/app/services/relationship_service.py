@@ -6,10 +6,11 @@ to create a connected knowledge graph.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
 from collections import defaultdict
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
+
 from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_graph import (
     Entity,
@@ -18,9 +19,9 @@ from app.models.knowledge_graph import (
     RelationType,
 )
 from app.services.entity_extraction_service import (
-    entity_extraction_service,
     ExtractedEntity,
     ExtractedRelationship,
+    entity_extraction_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,8 +66,8 @@ class RelationshipMapper:
         self.entity_service = entity_extraction_service
 
     async def infer_relationships(
-        self, document_id: str, entities: List[ExtractedEntity], db: AsyncSession
-    ) -> List[ExtractedRelationship]:
+        self, document_id: str, entities: list[ExtractedEntity], db: AsyncSession
+    ) -> list[ExtractedRelationship]:
         """
         Infer relationships between entities in a document
 
@@ -99,9 +100,7 @@ class RelationshipMapper:
                         continue  # Skip self-references
 
                     # Infer most likely relationship based on context
-                    relation = self._infer_single_relationship(
-                        source, target, relation_types
-                    )
+                    relation = self._infer_single_relationship(source, target, relation_types)
                     if relation:
                         relationships.append(relation)
 
@@ -111,15 +110,12 @@ class RelationshipMapper:
         self,
         source: ExtractedEntity,
         target: ExtractedEntity,
-        possible_types: List[RelationType],
-    ) -> Optional[ExtractedRelationship]:
+        possible_types: list[RelationType],
+    ) -> ExtractedRelationship | None:
         """Infer the most likely relationship type between two entities"""
 
         # Check for explicit relationship in source attributes
-        if (
-            "company" in source.attributes
-            and target.entity_type == EntityType.ORGANIZATION
-        ):
+        if "company" in source.attributes and target.entity_type == EntityType.ORGANIZATION:
             if source.attributes.get("company") == target.name:
                 return ExtractedRelationship(
                     source_name=source.name,
@@ -129,10 +125,7 @@ class RelationshipMapper:
                 )
 
         # Check for role-based relationships
-        if (
-            source.entity_type == EntityType.PERSON
-            and target.entity_type == EntityType.ORGANIZATION
-        ):
+        if source.entity_type == EntityType.PERSON and target.entity_type == EntityType.ORGANIZATION:
             role = source.attributes.get("role", "").lower()
             if role in ["ceo", "founder", "owner"]:
                 if role == "ceo":
@@ -165,9 +158,7 @@ class RelationshipMapper:
 
         return None
 
-    async def find_entity_connections(
-        self, entity_name: str, db: AsyncSession, max_depth: int = 2
-    ) -> Dict[str, Any]:
+    async def find_entity_connections(self, entity_name: str, db: AsyncSession, max_depth: int = 2) -> dict[str, Any]:
         """
         Find all entities connected to a given entity
 
@@ -200,12 +191,10 @@ class RelationshipMapper:
 
             # Get outgoing relationships
             relationships = (
-                await db.execute(
-                    select(EntityRelationship).where(
-                        EntityRelationship.source_id == current_entity.id
-                    )
-                )
-            ).scalars().all()
+                (await db.execute(select(EntityRelationship).where(EntityRelationship.source_id == current_entity.id)))
+                .scalars()
+                .all()
+            )
 
             for rel in relationships:
                 if str(rel.target_id) not in visited:
@@ -227,12 +216,14 @@ class RelationshipMapper:
 
                 # Also get incoming relationships
                 incoming = (
-                    await db.execute(
-                        select(EntityRelationship).where(
-                            EntityRelationship.target_id == current_entity.id
+                    (
+                        await db.execute(
+                            select(EntityRelationship).where(EntityRelationship.target_id == current_entity.id)
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
                 for rel in incoming:
                     if str(rel.source_id) not in visited:
@@ -259,9 +250,7 @@ class RelationshipMapper:
             "total_connections": len(connections),
         }
 
-    async def build_entity_clusters(
-        self, db: AsyncSession, min_cluster_size: int = 2
-    ) -> List[Dict[str, Any]]:
+    async def build_entity_clusters(self, db: AsyncSession, min_cluster_size: int = 2) -> list[dict[str, Any]]:
         """
         Find clusters of highly connected entities
 
@@ -275,33 +264,27 @@ class RelationshipMapper:
             List of entity clusters
         """
         # Get all entities with relationships
-        entities_with_rels = (
-            await db.execute(select(Entity).where(Entity.relationship_count > 0))
-        ).scalars().all()
+        entities_with_rels = (await db.execute(select(Entity).where(Entity.relationship_count > 0))).scalars().all()
 
         # Build adjacency list
         graph = defaultdict(set)
         for entity in entities_with_rels:
             # Get all related entities
             outgoing = (
-                await db.execute(
-                    select(EntityRelationship).where(
-                        EntityRelationship.source_id == entity.id
-                    )
-                )
-            ).scalars().all()
+                (await db.execute(select(EntityRelationship).where(EntityRelationship.source_id == entity.id)))
+                .scalars()
+                .all()
+            )
 
             for rel in outgoing:
                 graph[entity.name].add(rel.target_id)
 
             # Also add incoming
             incoming = (
-                await db.execute(
-                    select(EntityRelationship).where(
-                        EntityRelationship.target_id == entity.id
-                    )
-                )
-            ).scalars().all()
+                (await db.execute(select(EntityRelationship).where(EntityRelationship.target_id == entity.id)))
+                .scalars()
+                .all()
+            )
 
             for rel in incoming:
                 graph[entity.name].add(rel.source_id)
@@ -343,9 +326,7 @@ class RelationshipService:
     def __init__(self):
         self.mapper = RelationshipMapper()
 
-    async def update_entity_connections(
-        self, db: AsyncSession, entity_name: str
-    ) -> Dict[str, Any]:
+    async def update_entity_connections(self, db: AsyncSession, entity_name: str) -> dict[str, Any]:
         """
         Update and refresh entity connections
 
@@ -356,15 +337,13 @@ class RelationshipService:
         Returns:
             Updated connection graph
         """
-        connections = await self.mapper.find_entity_connections(
-            entity_name=entity_name, db=db, max_depth=2
-        )
+        connections = await self.mapper.find_entity_connections(entity_name=entity_name, db=db, max_depth=2)
 
         return connections
 
     async def get_entity_neighbors(
-        self, entity_id: str, db: AsyncSession, relation_type: Optional[RelationType] = None
-    ) -> List[Dict[str, Any]]:
+        self, entity_id: str, db: AsyncSession, relation_type: RelationType | None = None
+    ) -> list[dict[str, Any]]:
         """
         Get direct neighbors of an entity
 
@@ -410,7 +389,7 @@ class RelationshipService:
 
     async def get_shortest_path(
         self, source_entity_name: str, target_entity_name: str, db: AsyncSession
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """
         Find shortest path between two entities
 
@@ -424,15 +403,11 @@ class RelationshipService:
         """
         # Find entities
         source = (
-            await db.execute(
-                select(Entity).where(Entity.name.ilike(f"%{source_entity_name}%"))
-            )
+            await db.execute(select(Entity).where(Entity.name.ilike(f"%{source_entity_name}%")))
         ).scalar_one_or_none()
 
         target = (
-            await db.execute(
-                select(Entity).where(Entity.name.ilike(f"%{target_entity_name}%"))
-            )
+            await db.execute(select(Entity).where(Entity.name.ilike(f"%{target_entity_name}%")))
         ).scalar_one_or_none()
 
         if not source or not target:
@@ -455,12 +430,10 @@ class RelationshipService:
 
             # Get neighbors
             relationships = (
-                await db.execute(
-                    select(EntityRelationship).where(
-                        EntityRelationship.source_id == current_id
-                    )
-                )
-            ).scalars().all()
+                (await db.execute(select(EntityRelationship).where(EntityRelationship.source_id == current_id)))
+                .scalars()
+                .all()
+            )
 
             for rel in relationships:
                 target_id = str(rel.target_id)

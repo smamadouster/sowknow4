@@ -8,9 +8,10 @@ lazily on first use.
 This addresses the P0 issue: Celery worker OOM fix.
 """
 
-import pytest
+from unittest.mock import MagicMock, patch
+
 import numpy as np
-from unittest.mock import patch, MagicMock
+import pytest
 
 
 class TestEmbeddingServiceLazyLoading:
@@ -98,7 +99,7 @@ class TestEmbeddingServiceLazyLoading:
             os.path.dirname(__file__), "../../app/services/embedding_service.py"
         )
 
-        with open(service_path, "r") as f:
+        with open(service_path) as f:
             content = f.read()
 
         lines = content.split("\n")

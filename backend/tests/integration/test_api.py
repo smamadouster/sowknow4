@@ -2,11 +2,12 @@
 Integration tests for API endpoints
 Tests authentication, documents, collections, search, and RBAC enforcement
 """
+import uuid
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from unittest.mock import patch, MagicMock
-import uuid
 
 
 class TestAuthenticationEndpoints:

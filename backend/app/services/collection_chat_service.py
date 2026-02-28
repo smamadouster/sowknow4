@@ -5,17 +5,18 @@ Manages chat sessions scoped to specific collections with MiniMax 2.5
 for public documents and Ollama for confidential documents.
 """
 
+import json
 import logging
 import uuid
-import json
-from typing import List, Dict, Any, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.audit import AuditAction, AuditLog
+from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.collection import Collection, CollectionChatSession
-from app.models.chat import ChatSession, ChatMessage, MessageRole, LLMProvider
 from app.models.user import User
-from app.models.audit import AuditLog, AuditAction
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 
@@ -27,8 +28,8 @@ async def create_audit_log(
     user_id: uuid.UUID,
     action: AuditAction,
     resource_type: str,
-    resource_id: Optional[str] = None,
-    details: Optional[dict] = None,
+    resource_id: str | None = None,
+    details: dict | None = None,
 ) -> None:
     """Helper function to create audit log entries for confidential access"""
     try:
@@ -58,7 +59,7 @@ class CollectionChatService:
         collection_id: uuid.UUID,
         user: User,
         db: AsyncSession,
-        session_name: Optional[str] = None,
+        session_name: str | None = None,
     ) -> tuple[ChatSession, bool]:
         """
         Get existing chat session for collection or create new one
@@ -81,9 +82,7 @@ class CollectionChatService:
         # Check for existing session
         if collection.chat_session_id:
             session = (
-                await db.execute(
-                    select(ChatSession).where(ChatSession.id == collection.chat_session_id)
-                )
+                await db.execute(select(ChatSession).where(ChatSession.id == collection.chat_session_id))
             ).scalar_one_or_none()
             if session:
                 return session, False
@@ -123,8 +122,8 @@ class CollectionChatService:
         message: str,
         user: User,
         db: AsyncSession,
-        session_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        session_name: str | None = None,
+    ) -> dict[str, Any]:
         """
         Send message to collection-scoped chat
 
@@ -153,22 +152,24 @@ class CollectionChatService:
         from app.models.collection import CollectionItem
 
         collection_items = (
-            await db.execute(
-                select(CollectionItem)
-                .where(CollectionItem.collection_id == collection_id)
-                .order_by(CollectionItem.relevance_score.desc())
-                .limit(20)
+            (
+                await db.execute(
+                    select(CollectionItem)
+                    .where(CollectionItem.collection_id == collection_id)
+                    .order_by(CollectionItem.relevance_score.desc())
+                    .limit(20)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # Gather document context
         document_context = await self._build_document_context(collection_items, db)
 
         # Check for confidential documents
         has_confidential = any(
-            item.document.bucket.value == "confidential"
-            for item in collection_items
-            if item.document
+            item.document.bucket.value == "confidential" for item in collection_items if item.document
         )
 
         # AUDIT LOG: Log confidential document access in collection chat
@@ -241,9 +242,7 @@ class CollectionChatService:
 
         # Update collection chat stats
         result = await db.execute(
-            select(CollectionChatSession).where(
-                CollectionChatSession.collection_id == collection_id
-            )
+            select(CollectionChatSession).where(CollectionChatSession.collection_id == collection_id)
         )
         collection_chat = result.scalar_one_or_none()
         if collection_chat:
@@ -262,9 +261,7 @@ class CollectionChatService:
             "cache_hit": response_data.get("cache_hit", False),
         }
 
-    async def _build_document_context(
-        self, collection_items: List[Any], db: AsyncSession
-    ) -> List[Dict[str, Any]]:
+    async def _build_document_context(self, collection_items: list[Any], db: AsyncSession) -> list[dict[str, Any]]:
         """Build document context from collection items"""
         context = []
 
@@ -276,22 +273,17 @@ class CollectionChatService:
             from app.models.document import DocumentChunk
 
             chunks = (
-                await db.execute(
-                    select(DocumentChunk)
-                    .where(DocumentChunk.document_id == item.document_id)
-                    .limit(3)
-                )
-            ).scalars().all()  # Top 3 chunks per document
+                (await db.execute(select(DocumentChunk).where(DocumentChunk.document_id == item.document_id).limit(3)))
+                .scalars()
+                .all()
+            )  # Top 3 chunks per document
 
             doc_info = {
                 "id": str(item.document.id),
                 "filename": item.document.filename,
                 "created_at": item.document.created_at.isoformat(),
                 "relevance": item.relevance_score,
-                "chunks": [
-                    {"text": chunk.chunk_text[:500], "page": chunk.page_number}
-                    for chunk in chunks
-                ],
+                "chunks": [{"text": chunk.chunk_text[:500], "page": chunk.page_number} for chunk in chunks],
             }
             context.append(doc_info)
 
@@ -301,10 +293,10 @@ class CollectionChatService:
         self,
         message: str,
         collection: Collection,
-        document_context: List[Dict[str, Any]],
+        document_context: list[dict[str, Any]],
         session: ChatSession,
         db: AsyncSession,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Chat with MiniMax for public collections"""
 
         # Build system prompt with collection context
@@ -324,21 +316,23 @@ When answering:
         # Build document context text
         context_parts = []
         for doc in document_context:
-            chunk_text = chr(10).join(
-                [f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]]
-            )
+            chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
             context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
         context_text = "\n\n".join(context_parts)
 
         # Get conversation history
         history = (
-            await db.execute(
-                select(ChatMessage)
-                .where(ChatMessage.session_id == session.id)
-                .order_by(ChatMessage.created_at)
-                .limit(10)
+            (
+                await db.execute(
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == session.id)
+                    .order_by(ChatMessage.created_at)
+                    .limit(10)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -388,10 +382,10 @@ When answering:
         self,
         message: str,
         collection: Collection,
-        document_context: List[Dict[str, Any]],
+        document_context: list[dict[str, Any]],
         session: ChatSession,
         db: AsyncSession,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Chat with Ollama for confidential collections"""
 
         # Build prompt
@@ -415,10 +409,7 @@ Answer based on the available documents. If you don't have enough information, s
                 temperature=0.7,
             )
 
-            sources = [
-                {"document_id": doc["id"], "filename": doc["filename"]}
-                for doc in document_context[:5]
-            ]
+            sources = [{"document_id": doc["id"], "filename": doc["filename"]} for doc in document_context[:5]]
 
             return {
                 "response": response_text,

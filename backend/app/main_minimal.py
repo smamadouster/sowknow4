@@ -2,29 +2,29 @@
 SOWKNOW API - Minimal Working Version
 """
 
-from fastapi import FastAPI, Response
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-import time
-import os
-from contextlib import asynccontextmanager
 import logging
+import os
+import time
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from dotenv import load_dotenv
+from fastapi import FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 # Load environment variables
 load_dotenv()
 
 # Import monitoring services
+from app.services.cache_monitor import cache_monitor
 from app.services.monitoring import (
+    SystemMonitor,
+    get_alert_manager,
     get_cost_tracker,
     get_queue_monitor,
-    get_alert_manager,
     setup_default_alerts,
-    SystemMonitor,
 )
-from app.services.cache_monitor import cache_monitor
 from app.services.prometheus_metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -87,9 +87,7 @@ if APP_ENV == "production":
             "Example: ALLOWED_ORIGINS=https://sowknow.gollamtech.com,https://www.sowknow.gollamtech.com"
         )
     # Split and strip whitespace, filter empty strings
-    ALLOWED_ORIGINS = [
-        origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()
-    ]
+    ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()]
 
     # Security check: reject wildcards in production
     if "*" in ALLOWED_ORIGINS:
@@ -118,9 +116,7 @@ if APP_ENV == "production":
             "SECURITY ERROR: ALLOWED_HOSTS environment variable is required in production. "
             "Example: ALLOWED_HOSTS=sowknow.gollamtech.com,www.sowknow.gollamtech.com"
         )
-    ALLOWED_HOSTS = [
-        host.strip() for host in _allowed_hosts_str.split(",") if host.strip()
-    ]
+    ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts_str.split(",") if host.strip()]
 else:
     # Development: Allow any host for local testing
     ALLOWED_HOSTS = ["*"]
@@ -150,10 +146,18 @@ app.add_middleware(
 )
 
 # Include auth router (keep it simple for now)
-from app.api import auth
-from app.api import admin
-from app.api import search, documents, collections, smart_folders
-from app.api import knowledge_graph, graph_rag, multi_agent, chat
+from app.api import (
+    admin,
+    auth,
+    chat,
+    collections,
+    documents,
+    graph_rag,
+    knowledge_graph,
+    multi_agent,
+    search,
+    smart_folders,
+)
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
@@ -194,9 +198,10 @@ async def health():
     Basic health check endpoint.
     Returns minimal status for container health checks.
     """
-    from sqlalchemy import text
-    import redis
     import httpx
+    import redis
+    from sqlalchemy import text
+
     from app.database import engine
 
     db_status = "disconnected"
@@ -212,6 +217,7 @@ async def health():
 
     try:
         from app.core.redis_url import safe_redis_url
+
         r = redis.from_url(safe_redis_url())
         r.ping()
         redis_status = "connected"
@@ -303,9 +309,7 @@ async def health_detailed():
 
     # Check cache hit rate
     cache_hit_rate = cache_monitor.get_hit_rate(days=1)
-    if (
-        cache_hit_rate < 0.5 and cache_hit_rate > 0
-    ):  # Only alert if there's some traffic
+    if cache_hit_rate < 0.5 and cache_hit_rate > 0:  # Only alert if there's some traffic
         issues.append(f"Low cache hit rate: {cache_hit_rate:.1%}")
 
     # Get active alerts
@@ -335,9 +339,7 @@ async def health_detailed():
                     "hit_rate_24h": round(cache_hit_rate, 4),
                     "tokens_saved_24h": cache_monitor.get_total_tokens_saved(days=1),
                 },
-                "timestamp": datetime.now().isoformat()
-                if "datetime" in dir()
-                else None,
+                "timestamp": datetime.now().isoformat() if "datetime" in dir() else None,
             },
         },
         "monitoring": {
@@ -403,10 +405,7 @@ async def get_alerts():
     alert_manager = get_alert_manager()
     return {
         "active_alerts": alert_manager.get_active_alerts(),
-        "configured_alerts": [
-            {"name": name, **config.__dict__}
-            for name, config in alert_manager._alerts.items()
-        ],
+        "configured_alerts": [{"name": name, **config.__dict__} for name, config in alert_manager._alerts.items()],
     }
 
 
@@ -426,7 +425,7 @@ async def prometheus_metrics():
         disk_stats = system_monitor.get_disk_usage()
 
         # Update memory metrics
-        for container_name, container_data in mem_stats.get("containers", {}).items():
+        for _container_name, _container_data in mem_stats.get("containers", {}).items():
             pass  # Would need to parse docker stats output
 
         # Update disk metrics
@@ -438,9 +437,7 @@ async def prometheus_metrics():
         # Update queue metrics
         queue_monitor = get_queue_monitor()
         queue_depth = queue_monitor.get_queue_depth()
-        metrics.gauge("sowknow_celery_queue_depth").set(
-            queue_depth, {"queue_name": "celery"}
-        )
+        metrics.gauge("sowknow_celery_queue_depth").set(queue_depth, {"queue_name": "celery"})
 
     except Exception as e:
         logger.warning(f"Failed to update system metrics: {e}")
@@ -509,4 +506,4 @@ async def api_status():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # nosec B104

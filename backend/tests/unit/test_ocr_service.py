@@ -10,9 +10,10 @@ Tests cover:
 - Audit logging of engine used
 """
 
-import pytest
 import io
 from unittest.mock import patch
+
+import pytest
 from PIL import Image
 
 
@@ -41,7 +42,7 @@ class TestOCRServiceModeConfigs:
 
     def test_mode_configs_exist(self):
         """Verify all mode configurations exist"""
-        from app.services.ocr_service import OCRService, OCRMode
+        from app.services.ocr_service import OCRMode, OCRService
 
         service = OCRService()
 
@@ -51,7 +52,7 @@ class TestOCRServiceModeConfigs:
 
     def test_base_mode_config(self):
         """Verify Base mode configuration"""
-        from app.services.ocr_service import OCRService, OCRMode
+        from app.services.ocr_service import OCRMode, OCRService
 
         service = OCRService()
         config = service.MODE_CONFIGS[OCRMode.BASE]
@@ -62,7 +63,7 @@ class TestOCRServiceModeConfigs:
 
     def test_large_mode_config(self):
         """Verify Large mode configuration"""
-        from app.services.ocr_service import OCRService, OCRMode
+        from app.services.ocr_service import OCRMode, OCRService
 
         service = OCRService()
         config = service.MODE_CONFIGS[OCRMode.LARGE]
@@ -73,7 +74,7 @@ class TestOCRServiceModeConfigs:
 
     def test_gundam_mode_config(self):
         """Verify Gundam mode configuration"""
-        from app.services.ocr_service import OCRService, OCRMode
+        from app.services.ocr_service import OCRMode, OCRService
 
         service = OCRService()
         config = service.MODE_CONFIGS[OCRMode.GUNDAM]
@@ -507,7 +508,7 @@ class TestOCRServiceIntegration:
 
     def test_ocr_service_singleton(self):
         """Test that ocr_service singleton exists"""
-        from app.services.ocr_service import ocr_service, OCRService
+        from app.services.ocr_service import OCRService, ocr_service
 
         assert ocr_service is not None
         assert isinstance(ocr_service, OCRService)

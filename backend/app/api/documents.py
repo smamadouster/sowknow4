@@ -2,56 +2,59 @@
 Document API endpoints for upload, list, get, update, and delete operations
 """
 
-import os
 import json
 import logging
+import mimetypes
+import os
+import uuid
+from datetime import datetime
+from typing import Any
+
 from fastapi import (
-    status,
     APIRouter,
     Depends,
-    HTTPException,
-    UploadFile,
     File,
     Form,
-    Query,
     Header,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
 )
+from fastapi.responses import Response
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import Optional, List
-import uuid
-import mimetypes
-from datetime import datetime
 
 try:
     import magic as _magic
+
     _magic_available = True
 except ImportError:
     _magic_available = False
 
 logger = logging.getLogger(__name__)
 
+from app.api.deps import get_current_user, require_admin_only
 from app.database import get_db
-from app.models.user import User, UserRole
+from app.models.audit import AuditAction, AuditLog
 from app.models.document import (
     Document,
     DocumentBucket,
-    DocumentStatus,
     DocumentLanguage,
+    DocumentStatus,
     DocumentTag,
 )
-from app.models.audit import AuditLog, AuditAction
+from app.models.user import User, UserRole
 from app.schemas.document import (
-    DocumentResponse,
-    DocumentListResponse,
-    DocumentUploadResponse,
-    DocumentUpdate,
     BatchUploadResponse,
+    DocumentListResponse,
+    DocumentResponse,
     DocumentStatusResponse,
+    DocumentUpdate,
+    DocumentUploadResponse,
 )
-from app.services.storage_service import storage_service
 from app.services.deduplication_service import deduplication_service
-from app.api.deps import get_current_user, require_admin_only
+from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -63,11 +66,11 @@ async def create_audit_log(
     user_id: uuid.UUID,
     action: AuditAction,
     resource_type: str,
-    resource_id: Optional[str] = None,
-    details: Optional[dict] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None,
-):
+    resource_id: str | None = None,
+    details: dict | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
     """Helper function to create audit log entries for document access"""
     try:
         audit_entry = AuditLog(
@@ -179,12 +182,12 @@ def validate_magic_bytes(filename: str, content: bytes) -> bool:
 async def upload_document(
     file: UploadFile = File(...),
     bucket: str = Form("public"),
-    title: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None),
-    x_bot_api_key: Optional[str] = Header(None, alias="X-Bot-Api-Key"),
+    title: str | None = Form(None),
+    tags: str | None = Form(None),
+    x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> DocumentUploadResponse:
     """
     Upload a document to the specified bucket
 
@@ -200,12 +203,8 @@ async def upload_document(
     - Returns 403 Forbidden for unauthorized confidential upload attempts
     """
     # PRIORITY: Check user role FIRST (admin/superuser have full access)
-    logger.info(
-        f"Upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}"
-    )
-    logger.info(
-        f"x_bot_api_key present: {bool(x_bot_api_key)}, BOT_API_KEY configured: {bool(BOT_API_KEY)}"
-    )
+    logger.info(f"Upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}")
+    logger.info(f"x_bot_api_key present: {bool(x_bot_api_key)}, BOT_API_KEY configured: {bool(BOT_API_KEY)}")
 
     # Validate bot API key if provided (used in conjunction with role checks)
     is_bot = False
@@ -232,14 +231,10 @@ async def upload_document(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: Admin or Super User role required for confidential bucket uploads",
             )
-        logger.info(
-            f"Confidential upload authorized for {current_user.role.value}: {current_user.email}"
-        )
+        logger.info(f"Confidential upload authorized for {current_user.role.value}: {current_user.email}")
     else:
         # Public bucket: any valid user can upload (with or without bot API key)
-        logger.info(
-            f"Public upload authorized for {current_user.role.value}: {current_user.email}"
-        )
+        logger.info(f"Public upload authorized for {current_user.role.value}: {current_user.email}")
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(
@@ -269,9 +264,7 @@ async def upload_document(
 
     # Validate magic bytes — reject files where content doesn't match declared extension
     if not validate_magic_bytes(file.filename, content):
-        logger.warning(
-            f"SECURITY: Magic byte mismatch for {file.filename} uploaded by {current_user.email}"
-        )
+        logger.warning(f"SECURITY: Magic byte mismatch for {file.filename} uploaded by {current_user.email}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match its extension. Upload rejected.",
@@ -282,14 +275,12 @@ async def upload_document(
     logger.info(f"Calculated hash for {file.filename}: {file_hash[:16]}...")
 
     # Step 2: Check for duplicates
-    duplicate_doc = deduplication_service.is_duplicate(
+    duplicate_doc = await deduplication_service.is_duplicate(
         file_hash=file_hash, filename=file.filename, size=len(content), db=db
     )
 
     if duplicate_doc:
-        logger.info(
-            f"Duplicate detected: {file.filename} matches document {duplicate_doc.id}"
-        )
+        logger.info(f"Duplicate detected: {file.filename} matches document {duplicate_doc.id}")
         return DocumentUploadResponse(
             document_id=duplicate_doc.id,
             filename=duplicate_doc.filename,
@@ -298,9 +289,7 @@ async def upload_document(
         )
 
     # Step 3: Save file (only if not duplicate)
-    save_result = storage_service.save_file(
-        file_content=content, original_filename=file.filename, bucket=bucket
-    )
+    save_result = storage_service.save_file(file_content=content, original_filename=file.filename, bucket=bucket)
 
     # Detect language from metadata or default
     language = DocumentLanguage.UNKNOWN
@@ -338,7 +327,7 @@ async def upload_document(
             logger.info(f"Added {len(tag_names)} user tag(s) to document {document.id}: {tag_names}")
 
     # Step 4: Register hash for future deduplication checks
-    deduplication_service.register_upload(
+    await deduplication_service.register_upload(
         file_hash=file_hash,
         filename=file.filename,
         size=len(content),
@@ -400,8 +389,8 @@ async def process_single_file_upload(
     bucket: str,
     current_user: User,
     db: AsyncSession,
-    batch_id: Optional[str] = None,
-) -> tuple[Optional[DocumentUploadResponse], Optional[str]]:
+    batch_id: str | None = None,
+) -> tuple[DocumentUploadResponse | None, str | None]:
     """Helper function to process a single file upload within a batch."""
     try:
         if not file.filename:
@@ -420,14 +409,12 @@ async def process_single_file_upload(
             )
 
         if not validate_magic_bytes(file.filename, content):
-            logger.warning(
-                f"SECURITY: Magic byte mismatch for {file.filename} in batch upload by {current_user.email}"
-            )
+            logger.warning(f"SECURITY: Magic byte mismatch for {file.filename} in batch upload by {current_user.email}")
             return None, f"File content does not match its extension: {file.filename}"
 
         file_hash = deduplication_service.calculate_hash(content)
 
-        duplicate_doc = deduplication_service.is_duplicate(
+        duplicate_doc = await deduplication_service.is_duplicate(
             file_hash=file_hash, filename=file.filename, size=len(content), db=db
         )
 
@@ -439,9 +426,7 @@ async def process_single_file_upload(
                 message="Document already exists (duplicate detected)",
             ), None
 
-        save_result = storage_service.save_file(
-            file_content=content, original_filename=file.filename, bucket=bucket
-        )
+        save_result = storage_service.save_file(file_content=content, original_filename=file.filename, bucket=bucket)
 
         language = DocumentLanguage.UNKNOWN
 
@@ -462,7 +447,7 @@ async def process_single_file_upload(
         await db.commit()
         await db.refresh(document)
 
-        deduplication_service.register_upload(
+        await deduplication_service.register_upload(
             file_hash=file_hash,
             filename=file.filename,
             size=len(content),
@@ -491,9 +476,7 @@ async def process_single_file_upload(
             document.document_metadata = document.document_metadata or {}
             document.document_metadata["celery_task_id"] = task.id
             await db.commit()
-            logger.info(
-                f"Document {document.id} queued successfully with task {task.id}"
-            )
+            logger.info(f"Document {document.id} queued successfully with task {task.id}")
         except Exception as e:
             logger.error(f"Failed to queue document {document.id} for processing: {e}")
             document.status = DocumentStatus.ERROR
@@ -519,12 +502,12 @@ MAX_FILES_PER_BATCH = 20
 
 @router.post("/upload-batch", response_model=BatchUploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_batch_documents(
-    files: List[UploadFile] = File(...),
+    files: list[UploadFile] = File(...),
     bucket: str = Form("public"),
-    x_bot_api_key: Optional[str] = Header(None, alias="X-Bot-Api-Key"),
+    x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> BatchUploadResponse:
     """
     Upload multiple documents in a single request (batch upload)
 
@@ -536,9 +519,7 @@ async def upload_batch_documents(
     - Individual file size limit remains 100MB per file
     - Role-based access control enforced for confidential bucket
     """
-    logger.info(
-        f"Batch upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}"
-    )
+    logger.info(f"Batch upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}")
 
     is_bot = False
     if x_bot_api_key:
@@ -560,9 +541,7 @@ async def upload_batch_documents(
                 detail="Forbidden: Admin or Super User role required for confidential bucket uploads",
             )
     else:
-        logger.info(
-            f"Public batch upload authorized for {current_user.role.value}: {current_user.email}"
-        )
+        logger.info(f"Public batch upload authorized for {current_user.role.value}: {current_user.email}")
 
     if bucket not in ["public", "confidential"]:
         raise HTTPException(
@@ -645,7 +624,7 @@ async def get_batch_status(
     batch_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, Any]:
     """
     Get processing status for all documents in a batch upload.
 
@@ -691,12 +670,12 @@ async def get_batch_status(
 async def list_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    bucket: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+    bucket: str | None = Query(None),
+    status: str | None = Query(None),
+    search: str | None = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> DocumentListResponse:
     """
     List documents with pagination and filtering
 
@@ -767,7 +746,7 @@ async def get_document(
     document_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> DocumentResponse:
     """
     Get a specific document by ID
 
@@ -806,7 +785,7 @@ async def get_document_status(
     document_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> DocumentStatusResponse:
     """
     Get the processing status of a specific document.
 
@@ -829,12 +808,10 @@ async def get_document_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Pull processing details from ProcessingQueue if available
-    pq_result = await db.execute(
-        select(ProcessingQueue).where(ProcessingQueue.document_id == document_id)
-    )
+    pq_result = await db.execute(select(ProcessingQueue).where(ProcessingQueue.document_id == document_id))
     processing_task = pq_result.scalar_one_or_none()
 
-    error_message: Optional[str] = None
+    error_message: str | None = None
     retry_count: int = 0
     processing_started_at = None
 
@@ -870,15 +847,13 @@ async def download_document(
     document_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> Response:
     """
     Download a document file
 
     SECURITY: Returns 404 (not 403) for confidential documents accessed by
     regular users to prevent document enumeration.
     """
-    from fastapi.responses import Response
-
     db_result = await db.execute(select(Document).where(Document.id == document_id))
     document = db_result.scalar_one_or_none()
 
@@ -904,9 +879,7 @@ async def download_document(
         )
 
     # Get file content
-    file_content = storage_service.get_file(
-        filename=document.filename, bucket=document.bucket.value
-    )
+    file_content = storage_service.get_file(filename=document.filename, bucket=document.bucket.value)
 
     if not file_content:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
@@ -914,9 +887,7 @@ async def download_document(
     return Response(
         content=file_content,
         media_type=document.mime_type,
-        headers={
-            "Content-Disposition": f'attachment; filename="{document.original_filename}"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{document.original_filename}"'},
     )
 
 
@@ -926,7 +897,7 @@ async def update_document(
     updates: DocumentUpdate,
     current_user: User = Depends(require_admin_only),
     db: AsyncSession = Depends(get_db),
-):
+) -> DocumentResponse:
     """
     Update document metadata (admin only)
 
@@ -957,7 +928,7 @@ async def delete_document(
     document_id: uuid.UUID,
     current_user: User = Depends(require_admin_only),
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, str]:
     """
     Delete a document (admin only)
 
@@ -971,9 +942,7 @@ async def delete_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Delete file from storage
-    storage_service.delete_file(
-        filename=document.filename, bucket=document.bucket.value
-    )
+    storage_service.delete_file(filename=document.filename, bucket=document.bucket.value)
 
     # Delete database record (cascade will handle tags, chunks, etc.)
     await db.delete(document)
@@ -988,7 +957,7 @@ async def get_similar_documents(
     limit: int = Query(default=6, ge=1, le=20),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, Any]:
     """
     Return documents similar to the given document, ranked by embedding cosine similarity.
 
@@ -1027,15 +996,16 @@ async def get_similar_documents(
 # Document Reprocessing
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{document_id}/reprocess")
 async def reprocess_document(
     document_id: uuid.UUID,
     force: bool = False,
     regenerate_embeddings: bool = True,
-    reason: Optional[str] = None,
+    reason: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, Any]:
     """
     Reprocess a document (e.g., after fixing errors or upgrading models).
 

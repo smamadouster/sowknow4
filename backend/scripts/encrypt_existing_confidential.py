@@ -20,7 +20,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -84,7 +84,7 @@ def main() -> None:
             logger.info(
                 f"Encrypted: {filepath.name} -> {encrypted_path.name} "
                 f"({len(plaintext)} -> {len(ciphertext)} bytes)"
-                f" [{datetime.now(timezone.utc).isoformat()}]"
+                f" [{datetime.now(UTC).isoformat()}]"
             )
             encrypted += 1
         except Exception as exc:

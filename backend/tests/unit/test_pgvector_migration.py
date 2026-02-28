@@ -8,11 +8,11 @@ These tests verify:
 4. Backward compatibility with JSONB embeddings
 """
 
-import pytest
-import numpy as np
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import numpy as np
+import pytest
 
 # pgvector's Vector type is only available when pgvector is installed
 try:
@@ -22,7 +22,7 @@ except ImportError:
     Vector = None
     PGVECTOR_AVAILABLE = False
 
-from app.models.document import Document, DocumentChunk, DocumentBucket, DocumentStatus
+from app.models.document import Document, DocumentBucket, DocumentChunk, DocumentStatus
 from app.services.embedding_service import EmbeddingService
 
 
@@ -132,10 +132,10 @@ class TestSearchService:
 
     def test_search_uses_cosine_distance_operator(self):
         """Verify search uses pgvector <=> cosine distance operator"""
-        from app.services.search_service import HybridSearchService
-
         # Read the search service source to verify it uses <=>
         import inspect
+
+        from app.services.search_service import HybridSearchService
 
         source = inspect.getsource(HybridSearchService.semantic_search)
 
@@ -145,9 +145,9 @@ class TestSearchService:
 
     def test_search_filters_null_embeddings(self):
         """Verify search filters out chunks without embeddings"""
-        from app.services.search_service import HybridSearchService
-
         import inspect
+
+        from app.services.search_service import HybridSearchService
 
         source = inspect.getsource(HybridSearchService.semantic_search)
 

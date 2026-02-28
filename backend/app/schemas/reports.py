@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import Optional
 
 
 class GenerateReportRequest(BaseModel):
@@ -8,7 +7,7 @@ class GenerateReportRequest(BaseModel):
     report_type: str = "system_summary"
     format: str = "pdf"
     filters: dict = {}
-    output_filename: Optional[str] = None
+    output_filename: str | None = None
 
 
 class GenerateReportResponse(BaseModel):

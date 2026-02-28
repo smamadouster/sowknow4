@@ -21,6 +21,12 @@ bcrypt==4.1.2
 # HTTP Client
 httpx==0.25.2
 
+# Secret Management
+hvac>=2.1.0
+
+# Message Broker
+nats-py>=2.7.0
+
 # Celery & Redis
 celery[redis]==5.3.4
 redis==4.6.0

@@ -5,15 +5,15 @@ Provides JSON-formatted structured logging for log aggregation systems
 like ELK Stack, Loki, or simple file-based collection.
 """
 
-import logging
 import json
-import sys
+import logging
 import os
-from datetime import datetime
-from typing import Any, Dict, Optional
-from contextlib import contextmanager
+import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 class StructuredFormatter(logging.Formatter):
@@ -23,9 +23,7 @@ class StructuredFormatter(logging.Formatter):
     Format compatible with ELK, Loki, and other log aggregators.
     """
 
-    def __init__(
-        self, service_name: str = "sowknow-api", environment: str = "development"
-    ):
+    def __init__(self, service_name: str = "sowknow-api", environment: str = "development"):
         super().__init__()
         self.service_name = service_name
         self.environment = environment
@@ -55,9 +53,7 @@ class StructuredFormatter(logging.Formatter):
             log_data["exception"] = {
                 "type": record.exc_info[0].__name__ if record.exc_info[0] else None,
                 "message": str(record.exc_info[1]) if record.exc_info[1] else None,
-                "traceback": (
-                    self.formatException(record.exc_info) if record.exc_info else None
-                ),
+                "traceback": (self.formatException(record.exc_info) if record.exc_info else None),
             }
 
         # Add stack trace if available
@@ -106,7 +102,6 @@ class StructuredFormatter(logging.Formatter):
                 "exc_info",
                 "exc_text",
                 "stack_info",
-                "getMessage",
             }:
                 log_data[key] = value
 
@@ -130,7 +125,7 @@ class RequestContext:
         cls._context.update(kwargs)
 
     @classmethod
-    def get(cls) -> Dict[str, Any]:
+    def get(cls) -> dict[str, Any]:
         """Get current context."""
         return cls._context.copy()
 
@@ -169,9 +164,9 @@ class RequestContextFilter(logging.Filter):
 
 def setup_structured_logging(
     service_name: str = "sowknow-api",
-    environment: Optional[str] = None,
+    environment: str | None = None,
     level: str = "INFO",
-    log_file: Optional[str] = None,
+    log_file: str | None = None,
     enable_console: bool = True,
 ) -> logging.Logger:
     """
@@ -268,8 +263,8 @@ class RequestLogger:
         self,
         path: str,
         method: str,
-        user_id: Optional[str] = None,
-        request_id: Optional[str] = None,
+        user_id: str | None = None,
+        request_id: str | None = None,
     ) -> Iterator[None]:
         """
         Log HTTP request with timing.
@@ -331,7 +326,7 @@ class QueryLogger:
     def log_query(
         self,
         query_type: str,
-        table: Optional[str] = None,
+        table: str | None = None,
     ) -> Iterator[None]:
         """
         Log database query with timing.

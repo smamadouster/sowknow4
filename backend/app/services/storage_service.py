@@ -3,12 +3,11 @@ File storage service for managing document buckets with at-rest encryption for c
 """
 
 import base64
+import logging
 import os
 import uuid
-import logging
-from pathlib import Path
-from typing import Optional
 from datetime import datetime
+from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -28,7 +27,7 @@ def _base64_encode(data: bytes) -> bytes:
     return base64.urlsafe_b64encode(data.ljust(32, b"\0")[:32])
 
 
-def get_encryption_key() -> Optional[bytes]:
+def get_encryption_key() -> bytes | None:
     """
     Get encryption key from environment variable or derive from password.
 
@@ -42,15 +41,13 @@ def get_encryption_key() -> Optional[bytes]:
     """
     key = os.getenv("STORAGE_ENCRYPTION_KEY")
     if not key:
-        logger.warning(
-            "STORAGE_ENCRYPTION_KEY not set - confidential encryption disabled"
-        )
+        logger.warning("STORAGE_ENCRYPTION_KEY not set - confidential encryption disabled")
         return None
 
     try:
         # Validate it's a proper Fernet key
         Fernet(key)
-        return key
+        return key.encode() if isinstance(key, str) else key
     except Exception:
         # Try to treat as password and derive key
         try:
@@ -75,20 +72,20 @@ class StorageService:
     The encryption key is configured via STORAGE_ENCRYPTION_KEY environment variable.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Base storage paths
         self.base_path = Path("/data")
         self.public_path = self.base_path / "public"
         self.confidential_path = self.base_path / "confidential"
 
         # Initialize encryption
-        self._fernet: Optional[Fernet] = None
+        self._fernet: Fernet | None = None
         self._init_encryption()
 
         # Create directories if they don't exist
         self._ensure_directories()
 
-    def _init_encryption(self):
+    def _init_encryption(self) -> None:
         """Initialize Fernet encryption from environment variable"""
         key = get_encryption_key()
         if key:
@@ -99,9 +96,7 @@ class StorageService:
                 logger.error(f"Failed to initialize Fernet: {e}")
                 self._fernet = None
         else:
-            logger.warning(
-                "Encryption disabled - STORAGE_ENCRYPTION_KEY not configured"
-            )
+            logger.warning("Encryption disabled - STORAGE_ENCRYPTION_KEY not configured")
             self._fernet = None
 
     @property
@@ -109,7 +104,7 @@ class StorageService:
         """Check if encryption is enabled"""
         return self._fernet is not None
 
-    def _ensure_directories(self):
+    def _ensure_directories(self) -> None:
         """Ensure storage directories exist"""
         self.public_path.mkdir(parents=True, exist_ok=True)
         self.confidential_path.mkdir(parents=True, exist_ok=True)
@@ -210,9 +205,7 @@ class StorageService:
         bucket_path = self.get_bucket_path(bucket)
 
         # Determine if we should encrypt
-        encrypt = (
-            bucket == "confidential" and self._fernet is not None
-        ) or force_encrypt
+        encrypt = (bucket == "confidential" and self._fernet is not None) or force_encrypt
 
         if encrypt:
             if not self._fernet:
@@ -264,9 +257,7 @@ class StorageService:
             logger.error(f"Error deleting file {filename}: {str(e)}")
             return False
 
-    def get_file(
-        self, filename: str, bucket: str = "public", decrypt: bool = None
-    ) -> Optional[bytes]:
+    def get_file(self, filename: str, bucket: str = "public", decrypt: bool | None = None) -> bytes | None:
         """
         Get file content from the specified bucket
 
@@ -310,9 +301,7 @@ class StorageService:
             logger.error(f"Error reading file {filename}: {str(e)}")
             return None
 
-    def get_file_plaintext(
-        self, filename: str, bucket: str = "public"
-    ) -> Optional[bytes]:
+    def get_file_plaintext(self, filename: str, bucket: str = "public") -> bytes | None:
         """Get file content without decryption (for migration/testing)
 
         Args:
@@ -459,7 +448,7 @@ class StorageService:
         file_path = bucket_path / filename
         return file_path.exists()
 
-    def get_file_info(self, filename: str, bucket: str = "public") -> Optional[dict]:
+    def get_file_info(self, filename: str, bucket: str = "public") -> dict | None:
         """Get file information"""
         try:
             bucket_path = self.get_bucket_path(bucket)

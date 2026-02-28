@@ -1,12 +1,13 @@
 """
 E2E tests for critical user paths
 """
-import pytest
-from testcontainers.postgres import PostgresContainer
-from testcontainers.redis import RedisContainer
 import time
+
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 
 @pytest.fixture(scope="session")
@@ -27,7 +28,7 @@ def redis_container():
     redis.stop()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def test_db(postgres_container):
     """Create test database session"""
     engine = create_engine(postgres_container.get_connection_url())

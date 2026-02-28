@@ -10,11 +10,12 @@ API: Moonshot AI OpenAI-compatible endpoint
 Auth: KIMI_API_KEY environment variable
 """
 
-import os
-import logging
 import json
-from typing import AsyncGenerator, List, Dict, Any, Optional
+import logging
+import os
+from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -66,12 +67,12 @@ class KimiService(BaseLLMService):
 
     def _truncate_messages(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         max_tokens: int = MAX_INPUT_TOKENS,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Truncate message list to stay within the context window."""
         total_tokens = 0
-        truncated: List[Dict[str, str]] = []
+        truncated: list[dict[str, str]] = []
 
         for msg in messages:
             content = msg.get("content", "")
@@ -93,7 +94,7 @@ class KimiService(BaseLLMService):
 
         return truncated
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -109,12 +110,12 @@ class KimiService(BaseLLMService):
     )
     async def chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        cache_key: Optional[str] = None,
-        user_id: Optional[str] = None,
+        cache_key: str | None = None,
+        user_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """Generate a chat completion via the Kimi (Moonshot AI) API.
 
@@ -141,17 +142,10 @@ class KimiService(BaseLLMService):
         truncated_messages = self._truncate_messages(messages)
 
         # Log truncation if it occurred
-        original_count = sum(
-            self._estimate_tokens(m.get("content", "")) for m in messages
-        )
-        truncated_count = sum(
-            self._estimate_tokens(m.get("content", "")) for m in truncated_messages
-        )
+        original_count = sum(self._estimate_tokens(m.get("content", "")) for m in messages)
+        truncated_count = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
         if original_count > truncated_count:
-            logger.warning(
-                f"Kimi: input truncated from ~{original_count} to "
-                f"~{truncated_count} tokens"
-            )
+            logger.warning(f"Kimi: input truncated from ~{original_count} to ~{truncated_count} tokens")
 
         payload = {
             "model": self.model,
@@ -197,9 +191,7 @@ class KimiService(BaseLLMService):
                     result = response.json()
 
                     if "choices" in result and len(result["choices"]) > 0:
-                        content = (
-                            result["choices"][0].get("message", {}).get("content", "")
-                        )
+                        content = result["choices"][0].get("message", {}).get("content", "")
                         usage = result.get("usage", {})
 
                         yield content
@@ -233,12 +225,12 @@ class KimiService(BaseLLMService):
     # Utility methods
     # ------------------------------------------------------------------
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check Kimi service reachability.
 
         Returns a status dict compatible with the admin health endpoint.
         """
-        status: Dict[str, Any] = {
+        status: dict[str, Any] = {
             "service": "kimi",
             "status": "healthy",
             "model": self.model,
@@ -254,9 +246,7 @@ class KimiService(BaseLLMService):
         try:
             test_messages = [{"role": "user", "content": "ping"}]
             response_text = ""
-            async for chunk in self.chat_completion(
-                test_messages, stream=False, max_tokens=5
-            ):
+            async for chunk in self.chat_completion(test_messages, stream=False, max_tokens=5):
                 if not chunk.startswith("__USAGE__"):
                     response_text += chunk
 
@@ -274,7 +264,7 @@ class KimiService(BaseLLMService):
 
         return status
 
-    async def get_usage_stats(self) -> Dict[str, Any]:
+    async def get_usage_stats(self) -> dict[str, Any]:
         """Return service configuration metadata."""
         return {
             "service": "kimi",

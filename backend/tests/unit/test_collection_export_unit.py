@@ -9,10 +9,9 @@ import io
 from datetime import datetime
 from uuid import uuid4
 
-from app.models.user import User, UserRole
+from app.models.collection import Collection, CollectionItem, CollectionType, CollectionVisibility
 from app.models.document import Document, DocumentBucket, DocumentStatus
-from app.models.collection import Collection, CollectionItem, CollectionVisibility, CollectionType
-
+from app.models.user import User, UserRole
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,18 +93,18 @@ class TestPdfExportGeneration:
         Returns the raw bytes from the BytesIO buffer.
         This mirrors the endpoint code to test it without HTTP.
         """
+        from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import (
-            SimpleDocTemplate,
+            HRFlowable,
             Paragraph,
+            SimpleDocTemplate,
             Spacer,
             Table,
             TableStyle,
-            HRFlowable,
         )
-        from reportlab.lib import colors
 
         generated_at = datetime(2026, 2, 24, 12, 0, 0)
 

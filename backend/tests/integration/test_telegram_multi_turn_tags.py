@@ -6,11 +6,11 @@ Integration tests for Telegram bot features:
 Tests use mock Telegram Update objects so no live Telegram connection is needed.
 """
 
-import pytest
 import re
+from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any, List, Optional
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Minimal mock helpers for python-telegram-bot objects
@@ -75,7 +75,7 @@ FAKE_SESSION_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 FAKE_CHAT_SESSION_ID = "11111111-2222-3333-4444-555555555555"
 
 
-def _redis_session(chat_session_id: Optional[str] = None) -> Dict[str, Any]:
+def _redis_session(chat_session_id: str | None = None) -> dict[str, Any]:
     return {
         "access_token": FAKE_TOKEN,
         "user": {"id": "user-uuid", "email": "alice@example.com"},
@@ -276,7 +276,7 @@ class TestHashtagTagParsing:
         context = _make_context()
 
         session_data = _redis_session()
-        stored_pending: Dict[str, Any] = {}
+        stored_pending: dict[str, Any] = {}
 
         async def fake_update_session(user_id, updates):
             stored_pending.update(updates)
@@ -310,7 +310,7 @@ class TestHashtagTagParsing:
         context = _make_context()
 
         session_data = _redis_session()
-        stored_pending: Dict[str, Any] = {}
+        stored_pending: dict[str, Any] = {}
 
         async def fake_update_session(user_id, updates):
             stored_pending.update(updates)
@@ -342,7 +342,7 @@ class TestHashtagTagParsing:
         context = _make_context()
 
         session_data = _redis_session()
-        stored_pending: Dict[str, Any] = {}
+        stored_pending: dict[str, Any] = {}
 
         async def fake_update_session(user_id, updates):
             stored_pending.update(updates)
@@ -385,7 +385,7 @@ class TestHashtagTagParsing:
             "tags": ["urgent", "invoice"],
         }
 
-        upload_calls: List[Dict] = []
+        upload_calls: list[dict] = []
 
         async def fake_upload(file_bytes, filename, bucket, access_token, tags=None):
             upload_calls.append({"tags": tags})
@@ -431,7 +431,7 @@ class TestHashtagTagParsing:
             "tags": [],  # empty list → should become None
         }
 
-        upload_calls: List[Dict] = []
+        upload_calls: list[dict] = []
 
         async def fake_upload(file_bytes, filename, bucket, access_token, tags=None):
             upload_calls.append({"tags": tags})
@@ -459,7 +459,7 @@ class TestHashtagTagParsing:
 class TestHashtagRegex:
     """Pure-unit tests for the hashtag parsing regex pattern."""
 
-    def _parse_tags(self, caption: str) -> List[str]:
+    def _parse_tags(self, caption: str) -> list[str]:
         return re.findall(r"#(\w+)", caption or "")
 
     def test_single_tag(self):

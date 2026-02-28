@@ -13,9 +13,9 @@ Coverage:
 """
 import json
 import os
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -53,6 +53,7 @@ class TestKimiServiceInit:
     def test_initializes_with_api_key(self):
         with patch.dict(os.environ, {"KIMI_API_KEY": "test-key-123"}):
             from importlib import reload
+
             import app.services.kimi_service as ks_module
             reload(ks_module)
             svc = ks_module.KimiService()
@@ -64,6 +65,7 @@ class TestKimiServiceInit:
         env = {k: v for k, v in os.environ.items() if k != "KIMI_API_KEY"}
         with patch.dict(os.environ, env, clear=True):
             from importlib import reload
+
             import app.services.kimi_service as ks_module
             reload(ks_module)
             svc = ks_module.KimiService()
@@ -76,6 +78,7 @@ class TestKimiServiceInit:
             "KIMI_MODEL": "moonshot-v1-8k",
         }):
             from importlib import reload
+
             import app.services.kimi_service as ks_module
             reload(ks_module)
             svc = ks_module.KimiService()
@@ -286,6 +289,7 @@ class TestRateLimitRetry:
     @pytest.mark.asyncio
     async def test_429_raises_for_tenacity_retry(self):
         import httpx
+
         from app.services.kimi_service import KimiService
 
         svc = KimiService.__new__(KimiService)
@@ -356,6 +360,7 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_api_unreachable(self):
         import httpx
+
         from app.services.kimi_service import KimiService
 
         svc = KimiService.__new__(KimiService)

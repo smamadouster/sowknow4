@@ -4,14 +4,16 @@ Request-scoped TransactionMiddleware (T11)
 Automatically commits the session on successful responses (2xx/3xx)
 and rolls back on errors (4xx/5xx) or unhandled exceptions.
 """
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import Response
 
 from app.database import AsyncSessionLocal
 
 
 class TransactionMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next) -> Response:
         async with AsyncSessionLocal() as session:
             request.state.db = session
             try:

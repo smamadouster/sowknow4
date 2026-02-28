@@ -2,11 +2,12 @@
 Integration tests for OpenRouter/MiniMax API Streaming
 Tests API connectivity, streaming, and fallback mechanisms
 """
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.openrouter_service import OpenRouterService
+import pytest
+
 from app.services.chat_service import ChatService
+from app.services.openrouter_service import OpenRouterService
 
 
 class TestOpenRouterServiceConfiguration:

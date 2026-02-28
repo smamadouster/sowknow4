@@ -1,13 +1,11 @@
 """
 Unit tests for Cache Monitor service
 """
-import pytest
 from datetime import datetime, timedelta
 
-from app.services.cache_monitor import (
-    CacheMonitor,
-    DailyCacheStats
-)
+import pytest
+
+from app.services.cache_monitor import CacheMonitor, DailyCacheStats
 
 
 @pytest.fixture

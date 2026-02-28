@@ -16,37 +16,41 @@ Token Blacklist:
 - This prevents replay attacks after token rotation
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import timedelta
-import uuid
+from __future__ import annotations
+
+import hashlib
+import logging
 import os
 import secrets
-import hashlib
-from dotenv import load_dotenv
-import redis
-import logging
+import uuid
+from datetime import timedelta
 
+import redis
+from dotenv import load_dotenv
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
 from app.database import get_db
+from app.limiter import limiter
+from app.middleware.csrf import CSRF_COOKIE_NAME, generate_csrf_token
 from app.models.user import User
-from app.schemas.user import UserCreate, UserPublic
-from app.schemas.token import LoginResponse
 from app.schemas.auth import ForgotPasswordRequest, ResendVerificationRequest, TelegramAuthRequest
+from app.schemas.token import LoginResponse
+from app.schemas.user import UserCreate, UserPublic
 from app.utils.security import (
-    verify_password,
-    get_password_hash,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    TokenExpiredError,
+    TokenInvalidError,
     create_access_token,
     create_refresh_token,
     decode_token,
-    TokenExpiredError,
-    TokenInvalidError,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    REFRESH_TOKEN_EXPIRE_DAYS,
+    get_password_hash,
+    verify_password,
 )
-from app.api.deps import get_current_user
-from app.limiter import limiter
 
 load_dotenv()
 
@@ -116,6 +120,7 @@ async def verify_telegram_user(telegram_user_id: int, bot_token: str) -> bool:
 # =============================================================================
 # Redis connection for token blacklist
 from app.core.redis_url import safe_redis_url
+
 _redis_url = safe_redis_url()
 try:
     redis_client = redis.from_url(_redis_url, decode_responses=True)
@@ -222,6 +227,19 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         samesite=SAMESITE_VALUE,  # "lax" allows normal navigation
     )
 
+    # Set CSRF double-submit cookie (non-httpOnly so JS can read it)
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=generate_csrf_token(),
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+        domain=COOKIE_DOMAIN,
+        httponly=False,  # Must be JS-readable for double-submit pattern
+        secure=SECURE_FLAG,
+        samesite="strict",  # Stricter than auth cookies — never sent cross-site
+    )
+
     logger.debug(
         f"Auth cookies set - access: {ACCESS_TOKEN_EXPIRE_MINUTES}min, "
         f"refresh: {REFRESH_TOKEN_EXPIRE_DAYS}days, "
@@ -240,9 +258,10 @@ def clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(key=COOKIE_ACCESS_TOKEN_NAME, path="/", domain=COOKIE_DOMAIN)
 
     # Clear refresh token cookie (must match path used when setting)
-    response.delete_cookie(
-        key=COOKIE_REFRESH_TOKEN_NAME, path="/api/v1/auth", domain=COOKIE_DOMAIN
-    )
+    response.delete_cookie(key=COOKIE_REFRESH_TOKEN_NAME, path="/api/v1/auth", domain=COOKIE_DOMAIN)
+
+    # Clear CSRF cookie
+    response.delete_cookie(key=CSRF_COOKIE_NAME, path="/", domain=COOKIE_DOMAIN)
 
     logger.debug("Auth cookies cleared")
 
@@ -260,7 +279,7 @@ def get_refresh_token_from_request(request: Request) -> str | None:
     return request.cookies.get(COOKIE_REFRESH_TOKEN_NAME)
 
 
-async def authenticate_user(db: AsyncSession, email: str, password: str):
+async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | bool:
     """
     Authenticate a user with email and password.
 
@@ -304,11 +323,9 @@ async def authenticate_user(db: AsyncSession, email: str, password: str):
 # =============================================================================
 
 
-@router.post(
-    "/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED
-)
+@router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
-async def register(request: Request, user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(request: Request, user_data: UserCreate, db: AsyncSession = Depends(get_db)) -> UserPublic:
     """
     Register a new user.
 
@@ -364,7 +381,7 @@ async def login(
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
-):
+) -> LoginResponse:
     """
     Login and set httpOnly cookies with tokens.
 
@@ -397,9 +414,7 @@ async def login(
         )
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
     # Create JWT tokens
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -408,9 +423,7 @@ async def login(
         expires_delta=access_token_expires,
     )
 
-    refresh_token = create_refresh_token(
-        data={"sub": user.email, "role": user.role.value, "user_id": str(user.id)}
-    )
+    refresh_token = create_refresh_token(data={"sub": user.email, "role": user.role.value, "user_id": str(user.id)})
 
     # Set httpOnly cookies with tokens
     set_auth_cookies(response, access_token, refresh_token)
@@ -431,9 +444,7 @@ async def login(
 
 @router.post("/refresh", response_model=LoginResponse)
 @limiter.limit("60/minute")
-async def refresh_token(
-    request: Request, response: Response, db: AsyncSession = Depends(get_db)
-):
+async def refresh_token(request: Request, response: Response, db: AsyncSession = Depends(get_db)) -> LoginResponse:
     """
     Refresh access token using refresh token from httpOnly cookie.
 
@@ -462,16 +473,12 @@ async def refresh_token(
     refresh_token = get_refresh_token_from_request(request)
 
     if not refresh_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required")
 
     # Check if token is blacklisted
     if is_token_blacklisted(refresh_token):
         logger.warning("Blacklisted refresh token used")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     # Decode and validate refresh token
     try:
@@ -483,9 +490,7 @@ async def refresh_token(
             detail={"message": "Refresh token expired", "code": "TOKEN_EXPIRED"},
         )
     except TokenInvalidError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     # Verify user still exists and is active
     email = payload.get("sub")
@@ -546,7 +551,7 @@ async def refresh_token(
 
 
 @router.get("/me", response_model=UserPublic)
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(current_user: User = Depends(get_current_user)) -> UserPublic:
     """
     Get current user information using token from httpOnly cookie.
 
@@ -564,7 +569,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 @router.post("/logout", response_model=LoginResponse)
 # RATE_LIMIT: 60/minute (prevent abuse but allow legitimate repeated logouts)
-async def logout(request: Request, response: Response):
+async def logout(request: Request, response: Response) -> LoginResponse:
     """
     Logout and clear authentication cookies.
 
@@ -597,13 +602,14 @@ async def logout(request: Request, response: Response):
 # FORGOT PASSWORD
 # =============================================================================
 
+
 @router.post("/forgot-password")
 @limiter.limit("5/minute")
 async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, str]:
     """
     Request a password reset link.
 
@@ -635,9 +641,7 @@ async def forgot_password(
             count = redis_client.incr(rate_key)
             if count > RATE_LIMIT:
                 ttl = redis_client.ttl(rate_key)
-                logger.warning(
-                    f"Forgot password rate limit exceeded from {client_ip}"
-                )
+                logger.warning(f"Forgot password rate limit exceeded from {client_ip}")
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail=f"Too many requests. Try again in {ttl} seconds.",
@@ -671,9 +675,7 @@ async def forgot_password(
         )
     else:
         # Log attempted reset for unknown / inactive email — don't reveal status
-        logger.info(
-            f"Forgot password request for unknown/inactive email from {client_ip}"
-        )
+        logger.info(f"Forgot password request for unknown/inactive email from {client_ip}")
 
     # Always return the same response to prevent user enumeration
     return {
@@ -692,7 +694,7 @@ EMAIL_VERIFY_TTL = 86400  # 24 hours
 
 
 @router.post("/verify-email/{token}")
-async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     """
     Verify a user's email address using the token from Redis.
 
@@ -758,7 +760,7 @@ async def resend_verification(
     request: Request,
     payload: ResendVerificationRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, str]:
     """
     Generate a new email verification token (admin-managed delivery).
 
@@ -809,12 +811,7 @@ async def resend_verification(
             f"Token: {verify_token[:8]}... (admin action required for delivery)."
         )
 
-    return {
-        "message": (
-            "If this email is registered and unverified, "
-            "the administrator has been notified."
-        )
-    }
+    return {"message": ("If this email is registered and unverified, the administrator has been notified.")}
 
 
 # =============================================================================
@@ -829,7 +826,7 @@ async def telegram_auth(
     request: Request,
     auth_data: TelegramAuthRequest,
     db: AsyncSession = Depends(get_db),
-):
+) -> LoginResponse:
     """
     Authenticate or create a user via Telegram.
 
@@ -857,19 +854,13 @@ async def telegram_auth(
         logger.warning(
             f"Telegram auth failed: invalid or missing API key from {request.client.host if request.client else 'unknown'}"
         )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
     # SECURITY: Verify Telegram user ID against Telegram API
     if TELEGRAM_BOT_TOKEN:
-        is_valid_telegram_user = await verify_telegram_user(
-            auth_data.telegram_user_id, TELEGRAM_BOT_TOKEN
-        )
+        is_valid_telegram_user = await verify_telegram_user(auth_data.telegram_user_id, TELEGRAM_BOT_TOKEN)
         if not is_valid_telegram_user:
-            logger.warning(
-                f"Telegram auth failed: invalid telegram_user_id {auth_data.telegram_user_id}"
-            )
+            logger.warning(f"Telegram auth failed: invalid telegram_user_id {auth_data.telegram_user_id}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid Telegram credentials",
@@ -877,9 +868,7 @@ async def telegram_auth(
 
     # Create deterministic but non-enumerable email
     # Use UUID-based hash to prevent enumeration
-    telegram_id_hash = hashlib.sha256(
-        str(auth_data.telegram_user_id).encode()
-    ).hexdigest()[:16]
+    telegram_id_hash = hashlib.sha256(str(auth_data.telegram_user_id).encode()).hexdigest()[:16]
     email = f"telegram_{telegram_id_hash}@sowknow.local"
 
     # Check if user exists
@@ -912,9 +901,7 @@ async def telegram_auth(
         logger.info(f"New Telegram user created: {email}")
 
     elif not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="User account is disabled"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User account is disabled")
 
     # Create JWT tokens
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)

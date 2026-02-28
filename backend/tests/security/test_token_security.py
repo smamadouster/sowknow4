@@ -5,26 +5,26 @@ These tests verify security properties of tokens and authentication
 without requiring the full FastAPI application.
 """
 
-import pytest
 import time
 from datetime import datetime, timedelta
+
+import pytest
 from jose import jwt
 
+from app.models.user import UserRole
 from app.utils.security import (
-    verify_password,
-    get_password_hash,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALGORITHM,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    SECRET_KEY,
+    TokenExpiredError,
+    TokenInvalidError,
     create_access_token,
     create_refresh_token,
     decode_token,
-    TokenExpiredError,
-    TokenInvalidError,
-    SECRET_KEY,
-    ALGORITHM,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    REFRESH_TOKEN_EXPIRE_DAYS,
+    get_password_hash,
+    verify_password,
 )
-
-from app.models.user import UserRole
 
 
 class TestPasswordSecurity:
@@ -330,6 +330,7 @@ class TestTokenRotation:
     def test_access_token_has_correct_expiration(self):
         """Test that access tokens expire in 15 minutes"""
         import time
+
         from app.utils.security import ACCESS_TOKEN_EXPIRE_MINUTES
 
         token = create_access_token(data={"sub": "test@example.com", "role": "user"})
@@ -343,6 +344,7 @@ class TestTokenRotation:
     def test_refresh_token_has_correct_expiration(self):
         """Test that refresh tokens expire in 7 days"""
         import time
+
         from app.utils.security import REFRESH_TOKEN_EXPIRE_DAYS
 
         token = create_refresh_token(data={"sub": "test@example.com", "role": "user"})
@@ -433,8 +435,9 @@ class TestTokenRefreshUsesCurrentRole:
         This is a static code verification test that ensures the fix is in place:
         - The refresh endpoint should use user.role.value, NOT payload.get("role")
         """
-        from app.api.auth import refresh_token
         import inspect
+
+        from app.api.auth import refresh_token
 
         source = inspect.getsource(refresh_token)
 
@@ -456,8 +459,9 @@ class TestTokenRefreshUsesCurrentRole:
 
         Both access and refresh tokens should reflect the current database role.
         """
-        from app.api.auth import refresh_token
         import inspect
+
+        from app.api.auth import refresh_token
 
         source = inspect.getsource(refresh_token)
 
@@ -557,8 +561,9 @@ class TestTokenRefreshUsesCurrentRole:
         """
         Verify security comment is present to prevent future regressions.
         """
-        from app.api.auth import refresh_token
         import inspect
+
+        from app.api.auth import refresh_token
 
         source = inspect.getsource(refresh_token)
 

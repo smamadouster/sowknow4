@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-24T12:46:44.689912+00:00",
+  "generated_at": "2026-02-28T09:35:09.186460+00:00",
   "targets": {
     "intent_parsing_s": 3,
     "document_gathering_s": 5,
@@ -21,31 +21,12 @@
       "confidence": 0.9
     },
     {
-      "name": "document_gathering",
-      "elapsed_s": 0.02,
-      "target_s": 5.0,
-      "passed": true,
-      "docs_returned": 10,
-      "public_count": 10,
-      "confidential_count": 0
-    },
-    {
       "name": "ai_summary_generation",
       "elapsed_s": 0.0,
       "target_s": 20.0,
       "passed": true,
       "summary_length_chars": 189,
       "docs_input": 10
-    },
-    {
-      "name": "e2e_collection_creation",
-      "elapsed_s": 0.068,
-      "target_s": 30.0,
-      "passed": true,
-      "collection_id": "e01da35a-0638-4ad2-a08f-1183c92f59b9",
-      "document_count": 10,
-      "has_ai_summary": true,
-      "is_confidential": false
     }
   ]
 }

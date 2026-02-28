@@ -6,17 +6,20 @@ Status values used in this module:
   processing_task.status = "failed" / "indexed" / "completed" (via TaskStatus enum)
 """
 
-from celery import shared_task
-from app.tasks.base import log_task_memory, base_task_failure_handler
 import logging
 import uuid
 from datetime import datetime
+
+from celery import shared_task
+
+from app.tasks.base import base_task_failure_handler, log_task_memory
 
 logger = logging.getLogger(__name__)
 
 # langdetect is an optional dependency — import gracefully
 try:
-    from langdetect import detect as _ld_detect, LangDetectException  # type: ignore[import]
+    from langdetect import LangDetectException
+    from langdetect import detect as _ld_detect  # type: ignore[import]
 except ImportError:
     _ld_detect = None  # type: ignore[assignment]
 
@@ -53,7 +56,7 @@ def detect_text_language(text: str, fallback: str = "french") -> str:
     installed, or detection fails for any reason.
     """
     try:
-        from langdetect import detect, LangDetectException  # type: ignore[import]
+        from langdetect import LangDetectException, detect  # type: ignore[import]
 
         sample = text[:1000].strip()
         if len(sample) < 50:
@@ -87,15 +90,13 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentStatus
-    from app.models.processing import ProcessingQueue, TaskType, TaskStatus
+    from app.models.processing import ProcessingQueue, TaskStatus, TaskType
 
     db = SessionLocal()
     processing_task = None  # Initialize to prevent UnboundLocalError
     try:
         # Get document
-        document = (
-            db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
-        )
+        document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
         if not document:
             logger.error(f"Document {document_id} not found")
             return {"status": "error", "message": "Document not found"}
@@ -104,9 +105,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
         if document.status == DocumentStatus.PROCESSING and document.document_metadata:
             existing_task_id = document.document_metadata.get("celery_task_id")
             if existing_task_id and existing_task_id != self.request.id:
-                logger.warning(
-                    f"Document {document_id} is already being processed by task {existing_task_id}"
-                )
+                logger.warning(f"Document {document_id} is already being processed by task {existing_task_id}")
                 # Don't fail, just return - the other task is handling it
                 return {
                     "status": "skipped",
@@ -141,9 +140,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
         # Add processing metadata to document
         document.document_metadata = document.document_metadata or {}
-        document.document_metadata["processing_started_at"] = (
-            datetime.utcnow().isoformat()
-        )
+        document.document_metadata["processing_started_at"] = datetime.utcnow().isoformat()
         document.document_metadata["celery_task_id"] = self.request.id
         db.commit()
 
@@ -155,14 +152,13 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             self.update_state(state="PROGRESS", meta={"step": "ocr", "progress": 10})
 
             import asyncio
-            from app.services.text_extractor import text_extractor
+
             from app.services.ocr_service import ocr_service
+            from app.services.text_extractor import text_extractor
 
             # Extract text based on file type (run async code in event loop)
             extraction_result = asyncio.run(
-                text_extractor.extract_text(
-                    file_path=document.file_path, filename=document.original_filename
-                )
+                text_extractor.extract_text(file_path=document.file_path, filename=document.original_filename)
             )
 
             extracted_text = extraction_result.get("text", "")
@@ -175,19 +171,16 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
             if should_ocr:
                 logger.info(f"OCR triggered for {document_id}: {ocr_reason}")
-                self.update_state(
-                    state="PROGRESS", meta={"step": "ocr_images", "progress": 20}
-                )
+                self.update_state(state="PROGRESS", meta={"step": "ocr_images", "progress": 20})
 
                 if document.mime_type.startswith("image/"):
                     ocr_result = asyncio.run(ocr_service._extract_full(document.file_path))
                     extracted_text = ocr_result.get("text", "")
                 elif document.mime_type == "application/pdf":
-                    import tempfile
                     import os as _os
-                    images = asyncio.run(
-                        text_extractor.extract_images_from_pdf(document.file_path)
-                    )
+                    import tempfile
+
+                    images = asyncio.run(text_extractor.extract_images_from_pdf(document.file_path))
                     ocr_texts = []
                     for i, page_bytes in enumerate(images):
                         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -198,9 +191,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                         finally:
                             _os.unlink(tmp_path)
                         if ocr_result.get("text"):
-                            ocr_texts.append(
-                                f"[Image Page {i + 1}] {ocr_result['text']}"
-                            )
+                            ocr_texts.append(f"[Image Page {i + 1}] {ocr_result['text']}")
                     extracted_text = "\n\n".join(ocr_texts)
             else:
                 logger.debug(f"OCR skipped for {document_id}: {ocr_reason}")
@@ -218,9 +209,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
         # Step 2: Chunking
         chunks = []
         if task_type in ["chunking", "full_pipeline"]:
-            self.update_state(
-                state="PROGRESS", meta={"step": "chunking", "progress": 40}
-            )
+            self.update_state(state="PROGRESS", meta={"step": "chunking", "progress": 40})
 
             from app.services.embedding_service import chunking_service
 
@@ -228,20 +217,16 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             text_file_path = f"{document.file_path}.txt"
             extracted_text = ""
             try:
-                with open(text_file_path, "r", encoding="utf-8") as f:
+                with open(text_file_path, encoding="utf-8") as f:
                     extracted_text = f.read()
             except FileNotFoundError:
-                logger.warning(
-                    f"No extracted text file found for document {document_id}"
-                )
+                logger.warning(f"No extracted text file found for document {document_id}")
 
             detected_language = "french"  # default; updated below if text is present
             if extracted_text:
                 # Detect language for full-text search stemming
                 detected_language = detect_text_language(extracted_text)
-                logger.info(
-                    f"Detected language for document {document_id}: {detected_language}"
-                )
+                logger.info(f"Detected language for document {document_id}: {detected_language}")
 
                 # Chunk the text
                 chunks = chunking_service.chunk_document(
@@ -272,14 +257,10 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                     document.chunk_count = len(chunks)
                     processing_task.progress_percentage = 50
                     db.commit()
-                    logger.info(
-                        f"Successfully stored {len(chunks)} chunks for document {document_id}"
-                    )
+                    logger.info(f"Successfully stored {len(chunks)} chunks for document {document_id}")
                 except Exception as chunk_error:
                     db.rollback()
-                    logger.error(
-                        f"Failed to store chunks for document {document_id}: {chunk_error}"
-                    )
+                    logger.error(f"Failed to store chunks for document {document_id}: {chunk_error}")
                     metadata = document.document_metadata or {}
                     metadata["chunk_storage_error"] = str(chunk_error)
                     document.document_metadata = metadata
@@ -290,12 +271,10 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
         # Step 3: Embedding Generation
         if task_type in ["embedding", "full_pipeline"] and chunks:
-            self.update_state(
-                state="PROGRESS", meta={"step": "embedding", "progress": 70}
-            )
+            self.update_state(state="PROGRESS", meta={"step": "embedding", "progress": 70})
 
-            from app.services.embedding_service import embedding_service
             from app.models.document import DocumentChunk
+            from app.services.embedding_service import embedding_service
 
             # Get chunks from database
             db_chunks = (
@@ -311,9 +290,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
                 embedding_success = False
                 try:
-                    embeddings = embedding_service.encode(
-                        texts=chunk_texts, batch_size=32, show_progress=False
-                    )
+                    embeddings = embedding_service.encode(texts=chunk_texts, batch_size=32, show_progress=False)
 
                     # Store embeddings in the dedicated vector column
                     for i, chunk in enumerate(db_chunks):
@@ -325,23 +302,17 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                     processing_task.progress_percentage = 90
                     db.commit()
 
-                    logger.info(
-                        f"Generated {len(embeddings)} embeddings for document {document_id}"
-                    )
+                    logger.info(f"Generated {len(embeddings)} embeddings for document {document_id}")
                     embedding_success = True
 
                 except Exception as embed_error:
-                    logger.error(
-                        f"Error generating embeddings for document {document_id}: {embed_error}"
-                    )
+                    logger.error(f"Error generating embeddings for document {document_id}: {embed_error}")
                     # Mark embedding as failed in metadata but continue with text indexing
                     doc_metadata = document.document_metadata or {}
                     doc_metadata["embedding_error"] = str(embed_error)
                     doc_metadata["embedding_failed_at"] = datetime.utcnow().isoformat()
                     document.document_metadata = doc_metadata
-                    processing_task.error_message = (
-                        f"Embedding failed: {str(embed_error)[:400]}"
-                    )
+                    processing_task.error_message = f"Embedding failed: {str(embed_error)[:400]}"
                     db.commit()
                     # Document can still be searched via text, so we continue
                 finally:
@@ -352,9 +323,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                             "document will be searchable via text only"
                         )
             else:
-                logger.warning(
-                    f"No chunks found for embedding generation (document {document_id})"
-                )
+                logger.warning(f"No chunks found for embedding generation (document {document_id})")
 
         log_task_memory("process_document", "after_embedding")
 
@@ -400,13 +369,12 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
             if current_retry >= 3:
                 document.status = DocumentStatus.ERROR
-                logger.error(
-                    f"Document {document_id} failed permanently after {current_retry} retries: {str(e)}"
-                )
+                logger.error(f"Document {document_id} failed permanently after {current_retry} retries: {str(e)}")
                 db.commit()
                 # Store in Dead Letter Queue for admin inspection
                 try:
                     import traceback as _tb
+
                     from app.services.dlq_service import DeadLetterQueueService
 
                     DeadLetterQueueService.store_failed_task(
@@ -423,9 +391,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                     logger.error(f"DLQ storage failed for {document_id}: {dlq_err}")
             else:
                 document.status = DocumentStatus.PENDING
-                logger.warning(
-                    f"Document {document_id} will be retried ({current_retry}/2)"
-                )
+                logger.warning(f"Document {document_id} will be retried ({current_retry}/2)")
                 db.commit()
 
         # Retry with fixed 30s delay (max 2 retries = 3 total attempts)
@@ -450,14 +416,10 @@ def process_batch_documents(document_ids: list) -> dict:
     for doc_id in document_ids:
         try:
             result = process_document.delay(str(doc_id))
-            results.append(
-                {"document_id": doc_id, "task_id": result.id, "status": "queued"}
-            )
+            results.append({"document_id": doc_id, "task_id": result.id, "status": "queued"})
         except Exception as e:
             logger.error(f"Failed to queue document {doc_id}: {str(e)}")
-            results.append(
-                {"document_id": doc_id, "status": "error", "message": str(e)}
-            )
+            results.append({"document_id": doc_id, "status": "error", "message": str(e)})
 
     return {
         "total": len(document_ids),
@@ -503,11 +465,7 @@ def generate_embeddings(self, chunk_ids: list) -> dict:
     try:
         chunks = (
             db.query(DocumentChunk)
-            .filter(
-                DocumentChunk.id.in_(
-                    [uuid.UUID(c) if isinstance(c, str) else c for c in chunk_ids]
-                )
-            )
+            .filter(DocumentChunk.id.in_([uuid.UUID(c) if isinstance(c, str) else c for c in chunk_ids]))
             .all()
         )
         logger.info(f"Generating embeddings for {len(chunks)} chunks")
@@ -537,9 +495,7 @@ def generate_embeddings(self, chunk_ids: list) -> dict:
                 errors.append({"chunk_id": str(chunk.id), "error": str(chunk_err)})
 
         db.commit()
-        logger.info(
-            f"Embeddings generated: {success_count} success, {failed_count} failed"
-        )
+        logger.info(f"Embeddings generated: {success_count} success, {failed_count} failed")
 
         return {
             "status": "completed",
@@ -557,6 +513,7 @@ def generate_embeddings(self, chunk_ids: list) -> dict:
         if self.request.retries >= self.max_retries:
             try:
                 import traceback as _tb
+
                 from app.services.dlq_service import DeadLetterQueueService
 
                 DeadLetterQueueService.store_failed_task(
@@ -587,9 +544,10 @@ def cleanup_old_tasks(days: int = 7) -> dict:
     Returns:
         dict with cleanup results
     """
+    from datetime import datetime, timedelta
+
     from app.database import SessionLocal
     from app.models.processing import ProcessingQueue, TaskStatus
-    from datetime import datetime, timedelta
 
     db = SessionLocal()
     try:
@@ -646,10 +604,11 @@ def recover_stuck_documents(stuck_threshold_minutes: int = 60) -> dict:
     Returns:
         dict with recovery results (stuck_found, requeued, errors).
     """
+    from datetime import datetime, timedelta
+
     from app.database import SessionLocal
     from app.models.document import Document, DocumentStatus
     from app.models.processing import ProcessingQueue, TaskStatus
-    from datetime import datetime, timedelta
 
     db = SessionLocal()
     try:
@@ -674,16 +633,11 @@ def recover_stuck_documents(stuck_threshold_minutes: int = 60) -> dict:
                 if not doc:
                     continue
 
-                logger.warning(
-                    f"Stuck document detected: doc_id={doc.id}, "
-                    f"started_at={task.started_at}, requeuing…"
-                )
+                logger.warning(f"Stuck document detected: doc_id={doc.id}, started_at={task.started_at}, requeuing…")
 
                 # Reset processing queue entry so it can be retried
                 task.status = TaskStatus.FAILED
-                task.error_message = (
-                    f"Stuck processing recovered at {datetime.utcnow().isoformat()}"
-                )
+                task.error_message = f"Stuck processing recovered at {datetime.utcnow().isoformat()}"
                 db.commit()
 
                 # Reset document to PENDING so it gets requeued
@@ -695,15 +649,10 @@ def recover_stuck_documents(stuck_threshold_minutes: int = 60) -> dict:
                 requeued += 1
 
             except Exception as inner_e:
-                logger.error(
-                    f"Error recovering stuck document {task.document_id}: {inner_e}"
-                )
+                logger.error(f"Error recovering stuck document {task.document_id}: {inner_e}")
                 errors += 1
 
-        logger.info(
-            f"Stuck-document recovery complete: "
-            f"found={len(stuck_tasks)}, requeued={requeued}, errors={errors}"
-        )
+        logger.info(f"Stuck-document recovery complete: found={len(stuck_tasks)}, requeued={requeued}, errors={errors}")
 
         return {
             "status": "success",

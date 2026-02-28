@@ -4,46 +4,47 @@ Collections API endpoints for Smart Collections feature
 Provides endpoints for creating, managing, and querying Smart Collections.
 """
 
+import json
 import logging
-
-from fastapi import status, APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, desc, select, func
-from typing import Optional
+from typing import Any
 from uuid import UUID
 
-import json
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
 from app.database import get_db
-from app.models.user import User
+from app.models.audit import AuditAction, AuditLog
 from app.models.collection import (
     Collection,
     CollectionItem,
-    CollectionVisibility,
     CollectionType,
+    CollectionVisibility,
 )
-from app.models.audit import AuditLog, AuditAction
+from app.models.user import User
 from app.schemas.collection import (
+    CollectionChatCreate,
+    CollectionChatResponse,
     CollectionCreate,
-    CollectionUpdate,
-    CollectionResponse,
     CollectionDetailResponse,
+    CollectionExportResponse,
+    CollectionItemCreate,
+    CollectionItemResponse,
+    CollectionItemUpdate,
     CollectionListResponse,
     CollectionPreviewRequest,
     CollectionPreviewResponse,
-    CollectionItemCreate,
-    CollectionItemUpdate,
-    CollectionItemResponse,
     CollectionRefreshRequest,
+    CollectionResponse,
     CollectionStatsResponse,
-    ParsedIntentResponse,
-    CollectionChatCreate,
-    CollectionChatResponse,
-    CollectionExportResponse,
+    CollectionUpdate,
     ExportFormat,
+    ParsedIntentResponse,
 )
-from app.services.collection_service import collection_service
 from app.services.collection_chat_service import collection_chat_service
-from app.api.deps import get_current_user
+from app.services.collection_service import collection_service
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 logger = logging.getLogger(__name__)
@@ -54,9 +55,9 @@ async def create_audit_log(
     user_id: UUID,
     action: AuditAction,
     resource_type: str,
-    resource_id: Optional[str] = None,
-    details: Optional[dict] = None,
-):
+    resource_id: str | None = None,
+    details: dict | None = None,
+) -> None:
     """Helper function to create audit log entries for confidential access"""
     try:
         audit_entry = AuditLog(
@@ -81,7 +82,7 @@ async def create_collection(
     collection_data: CollectionCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionResponse:
     """
     Create a new Smart Collection from natural language query
 
@@ -105,7 +106,7 @@ async def preview_collection(
     request: CollectionPreviewRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionPreviewResponse:
     """
     Preview a collection without saving it
 
@@ -113,9 +114,7 @@ async def preview_collection(
     without persisting the collection.
     """
     try:
-        preview = await collection_service.preview_collection(
-            query=request.query, user=current_user, db=db
-        )
+        preview = await collection_service.preview_collection(query=request.query, user=current_user, db=db)
 
         # Convert to response format
         return CollectionPreviewResponse(
@@ -135,13 +134,13 @@ async def preview_collection(
 async def list_collections(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    visibility: Optional[CollectionVisibility] = None,
-    collection_type: Optional[CollectionType] = None,
+    visibility: CollectionVisibility | None = None,
+    collection_type: CollectionType | None = None,
     pinned_only: bool = False,
     favorites_only: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionListResponse:
     """
     List user's collections with pagination and filtering
 
@@ -179,20 +178,17 @@ async def list_collections(
     # Order: pinned first, then by created_at desc, apply pagination
     offset = (page - 1) * page_size
     result = await db.execute(
-        stmt.order_by(desc(Collection.is_pinned), desc(Collection.created_at))
-        .offset(offset).limit(page_size)
+        stmt.order_by(desc(Collection.is_pinned), desc(Collection.created_at)).offset(offset).limit(page_size)
     )
     collections = result.scalars().all()
 
-    return CollectionListResponse(
-        collections=collections, total=total, page=page, page_size=page_size
-    )
+    return CollectionListResponse(collections=collections, total=total, page=page, page_size=page_size)
 
 
 @router.get("/stats", response_model=CollectionStatsResponse)
 async def get_collection_stats(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
-):
+) -> CollectionStatsResponse:
     """
     Get statistics about user's collections
 
@@ -210,7 +206,7 @@ async def get_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionDetailResponse:
     """
     Get collection details with items
 
@@ -237,22 +233,15 @@ async def get_collection(
 
     # Get collection items with document info
     items_result = await db.execute(
-        select(CollectionItem)
-        .where(CollectionItem.collection_id == collection_id)
-        .order_by(CollectionItem.order_index)
+        select(CollectionItem).where(CollectionItem.collection_id == collection_id).order_by(CollectionItem.order_index)
     )
     items = items_result.scalars().all()
 
     # Check for confidential documents and log access
-    confidential_items = [
-        item
-        for item in items
-        if item.document and item.document.bucket.value == "confidential"
-    ]
+    confidential_items = [item for item in items if item.document and item.document.bucket.value == "confidential"]
     if confidential_items:
         confidential_docs = [
-            {"id": str(item.document.id), "filename": item.document.filename}
-            for item in confidential_items
+            {"id": str(item.document.id), "filename": item.document.filename} for item in confidential_items
         ]
         await create_audit_log(
             db=db,
@@ -293,16 +282,14 @@ async def update_collection(
     update_data: CollectionUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> Collection:
     """
     Update collection metadata
 
     Can update name, description, visibility, pinned status, and favorite status.
     """
     coll_result = await db.execute(
-        select(Collection).where(
-            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
-        )
+        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
     )
     collection = coll_result.scalar_one_or_none()
 
@@ -332,16 +319,14 @@ async def delete_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> None:
     """
     Delete a collection
 
     Only the collection owner can delete it.
     """
     coll_result = await db.execute(
-        select(Collection).where(
-            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
-        )
+        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
     )
     collection = coll_result.scalar_one_or_none()
 
@@ -357,10 +342,10 @@ async def delete_collection(
 @router.post("/{collection_id}/refresh", response_model=CollectionResponse)
 async def refresh_collection(
     collection_id: UUID,
-    refresh_data: Optional[CollectionRefreshRequest] = None,
+    refresh_data: CollectionRefreshRequest | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionResponse:
     """
     Refresh collection documents
 
@@ -383,15 +368,13 @@ async def refresh_collection(
         )
 
 
-@router.post(
-    "/{collection_id}/items", response_model=CollectionItemResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/{collection_id}/items", response_model=CollectionItemResponse, status_code=status.HTTP_201_CREATED)
 async def add_collection_item(
     collection_id: UUID,
     item_data: CollectionItemCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionItem:
     """
     Manually add a document to a collection
 
@@ -399,9 +382,7 @@ async def add_collection_item(
     """
     # Verify collection ownership
     coll_result = await db.execute(
-        select(Collection).where(
-            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
-        )
+        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
     )
     collection = coll_result.scalar_one_or_none()
 
@@ -463,7 +444,7 @@ async def update_collection_item(
     update_data: CollectionItemUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionItem:
     """
     Update collection item metadata
 
@@ -471,9 +452,7 @@ async def update_collection_item(
     """
     # Verify collection ownership
     coll_result = await db.execute(
-        select(Collection).where(
-            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
-        )
+        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
     )
     collection = coll_result.scalar_one_or_none()
 
@@ -516,15 +495,13 @@ async def remove_collection_item(
     item_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> None:
     """
     Remove a document from a collection
     """
     # Verify collection ownership
     coll_result = await db.execute(
-        select(Collection).where(
-            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
-        )
+        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
     )
     collection = coll_result.scalar_one_or_none()
 
@@ -560,12 +537,10 @@ async def pin_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> Collection:
     """Toggle collection pinned status"""
     coll_result = await db.execute(
-        select(Collection).where(
-            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
-        )
+        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
     )
     collection = coll_result.scalar_one_or_none()
 
@@ -584,12 +559,10 @@ async def favorite_collection(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> Collection:
     """Toggle collection favorite status"""
     coll_result = await db.execute(
-        select(Collection).where(
-            and_(Collection.id == collection_id, Collection.user_id == current_user.id)
-        )
+        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
     )
     collection = coll_result.scalar_one_or_none()
 
@@ -609,7 +582,7 @@ async def chat_with_collection(
     chat_data: CollectionChatCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> CollectionChatResponse:
     """
     Send a message to a collection-scoped chat
 
@@ -653,12 +626,10 @@ async def chat_with_collection(
 @router.get("/{collection_id}/export")
 async def export_collection(
     collection_id: UUID,
-    format: str = Query(
-        "json", pattern="^(pdf|json)$", description="Export format: pdf or json"
-    ),
+    format: str = Query("json", pattern="^(pdf|json)$", description="Export format: pdf or json"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> StreamingResponse | CollectionExportResponse:
     """
     Export a collection in PDF or JSON format.
 
@@ -681,8 +652,9 @@ async def export_collection(
         403: If user lacks permission to export collection with confidential docs
         404: If collection not found
     """
-    from datetime import datetime
     import io
+    from datetime import datetime
+
     from fastapi.responses import StreamingResponse
 
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
@@ -704,17 +676,11 @@ async def export_collection(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     items_result = await db.execute(
-        select(CollectionItem)
-        .where(CollectionItem.collection_id == collection_id)
-        .order_by(CollectionItem.order_index)
+        select(CollectionItem).where(CollectionItem.collection_id == collection_id).order_by(CollectionItem.order_index)
     )
     items = items_result.scalars().all()
 
-    confidential_items = [
-        item
-        for item in items
-        if item.document and item.document.bucket.value == "confidential"
-    ]
+    confidential_items = [item for item in items if item.document and item.document.bucket.value == "confidential"]
 
     if confidential_items:
         if current_user.role.value not in ["admin", "superuser"]:
@@ -772,19 +738,19 @@ async def export_collection(
 
     if format == "pdf":
         try:
+            from reportlab.lib import colors
             from reportlab.lib.pagesizes import letter
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
             from reportlab.lib.units import inch
+            from reportlab.pdfgen import canvas as rl_canvas  # noqa: F401
             from reportlab.platypus import (
-                SimpleDocTemplate,
+                HRFlowable,
                 Paragraph,
+                SimpleDocTemplate,
                 Spacer,
                 Table,
                 TableStyle,
-                HRFlowable,
             )
-            from reportlab.lib import colors
-            from reportlab.pdfgen import canvas as rl_canvas # noqa: F401
         except ImportError:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -985,7 +951,7 @@ async def get_collection_chat_sessions(
     collection_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
+) -> dict[str, Any]:
     """Get all chat sessions for a collection"""
     from app.models.collection import CollectionChatSession
 

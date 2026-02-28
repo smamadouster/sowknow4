@@ -62,24 +62,15 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const getToken = (): string | null => {
-    if (typeof window === 'undefined') return null;
-    const match = document.cookie.match(/access_token=([^;]+)/);
-    return match ? match[1] : null;
-  };
-
   const loadDashboard = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const token = getToken();
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      
       const [statsRes, queueRes, anomaliesRes] = await Promise.all([
-        fetch(`${API_BASE}/v1/admin/stats`, { credentials: 'include', headers }),
-        fetch(`${API_BASE}/v1/admin/queue-stats`, { credentials: 'include', headers }),
-        fetch(`${API_BASE}/v1/admin/anomalies`, { credentials: 'include', headers }),
+        fetch(`${API_BASE}/v1/admin/stats`, { credentials: 'include' }),
+        fetch(`${API_BASE}/v1/admin/queue-stats`, { credentials: 'include' }),
+        fetch(`${API_BASE}/v1/admin/anomalies`, { credentials: 'include' }),
       ]);
 
       if (statsRes.ok) {

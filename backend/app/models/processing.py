@@ -1,12 +1,15 @@
-from sqlalchemy import Column, String, ForeignKey, Text, Enum, Integer, DateTime
-from sqlalchemy.orm import relationship
-import uuid
 import enum
-from app.models.base import Base, TimestampMixin, GUIDType
+import uuid
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import relationship
+
+from app.models.base import Base, GUIDType, TimestampMixin
 
 
-class TaskType(str, enum.Enum):
+class TaskType(enum.StrEnum):
     """Types of async processing tasks"""
+
     OCR_PROCESSING = "ocr_processing"
     TEXT_EXTRACTION = "text_extraction"
     CHUNKING = "chunking"
@@ -14,8 +17,9 @@ class TaskType(str, enum.Enum):
     INDEXING = "indexing"
 
 
-class TaskStatus(str, enum.Enum):
+class TaskStatus(enum.StrEnum):
     """Processing task status"""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -27,6 +31,7 @@ class ProcessingQueue(Base, TimestampMixin):
     """
     Async processing task queue for document processing
     """
+
     __tablename__ = "processing_queue"
     __table_args__ = {"schema": "sowknow"}
 
@@ -35,7 +40,12 @@ class ProcessingQueue(Base, TimestampMixin):
 
     # Task information
     task_type = Column(Enum(TaskType, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
-    status = Column(Enum(TaskStatus, values_callable=lambda obj: [e.value for e in obj]), default=TaskStatus.PENDING, nullable=False, index=True)
+    status = Column(
+        Enum(TaskStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=TaskStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
 
     # Celery task tracking
     celery_task_id = Column(String(255), index=True)
@@ -60,10 +70,10 @@ class ProcessingQueue(Base, TimestampMixin):
     # Relationships
     document = relationship("Document", back_populates="processing_queue")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ProcessingQueue {self.task_type} - {self.status}>"
 
-    def update_progress(self, completed: int, total: int = None):
+    def update_progress(self, completed: int, total: int | None = None) -> None:
         """Update progress percentage"""
         if total is not None:
             self.total_steps = total

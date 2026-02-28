@@ -13,16 +13,15 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Optional
 
 from celery import shared_task
 
-from app.tasks.base import store_dlq_on_max_retries, base_task_failure_handler
+from app.tasks.base import base_task_failure_handler, store_dlq_on_max_retries
 
 logger = logging.getLogger(__name__)
 
 # Directory where generated reports are stored (bind-mounted in Docker)
-REPORTS_DIR = os.getenv("REPORTS_DIR", "/tmp/sowknow_reports")
+REPORTS_DIR = os.getenv("REPORTS_DIR", "/tmp/sowknow_reports")  # nosec B108
 
 
 def _ensure_reports_dir():
@@ -47,7 +46,7 @@ def generate_pdf_report(
     report_type: str,
     filters: dict,
     user_id: str,
-    output_filename: Optional[str] = None,
+    output_filename: str | None = None,
 ) -> dict:
     """
     Generate a PDF report asynchronously.
@@ -82,10 +81,7 @@ def generate_pdf_report(
         file_size = os.path.getsize(output_path)
         duration = round(time.time() - start, 2)
 
-        logger.info(
-            f"generate_pdf_report: {report_type} completed in {duration}s "
-            f"({file_size} bytes) → {output_path}"
-        )
+        logger.info(f"generate_pdf_report: {report_type} completed in {duration}s ({file_size} bytes) → {output_path}")
         return {
             "status": "completed",
             "report_type": report_type,
@@ -128,8 +124,9 @@ def _generate_pdf_content(report_type: str, filters: dict, output_path: str):
 
 def _write_pdf_with_fpdf(FPDF, report_type: str, filters: dict, output_path: str, db):
     """Generate a real PDF using fpdf2."""
-    from app.models.document import Document
     from sqlalchemy import func
+
+    from app.models.document import Document
 
     pdf = FPDF()
     pdf.add_page()
@@ -141,11 +138,7 @@ def _write_pdf_with_fpdf(FPDF, report_type: str, filters: dict, output_path: str
     pdf.ln(5)
 
     if report_type == "document_stats":
-        counts = (
-            db.query(Document.status, func.count(Document.id))
-            .group_by(Document.status)
-            .all()
-        )
+        counts = db.query(Document.status, func.count(Document.id)).group_by(Document.status).all()
         for status, count in counts:
             pdf.cell(0, 7, f"  {status}: {count}", ln=True)
 
@@ -179,7 +172,7 @@ def generate_excel_export(
     export_type: str,
     filters: dict,
     user_id: str,
-    output_filename: Optional[str] = None,
+    output_filename: str | None = None,
 ) -> dict:
     """
     Generate an Excel export asynchronously.
@@ -215,8 +208,7 @@ def generate_excel_export(
         duration = round(time.time() - start, 2)
 
         logger.info(
-            f"generate_excel_export: {export_type} completed in {duration}s "
-            f"({row_count} rows, {file_size} bytes)"
+            f"generate_excel_export: {export_type} completed in {duration}s ({row_count} rows, {file_size} bytes)"
         )
         return {
             "status": "completed",
@@ -246,9 +238,7 @@ def _generate_excel_content(export_type: str, filters: dict, output_path: str) -
         try:
             import openpyxl  # type: ignore
 
-            return _write_excel_with_openpyxl(
-                openpyxl, export_type, filters, output_path, db
-            )
+            return _write_excel_with_openpyxl(openpyxl, export_type, filters, output_path, db)
         except ImportError:
             return _write_excel_stub(export_type, output_path, db)
     finally:
@@ -257,8 +247,8 @@ def _generate_excel_content(export_type: str, filters: dict, output_path: str) -
 
 def _write_excel_with_openpyxl(openpyxl, export_type, filters, output_path, db) -> int:
     """Write Excel using openpyxl."""
-    from app.models.document import Document
     from app.models.audit import AuditLog
+    from app.models.document import Document
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -283,9 +273,7 @@ def _write_excel_with_openpyxl(openpyxl, export_type, filters, output_path, db) 
     elif export_type == "audit_log":
         ws.title = "Audit Log"
         ws.append(["ID", "User ID", "Action", "Resource Type", "Created At"])
-        for entry in (
-            db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(10000).all()
-        ):
+        for entry in db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(10000).all():
             ws.append(
                 [
                     str(entry.id),
@@ -344,14 +332,10 @@ def cleanup_old_reports(self, days_to_keep: int = 7) -> dict:
                     os.remove(fpath)
                     deleted += 1
             except Exception as file_err:
-                logger.warning(
-                    f"cleanup_old_reports: could not delete {fpath}: {file_err}"
-                )
+                logger.warning(f"cleanup_old_reports: could not delete {fpath}: {file_err}")
                 errors += 1
 
-        logger.info(
-            f"cleanup_old_reports: deleted {deleted} files older than {days_to_keep} days"
-        )
+        logger.info(f"cleanup_old_reports: deleted {deleted} files older than {days_to_keep} days")
         return {"status": "completed", "deleted": deleted, "errors": errors}
 
     except Exception as exc:

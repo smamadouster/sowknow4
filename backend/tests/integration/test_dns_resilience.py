@@ -1,12 +1,13 @@
 """
 Integration tests for DNS resilience and network utilities.
 """
-import pytest
-import socket
-import os
-import sys
-from unittest.mock import patch, AsyncMock
 import importlib.util
+import os
+import socket
+import sys
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 # Setup path for dns_validator (relative to this test file)
 test_dir = os.path.dirname(__file__)
@@ -219,7 +220,7 @@ class TestDockerConfiguration:
         """Verify Dockerfile has proper DNS configuration"""
         dockerfile_path = os.path.join(os.path.dirname(__file__), "..", "..", "backend", "Dockerfile")
         if os.path.exists(dockerfile_path):
-            with open(dockerfile_path, 'r') as f:
+            with open(dockerfile_path) as f:
                 content = f.read()
                 assert 'nameserver 8.8.8.8' in content or '8.8.8.8' in content
 
@@ -228,7 +229,7 @@ class TestDockerConfiguration:
         compose_path = os.path.join(os.path.dirname(__file__), "..", "..", "docker-compose.yml")
         if os.path.exists(compose_path):
             import yaml
-            with open(compose_path, 'r') as f:
+            with open(compose_path) as f:
                 config = yaml.safe_load(f)
                 if 'services' in config and 'postgres' in config['services']:
                     dns_servers = config['services'].get('postgres', {}).get('dns', [])

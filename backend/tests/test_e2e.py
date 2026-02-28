@@ -9,7 +9,7 @@ Tests the complete system including:
 - Multi-Agent Search
 """
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.orm import Session
 
 from app.main import app

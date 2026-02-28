@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter as useIntlRouter, Link as IntlLink } from "@/i18n/routing";
-import { getTokenFromCookie } from "@/lib/api";
+import { getCsrfToken } from "@/lib/api";
 
 // Disable static optimization for this client component
 export const dynamic = 'force-dynamic';
@@ -48,14 +48,14 @@ export default function SmartFoldersPage() {
     setResult(null);
 
     try {
-      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/generate`,
         {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            "X-CSRF-Token": getCsrfToken(),
           },
           body: JSON.stringify({
             topic,
@@ -93,14 +93,14 @@ export default function SmartFoldersPage() {
     setToast(null);
 
     try {
-      const token = getTokenFromCookie();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/reports/generate`,
         {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            "X-CSRF-Token": getCsrfToken(),
           },
           body: JSON.stringify({
             collection_id: result.collection_id,

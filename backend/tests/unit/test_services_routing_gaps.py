@@ -2,14 +2,15 @@
 Unit tests for Services Routing Security
 Tests that services without proper routing are identified and fixed
 """
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.intent_parser import IntentParserService
-from app.services.entity_extraction_service import EntityExtractionService
-from app.services.auto_tagging_service import AutoTaggingService
-from app.models.user import User, UserRole
+import pytest
+
 from app.models.document import Document, DocumentBucket
+from app.models.user import User, UserRole
+from app.services.auto_tagging_service import AutoTaggingService
+from app.services.entity_extraction_service import EntityExtractionService
+from app.services.intent_parser import IntentParserService
 
 
 class TestIntentParserRouting:

@@ -1,10 +1,11 @@
-from logging.config import fileConfig
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-from alembic import context
 import os
 import sys
+from logging.config import fileConfig
+
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Add the app directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -26,9 +27,15 @@ from app.models.base import Base
 # Set target metadata
 target_metadata = Base.metadata
 
-# Get database URL from environment
+# Get database URL from environment — no hardcoded credentials
 def get_url():
-    return os.getenv("DATABASE_URL", "postgresql://sowknow:sowknow@localhost:5432/sowknow")
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL environment variable is required. "
+            "Set it in .env or export it before running migrations."
+        )
+    return url
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""

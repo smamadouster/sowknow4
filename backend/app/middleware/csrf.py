@@ -69,6 +69,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if path in EXEMPT_PATHS or path.startswith(EXEMPT_PREFIXES):
             return await call_next(request)
 
+        # Bearer-token requests (machine-to-machine, e.g. Telegram bot) are not
+        # vulnerable to CSRF because the token is not auto-attached by the browser.
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            return await call_next(request)
+
         # --- Double-submit cookie validation ---
         cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
         header_token = request.headers.get(CSRF_HEADER_NAME)

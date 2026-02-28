@@ -12,8 +12,6 @@ The beat schedule entry is injected into celery_app at module import time
 so it is picked up by the Celery beat scheduler automatically.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 

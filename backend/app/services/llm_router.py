@@ -12,8 +12,6 @@ Routing strategy
 * General chat (no docs)            → Kimi (direct) → MiniMax → OpenRouter → Ollama
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field

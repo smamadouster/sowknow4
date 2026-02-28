@@ -5,8 +5,6 @@ Sends HTML email alerts to configured admin addresses.
 Requires SENDGRID_API_KEY, ALERT_FROM_EMAIL, and ADMIN_EMAILS environment variables.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 from datetime import UTC, datetime

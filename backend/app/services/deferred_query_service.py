@@ -20,8 +20,6 @@ Usage::
     await deferred_query_service.process_pending()
 """
 
-from __future__ import annotations
-
 import logging
 from datetime import datetime, timedelta
 from typing import Any

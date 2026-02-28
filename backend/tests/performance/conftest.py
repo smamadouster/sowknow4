@@ -11,8 +11,6 @@ CI usage:
   pytest tests/performance/test_collection_benchmarks.py -m benchmark -v
   (requires Docker to be available in the CI environment)
 """
-from __future__ import annotations
-
 import os
 import uuid
 from collections.abc import Generator

@@ -39,8 +39,6 @@ CI snippet (GitHub Actions):
           path: backend/tests/performance/benchmark_report.json
 ----------------------------------------------------------------------
 """
-from __future__ import annotations
-
 import json
 import time
 from datetime import UTC, datetime, timezone
@@ -105,7 +103,7 @@ class _Timer:
 
     elapsed: float = 0.0
 
-    def __enter__(self) -> _Timer:
+    def __enter__(self) -> "_Timer":
         self._start = time.perf_counter()
         return self
 

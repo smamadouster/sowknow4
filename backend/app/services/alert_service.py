@@ -13,8 +13,6 @@ Usage:
     await alert_service.send_alert("Task failed", severity="HIGH", metadata={...})
 """
 
-from __future__ import annotations
-
 import logging
 
 from app.services.email_notifier import EmailNotifier

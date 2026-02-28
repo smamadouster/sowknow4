@@ -5,8 +5,6 @@ POST /reports/generate   — queue a PDF/Excel report generation task
 GET  /reports/status/{task_id} — poll task status
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

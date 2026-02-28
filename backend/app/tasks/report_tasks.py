@@ -7,8 +7,6 @@ Tasks:
   3. cleanup_old_reports   — delete report files older than N days
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import time

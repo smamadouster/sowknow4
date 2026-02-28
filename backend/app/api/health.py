@@ -5,8 +5,6 @@ Comprehensive health check endpoints (PRD §11.4).
 /api/v1/health/celery — Celery worker status
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import os

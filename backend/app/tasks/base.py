@@ -6,8 +6,6 @@ Provides:
   - store_dlq_on_max_retries:  Store a permanently failed task in the DLQ.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import traceback as _tb

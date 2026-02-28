@@ -7,8 +7,6 @@ echoes the value back in an ``X-CSRF-Token`` header on every state-changing
 request.  This middleware rejects requests where the two don't match.
 """
 
-from __future__ import annotations
-
 import hmac
 import logging
 import secrets

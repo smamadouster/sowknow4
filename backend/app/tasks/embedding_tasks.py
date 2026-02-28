@@ -7,8 +7,6 @@ Three tasks are provided:
   3. upgrade_embeddings_model   — bulk migrate embeddings to a new model version
 """
 
-from __future__ import annotations
-
 import logging
 import time
 import uuid

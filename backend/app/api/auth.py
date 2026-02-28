@@ -16,8 +16,6 @@ Token Blacklist:
 - This prevents replay attacks after token rotation
 """
 
-from __future__ import annotations
-
 import hashlib
 import logging
 import os

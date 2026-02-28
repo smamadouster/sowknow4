@@ -7,8 +7,6 @@ Validates the core privacy guarantee:
   - Empty chunk list → non-Ollama provider selected (safe default)
   - PII in query → Ollama selected
 """
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

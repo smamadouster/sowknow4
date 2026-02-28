@@ -5,8 +5,6 @@ Sends formatted alert messages to a configured admin chat via the Telegram Bot A
 Requires TELEGRAM_BOT_TOKEN and TELEGRAM_ADMIN_CHAT_ID environment variables.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os

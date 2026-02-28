@@ -2,8 +2,6 @@
 Dead Letter Queue service — persists permanently failed Celery tasks.
 """
 
-from __future__ import annotations
-
 import logging
 import traceback as tb
 from typing import Any

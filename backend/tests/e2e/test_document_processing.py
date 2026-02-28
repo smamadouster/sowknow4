@@ -16,8 +16,6 @@ Test cases:
   6. DLQ — permanently failed task ends up in failed_celery_tasks table
 """
 
-from __future__ import annotations
-
 import os
 import time
 import uuid

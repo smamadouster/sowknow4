@@ -17,8 +17,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
-# TODO: Import other routers once their dependencies are set up
-# from app.api import documents
 from app.api import (
     admin,
     auth,
@@ -32,15 +30,11 @@ from app.api import (
     smart_folders,
 )
 from app.api import health as health_router
+from app.api import status as status_router
 from app.database import create_all_tables, engine, init_pgvector
 from app.limiter import limiter
 from app.services.openrouter_service import openrouter_service
 from app.services.prometheus_metrics import get_metrics
-
-# TODO: Import other models once database is set up
-# from app.models.document import Document, DocumentTag, DocumentChunk
-# from app.models.chat import ChatSession, ChatMessage
-# from app.models.processing import ProcessingQueue
 
 # Load environment variables
 load_dotenv()
@@ -324,17 +318,10 @@ app.include_router(smart_folders.router, prefix="/api/v1")
 app.include_router(knowledge_graph.router, prefix="/api/v1")
 app.include_router(graph_rag.router, prefix="/api/v1")
 app.include_router(multi_agent.router, prefix="/api/v1")
-# TODO: Include other routers once dependencies are set up
-# app.include_router(documents.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(health_router.router, prefix="/api/v1")
-
-
-@app.get("/api/health", include_in_schema=False)
-async def api_health_simple() -> dict[str, str]:
-    """Simple health alias for WebUI upstream checks."""
-    return {"status": "ok"}
+app.include_router(status_router.router, prefix="/api/v1")
 
 
 @app.get("/")
@@ -366,7 +353,6 @@ async def root() -> dict[str, Any]:
 
 
 @app.get("/metrics", include_in_schema=False)
-@app.get("/api/v1/metrics", include_in_schema=False)
 async def prometheus_metrics() -> Response:
     """Prometheus metrics endpoint for scraping."""
     metrics = get_metrics()
@@ -375,173 +361,6 @@ async def prometheus_metrics() -> Response:
         media_type="text/plain",
         headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
     )
-
-
-@app.get("/health")
-async def health() -> dict[str, Any]:
-    """Enhanced health check endpoint including OpenRouter API status"""
-    import httpx
-    import redis
-    from sqlalchemy import text
-
-    db_status = "disconnected"
-    redis_status = "disconnected"
-    ollama_status = "disconnected"
-
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception as e:
-        db_status = f"error: {str(e)}"
-
-    try:
-        from app.core.redis_url import safe_redis_url
-
-        r = redis.from_url(safe_redis_url())
-        r.ping()
-        redis_status = "connected"
-    except Exception as e:
-        redis_status = f"error: {str(e)}"
-
-    try:
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
-            if response.status_code == 200:
-                ollama_status = "connected"
-            else:
-                ollama_status = f"error: {response.status_code}"
-    except Exception as e:
-        ollama_status = f"unavailable: {str(e)}"
-
-    openrouter_health = {"status": "unknown"}
-    try:
-        openrouter_health = await openrouter_service.health_check()
-    except Exception as e:
-        openrouter_health = {"service": "openrouter", "status": "error", "error": f"Health check failed: {str(e)}"}
-
-    overall_status = "healthy"
-    if db_status != "connected" or redis_status != "connected":
-        overall_status = "degraded"
-    elif openrouter_health.get("status") not in ["healthy", "degraded"]:
-        overall_status = "degraded"
-
-    return {
-        "status": overall_status,
-        "timestamp": time.time(),
-        "environment": os.getenv("APP_ENV", "development"),
-        "version": "1.0.0",
-        "services": {
-            "database": db_status,
-            "redis": redis_status,
-            "ollama": ollama_status,
-            "api": "running",
-            "authentication": "enabled",
-            "openrouter": openrouter_health,
-        },
-    }
-
-
-@app.get("/health/celery")
-async def celery_health() -> dict[str, Any]:
-    """
-    Check Celery worker availability and queue depth.
-
-    Returns 200 when at least one worker is active, 503 otherwise.
-    This endpoint is used by load balancers, Kubernetes readiness probes,
-    and the Celery Beat health check.
-    """
-    from fastapi import HTTPException
-
-    from app.celery_app import celery_app as _celery
-
-    try:
-        inspect = _celery.control.inspect(timeout=5.0)
-        active_workers = inspect.active() or {}
-        stats = inspect.stats() or {}
-        reserved = inspect.reserved() or {}
-
-        worker_count = len(active_workers)
-        if worker_count == 0:
-            raise HTTPException(
-                status_code=503,
-                detail="No active Celery workers found",
-            )
-
-        # Aggregate queue depths across all workers
-        total_active = sum(len(tasks) for tasks in active_workers.values())
-        total_reserved = sum(len(tasks) for tasks in reserved.values())
-
-        return {
-            "status": "healthy",
-            "workers": worker_count,
-            "active_tasks": total_active,
-            "reserved_tasks": total_reserved,
-            "worker_names": list(active_workers.keys()),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Celery health check failed: {str(exc)}",
-        )
-
-
-@app.get("/api/v1/status")
-async def api_status() -> dict[str, Any]:
-    """API status endpoint with OpenRouter integration"""
-    # Get OpenRouter statistics
-    llm_stats = {"status": "unknown"}
-    try:
-        llm_stats = await openrouter_service.get_usage_stats()
-    except Exception as e:
-        llm_stats = {"error": f"Could not retrieve LLM stats: {str(e)}"}
-
-    return {
-        "phase": "3 - Knowledge Graph + Graph-RAG + Multi-Agent Search",
-        "sprint": "10 - Multi-Agent Search (COMPLETE)",
-        "status": "Phase 3 Complete - All Sprints Implemented",
-        "version": "3.0.0",
-        "llm_provider": "OpenRouter (MiniMax)",
-        "features": [
-            {"name": "Infrastructure", "status": "✅", "description": "Docker containers, PostgreSQL, Redis"},
-            {"name": "Authentication", "status": "✅", "description": "JWT login/register system"},
-            {"name": "Database Models", "status": "✅", "description": "SQLAlchemy models with pgvector"},
-            {"name": "OpenRouter Integration", "status": "✅", "description": "OpenRouter API with MiniMax"},
-            {"name": "Document Upload", "status": "✅", "description": "File upload and processing"},
-            {"name": "OCR Processing", "status": "✅", "description": "PaddleOCR text extraction"},
-            {"name": "RAG Search", "status": "✅", "description": "Hybrid vector + keyword search"},
-            {"name": "Smart Collections", "status": "✅", "description": "NL query to document groups with chat"},
-            {"name": "Smart Folders", "status": "✅", "description": "AI-generated articles from docs"},
-            {"name": "PDF Reports", "status": "✅", "description": "3 report templates with export"},
-            {"name": "Auto-Tagging", "status": "✅", "description": "AI tagging on document ingestion"},
-            {"name": "Similarity Grouping", "status": "✅", "description": "Cluster similar documents"},
-            {"name": "Mac Sync Agent", "status": "✅", "description": "File sync from local/iCloud/Dropbox"},
-            {"name": "Deduplication", "status": "✅", "description": "Hash-based duplicate detection"},
-            {"name": "Performance Tuning", "status": "✅", "description": "Batch optimization & caching"},
-            {"name": "E2E Tests", "status": "✅", "description": "Phase 2 test coverage"},
-            {"name": "Entity Extraction", "status": "✅", "description": "LLM-powered entity extraction"},
-            {"name": "Knowledge Graph", "status": "✅", "description": "Entity + relationship storage"},
-            {"name": "Relationship Mapping", "status": "✅", "description": "Graph relationship inference"},
-            {"name": "Timeline Construction", "status": "✅", "description": "Event timeline + insights"},
-            {"name": "Graph Visualization", "status": "✅", "description": "Interactive graph explorer"},
-            {"name": "Graph-RAG", "status": "✅", "description": "Graph-augmented retrieval"},
-            {"name": "Synthesis Pipeline", "status": "✅", "description": "Map-Reduce document synthesis"},
-            {"name": "Temporal Reasoning", "status": "✅", "description": "Time-based relationship analysis"},
-            {"name": "Progressive Revelation", "status": "✅", "description": "Role-based information disclosure"},
-            {"name": "Family Context", "status": "✅", "description": "Family narrative generation"},
-            {"name": "Multi-Agent Search", "status": "⏳", "description": "Agentic search architecture"},
-        ],
-        "next_steps": [
-            "Final system QA and end-to-end testing",
-            "Performance optimization and tuning",
-            "Documentation updates",
-            "User acceptance testing",
-        ],
-    }
 
 
 if __name__ == "__main__":

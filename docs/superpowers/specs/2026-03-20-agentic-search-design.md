@@ -10,12 +10,12 @@ Replace the current basic hybrid search (`/api/v1/search`) and multi-agent searc
 
 ## Pipeline Stages
 
-1. **IntentAgent** — Classify intent (factual/temporal/comparative/synthesis/financial/etc.), extract entities, decompose complex queries into sub-queries. Always uses Kimi (no document content).
+1. **IntentAgent** — Classify intent (factual/temporal/comparative/synthesis/financial/etc.), extract entities, decompose complex queries into sub-queries. Always uses MiniMax 2.7 (no document content).
 2. **QueryExpander** — Build search query variants from original + sub-queries + keyword-focused variant.
 3. **HybridRetriever** — pgvector semantic + PostgreSQL FTS with RRF fusion. RBAC bucket filtering at SQL level.
 4. **ReRanker** — Collapse chunks to document-level results, normalize scores, assign relevance labels (highly_relevant/relevant/partially/marginal).
 5. **SynthesisAgent** — LLM answer generation with privacy routing (MiniMax via existing LLMRouter for public RAG, Ollama for confidential).
-6. **SuggestionAgent** — Generate 3-5 follow-up query suggestions. Never includes document content (safe for Kimi).
+6. **SuggestionAgent** — Generate 3-5 follow-up query suggestions. Never includes document content (safe for MiniMax 2.7).
 
 ## Backend Architecture
 
@@ -151,7 +151,7 @@ Added under `search` namespace in both `en.json` and `fr.json`:
 
 1. `UserRole.USER` NEVER sees confidential documents — enforced at SQL level via JOIN to `documents.bucket` (Stage 3) AND re-rank level (Stage 4)
 2. Confidential document content NEVER reaches Kimi/MiniMax APIs — enforced by `LLMRouter` checking `has_confidential`
-3. Intent parsing and suggestion generation NEVER include document content — always safe for external LLM
+3. Intent parsing and suggestion generation NEVER include document content — always safe for MiniMax 2.7
 4. All confidential access logged with user ID and timestamp
 5. SSE POST endpoint (`/api/v1/search/stream`) is CSRF-safe: cookie requests include CSRF token (existing middleware), Bearer-token requests are already exempt (commit 4fa03b7)
 
@@ -159,11 +159,11 @@ Added under `search` namespace in both `en.json` and `fr.json`:
 
 Uses existing `LLMRouter.select_provider` chains, NOT direct httpx calls:
 
-| Context | LLM Chain | Notes |
-|---------|-----------|-------|
-| Intent parsing (no doc content) | Kimi (general_chat chain) | No context chunks, follows general_chat: Kimi -> MiniMax -> Ollama |
-| Synthesis with all-public results | MiniMax (public_docs_rag chain) | Follows existing router: MiniMax -> OpenRouter -> Ollama |
+| Context | LLM | Notes |
+|---------|-----|-------|
+| Intent parsing (no doc content) | MiniMax 2.7 | Lightweight classification task, no document content |
+| Synthesis with all-public results | MiniMax 2.7 (public_docs_rag chain) | Follows existing router with context caching for cost optimization |
 | Synthesis with any confidential result | Ollama only | `has_confidential=True` forces Ollama, no fallback to external |
-| Suggestion generation (no doc content) | Kimi (general_chat chain) | No context chunks, same as intent parsing |
+| Suggestion generation (no doc content) | MiniMax 2.7 | Lightweight generation task, no document content |
 
-**Note:** The uploaded reference files used Kimi for public synthesis. We align with the existing `LLMRouter` which routes public RAG through MiniMax (with context caching for cost optimization). This is consistent with the tri-LLM strategy in CLAUDE.md.
+**Note:** MiniMax 2.7 replaces Kimi 2.5 for all external LLM calls (intent parsing, public synthesis, suggestions). This simplifies the tri-LLM strategy to a dual-LLM approach for search: MiniMax 2.7 for public contexts, Ollama for confidential. Context caching on MiniMax provides cost optimization on repeated queries.

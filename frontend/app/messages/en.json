@@ -95,6 +95,7 @@
     "bucket": "Visibility",
     "bucket_public": "Public",
     "bucket_confidential": "Confidential",
+    "upload_to": "Upload to:",
     "uploading": "Uploading...",
     "upload_success": "{filename} uploaded successfully",
     "upload_error": "Upload error",
@@ -152,20 +153,65 @@
     "no_related_documents": "No related documents found"
   },
   "search": {
-    "title": "Semantic Search",
+    "title": "Search",
     "placeholder": "Ask your question in natural language...",
     "searching": "Searching...",
+    "searchButton": "Search",
+    "stop": "Stop",
     "results": "Results",
+    "result": "result",
+    "resultsPlural": "results",
     "no_results": "No results found",
     "found_results": "{count} result(s) found",
     "relevance": "Relevance",
     "source": "Source",
+    "sources": "Sources",
     "document": "Document",
-    "filter_bucket": "Filter by visibility",
-    "all_buckets": "All",
-    "public_only": "Public only",
-    "llm_kimi": "Kimi 2.5",
-    "llm_ollama": "Ollama (Confidential)"
+    "page": "Page",
+    "confidence": "confidence",
+    "synthesizedAnswer": "Synthesized Answer",
+    "suggestions": "Suggestions",
+    "confidentialNotice": "This search includes confidential documents",
+    "confidential": "Confidential",
+    "empty": {
+      "title": "Your knowledge awaits",
+      "subtitle": "Ask a question in French or English. The agent will analyze your query, search all your documents, and synthesize a complete answer."
+    },
+    "stage": {
+      "intent": "Analyzing your query...",
+      "retrieval": "Searching in {count} query(ies)...",
+      "reranking": "{count} excerpts retrieved, re-ranking...",
+      "synthesis": "Synthesizing the answer..."
+    },
+    "relevanceLabel": {
+      "highly_relevant": "Highly Relevant",
+      "relevant": "Relevant",
+      "partially": "Partial",
+      "marginal": "Marginal"
+    },
+    "intent": {
+      "factual": "Factual",
+      "temporal": "Temporal",
+      "comparative": "Comparative",
+      "synthesis": "Synthesis",
+      "financial": "Financial",
+      "cross_reference": "Cross-Reference",
+      "exploratory": "Exploratory",
+      "entity_search": "Entity",
+      "procedural": "Procedural",
+      "unknown": "General"
+    },
+    "model": {
+      "ollama": "Ollama (Local)",
+      "minimax": "MiniMax 2.7"
+    },
+    "examples": {
+      "1": "How has my thinking on solar energy evolved?",
+      "2": "What assets appear in my balance sheets from the last 5 years?",
+      "3": "All documents related to my family",
+      "4": "What insights do I have about leadership?"
+    },
+    "error": "Search encountered an error. Please try again."
   },
   "chat": {
     "title": "AI Assistant",

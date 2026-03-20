@@ -95,6 +95,7 @@
     "bucket": "Visibilité",
     "bucket_public": "Public",
     "bucket_confidential": "Confidentiel",
+    "upload_to": "Télécharger vers :",
     "uploading": "Téléchargement en cours...",
     "upload_success": "{filename} téléchargé avec succès",
     "upload_error": "Erreur lors du téléchargement",
@@ -152,20 +153,65 @@
     "no_related_documents": "Aucun document similaire trouvé"
   },
   "search": {
-    "title": "Recherche Sémantique",
+    "title": "Recherche",
     "placeholder": "Posez votre question en langage naturel...",
     "searching": "Recherche en cours...",
-    "results": "Résultats",
-    "no_results": "Aucun résultat trouvé",
-    "found_results": "{count} résultat(s) trouvé(s)",
+    "searchButton": "Rechercher",
+    "stop": "Arreter",
+    "results": "Resultats",
+    "result": "resultat",
+    "resultsPlural": "resultats",
+    "no_results": "Aucun resultat trouve",
+    "found_results": "{count} resultat(s) trouve(s)",
     "relevance": "Pertinence",
     "source": "Source",
+    "sources": "Sources",
     "document": "Document",
-    "filter_bucket": "Filtrer par visibilité",
-    "all_buckets": "Tous",
-    "public_only": "Public uniquement",
-    "llm_kimi": "Kimi 2.5",
-    "llm_ollama": "Ollama (Confidentiel)"
+    "page": "Page",
+    "confidence": "confiance",
+    "synthesizedAnswer": "Reponse synthetisee",
+    "suggestions": "Suggestions",
+    "confidentialNotice": "Cette recherche inclut des documents confidentiels",
+    "confidential": "Confidentiel",
+    "empty": {
+      "title": "Votre connaissance vous attend",
+      "subtitle": "Posez une question en francais ou en anglais. L'agent analysera votre requete, cherchera dans tous vos documents et synthetisera une reponse complete."
+    },
+    "stage": {
+      "intent": "Analyse de votre requete...",
+      "retrieval": "Recherche dans {count} requete(s)...",
+      "reranking": "{count} extraits recuperes, reclassement...",
+      "synthesis": "Synthese de la reponse..."
+    },
+    "relevanceLabel": {
+      "highly_relevant": "Tres pertinent",
+      "relevant": "Pertinent",
+      "partially": "Partiel",
+      "marginal": "Marginal"
+    },
+    "intent": {
+      "factual": "Factuel",
+      "temporal": "Temporel",
+      "comparative": "Comparatif",
+      "synthesis": "Synthese",
+      "financial": "Financier",
+      "cross_reference": "Croise",
+      "exploratory": "Exploratoire",
+      "entity_search": "Entite",
+      "procedural": "Procedural",
+      "unknown": "General"
+    },
+    "model": {
+      "ollama": "Ollama (Local)",
+      "minimax": "MiniMax 2.7"
+    },
+    "examples": {
+      "1": "Comment a evolue ma reflexion sur l'energie solaire ?",
+      "2": "Quels actifs figurent dans mes bilans des 5 dernieres annees ?",
+      "3": "Tous les documents lies a ma famille",
+      "4": "Quels enseignements ai-je sur le leadership ?"
+    },
+    "error": "La recherche a rencontre une erreur. Veuillez reessayer."
   },
   "chat": {
     "title": "Assistant IA",

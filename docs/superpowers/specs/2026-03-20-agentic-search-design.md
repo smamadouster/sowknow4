@@ -1,7 +1,7 @@
 # Agentic Search Enhancement — Design Spec
 
 **Date:** 2026-03-20
-**Status:** Approved
+**Status:** Approved (revised after spec review)
 **Approach:** Surgical Integration — add new agentic modules, replace existing search router
 
 ## Overview
@@ -14,7 +14,7 @@ Replace the current basic hybrid search (`/api/v1/search`) and multi-agent searc
 2. **QueryExpander** — Build search query variants from original + sub-queries + keyword-focused variant.
 3. **HybridRetriever** — pgvector semantic + PostgreSQL FTS with RRF fusion. RBAC bucket filtering at SQL level.
 4. **ReRanker** — Collapse chunks to document-level results, normalize scores, assign relevance labels (highly_relevant/relevant/partially/marginal).
-5. **SynthesisAgent** — LLM answer generation with privacy routing (Kimi for public, Ollama for confidential).
+5. **SynthesisAgent** — LLM answer generation with privacy routing (MiniMax via existing LLMRouter for public RAG, Ollama for confidential).
 6. **SuggestionAgent** — Generate 3-5 follow-up query suggestions. Never includes document content (safe for Kimi).
 
 ## Backend Architecture
@@ -56,46 +56,52 @@ Replace the current basic hybrid search (`/api/v1/search`) and multi-agent searc
 - No `from __future__ import annotations` (breaks FastAPI/Pydantic per commit d138474)
 - Imports use project structure: `backend.app.core.config`, `backend.app.api.deps`, `backend.app.database`
 - Router prefix: `/api/v1/search` (existing convention)
-- Auth: existing `get_current_user` from `deps.py`, map `User.role` to `UserRole` enum
-- LLM calls: use existing `llm_router.py` instead of raw httpx to Kimi/Ollama
+- Auth: existing `get_current_user` from `deps.py`, import `UserRole` from `app.models.user` (no duplicate enum)
+- LLM calls: use existing `llm_router.py` (`LLMRouter.generate_completion`) — this is an `AsyncGenerator[str, None]`, so collect full response by iterating and concatenating chunks. Construct `messages` list per existing calling convention.
 - Hybrid retrieval: delegate to existing `search_service.py` SQL patterns
 - Column names: `embedding_vector` (not `embedding`), `search_vector` (not `ts_vector`)
+- SQL schema: all raw SQL must use `sowknow.` schema prefix (e.g., `sowknow.document_chunks`, `sowknow.documents`)
 - Concurrency: keep existing semaphore pattern (max 5 concurrent)
 - Search history: write-through after each search completes
+- Old `/search/suggest` endpoint dropped — replaced by SuggestionAgent (Stage 6)
 
 ## Database Migration
 
-### New Table: `search_history`
+### New Table: `sowknow.search_history`
+
+Table must be in `sowknow` schema (matching all other tables).
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | UUID | PK, gen_random_uuid() |
-| user_id | UUID | FK -> users.id CASCADE |
+| user_id | UUID | FK -> sowknow.users.id CASCADE |
 | query | Text | |
 | parsed_intent | String(50) | |
 | result_count | Integer | |
 | has_confidential_results | Boolean | |
 | llm_model_used | String(100) | |
 | search_time_ms | Integer | |
-| performed_at | TimestampTZ | default NOW() |
+| performed_at | TimestampTZ | server_default=text("NOW()") |
 
 Index: `(user_id, performed_at)`
 
-### Schema Additions to `document_chunks`
+Migration revision must chain from the current Alembic HEAD (determine at implementation time by running `alembic heads`).
 
-- `bucket` column (String(20), default 'public') — denormalized from parent document
-- Trigger `trg_sync_chunk_bucket` — auto-populate bucket from parent on INSERT/UPDATE
-- Composite index `idx_chunks_bucket_doc` on `(bucket, document_id)`
+### No schema changes to `document_chunks`
 
-### New Indexes (if not already present)
+The uploaded spec proposed a denormalized `bucket` column on `document_chunks`. We skip this entirely. RBAC filtering uses the existing JOIN to `sowknow.documents` and filters on `documents.bucket` — this is already proven in `search_service.py`. The ReRanker (Stage 4) gets bucket info from the JOIN results, not a separate column.
 
-- HNSW on `embedding_vector` (vector_cosine_ops, m=16, ef_construction=64)
-- Partial index on `documents(status)` WHERE status = 'indexed'
-- Trigram index on `documents(title)` (requires pg_trgm extension)
+### New Indexes (only if not already present)
+
+- HNSW on `embedding_vector` — **already exists** from migration 010 (`ix_document_chunks_embedding_hnsw`). Skip.
+- Partial index on `sowknow.documents(status)` WHERE status = 'indexed' — add with `IF NOT EXISTS`
+- Trigram index on `sowknow.documents(title)` — add with `IF NOT EXISTS` (requires `pg_trgm` extension, add `CREATE EXTENSION IF NOT EXISTS pg_trgm`)
 
 ### Skipped from uploaded migration
 
 - `ts_vector` column — already exists as `search_vector` from migration 009
+- `bucket` column on `document_chunks` — use existing JOIN pattern instead
+- HNSW index — already exists from migration 010
 
 ## Frontend Design
 
@@ -143,16 +149,21 @@ Added under `search` namespace in both `en.json` and `fr.json`:
 
 ## Security Invariants
 
-1. `UserRole.USER` NEVER sees confidential documents — enforced at SQL level (Stage 3) AND re-rank level (Stage 4)
-2. Confidential document content NEVER reaches Kimi/MiniMax APIs — enforced by `_route_llm` checking `has_confidential`
+1. `UserRole.USER` NEVER sees confidential documents — enforced at SQL level via JOIN to `documents.bucket` (Stage 3) AND re-rank level (Stage 4)
+2. Confidential document content NEVER reaches Kimi/MiniMax APIs — enforced by `LLMRouter` checking `has_confidential`
 3. Intent parsing and suggestion generation NEVER include document content — always safe for external LLM
 4. All confidential access logged with user ID and timestamp
+5. SSE POST endpoint (`/api/v1/search/stream`) is CSRF-safe: cookie requests include CSRF token (existing middleware), Bearer-token requests are already exempt (commit 4fa03b7)
 
 ## Privacy Routing Rules
 
-| Context | LLM Used |
-|---------|----------|
-| Intent parsing (no doc content) | Kimi |
-| Synthesis with all-public results | Kimi |
-| Synthesis with any confidential result | Ollama |
-| Suggestion generation (no doc content) | Kimi |
+Uses existing `LLMRouter.select_provider` chains, NOT direct httpx calls:
+
+| Context | LLM Chain | Notes |
+|---------|-----------|-------|
+| Intent parsing (no doc content) | Kimi (general_chat chain) | No context chunks, follows general_chat: Kimi -> MiniMax -> Ollama |
+| Synthesis with all-public results | MiniMax (public_docs_rag chain) | Follows existing router: MiniMax -> OpenRouter -> Ollama |
+| Synthesis with any confidential result | Ollama only | `has_confidential=True` forces Ollama, no fallback to external |
+| Suggestion generation (no doc content) | Kimi (general_chat chain) | No context chunks, same as intent parsing |
+
+**Note:** The uploaded reference files used Kimi for public synthesis. We align with the existing `LLMRouter` which routes public RAG through MiniMax (with context caching for cost optimization). This is consistent with the tri-LLM strategy in CLAUDE.md.

@@ -4,18 +4,30 @@ SOWKNOW Agentic Search Pipeline
 6-stage agent for ranked, cited, synthesized answers with RBAC enforcement.
 """
 
+import asyncio
+import json
 import logging
 import re
+import time
+from typing import Any, Optional
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import DocumentBucket
 from app.models.user import UserRole
+from app.services.llm_router import llm_router
+from app.services.search_service import HybridSearchService
 from .search_models import (
+    AgenticSearchRequest,
+    AgenticSearchResponse,
+    AgentTrace,
     Citation,
     ParsedIntent,
     QueryIntent,
     RawChunk,
     RelevanceLabel,
+    SearchMode,
     SearchResult,
     SearchSuggestion,
 )
@@ -202,4 +214,333 @@ def _fallback_intent(query: str) -> ParsedIntent:
             "fr" if any(re.search(r'\b' + w + r'\b', q) for w in ["le", "la", "les", "des", "est", "sont"])
             else "en"
         ),
+    )
+
+
+# ---- LLM PROMPTS ----
+
+INTENT_SYSTEM_PROMPT = """Tu es un agent d'analyse de requetes pour SOWKNOW, un systeme de gestion de connaissances personnelles.
+
+Analyse la requete utilisateur et retourne un objet JSON **uniquement** (pas de markdown, pas d'explication).
+
+Format de sortie obligatoire :
+{
+  "intent": "<factual|temporal|comparative|synthesis|financial|cross_reference|exploratory|entity_search|procedural|unknown>",
+  "confidence": <0.0-1.0>,
+  "entities": ["<entite1>", "<entite2>"],
+  "temporal_markers": ["<marqueur1>"],
+  "keywords": ["<mot-cle1>", "<mot-cle2>"],
+  "expanded_keywords": ["<synonyme1>", "<terme-associe1>"],
+  "sub_queries": ["<sous-requete si complexe>"],
+  "detected_language": "<fr|en>",
+  "requires_synthesis": <true|false>,
+  "temporal_range": {"start": "<ISO date or null>", "end": "<ISO date or null>"}
+}
+"""
+
+SYNTHESIS_SYSTEM_PROMPT = """Tu es SOWKNOW Assistant, un expert en synthese de connaissances personnelles.
+
+A partir des extraits de documents fournis, genere une reponse complete, structuree et citee.
+
+Regles imperatives :
+1. Commence par une reponse directe a la question (1-2 phrases).
+2. Developpe avec les elements pertinents trouves dans les documents.
+3. Cite chaque information avec [Source: Titre du document, p.X].
+4. Si plusieurs documents sont en contradiction, mentionne-le explicitement.
+5. Termine par une section "Points cles" avec 3-5 bullet points.
+6. Reponds dans la meme langue que la question de l'utilisateur.
+7. Si les documents ne contiennent pas d'information pertinente, dis-le clairement.
+8. NE PAS inventer d'informations non presentes dans les extraits.
+"""
+
+SUGGESTION_SYSTEM_PROMPT = """Tu es un assistant de recherche pour SOWKNOW.
+
+Base sur la requete originale et les resultats trouves, genere 3-5 suggestions de requetes de suivi.
+Retourne uniquement un tableau JSON :
+[
+  {"suggestion_type": "related_query|refine|expand|temporal", "text": "...", "rationale": "..."}
+]
+"""
+
+
+# ---- LLM WRAPPER ----
+
+async def _call_llm(
+    messages: list[dict],
+    system: str,
+    has_confidential: bool,
+    temperature: float = 0.1,
+    max_tokens: int = 2048,
+) -> tuple[str, str]:
+    """Call LLM via existing LLMRouter. Returns (response_text, provider_name)."""
+    query_text = messages[0].get("content", "") if messages else ""
+
+    decision = await llm_router.select_provider(
+        query=query_text,
+        has_confidential=has_confidential,
+    )
+    model_name = decision.provider_name
+
+    full_messages = [{"role": "system", "content": system}] + messages
+    chunks = []
+    async for chunk in llm_router.generate_completion(
+        messages=full_messages,
+        query=query_text,
+        has_confidential=has_confidential,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    ):
+        chunks.append(chunk)
+
+    return "".join(chunks), model_name
+
+
+def _clean_json(raw: str) -> str:
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return raw.strip()
+
+
+# ---- STAGE 1: INTENT AGENT ----
+
+async def parse_intent(query: str) -> ParsedIntent:
+    try:
+        raw, _ = await _call_llm(
+            messages=[{"role": "user", "content": f"Requete : {query}"}],
+            system=INTENT_SYSTEM_PROMPT,
+            has_confidential=False,
+            temperature=0.0,
+            max_tokens=512,
+        )
+        data = json.loads(_clean_json(raw))
+        return ParsedIntent(
+            intent=QueryIntent(data.get("intent", "unknown")),
+            confidence=float(data.get("confidence", 0.5)),
+            entities=data.get("entities", []),
+            temporal_markers=data.get("temporal_markers", []),
+            keywords=data.get("keywords", []),
+            expanded_keywords=data.get("expanded_keywords", []),
+            sub_queries=data.get("sub_queries", []),
+            detected_language=data.get("detected_language", "fr"),
+            requires_synthesis=bool(data.get("requires_synthesis", False)),
+            temporal_range=data.get("temporal_range"),
+        )
+    except Exception as exc:
+        logger.warning("Intent parsing failed, using fallback: %s", exc)
+        return _fallback_intent(query)
+
+
+# ---- STAGE 5: SYNTHESIS AGENT ----
+
+async def synthesize_answer(
+    query: str,
+    results: list[SearchResult],
+    raw_chunks: list[RawChunk],
+    intent: ParsedIntent,
+    has_confidential: bool,
+    language: str,
+) -> tuple[str, str]:
+    top_chunks = sorted(raw_chunks, key=lambda c: c.rrf_score, reverse=True)[:5]
+    context_parts = []
+    for i, chunk in enumerate(top_chunks, 1):
+        bucket_label = "[CONFIDENTIEL]" if chunk.document_bucket == DocumentBucket.CONFIDENTIAL else "[PUBLIC]"
+        context_parts.append(
+            f"[Extrait {i}] {bucket_label} Source: {chunk.document_title}"
+            + (f", p.{chunk.page_number}" if chunk.page_number else "")
+            + f"\n{chunk.text}\n"
+        )
+    context = "\n---\n".join(context_parts)
+    lang_instruction = "Reponds en francais." if language == "fr" else "Respond in English."
+    user_message = f"Question : {query}\n\n{lang_instruction}\n\nDocuments disponibles :\n{context}"
+
+    return await _call_llm(
+        messages=[{"role": "user", "content": user_message}],
+        system=SYNTHESIS_SYSTEM_PROMPT,
+        has_confidential=has_confidential,
+        temperature=0.2,
+        max_tokens=1500,
+    )
+
+
+# ---- STAGE 6: SUGGESTION AGENT ----
+
+async def generate_suggestions(
+    original_query: str,
+    results: list[SearchResult],
+    intent: ParsedIntent,
+    has_confidential: bool,
+) -> list[SearchSuggestion]:
+    try:
+        top_titles = [r.document_title for r in results[:5]]
+        context = f"Requete: {original_query}\nDocuments trouves: {', '.join(top_titles)}\nIntent: {intent.intent.value}"
+        raw, _ = await _call_llm(
+            messages=[{"role": "user", "content": context}],
+            system=SUGGESTION_SYSTEM_PROMPT,
+            has_confidential=False,
+            temperature=0.4,
+            max_tokens=400,
+        )
+        data = json.loads(_clean_json(raw))
+        return [
+            SearchSuggestion(
+                suggestion_type=item.get("suggestion_type", "related_query"),
+                text=item["text"],
+                rationale=item.get("rationale", ""),
+            )
+            for item in data[:5]
+        ]
+    except Exception as exc:
+        logger.warning("Suggestion generation failed: %s", exc)
+        return _fallback_suggestions(original_query, intent)
+
+
+def _fallback_suggestions(query: str, intent: ParsedIntent) -> list[SearchSuggestion]:
+    suggestions = []
+    if intent.temporal_markers:
+        suggestions.append(SearchSuggestion(
+            suggestion_type="temporal",
+            text=f"Comment a evolue '{query}' au fil du temps ?",
+            rationale="Exploration temporelle de ce sujet",
+        ))
+    if intent.entities:
+        suggestions.append(SearchSuggestion(
+            suggestion_type="entity_search",
+            text=f"Tous les documents mentionnant '{intent.entities[0]}'",
+            rationale="Recherche centree sur cette entite",
+        ))
+    suggestions.append(SearchSuggestion(
+        suggestion_type="expand",
+        text=f"Resume global sur : {query}",
+        rationale="Vue d'ensemble synthetisee",
+    ))
+    return suggestions
+
+
+# ---- MAIN ORCHESTRATOR ----
+
+async def run_agentic_search(
+    db: AsyncSession,
+    request: AgenticSearchRequest,
+    user_role: UserRole,
+    user_id: UUID,
+    user: Any,
+) -> AgenticSearchResponse:
+    start_ms = time.monotonic()
+    logger.info("Agentic search started | user=%s role=%s query='%s'", user_id, user_role, request.query)
+
+    mode = request.mode
+    if mode == SearchMode.AUTO:
+        mode = SearchMode.FAST if len(request.query.split()) <= 5 else SearchMode.DEEP
+
+    # Stage 1: Intent
+    intent = await parse_intent(request.query)
+    logger.info("Intent: %s (%.2f) | sub_queries: %d", intent.intent, intent.confidence, len(intent.sub_queries))
+    if request.language:
+        intent.detected_language = request.language
+
+    # Stage 2: Query expansion
+    queries = build_search_queries(intent, request.query)
+
+    # Stage 3: Hybrid retrieval
+    search_service = HybridSearchService()
+    all_chunks: list[RawChunk] = []
+    for query_text in queries:
+        result = await search_service.hybrid_search(
+            query=query_text,
+            limit=request.top_k * 3,
+            offset=0,
+            db=db,
+            user=user,
+        )
+        for sr in result.get("results", []):
+            all_chunks.append(RawChunk(
+                chunk_id=sr.chunk_id,
+                document_id=sr.document_id,
+                document_title=sr.document_name,
+                document_bucket=DocumentBucket(sr.document_bucket),
+                document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
+                chunk_index=sr.chunk_index,
+                page_number=sr.page_number,
+                text=sr.chunk_text,
+                semantic_score=sr.semantic_score,
+                fts_rank=sr.keyword_score,
+                rrf_score=sr.final_score,
+                tags=[],
+            ))
+
+    # Deduplicate by chunk_id
+    seen_ids: set[UUID] = set()
+    deduped: list[RawChunk] = []
+    for chunk in all_chunks:
+        if chunk.chunk_id not in seen_ids:
+            seen_ids.add(chunk.chunk_id)
+            deduped.append(chunk)
+    all_chunks = deduped
+    logger.info("Retrieved %d chunks from hybrid search", len(all_chunks))
+
+    # Stage 4: Re-rank
+    results, has_confidential = rerank_and_build_results(
+        all_chunks, request.query, intent, request.top_k, user_role,
+    )
+    logger.info("Re-ranked to %d results | confidential=%s", len(results), has_confidential)
+
+    # Stage 5: Synthesis
+    answer_synthesis: Optional[str] = None
+    model_used = "none"
+
+    should_synthesize = (
+        mode == SearchMode.DEEP
+        or intent.requires_synthesis
+        or intent.intent in (
+            QueryIntent.SYNTHESIS, QueryIntent.TEMPORAL,
+            QueryIntent.COMPARATIVE, QueryIntent.FINANCIAL,
+        )
+    ) and len(results) > 0
+
+    if should_synthesize:
+        answer_synthesis, model_used = await synthesize_answer(
+            query=request.query,
+            results=results,
+            raw_chunks=all_chunks,
+            intent=intent,
+            has_confidential=has_confidential,
+            language=intent.detected_language,
+        )
+
+    # Stage 6: Suggestions
+    suggestions: list[SearchSuggestion] = []
+    if request.include_suggestions and results:
+        suggestions = await generate_suggestions(
+            request.query, results, intent, has_confidential,
+        )
+
+    citations = build_citations(results, all_chunks)
+    elapsed_ms = int((time.monotonic() - start_ms) * 1000)
+
+    trace = AgentTrace(
+        intent_detected=intent.intent,
+        intent_confidence=intent.confidence,
+        sub_queries_used=queries[1:],
+        total_chunks_retrieved=len(all_chunks),
+        chunks_after_reranking=len(results),
+        llm_model_used=model_used,
+        processing_time_ms=elapsed_ms,
+        confidential_results_count=sum(1 for r in results if r.is_confidential),
+        synthesis_performed=bool(answer_synthesis),
+    )
+
+    return AgenticSearchResponse(
+        query=request.query,
+        parsed_intent=intent.intent,
+        answer_synthesis=answer_synthesis,
+        answer_language=intent.detected_language,
+        results=results,
+        citations=citations,
+        suggestions=suggestions,
+        total_found=len(results),
+        has_confidential_results=has_confidential,
+        llm_model_used=model_used if model_used != "none" else None,
+        agent_trace=trace,
+        search_time_ms=elapsed_ms,
     )

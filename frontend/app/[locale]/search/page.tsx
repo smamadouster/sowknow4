@@ -1,193 +1,819 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { getCsrfToken } from '@/lib/api';
+import { useAuthStore } from '@/lib/store';
 
-interface SearchResult {
-  chunk_id: string;
-  document_id: string;
-  document_name: string;
-  document_bucket: string;
-  chunk_text: string;
-  chunk_index: number;
-  page_number: number | null;
-  relevance_score: number;
-  semantic_score: number;
-  keyword_score: number;
-}
-
-interface SearchResponse {
-  results: SearchResult[];
-  total: number;
-  query: string;
-  llm_used?: string;
-  answer?: string;
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-export default function SearchPage() {
-  const t = useTranslations('search');
-  const tCommon = useTranslations('common');
-  
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [llmUsed, setLlmUsed] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+type PipelineStage = 'idle' | 'intent' | 'retrieval' | 'reranking' | 'synthesis' | 'done' | 'error';
 
-    setLoading(true);
-    setHasSearched(true);
-    setResults([]);
-    setAnswer(null);
-    setLlmUsed(null);
+interface StreamState {
+  stage: PipelineStage;
+  stageMessage: string;
+  intent: { type: string; confidence: number; keywords: string[] } | null;
+  results: SearchResult[];
+  synthesis: string | null;
+  citations: Citation[];
+  suggestions: Suggestion[];
+  hasConfidential: boolean;
+  totalFound: number;
+  modelUsed: string | null;
+}
 
-    try {
-      const res = await fetch(`${API_BASE}/v1/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': getCsrfToken(),
-        },
-        credentials: 'include',
-        body: JSON.stringify({ 
-          query: query.trim(),
-          limit: 50,
-          offset: 0
-        }),
-      });
+interface SearchResult {
+  document_id: string | number;
+  document_title?: string;
+  document_name?: string;
+  document_type?: string;
+  document_date?: string;
+  document_bucket?: string;
+  page_number?: number | null;
+  relevance_score: number;
+  relevance_label?: string;
+  excerpt?: string;
+  chunk_text?: string;
+  match_reason?: string;
+  highlights?: string[];
+  tags?: string[];
+  rank?: number;
+  is_confidential?: boolean;
+}
 
-      if (res.ok) {
-        const data: SearchResponse = await res.json();
-        setResults(data.results || []);
-        setAnswer(data.answer || null);
-        setLlmUsed(data.llm_used || null);
-      }
-    } catch (e) {
-      console.error('Search error:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+interface Citation {
+  document_id: string | number;
+  document_title?: string;
+  document_name?: string;
+  bucket?: string;
+  chunk_excerpt?: string;
+  relevance_score: number;
+}
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSearch();
-    }
-  };
+interface Suggestion {
+  text: string;
+  suggestion_type?: string;
+  rationale?: string;
+}
+
+// ─── Relevance tier config ────────────────────────────────────────────────────
+
+const RELEVANCE_TIERS = ['highly_relevant', 'relevant', 'partially', 'marginal'] as const;
+
+const RELEVANCE_COLOR: Record<string, { dot: string; label: string; text: string; border: string }> = {
+  highly_relevant: { dot: 'bg-teal-500', label: 'text-teal-700', text: 'text-teal-600', border: 'border-l-teal-500' },
+  relevant:        { dot: 'bg-blue-500', label: 'text-blue-700', text: 'text-blue-600', border: 'border-l-blue-500' },
+  partially:       { dot: 'bg-amber-500', label: 'text-amber-700', text: 'text-amber-600', border: 'border-l-amber-500' },
+  marginal:        { dot: 'bg-gray-400', label: 'text-gray-500', text: 'text-gray-400', border: 'border-l-gray-400' },
+};
+
+const RANK_BG: Record<string, string> = {
+  highly_relevant: 'bg-teal-500',
+  relevant:        'bg-blue-500',
+  partially:       'bg-amber-500',
+  marginal:        'bg-gray-400',
+};
+
+// ─── Intent icon map ──────────────────────────────────────────────────────────
+
+const INTENT_ICONS: Record<string, string> = {
+  factual:         '◆',
+  temporal:        '◷',
+  comparative:     '⇄',
+  synthesis:       '⊕',
+  financial:       '₣',
+  cross_reference: '⊗',
+  exploratory:     '◉',
+  entity_search:   '◈',
+  procedural:      '▷',
+  unknown:         '○',
+};
+
+const SUGGESTION_ICONS: Record<string, string> = {
+  related_query: '→',
+  refine:        '◎',
+  expand:        '⊕',
+  temporal:      '◷',
+  entity_search: '◈',
+};
+
+// ─── SSE formatter ────────────────────────────────────────────────────────────
+
+function formatSynthesis(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(
+      /\[Source: ([^\]]+)\]/g,
+      '<cite class="text-xs text-gray-400 not-italic border-b border-dashed border-gray-300">[$1]</cite>'
+    )
+    .replace(/^• (.+)$/gm, '<li class="mb-1">$1</li>')
+    .replace(/\n/g, '<br/>');
+}
+
+// ─── PipelineProgress ─────────────────────────────────────────────────────────
+
+function PipelineProgress({ stage, message }: { stage: PipelineStage; message: string }) {
+  const stages: PipelineStage[] = ['intent', 'retrieval', 'reranking', 'synthesis', 'done'];
+  const currentIdx = stages.indexOf(stage);
+
+  if (stage === 'idle' || stage === 'error') return null;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">{t('title')}</h1>
-
-      {/* Search Input */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t('placeholder')}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+    <div className="bg-gray-900 rounded-xl px-5 py-3.5 mb-4">
+      <div className="flex items-center mb-2">
+        {stages.map((s, i) => (
+          <div key={s} className="flex items-center flex-1">
+            <div
+              className={[
+                'w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all duration-300',
+                i < currentIdx
+                  ? 'bg-teal-400 scale-100'
+                  : i === currentIdx
+                  ? 'bg-yellow-300 scale-125'
+                  : 'bg-gray-600',
+              ].join(' ')}
             />
+            {i < stages.length - 1 && (
+              <div
+                className={[
+                  'flex-1 h-0.5 transition-colors duration-300',
+                  i < currentIdx ? 'bg-teal-400' : 'bg-gray-700',
+                ].join(' ')}
+              />
+            )}
           </div>
-          <button
-            onClick={handleSearch}
-            disabled={loading || !query.trim()}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? t('searching') : tCommon('search')}
-          </button>
+        ))}
+      </div>
+      <p className="text-gray-400 text-xs italic m-0">{message}</p>
+    </div>
+  );
+}
+
+// ─── IntentBadge ──────────────────────────────────────────────────────────────
+
+function IntentBadge({
+  intent,
+  confidenceLabel,
+  intentLabel,
+}: {
+  intent: StreamState['intent'];
+  confidenceLabel: string;
+  intentLabel: string;
+}) {
+  if (!intent) return null;
+  const icon = INTENT_ICONS[intent.type] || INTENT_ICONS.unknown;
+
+  return (
+    <div className="flex items-center flex-wrap gap-1.5 mt-2.5 px-1">
+      <span className="inline-flex items-center gap-1 border-2 border-blue-500 text-blue-600 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+        <span>{icon}</span>
+        {intentLabel}
+      </span>
+      <span className="bg-gray-100 text-gray-500 rounded-full px-2 py-0.5 text-xs">
+        {Math.round(intent.confidence * 100)}% {confidenceLabel}
+      </span>
+      {intent.keywords.map((kw) => (
+        <span key={kw} className="bg-blue-50 text-blue-700 rounded px-1.5 py-0.5 text-xs font-mono">
+          {kw}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ─── SynthesisBlock ───────────────────────────────────────────────────────────
+
+function SynthesisBlock({
+  text,
+  model,
+  synthesizedAnswerLabel,
+  ollamaLabel,
+  minimaxLabel,
+}: {
+  text: string;
+  model: string | null;
+  synthesizedAnswerLabel: string;
+  ollamaLabel: string;
+  minimaxLabel: string;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const isOllama = model?.toLowerCase().includes('ollama');
+
+  return (
+    <div className="bg-white border-2 border-gray-900 rounded-xl mb-5 overflow-hidden shadow-[3px_3px_0_#111827]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+        <div className="flex items-center gap-2">
+          <span className="text-emerald-600">⊕</span>
+          <span className="text-xs font-bold text-gray-900 uppercase tracking-wide">
+            {synthesizedAnswerLabel}
+          </span>
+          {model && (
+            <span
+              className={[
+                'rounded-full px-2 py-0.5 text-xs font-semibold border',
+                isOllama
+                  ? 'bg-gray-900 text-yellow-300 border-yellow-300'
+                  : 'bg-blue-50 text-blue-700 border-blue-200',
+              ].join(' ')}
+            >
+              {isOllama ? `\uD83D\uDD12 ${ollamaLabel}` : `\u2746 ${minimaxLabel}`}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="text-gray-400 text-xs px-1.5 py-0.5 hover:text-gray-600 bg-transparent border-none cursor-pointer"
+        >
+          {expanded ? '▲' : '▼'}
+        </button>
+      </div>
+      {expanded && (
+        <div
+          className="px-5 py-4 text-sm leading-relaxed text-gray-700"
+          dangerouslySetInnerHTML={{ __html: formatSynthesis(text) }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── ResultCard ───────────────────────────────────────────────────────────────
+
+function ResultCard({
+  result,
+  rank,
+  canSeeConfidential,
+  confidentialLabel,
+  relevanceTierLabel,
+}: {
+  result: SearchResult;
+  rank: number;
+  canSeeConfidential: boolean;
+  confidentialLabel: string;
+  relevanceTierLabel: string;
+}) {
+  const tier = result.relevance_label || 'marginal';
+  const colors = RELEVANCE_COLOR[tier] || RELEVANCE_COLOR.marginal;
+  const rankBg = RANK_BG[tier] || RANK_BG.marginal;
+  const title = result.document_title || result.document_name || '—';
+  const excerpt = result.excerpt || result.chunk_text || '';
+  const opacity = tier === 'marginal' ? 'opacity-75' : 'opacity-100';
+
+  return (
+    <div
+      className={[
+        'bg-white border border-gray-200 border-l-4 rounded-lg p-4 mb-2 transition-shadow hover:shadow-md',
+        colors.border,
+        opacity,
+      ].join(' ')}
+    >
+      {/* Header row */}
+      <div className="flex items-start gap-2.5 mb-2">
+        <span className={`${rankBg} text-white rounded px-1.5 py-0.5 text-xs font-bold flex-shrink-0 mt-0.5`}>
+          #{rank}
+        </span>
+        <div className="flex-1 min-w-0">
+          <span className="block text-sm font-semibold text-gray-900 truncate">{title}</span>
+          <span className="text-xs text-gray-400 tracking-wide">
+            {result.document_type?.toUpperCase()}
+            {result.page_number ? ` · p.${result.page_number}` : ''}
+            {result.document_date
+              ? ` · ${new Date(result.document_date).getFullYear()}`
+              : ''}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {result.is_confidential && canSeeConfidential && (
+            <span className="bg-gray-900 text-yellow-300 rounded px-1.5 py-0.5 text-xs font-semibold">
+              {'\uD83D\uDD12'} {confidentialLabel}
+            </span>
+          )}
+          <span className={`text-xs font-semibold flex items-center gap-1 ${colors.text}`}>
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+            {relevanceTierLabel}
+          </span>
+          <span className="text-xs text-gray-400 tabular-nums">
+            {Math.round(result.relevance_score * 100)}%
+          </span>
         </div>
       </div>
 
-      {/* LLM Info */}
-      {llmUsed && (
-        <div className="mb-4 flex items-center gap-2">
-          <span className="text-sm text-gray-500">{t('llm_kimi')}:</span>
-          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
-            {llmUsed}
-          </span>
+      {/* Excerpt */}
+      {excerpt && (
+        <p className="text-sm text-gray-600 leading-relaxed mb-1.5">{excerpt}</p>
+      )}
+
+      {/* Match reason */}
+      {result.match_reason && (
+        <span className="text-xs text-gray-400 italic">{'\u21B3'} {result.match_reason}</span>
+      )}
+
+      {/* Highlights */}
+      {result.highlights && result.highlights.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1">
+          {result.highlights.slice(0, 2).map((h, i) => (
+            <span
+              key={i}
+              className="text-xs text-gray-700 bg-yellow-50 border-l-2 border-yellow-300 pl-2 pr-2 py-0.5 rounded-r italic"
+            >
+              &ldquo;{h.length > 100 ? h.slice(0, 97) + '\u2026' : h}&rdquo;
+            </span>
+          ))}
         </div>
       )}
 
-      {/* LLM Answer */}
-      {answer && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
-          <h3 className="font-semibold text-blue-900 mb-2">AI Answer</h3>
-          <p className="text-blue-800 whitespace-pre-wrap">{answer}</p>
+      {/* Tags */}
+      {result.tags && result.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {result.tags.slice(0, 5).map((tag) => (
+            <span key={tag} className="bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 text-xs">
+              {tag}
+            </span>
+          ))}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Results */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">{t('searching')}</p>
-          </div>
-        </div>
-      ) : hasSearched ? (
-        results.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <p className="text-gray-600">{t('no_results')}</p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-sm text-gray-500 mb-4">
-              {t('found_results', { count: results.length })}
-            </p>
-            <div className="space-y-4">
-              {results.map((result, index) => (
-                <div
-                  key={result.chunk_id || index}
-                  className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-gray-900">{result.document_name}</h3>
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          result.document_bucket === 'confidential' 
-                            ? 'bg-orange-100 text-orange-700' 
-                            : 'bg-green-100 text-green-700'
-                        }`}>
-                          {result.document_bucket}
-                        </span>
-                      </div>
-                      <p className="text-gray-600 text-sm line-clamp-3">{result.chunk_text}</p>
-                    </div>
-                    <div className="ml-4 text-right">
-                      <div className="text-lg font-bold text-blue-600">
-                        {Math.round(result.relevance_score * 100)}%
-                      </div>
-                      <p className="text-xs text-gray-400">{t('relevance')}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+// ─── Suggestions ──────────────────────────────────────────────────────────────
+
+function Suggestions({
+  suggestions,
+  onSelect,
+  label,
+}: {
+  suggestions: Suggestion[];
+  onSelect: (q: string) => void;
+  label: string;
+}) {
+  if (!suggestions.length) return null;
+
+  return (
+    <div className="mt-6 pt-5 border-t border-dashed border-gray-200">
+      <p className="text-xs uppercase tracking-widest text-gray-400 mb-2.5">{label}</p>
+      <div className="flex flex-wrap gap-2">
+        {suggestions.map((s, i) => (
+          <button
+            key={i}
+            onClick={() => onSelect(s.text)}
+            title={s.rationale}
+            className="inline-flex items-center gap-1.5 bg-white border-2 border-gray-200 rounded-full px-3.5 py-1.5 text-sm text-gray-700 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          >
+            <span className="text-sm text-gray-400">
+              {SUGGESTION_ICONS[s.suggestion_type || ''] || '→'}
+            </span>
+            {s.text}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── CitationsPanel ───────────────────────────────────────────────────────────
+
+function CitationsPanel({
+  citations,
+  open,
+  onClose,
+  sourcesLabel,
+  relevanceLabel,
+}: {
+  citations: Citation[];
+  open: boolean;
+  onClose: () => void;
+  sourcesLabel: string;
+  relevanceLabel: string;
+}) {
+  if (!open || !citations.length) return null;
+
+  return (
+    <div className="w-72 flex-shrink-0 bg-white border border-gray-200 rounded-xl overflow-hidden sticky top-5 max-h-[80vh] overflow-y-auto">
+      <div className="flex justify-between items-center px-3.5 py-3 border-b border-gray-100 bg-gray-50 sticky top-0">
+        <span className="text-xs font-bold uppercase tracking-wide text-gray-900">
+          {sourcesLabel} ({citations.length})
+        </span>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-700 bg-transparent border-none cursor-pointer text-sm leading-none"
+        >
+          {'\u2715'}
+        </button>
+      </div>
+      {citations.map((c, i) => {
+        const docTitle = c.document_title || c.document_name || '—';
+        return (
+          <div key={String(c.document_id)} className="px-3.5 py-3 border-b border-gray-50 last:border-b-0">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="bg-gray-100 rounded w-5 h-5 flex items-center justify-center text-xs font-bold text-gray-700 flex-shrink-0">
+                {i + 1}
+              </span>
+              <span className="text-xs font-semibold text-gray-900 flex-1 truncate">{docTitle}</span>
+              {c.bucket === 'confidential' && (
+                <span className="text-xs">{'\uD83D\uDD12'}</span>
+              )}
             </div>
+            {c.chunk_excerpt && (
+              <p className="text-xs text-gray-500 italic leading-relaxed my-1">
+                &ldquo;{c.chunk_excerpt}&rdquo;
+              </p>
+            )}
+            <span className="text-xs text-gray-400">
+              {relevanceLabel}: {Math.round(c.relevance_score * 100)}%
+            </span>
           </div>
-        )
-      ) : (
-        <div className="text-center py-12">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <p className="text-gray-600 mb-4">Enter a question to search your documents</p>
-          <div className="text-sm text-gray-400">
-            Try: "Show me all financial documents from 2023"
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── MAIN SEARCH PAGE ─────────────────────────────────────────────────────────
+
+export default function SearchPage() {
+  const t = useTranslations('search');
+  const user = useAuthStore((s) => s.user);
+  const canSeeConfidential =
+    user?.role === 'admin' || user?.role === 'superuser' || user?.can_access_confidential;
+
+  const [query, setQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [showCitations, setShowCitations] = useState(false);
+  const [stream, setStream] = useState<StreamState>({
+    stage: 'idle',
+    stageMessage: '',
+    intent: null,
+    results: [],
+    synthesis: null,
+    citations: [],
+    suggestions: [],
+    hasConfidential: false,
+    totalFound: 0,
+    modelUsed: null,
+  });
+
+  const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const runSearch = useCallback(
+    async (searchQuery: string) => {
+      if (!searchQuery.trim() || isSearching) return;
+
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+
+      setIsSearching(true);
+      setShowCitations(false);
+      setStream({
+        stage: 'intent',
+        stageMessage: t('stage.intent'),
+        intent: null,
+        results: [],
+        synthesis: null,
+        citations: [],
+        suggestions: [],
+        hasConfidential: false,
+        totalFound: 0,
+        modelUsed: null,
+      });
+
+      try {
+        const response = await fetch(`${API_BASE}/v1/search/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            query: searchQuery,
+            mode: 'auto',
+            top_k: 12,
+            include_suggestions: true,
+          }),
+          signal: abortRef.current.signal,
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let lastEventName = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              lastEventName = line.slice(7).trim();
+              continue;
+            }
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw || raw === '[DONE]') continue;
+
+            try {
+              const event = JSON.parse(raw) as Record<string, unknown>;
+
+              // Stage update
+              if ('stage' in event) {
+                const stage = event.stage as PipelineStage;
+                let msg = (event.message as string) || '';
+                if (stage === 'intent') {
+                  msg = t('stage.intent');
+                } else if (stage === 'retrieval') {
+                  msg = t('stage.retrieval', { count: (event.query_count as number) || 1 });
+                } else if (stage === 'reranking') {
+                  msg = t('stage.reranking', { count: (event.chunk_count as number) || 0 });
+                } else if (stage === 'synthesis') {
+                  msg = t('stage.synthesis');
+                }
+                setStream((prev) => ({ ...prev, stage, stageMessage: msg }));
+              }
+              // Intent parsed
+              else if ('intent' in event && 'confidence' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  intent: {
+                    type: event.intent as string,
+                    confidence: event.confidence as number,
+                    keywords: (event.keywords as string[]) || [],
+                  },
+                }));
+              }
+              // Results
+              else if ('results' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  results: event.results as SearchResult[],
+                  totalFound: (event.total_found as number) || (event.results as SearchResult[]).length,
+                  hasConfidential: (event.has_confidential_results as boolean) || false,
+                }));
+              }
+              // Synthesis answer
+              else if ('answer' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  synthesis: event.answer as string,
+                  modelUsed: (event.model as string) || null,
+                }));
+              }
+              // Suggestions
+              else if ('suggestions' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  suggestions: event.suggestions as Suggestion[],
+                }));
+              }
+              // Citations
+              else if ('citations' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  citations: event.citations as Citation[],
+                }));
+              }
+              // Done event (total_found without results)
+              else if ('total_found' in event && !('results' in event)) {
+                setStream((prev) => ({ ...prev, stage: 'done' }));
+              }
+              // Error event
+              else if (lastEventName === 'error' || 'error' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  stage: 'error',
+                  stageMessage: (event.error as string) || t('error'),
+                }));
+              }
+            } catch {
+              // Ignore malformed SSE lines
+            }
+          }
+        }
+      } catch (err: unknown) {
+        if ((err as Error).name !== 'AbortError') {
+          setStream((prev) => ({
+            ...prev,
+            stage: 'error',
+            stageMessage: t('error'),
+          }));
+        }
+      } finally {
+        setIsSearching(false);
+        setStream((prev) =>
+          prev.stage !== 'error' ? { ...prev, stage: 'done' } : prev
+        );
+      }
+    },
+    [isSearching, t]
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    runSearch(query);
+  };
+
+  const handleSuggestion = (text: string) => {
+    setQuery(text);
+    runSearch(text);
+  };
+
+  const handleExampleClick = (text: string) => {
+    setQuery(text);
+    inputRef.current?.focus();
+  };
+
+  const hasResults = stream.results.length > 0;
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto pb-20">
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 mb-8">
+        <span className="text-3xl font-black text-gray-900 leading-none">{'\u229B'}</span>
+        <div>
+          <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">{t('title')}</h1>
+        </div>
+        {stream.hasConfidential && canSeeConfidential && (
+          <div className="ml-auto bg-gray-900 text-yellow-300 px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide">
+            {'\uD83D\uDD12'} {t('confidentialNotice')}
+          </div>
+        )}
+      </div>
+
+      {/* ── Search form ─────────────────────────────────────────────── */}
+      <form onSubmit={handleSubmit} className="mb-2">
+        <div className="flex items-center bg-white border-2 border-gray-900 rounded-xl px-4 shadow-[4px_4px_0_#111827]">
+          <span className="text-xl text-gray-400 mr-2 flex-shrink-0">{'\u2315'}</span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                runSearch(query);
+              }
+            }}
+            placeholder={t('placeholder')}
+            disabled={isSearching}
+            autoFocus
+            className="flex-1 border-none outline-none bg-transparent text-sm text-gray-900 py-3.5 placeholder:text-gray-400"
+          />
+          {isSearching ? (
+            <button
+              type="button"
+              onClick={() => abortRef.current?.abort()}
+              className="bg-rose-500 text-white border-none rounded-lg px-3.5 py-2 text-xs font-bold cursor-pointer flex-shrink-0"
+            >
+              {'\u25A0'} {t('stop')}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!query.trim()}
+              className="bg-gray-900 text-yellow-300 border-none rounded-lg px-4 py-2 text-xs font-bold cursor-pointer flex-shrink-0 disabled:opacity-40 hover:bg-gray-800 transition-colors"
+            >
+              {t('searchButton')} {'\u2192'}
+            </button>
+          )}
+        </div>
+
+        {/* Intent badge */}
+        {stream.intent && (
+          <IntentBadge
+            intent={stream.intent}
+            confidenceLabel={t('confidence')}
+            intentLabel={
+              t((`intent.${stream.intent.type}`) as Parameters<typeof t>[0])
+            }
+          />
+        )}
+      </form>
+
+      {/* ── Pipeline progress ──────────────────────────────────────── */}
+      <PipelineProgress stage={stream.stage} message={stream.stageMessage} />
+
+      {/* ── Error state ────────────────────────────────────────────── */}
+      {stream.stage === 'error' && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
+          {'\u26A0'} {stream.stageMessage || t('error')}
+        </div>
+      )}
+
+      {/* ── Results area ───────────────────────────────────────────── */}
+      {(hasResults || stream.synthesis) && (
+        <div className="mt-2">
+          {/* Results header */}
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-sm text-gray-500 font-medium">
+              {stream.totalFound} {stream.totalFound === 1 ? t('result') : t('resultsPlural')}
+            </span>
+            {stream.citations.length > 0 && (
+              <button
+                onClick={() => setShowCitations((v) => !v)}
+                className="bg-gray-100 border border-gray-200 rounded-lg px-3 py-1 text-xs text-gray-700 cursor-pointer font-medium hover:bg-gray-200 transition-colors"
+              >
+                {'\u229E'} {stream.citations.length} {stream.citations.length === 1 ? t('source') : t('sources')}
+              </button>
+            )}
+          </div>
+
+          {/* Main grid: results left, citations right */}
+          <div className="flex gap-5 items-start">
+            {/* Results column */}
+            <div className="flex-1 min-w-0">
+              {/* Synthesized answer */}
+              {stream.synthesis && (
+                <SynthesisBlock
+                  text={stream.synthesis}
+                  model={stream.modelUsed}
+                  synthesizedAnswerLabel={t('synthesizedAnswer')}
+                  ollamaLabel={t('model.ollama')}
+                  minimaxLabel={t('model.minimax')}
+                />
+              )}
+
+              {/* Tiered results */}
+              {RELEVANCE_TIERS.map((tier) => {
+                const tierResults = stream.results.filter((r) => r.relevance_label === tier);
+                if (!tierResults.length) return null;
+                const colors = RELEVANCE_COLOR[tier];
+                const labelKey = (`relevanceLabel.${tier}`) as Parameters<typeof t>[0];
+                return (
+                  <div key={tier} className="mb-5">
+                    <div className="flex items-center mb-2 text-xs uppercase tracking-widest">
+                      <span className={`inline-block w-2 h-2 rounded-full ${colors.dot} mr-1.5`} />
+                      <span className={`font-semibold ${colors.label}`}>{t(labelKey)}</span>
+                      <span className="ml-1.5 bg-gray-100 rounded-full px-1.5 py-0.5 text-gray-500">
+                        {tierResults.length}
+                      </span>
+                    </div>
+                    {tierResults.map((result, idx) => (
+                      <ResultCard
+                        key={String(result.document_id) + idx}
+                        result={result}
+                        rank={result.rank ?? idx + 1}
+                        canSeeConfidential={!!canSeeConfidential}
+                        confidentialLabel={t('confidential')}
+                        relevanceTierLabel={t(labelKey)}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+
+              {/* Suggestions */}
+              <Suggestions
+                suggestions={stream.suggestions}
+                onSelect={handleSuggestion}
+                label={t('suggestions')}
+              />
+            </div>
+
+            {/* Citations sidebar */}
+            <CitationsPanel
+              citations={stream.citations}
+              open={showCitations}
+              onClose={() => setShowCitations(false)}
+              sourcesLabel={t('sources')}
+              relevanceLabel={t('relevance')}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Empty state ────────────────────────────────────────────── */}
+      {stream.stage === 'idle' && (
+        <div className="text-center py-20 px-8">
+          <div className="text-6xl mb-4 text-gray-200">{'\u229B'}</div>
+          <p className="text-xl font-bold text-gray-900 mb-2">{t('empty.title')}</p>
+          <p className="text-sm text-gray-500 leading-relaxed max-w-md mx-auto mb-8">
+            {t('empty.subtitle')}
+          </p>
+          <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
+            {(['1', '2', '3', '4'] as const).map((n) => {
+              const exKey = (`examples.${n}`) as Parameters<typeof t>[0];
+              return (
+                <button
+                  key={n}
+                  onClick={() => handleExampleClick(t(exKey))}
+                  className="bg-white border-2 border-gray-200 rounded-full px-4 py-2 text-sm text-gray-700 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+                >
+                  {t(exKey)}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

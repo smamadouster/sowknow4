@@ -19,13 +19,10 @@ try:
 
     REDIS_URL = _settings.REDIS_URL
 except Exception:
-    # Fallback for environments where config.py is not yet bootstrapped
-    # (e.g., during Alembic migrations or bare-metal test runs).
-    # REDIS_URL from env must already include credentials in this path.
-    _raw = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    if not _raw.startswith(("redis://", "rediss://", "unix://")):
-        raise ValueError(f"REDIS_URL must start with 'redis://', 'rediss://', or 'unix://'; got: {_raw!r}")
-    REDIS_URL = _raw
+    # Fallback: build URL from REDIS_PASSWORD with proper encoding
+    from app.core.redis_url import safe_redis_url
+
+    REDIS_URL = safe_redis_url()
 
 # ---------------------------------------------------------------------------
 # Create Celery app

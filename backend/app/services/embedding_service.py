@@ -317,8 +317,9 @@ class ChunkingService:
                 )
                 chunk_index += 1
 
-            # Move to next position with overlap
-            current_position = best_break - (self.chunk_overlap * 4)
+            # Move to next position with overlap — ensure forward progress
+            new_position = best_break - (self.chunk_overlap * 4)
+            current_position = max(new_position, current_position + 1)
 
         return chunks
 

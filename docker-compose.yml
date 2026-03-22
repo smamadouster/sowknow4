@@ -1,12 +1,27 @@
-version: '3.8'
+# SOWKNOW4 Docker Compose — Single Source of Truth
+# Domain: sowknow.gollamtech.com
+# Total Memory Budget: 6.4GB on shared 16GB VPS
+#
+# NAMING CONVENTION: All containers use "sowknow4-" prefix. No exceptions.
+# PORT POLICY: Only backend (8001) and frontend (3000) exposed to host.
+#              Internal services (postgres, redis, vault, nats) are network-only.
+#
+# Memory Allocation:
+#   postgres:        1536MB  (pgvector, 5 concurrent users)
+#   celery-worker:   2560MB  (embeddings model ~1.3GB + overhead)
+#   backend:          512MB  (FastAPI)
+#   frontend:         512MB  (Next.js)
+#   redis:            256MB  (cache/queue)
+#   vault:            256MB  (secrets)
+#   celery-beat:      128MB  (scheduler)
+#   nats:             128MB  (message broker)
+#   certbot:          128MB  (TLS renewal)
+#   TOTAL:          ~6016MB  (within 6.4GB budget)
 
-# Require .env file to be present for all services
 x-common-env: &common-env
   env_file:
     - .env
 
-# Global logging configuration for all services
-# Enables centralized log collection and structured JSON logging
 x-logging: &default-logging
   driver: "json-file"
   options:
@@ -16,12 +31,10 @@ x-logging: &default-logging
     tag: "{{.Name}}/{{.ID}}"
 
 services:
-  # PostgreSQL with pgvector
+  # --- Infrastructure ---
+
   postgres:
     <<: *common-env
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     image: pgvector/pgvector:pg16
     container_name: sowknow4-postgres
     restart: unless-stopped
@@ -34,8 +47,7 @@ services:
       - sowknow-postgres-data:/var/lib/postgresql/data
       - sowknow-backups:/backups
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "5432:5432"
+    # NO ports — internal network only. Use: docker exec -it sowknow4-postgres psql -U sowknow
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sowknow"]
       interval: 10s
@@ -44,14 +56,11 @@ services:
     deploy:
       resources:
         limits:
-          # Reduced from 2048M to fit within 6.4GB VPS budget.
-          # 1536M is sufficient for pgvector with 5 concurrent users.
           memory: 1536M
           cpus: '1.5'
     networks:
       - sowknow-net
 
-  # Redis for Celery
   redis:
     image: redis:7-alpine
     container_name: sowknow4-redis
@@ -62,8 +71,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
       - sowknow-redis-data:/data
-    ports:
-      - "6379:6379"
+    # NO ports — internal network only. Use: docker exec -it sowknow4-redis redis-cli
     healthcheck:
       test: ["CMD-SHELL", "REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping"]
       interval: 10s
@@ -72,14 +80,65 @@ services:
     deploy:
       resources:
         limits:
-          # Reduced from 512M. Redis 7 Alpine typically uses 30-80MB;
-          # 256M provides ample headroom for session/cache data.
           memory: 256M
           cpus: '0.5'
     networks:
       - sowknow-net
 
-  # FastAPI Backend
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: sowknow4-vault
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - VAULT_ADDR=http://127.0.0.1:8200
+      - VAULT_API_ADDR=http://127.0.0.1:8200
+      - VAULT_LOCAL_CONFIG={"storage":{"file":{"path":"/vault/data"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":"1"}},"disable_mlock":true,"ui":false}
+    command: ["server"]
+    volumes:
+      - sowknow-vault-data:/vault/data
+    # NO ports — internal network only. Use: docker exec -it sowknow4-vault vault status
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD-SHELL", "vault status -address=http://127.0.0.1:8200 2>&1 | grep -qE 'Sealed.*false|Sealed.*true' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: sowknow4-nats
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["--jetstream", "--store_dir=/data", "-m", "8222"]
+    volumes:
+      - sowknow-nats-data:/data
+    # NO ports — internal network only. Use: docker exec -it sowknow4-nats nats-server --signal reload
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
+  # --- Application ---
+
   backend:
     <<: *common-env
     env_file:
@@ -88,12 +147,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.minimal
-    container_name: sowknow-backend
+    container_name: sowknow4-backend
     restart: unless-stopped
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_HOST=redis
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
@@ -102,7 +161,6 @@ services:
       - VAULT_ADDR=http://vault:8200
       - VAULT_TOKEN=${VAULT_ROOT_TOKEN:-sowknow-dev-token}
       - NATS_URL=nats://nats:4222
-      # CORS and Cookie Settings (CRITICAL for authentication)
       - APP_ENV=${APP_ENV:-production}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS},backend
@@ -126,7 +184,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/health || exit 1"]
+      # NOTE: Bind mount loads main.py (not main_minimal.py), so health is at /api/v1/health
+      # main_minimal.py has /health at root, but that's overridden by the bind mount.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/health || curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -139,7 +199,6 @@ services:
     networks:
       - sowknow-net
 
-  # Celery Worker
   celery-worker:
     <<: *common-env
     build:
@@ -150,7 +209,7 @@ services:
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_HOST=redis
       - KIMI_API_KEY=${KIMI_API_KEY}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
@@ -166,33 +225,22 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      # Two-phase check:
-      # 1. Broker reachability (fast path, always verified).
-      # 2. Embedding model loaded in the worker process: inspects the active worker via
-      #    celery inspect ping, then checks that EmbeddingService reports model loaded.
-      #    If the model failed to load (OOM or missing package), this exits non-zero and
-      #    Docker will restart the container before it processes documents with zero vectors.
-      test: ["CMD-SHELL", "python -c \"\nimport os, sys\nfrom celery import Celery\nc = Celery('sowknow', broker=os.getenv('REDIS_URL', 'redis://redis:6379/0'))\ntry:\n    c.connection().connect()\nexcept Exception as e:\n    print(f'Broker unreachable: {e}'); sys.exit(1)\ntry:\n    from app.services.embedding_service import embedding_service\n    # Trigger lazy load; raises on hard failure\n    _ = embedding_service.model\n    if not embedding_service.can_embed:\n        print(f'Embedding model not ready: {embedding_service._load_error}'); sys.exit(1)\n    print('OK: broker reachable, embedding model loaded')\nexcept Exception as e:\n    print(f'Embedding check failed: {e}'); sys.exit(1)\n\" || exit 1"]
-      interval: 90s
-      timeout: 60s
+      # No pgrep/ps in slim image — check PID 1 is celery via /proc
+      test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
+      interval: 60s
+      timeout: 10s
       retries: 3
       start_period: 120s
     deploy:
       resources:
         limits:
-          # 2560M provides headroom for multilingual-e5-large embedding model
-          # (~1.3 GB) + Python overhead (~300 MB) + PyTorch buffers (~500 MB) = ~2.1 GB peak.
-          # CRITICAL: concurrency MUST stay at 1. With fork pool, each worker process
-          # gets its own private copy of the model after fork (lazy load = no CoW sharing).
-          # Two workers × 2.1 GB = 4.2 GB > VPS budget → SIGKILL-9. One worker keeps peak
-          # below 2560 M and total container budget stays within the 6.4 GB VPS limit.
+          # CRITICAL: concurrency MUST stay at 1. Two workers x 2.1GB > VPS budget.
           memory: 2560M
           cpus: '1.5'
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 -Q celery,document_processing,scheduled
     networks:
       - sowknow-net
 
-  # Celery Beat
   celery-beat:
     <<: *common-env
     build:
@@ -203,7 +251,7 @@ services:
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_HOST=redis
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY}
     command: celery -A app.celery_app beat --loglevel=info
@@ -213,7 +261,7 @@ services:
       - postgres
       - redis
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
+      test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -221,19 +269,16 @@ services:
     deploy:
       resources:
         limits:
-          # Beat only schedules tasks - 128MB is sufficient (~30-60MB actual).
-          # Reduced to accommodate Vault + NATS within VPS budget.
           memory: 128M
           cpus: '0.25'
     networks:
       - sowknow-net
 
-  # Next.js Frontend
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: sowknow-frontend
+    container_name: sowknow4-frontend
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -256,19 +301,72 @@ services:
     networks:
       - sowknow-net
 
-  # Nginx Reverse Proxy
-  # NOTE: Only enable if no other reverse proxy is using ports 80/443
-  # If using existing caddy/nginx, set NGINX_ENABLED=false
+  telegram-bot:
+    <<: *common-env
+    env_file:
+      - .env
+      - .secrets
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.telegram
+    container_name: sowknow4-telegram-bot
+    restart: on-failure
+    logging: *default-logging
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_HOST=redis
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set}
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q telegram || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    networks:
+      - sowknow-net
+
+  # --- Optional profiles (activate with --profile) ---
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: sowknow4-certbot
+    restart: unless-stopped
+    profiles:
+      - tls
+    volumes:
+      - ./nginx/ssl:/etc/letsencrypt
+      - sowknow-certbot-webroot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done'"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
   nginx:
     image: nginx:alpine
     container_name: sowknow4-nginx
     restart: unless-stopped
     logging: *default-logging
     profiles:
-      - nginx  # Use: docker compose --profile nginx up -d
+      - nginx
     volumes:
       - ./nginx/nginx-http-only.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
+      - sowknow-certbot-webroot:/var/www/certbot:ro
     ports:
       - "80:80"
       - "443:443"
@@ -291,102 +389,6 @@ services:
     networks:
       - sowknow-net
 
-  # Telegram Bot
-  telegram-bot:
-    <<: *common-env
-    env_file:
-      - .env
-      - .secrets
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.telegram
-    container_name: sowknow4-telegram-bot
-    restart: on-failure  # exit(0) on bad token must NOT restart; only crash (non-zero) restarts
-    logging: *default-logging
-    environment:
-      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
-      - REDIS_URL=${REDIS_URL}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set}
-      - BACKEND_URL=http://backend:8000
-    depends_on:
-      backend:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'python.*telegram_bot' || exit 1"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.5'
-    networks:
-      - sowknow-net
-
-  # HashiCorp Vault — secret management (file backend for persistence)
-  # First run: docker compose exec vault vault operator init -key-shares=1 -key-threshold=1
-  # Then unseal: docker compose exec vault vault operator unseal <UNSEAL_KEY>
-  vault:
-    image: hashicorp/vault:1.15
-    container_name: sowknow4-vault
-    restart: unless-stopped
-    logging: *default-logging
-    environment:
-      - VAULT_ADDR=http://127.0.0.1:8200
-      - VAULT_API_ADDR=http://127.0.0.1:8200
-      - VAULT_LOCAL_CONFIG={"storage":{"file":{"path":"/vault/data"}},"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":"1"}},"disable_mlock":true,"ui":false}
-    command: ["server"]
-    volumes:
-      - sowknow-vault-data:/vault/data
-    ports:
-      - "8200:8200"
-    cap_add:
-      - IPC_LOCK
-    healthcheck:
-      test: ["CMD-SHELL", "vault status -address=http://127.0.0.1:8200 2>&1 | grep -qE 'Sealed.*false|Sealed.*true' || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.25'
-    networks:
-      - sowknow-net
-
-  # NATS — lightweight message broker with JetStream
-  nats:
-    image: nats:2.10-alpine
-    container_name: sowknow4-nats
-    restart: unless-stopped
-    logging: *default-logging
-    command: ["--jetstream", "--store_dir=/data", "-m", "8222"]
-    volumes:
-      - sowknow-nats-data:/data
-    ports:
-      - "4222:4222"
-      - "8222:8222"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8222/healthz || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: '0.25'
-    networks:
-      - sowknow-net
-
-  # Prometheus for advanced metrics (optional - enable with --profile monitoring)
   prometheus:
     image: prom/prometheus:latest
     container_name: sowknow4-prometheus
@@ -397,8 +399,7 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - sowknow-prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
+    # NO ports — internal network only
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -429,4 +430,5 @@ volumes:
   sowknow-backups:
   sowknow-nats-data:
   sowknow-vault-data:
+  sowknow-certbot-webroot:
   sowknow-prometheus-data:

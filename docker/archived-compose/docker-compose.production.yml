@@ -1,0 +1,350 @@
+# SOWKNOW Production Docker Compose
+# Domain: sowknow.gollamtech.com
+# Total Memory Budget: 6.4GB on shared 16GB VPS
+#
+# CRITICAL - API Keys Configuration:
+# Before deployment, ensure these environment variables are set in .secrets or backend/.env.production:
+#   - GEMINI_API_KEY: Required for public document processing
+#   - OCR_ENGINE: OCR engine (paddle or tesseract)
+#   - POSTGRES_PASSWORD: Database password
+#   - REDIS_PASSWORD: Redis password
+#   - SECRET_KEY: JWT secret for authentication
+#   - JWT_SECRET_KEY: JWT signing key
+#
+# Memory & CPU Allocation Summary (PRD-compliant):
+#   postgres:        1920MB cpus: 1.5  (Database with pgvector)
+#   redis:           512MB  cpus: 0.5  (Cache & message queue)
+#   backend:         1GB    cpus: 1.0  (FastAPI application)
+#   celery-worker:   1280MB cpus: 1.5  (Background tasks, embeddings model)
+#   celery-beat:     512MB  cpus: 0.25 (Scheduled tasks, anomaly reports)
+#   telegram-bot:    256MB  cpus: 0.5  (Mobile interface)
+#   frontend:        512MB  cpus: 1.0  (Next.js application)
+#   nginx:           256MB  cpus: 0.5  (Reverse proxy)
+#   certbot:         128MB  cpus: 0.25 (SSL certificate management)
+#   ollama:          SHARED (Uses ghostshell-api on host, no container memory)
+#   TOTAL MEMORY:   6400MB (Within 6.4GB budget — exact fit)
+#   TOTAL CPU:       6.75  (CFS scheduler time-sliced on shared VPS)
+#
+# Backup Strategy:
+#   - Daily PostgreSQL dumps: docker exec sowknow-postgres pg_dump -U sowknow sowknow > backup_$(date +%Y%m%d).sql
+#   - Weekly encrypted offsite backup to secure storage
+#   - Monthly restore test to verify backup integrity
+#   - 7-4-3 retention policy: 7 daily, 4 weekly, 3 monthly backups
+
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sowknow-postgres
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1920m
+          cpus: '1.5'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sowknow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sowknow}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sowknow-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sowknow} -d ${POSTGRES_DB:-sowknow}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: sowknow-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.5'
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - sowknow-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Ollama - REMOVED: Using shared Ollama instance (ghostshell-api)
+  # The shared Ollama is already running on the VPS at host's port 11434
+  # Backend connects via: OLLAMA_BASE_URL=http://host.docker.internal:11434
+  # This saves 2GB memory and avoids port conflicts
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+          cpus: '1.0'
+    env_file:
+      - .env
+    environment:
+      # DATABASE_URL and REDIS_URL are loaded from .env
+      # to avoid URL parsing issues with special characters in passwords
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+    volumes:
+      - /var/docker/sowknow4/uploads/public:/data/public
+      - /var/docker/sowknow4/uploads/confidential:/data/confidential
+      - /var/docker/sowknow4/backups:/app/backups
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - sowknow-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -H 'Host: sowknow.gollamtech.com' http://localhost:8000/health || curl -f http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-celery-worker
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1280m
+          cpus: '1.5'
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
+    env_file:
+      - .env
+    environment:
+      # DATABASE_URL, REDIS_URL are loaded from .env
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+    volumes:
+      - /var/docker/sowknow4/uploads/public:/data/public
+      - /var/docker/sowknow4/uploads/confidential:/data/confidential
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 180s
+
+  # Celery Beat - Scheduled Tasks
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-celery-beat
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.25'
+    command: celery -A app.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://backend:8000/health || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=https://sowknow.gollamtech.com/api
+        - NEXT_PUBLIC_APP_URL=https://sowknow.gollamtech.com
+    container_name: sowknow-frontend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://sowknow.gollamtech.com/api
+      - NEXT_PUBLIC_APP_URL=https://sowknow.gollamtech.com
+    networks:
+      - sowknow-net
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || curl -f http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Nginx Reverse Proxy
+  # NOTE: In production, Caddy (ghostshell-caddy) handles reverse proxy and SSL.
+  # Do NOT start this nginx container - it will conflict with Caddy on ports 80/443.
+  # This configuration is kept for reference and development environments only.
+  nginx:
+    profiles: ["nginx"]  # Only start with: docker-compose --profile nginx up -d
+    image: nginx:alpine
+    container_name: sowknow-nginx
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot-www:/var/www/certbot:ro
+      - certbot-conf:/etc/letsencrypt:ro
+    networks:
+      - sowknow-net
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Certbot for Let's Encrypt SSL
+  certbot:
+    image: certbot/certbot:latest
+    container_name: sowknow-certbot
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: '0.25'
+    volumes:
+      - certbot-www:/var/www/certbot
+      - certbot-conf:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - sowknow-net
+
+  # Telegram Bot - Mobile Interface
+  telegram-bot:
+    image: sowknow4-telegram-bot:latest
+    container_name: sowknow4-telegram-bot
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'
+    env_file:
+      - .env
+      - .secrets
+    environment:
+      - BACKEND_URL=http://backend:8000
+    networks:
+      - sowknow-net
+    depends_on:
+      - backend
+      - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python.*telegram_bot' || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  certbot-www:
+    driver: local
+  certbot-conf:
+    driver: local
+
+networks:
+  sowknow-net:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Docker secrets — mount secret files from ./secrets/<name>
+# Each file must contain only the raw secret value (no quotes, no newlines).
+#
+# Setup (one-time on the host):
+#   mkdir -p ./secrets
+#   echo -n "your-jwt-secret-here"      > ./secrets/jwt_secret
+#   echo -n "your-encryption-key-here"  > ./secrets/encryption_key
+#   echo -n "your-redis-password-here"  > ./secrets/redis_password
+#   echo -n "your-db-password-here"     > ./secrets/database_password
+#   chmod 600 ./secrets/*
+#
+# Services consume secrets via <KEY>_FILE env vars, which load_secret()
+# reads automatically (see backend/app/core/config.py).
+#
+# Example in a service's environment block:
+#   JWT_SECRET_FILE: /run/secrets/jwt_secret
+# ---------------------------------------------------------------------------
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret
+  encryption_key:
+    file: ./secrets/encryption_key
+  redis_password:
+    file: ./secrets/redis_password
+  database_password:
+    file: ./secrets/database_password

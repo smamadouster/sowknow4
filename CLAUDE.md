@@ -9,6 +9,42 @@
 - **NO GPU**: OCR via PaddleOCR with Tesseract fallback, embeddings via CPU with multilingual-e5-large
 - **FRENCH DEFAULT**: Interface defaults to French with full English support
 
+## **>>> CONTAINER & DEVOPS DISCIPLINE — MANDATORY <<<**
+
+> **THESE RULES ARE NON-NEGOTIABLE. VIOLATING THEM CAUSED 77GB IMAGE BLOAT, 3000+ HEALTHCHECK FAILURES, AND PUBLIC DATABASE EXPOSURE. DO NOT SKIP.**
+
+### **ONE COMPOSE FILE TO RULE THEM ALL**
+- **`docker-compose.yml`** is the SINGLE SOURCE OF TRUTH for production. Period.
+- **`docker-compose.dev.yml`** is the ONLY other allowed compose file (for local dev).
+- **NEVER create** `docker-compose.production.yml`, `docker-compose.simple.yml`, `docker-compose.prebuilt.yml`, or any other variant. Archived copies exist in `docker/archived-compose/` as a cautionary tale.
+- If you need environment-specific behavior, use **profiles** or **environment variables**, not separate files.
+
+### **NAMING CONVENTION**
+- **ALL containers MUST use the `sowknow4-` prefix.** No `sowknow-`, no bare names.
+- Pattern: `sowknow4-{service}` (e.g., `sowknow4-backend`, `sowknow4-postgres`, `sowknow4-frontend`)
+- This prevents collisions with other projects (ghostshell, etc.) on the shared VPS.
+
+### **PORT EXPOSURE — ZERO TRUST**
+- **NEVER expose internal service ports to the host.** PostgreSQL (5432), Redis (6379), Vault (8200), NATS (4222/8222) must have NO `ports:` directive.
+- Only **backend (8001:8000)** and **frontend (3000:3000)** are exposed.
+- To access internal services for debugging: `docker exec -it sowknow4-postgres psql -U sowknow`
+- Optional services (nginx, prometheus) use **profiles** and only expose their required ports.
+
+### **HEALTHCHECK DISCIPLINE**
+- Every service MUST have a healthcheck that ACTUALLY WORKS. Test it: `docker inspect --format '{{json .State.Health}}' <container>`
+- Backend healthcheck must match the ACTUAL endpoint path (`/api/v1/health` via bind-mounted main.py, or `/health` via Dockerfile.minimal's renamed main.py).
+- Celery worker healthcheck: use simple `pgrep` — complex Python healthchecks break when dependencies have import errors.
+- **After ANY compose change, run `docker compose up -d` and verify ALL containers show `(healthy)` within 5 minutes.** Fix before committing.
+
+### **IMAGE HYGIENE**
+- Run `docker system df` before and after builds. If reclaimable > 50%, run `docker system prune -f`.
+- Never leave dangling images. After a successful build+deploy: `docker image prune -f`
+- Dockerfiles must use multi-stage builds or slim base images. No `python:3.11` (1GB+), always `python:3.11-slim`.
+
+### **BIND MOUNT AWARENESS**
+- The `./backend:/app` bind mount **overrides all files built into the image**. This means Dockerfile `COPY` and `RUN mv` commands for app files are irrelevant at runtime.
+- The app that runs is whatever is in `./backend/`, not what was built. Keep this in mind for healthchecks and entrypoints.
+
 ## PROJECT CONTEXT
 - **Project Type**: Privacy-first AI-powered legacy knowledge vault with conversational interface
 - **Primary Goal**: Transform 100GB+ of scattered digital life into queryable wisdom system

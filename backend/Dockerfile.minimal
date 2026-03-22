@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11.11-slim
 
 WORKDIR /app
 
@@ -15,8 +15,7 @@ RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
 
 # Copy requirements (minimal version first)
 COPY requirements-minimal.txt requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application (using minimal main.py temporarily)
 COPY . .

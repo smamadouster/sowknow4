@@ -22,7 +22,7 @@ import logging
 import os
 from pathlib import Path
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -126,16 +126,16 @@ class Settings(BaseSettings):
     # Validators
     # ------------------------------------------------------------------
 
-    @validator("JWT_SECRET", "ENCRYPTION_KEY", "REDIS_PASSWORD", "DATABASE_PASSWORD")
+    @field_validator("JWT_SECRET", "ENCRYPTION_KEY", "REDIS_PASSWORD", "DATABASE_PASSWORD")
     @classmethod
-    def validate_not_placeholder(cls, v: str, field) -> str:  # noqa: N805
+    def validate_not_placeholder(cls, v: str, info) -> str:  # noqa: N805
         """Reject values that still contain placeholder text."""
         bad_prefixes = ("REPLACE_", "YOUR_")
         # Common weak placeholder values — split literals to avoid scanner false positives
         bad_exact = {"ch" + "angeme", "pa" + "ssword", ""}
         if any(v.startswith(p) for p in bad_prefixes) or v.lower() in bad_exact:
             raise ValueError(
-                f"Field '{field.name}' contains a placeholder value — "
+                f"Field '{info.field_name}' contains a placeholder value — "
                 "set a real secret before starting the application."
             )
         return v
@@ -147,7 +147,8 @@ class Settings(BaseSettings):
     @property
     def REDIS_URL(self) -> str:
         """Authenticated Redis URL constructed from individual settings."""
-        return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        from urllib.parse import quote
+        return f"redis://:{quote(self.REDIS_PASSWORD, safe='')}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     @property
     def ASYNC_DATABASE_URL(self) -> str:
@@ -174,11 +175,12 @@ class Settings(BaseSettings):
             f"@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}"
         )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
         # Allow extra fields so that future env vars don't break startup
-        extra = "ignore"
+        "extra": "ignore",
+    }
 
 
 # ---------------------------------------------------------------------------

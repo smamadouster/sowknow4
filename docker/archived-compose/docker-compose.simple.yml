@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sowknow4-postgres
+    environment:
+      POSTGRES_DB: sowknow
+      POSTGRES_USER: sowknow
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    # No port mapping — internal access only via Docker network
+    volumes:
+      - sowknow-postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    deploy:
+      resources:
+        limits:
+          memory: 2048m
+          cpus: '1.5'
+
+  redis:
+    image: redis:7-alpine
+    container_name: sowknow4-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    # No port mapping — internal access only via Docker network
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.5'
+
+  backend:
+    build:
+      context: ./backend
+    container_name: sowknow4-backend
+    environment:
+      DATABASE_URL: postgresql://sowknow:${DATABASE_PASSWORD}@postgres:5432/sowknow
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      KIMI_API_KEY: ${KIMI_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+          cpus: '1.0'
+
+  celery-worker:
+    build:
+      context: ./backend
+    container_name: sowknow4-celery-worker
+    environment:
+      DATABASE_URL: postgresql://sowknow:${DATABASE_PASSWORD}@postgres:5432/sowknow
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
+    deploy:
+      resources:
+        limits:
+          memory: 1280m
+          cpus: '1.5'
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: sowknow4-frontend
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
+volumes:
+  sowknow-postgres-data:

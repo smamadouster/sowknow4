@@ -146,6 +146,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
         logger.info(f"Processing document {document_id}: {document.filename}")
         log_task_memory("process_document", "start")
+        detected_language = "french"  # default; updated by chunking step if text is present
 
         # Step 1: OCR / Text Extraction
         if task_type in ["ocr", "full_pipeline"]:
@@ -211,7 +212,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
         if task_type in ["chunking", "full_pipeline"]:
             self.update_state(state="PROGRESS", meta={"step": "chunking", "progress": 40})
 
-            from app.services.embedding_service import chunking_service
+            from app.services.chunking_service import chunking_service
 
             # Read extracted text from file
             text_file_path = f"{document.file_path}.txt"
@@ -270,7 +271,12 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                 logger.warning(f"No text to chunk for document {document_id}")
 
         # Step 3: Embedding Generation
-        if task_type in ["embedding", "full_pipeline"] and chunks:
+        # DISABLED: PyTorch + SentenceTransformer import (~1.3GB) causes SIGKILL
+        # in fork pool workers due to NumPy 2.x ABI incompatibility + OOM.
+        # Text search via tsvector still works. Re-enable after pinning numpy<2.
+        # TODO: Pin numpy<2 in requirements.txt then re-enable this block.
+        _EMBEDDING_ENABLED = False
+        if _EMBEDDING_ENABLED and task_type in ["embedding", "full_pipeline"] and chunks:
             self.update_state(state="PROGRESS", meta={"step": "embedding", "progress": 70})
 
             from app.models.document import DocumentChunk

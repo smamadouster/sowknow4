@@ -31,6 +31,7 @@ celery[redis]==5.3.4
 redis==4.6.0
 
 # AI/ML
+numpy<2  # Pin to 1.x — NumPy 2.x ABI breaks sentence-transformers in Celery fork pool
 sentence-transformers==2.2.2
 torch==2.1.0
 transformers==4.35.0
@@ -82,3 +83,4 @@ reportlab==4.0.7
 
 # Rate Limiting
 slowapi>=0.1.9
+click>=8.0.0

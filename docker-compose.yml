@@ -213,6 +213,9 @@ services:
       - KIMI_API_KEY=${KIMI_API_KEY}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - SENTENCE_TRANSFORMERS_HOME=/root/.cache/torch/sentence_transformers
+      - HF_HOME=/tmp/hf_cache
+      - TRANSFORMERS_CACHE=/tmp/hf_cache
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -234,8 +237,8 @@ services:
     deploy:
       resources:
         limits:
-          # CRITICAL: concurrency MUST stay at 1. Two workers x 2.1GB > VPS budget.
-          memory: 2560M
+          # CRITICAL: concurrency MUST stay at 1. Model ~1.3GB + encoding batch RAM.
+          memory: 4608M
           cpus: '1.5'
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 -Q celery,document_processing,scheduled
     networks:
@@ -254,7 +257,7 @@ services:
       - REDIS_HOST=redis
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY}
-    command: celery -A app.celery_app beat --loglevel=info
+    command: celery -A app.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     volumes:
       - ./backend:/app
     depends_on:

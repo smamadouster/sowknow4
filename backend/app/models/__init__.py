@@ -1,4 +1,5 @@
 # Import all models for Alembic autogenerate
+from app.models.article import Article, ArticleStatus
 from app.models.audit import AuditAction, AuditLog
 from app.models.base import Base
 from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
@@ -49,4 +50,6 @@ __all__ = [
     "AuditLog",
     "AuditAction",
     "FailedCeleryTask",
+    "Article",
+    "ArticleStatus",
 ]

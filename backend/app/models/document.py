@@ -95,6 +95,8 @@ class Document(Base, TimestampMixin):
     ocr_processed = Column(Boolean, default=False)
     embedding_generated = Column(Boolean, default=False)
     chunk_count = Column(Integer, default=0)
+    article_count = Column(Integer, default=0)
+    articles_generated = Column(Boolean, default=False)
 
     # Ownership
     uploaded_by = Column(GUIDType(as_uuid=True), nullable=True, index=True)

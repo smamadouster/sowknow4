@@ -124,6 +124,8 @@ def generate_embeddings_batch(
     autoretry_for=(Exception,),
     retry_kwargs={"max_retries": 2},
     retry_backoff=True,
+    soft_time_limit=1800,
+    time_limit=2000,
 )
 def recompute_embeddings_for_document(self, document_id: str) -> dict:
     """
@@ -169,8 +171,8 @@ def recompute_embeddings_for_document(self, document_id: str) -> dict:
                 "duration_seconds": round(time.time() - start, 2),
             }
 
-        # Process in batches of 100
-        batch_size = 100
+        # Process in batches of 32 to limit memory usage
+        batch_size = 32
         updated = 0
         failed = 0
 
@@ -178,12 +180,9 @@ def recompute_embeddings_for_document(self, document_id: str) -> dict:
             batch = chunks[batch_start : batch_start + batch_size]
             texts = [c.chunk_text for c in batch]
             try:
-                embeddings = embedding_service.encode(texts=texts, batch_size=32)
+                embeddings = embedding_service.encode(texts=texts, batch_size=16)
                 for i, chunk in enumerate(batch):
                     chunk.embedding_vector = embeddings[i]
-                    meta = chunk.document_metadata or {}
-                    meta["embedding"] = embeddings[i]
-                    chunk.document_metadata = meta
                     updated += 1
                 db.commit()
             except Exception as batch_err:

@@ -33,6 +33,10 @@ class SearchResult:
         semantic_score: float,
         keyword_score: float,
         final_score: float,
+        result_type: str = "chunk",
+        article_id: str | None = None,
+        article_title: str | None = None,
+        article_summary: str | None = None,
     ):
         self.chunk_id = chunk_id
         self.document_id = document_id
@@ -44,6 +48,10 @@ class SearchResult:
         self.semantic_score = semantic_score
         self.keyword_score = keyword_score
         self.final_score = final_score
+        self.result_type = result_type
+        self.article_id = article_id
+        self.article_title = article_title
+        self.article_summary = article_summary
 
 
 class HybridSearchService:
@@ -279,6 +287,119 @@ class HybridSearchService:
 
         return search_results
 
+    async def article_semantic_search(
+        self, query: str, limit: int = 30, db: AsyncSession = None, user: User = None,
+    ) -> list[SearchResult]:
+        """Semantic search over articles using pgvector."""
+        if not embedding_service.can_embed:
+            return []
+
+        query_embedding = embedding_service.encode_single(query)
+        embedding_array = ",".join(map(str, query_embedding))
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+        sql_query = text("""
+            SELECT
+                a.id as article_id,
+                a.document_id,
+                d.filename as document_name,
+                a.bucket as document_bucket,
+                a.title,
+                a.summary,
+                a.body,
+                1 - (a.embedding_vector <=> :embedding::vector) as similarity
+            FROM sowknow.articles a
+            JOIN sowknow.documents d ON a.document_id = d.id
+            WHERE a.bucket = ANY(:buckets)
+            AND a.embedding_vector IS NOT NULL
+            AND a.status = 'indexed'
+            ORDER BY a.embedding_vector <=> :embedding::vector
+            LIMIT :limit
+        """)
+
+        result = await db.execute(sql_query, {
+            "embedding": embedding_array, "buckets": bucket_filter, "limit": limit,
+        })
+
+        return [
+            SearchResult(
+                chunk_id=str(row.article_id),
+                document_id=str(row.document_id),
+                document_name=row.document_name,
+                document_bucket=row.document_bucket,
+                chunk_text=row.body,
+                chunk_index=0,
+                page_number=None,
+                semantic_score=float(row.similarity),
+                keyword_score=0.0,
+                final_score=float(row.similarity),
+                result_type="article",
+                article_id=str(row.article_id),
+                article_title=row.title,
+                article_summary=row.summary,
+            )
+            for row in result
+        ]
+
+    async def article_keyword_search(
+        self, query: str, limit: int = 30, db: AsyncSession = None, user: User = None,
+    ) -> list[SearchResult]:
+        """Full-text search over articles using tsvector."""
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+        sql_query = text("""
+            SELECT
+                a.id as article_id,
+                a.document_id,
+                d.filename as document_name,
+                a.bucket as document_bucket,
+                a.title,
+                a.summary,
+                a.body,
+                ts_rank_cd(
+                    a.search_vector,
+                    plainto_tsquery(
+                        COALESCE(a.search_language, 'french')::regconfig,
+                        :query
+                    ),
+                    32
+                ) AS rank
+            FROM sowknow.articles a
+            JOIN sowknow.documents d ON a.document_id = d.id
+            WHERE a.bucket = ANY(:buckets)
+              AND a.search_vector IS NOT NULL
+              AND a.search_vector @@ plainto_tsquery(
+                      COALESCE(a.search_language, 'french')::regconfig,
+                      :query
+                  )
+            ORDER BY rank DESC
+            LIMIT :limit
+        """)
+
+        result = await db.execute(sql_query, {
+            "query": query, "buckets": bucket_filter, "limit": limit,
+        })
+
+        return [
+            SearchResult(
+                chunk_id=str(row.article_id),
+                document_id=str(row.document_id),
+                document_name=row.document_name,
+                document_bucket=row.document_bucket,
+                chunk_text=row.body,
+                chunk_index=0,
+                page_number=None,
+                semantic_score=0.0,
+                keyword_score=float(row.rank),
+                final_score=float(row.rank),
+                result_type="article",
+                article_id=str(row.article_id),
+                article_title=row.title,
+                article_summary=row.summary,
+            )
+            for row in result
+        ]
+
     async def hybrid_search(
         self,
         query: str,
@@ -316,16 +437,22 @@ class HybridSearchService:
                 f"PII detected in search query by user {user.email if user else 'unknown'}: {pii_summary['detected_types']}"
             )
 
-        # Run both searches concurrently; return partial results on timeout
+        # Run chunk + article searches concurrently; return partial results on timeout
         semantic_task = asyncio.create_task(
             self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
         keyword_task = asyncio.create_task(
             self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
+        article_semantic_task = asyncio.create_task(
+            self.article_semantic_search(query=query, limit=limit, db=db, user=user)
+        )
+        article_keyword_task = asyncio.create_task(
+            self.article_keyword_search(query=query, limit=limit, db=db, user=user)
+        )
 
         done, pending = await asyncio.wait(
-            {semantic_task, keyword_task},
+            {semantic_task, keyword_task, article_semantic_task, article_keyword_task},
             timeout=timeout,
         )
 
@@ -344,6 +471,8 @@ class HybridSearchService:
 
         semantic_results: list[SearchResult] = semantic_task.result() if semantic_task in done else []
         keyword_results: list[SearchResult] = keyword_task.result() if keyword_task in done else []
+        article_sem_results: list[SearchResult] = article_semantic_task.result() if article_semantic_task in done else []
+        article_kw_results: list[SearchResult] = article_keyword_task.result() if article_keyword_task in done else []
 
         # Merge results using RRF (Reciprocal Rank Fusion)
         merged_scores = {}
@@ -381,6 +510,40 @@ class HybridSearchService:
                 merged_scores[result.chunk_id]["keyword_score"] = max(
                     merged_scores[result.chunk_id]["keyword_score"],
                     result.keyword_score,
+                )
+
+        # Add article results with 1.2x boost (articles are more coherent than raw chunks)
+        article_boost = 1.2
+        for rank, result in enumerate(article_sem_results):
+            key = f"article:{result.article_id}"
+            score = article_boost / (k + rank + 1)
+            if key not in merged_scores:
+                merged_scores[key] = {
+                    "result": result,
+                    "semantic_score": result.semantic_score,
+                    "keyword_score": 0.0,
+                    "rrf_score": score,
+                }
+            else:
+                merged_scores[key]["rrf_score"] += score
+                merged_scores[key]["semantic_score"] = max(
+                    merged_scores[key]["semantic_score"], result.semantic_score,
+                )
+
+        for rank, result in enumerate(article_kw_results):
+            key = f"article:{result.article_id}"
+            score = article_boost / (k + rank + 1)
+            if key not in merged_scores:
+                merged_scores[key] = {
+                    "result": result,
+                    "semantic_score": 0.0,
+                    "keyword_score": result.keyword_score,
+                    "rrf_score": score,
+                }
+            else:
+                merged_scores[key]["rrf_score"] += score
+                merged_scores[key]["keyword_score"] = max(
+                    merged_scores[key]["keyword_score"], result.keyword_score,
                 )
 
         # Calculate final scores

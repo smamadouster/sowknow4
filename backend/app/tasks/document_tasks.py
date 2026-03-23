@@ -94,6 +94,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
     db = SessionLocal()
     processing_task = None  # Initialize to prevent UnboundLocalError
+    detected_language = "french"  # default; updated by chunking step if text is present
     try:
         # Get document
         document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
@@ -146,7 +147,6 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
         logger.info(f"Processing document {document_id}: {document.filename}")
         log_task_memory("process_document", "start")
-        detected_language = "french"  # default; updated by chunking step if text is present
 
         # Step 1: OCR / Text Extraction
         if task_type in ["ocr", "full_pipeline"]:
@@ -164,6 +164,14 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
             extracted_text = extraction_result.get("text", "")
             document.page_count = extraction_result.get("pages", 0)
+
+            if not extraction_result.get("success", True) or extraction_result.get("error"):
+                err_msg = extraction_result.get("error", "Unknown extraction error")
+                logger.warning(f"Text extraction issue for {document_id}: {err_msg}")
+                metadata = document.document_metadata or {}
+                metadata["extraction_warning"] = err_msg
+                document.document_metadata = metadata
+                db.commit()
 
             should_ocr, ocr_reason = ocr_service.should_use_ocr(
                 mime_type=document.mime_type,
@@ -184,13 +192,15 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                     images = asyncio.run(text_extractor.extract_images_from_pdf(document.file_path))
                     ocr_texts = []
                     for i, page_bytes in enumerate(images):
-                        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                            tmp.write(page_bytes)
-                            tmp_path = tmp.name
+                        tmp_path = None
                         try:
+                            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                                tmp.write(page_bytes)
+                                tmp_path = tmp.name
                             ocr_result = asyncio.run(ocr_service._extract_full(tmp_path))
                         finally:
-                            _os.unlink(tmp_path)
+                            if tmp_path and _os.path.exists(tmp_path):
+                                _os.unlink(tmp_path)
                         if ocr_result.get("text"):
                             ocr_texts.append(f"[Image Page {i + 1}] {ocr_result['text']}")
                     extracted_text = "\n\n".join(ocr_texts)
@@ -203,6 +213,15 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                 text_file_path = f"{document.file_path}.txt"
                 with open(text_file_path, "w", encoding="utf-8") as f:
                     f.write(extracted_text)
+            else:
+                logger.warning(
+                    f"No text extracted for {document_id} ({document.mime_type}). "
+                    "Document will proceed but may produce 0 chunks."
+                )
+                metadata = document.document_metadata or {}
+                metadata["extraction_empty"] = True
+                document.document_metadata = metadata
+                db.commit()
 
             logger.info(f"OCR/Text extraction completed for {document_id}")
             log_task_memory("process_document", "after_ocr")
@@ -223,7 +242,6 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             except FileNotFoundError:
                 logger.warning(f"No extracted text file found for document {document_id}")
 
-            detected_language = "french"  # default; updated below if text is present
             if extracted_text:
                 # Detect language for full-text search stemming
                 detected_language = detect_text_language(extracted_text)
@@ -270,74 +288,41 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             else:
                 logger.warning(f"No text to chunk for document {document_id}")
 
-        # Step 3: Embedding Generation
-        # DISABLED: PyTorch + SentenceTransformer import (~1.3GB) causes SIGKILL
-        # in fork pool workers due to NumPy 2.x ABI incompatibility + OOM.
-        # Text search via tsvector still works. Re-enable after pinning numpy<2.
-        # TODO: Pin numpy<2 in requirements.txt then re-enable this block.
-        _EMBEDDING_ENABLED = False
-        if _EMBEDDING_ENABLED and task_type in ["embedding", "full_pipeline"] and chunks:
-            self.update_state(state="PROGRESS", meta={"step": "embedding", "progress": 70})
+        # Step 3: Embedding Generation — dispatched as separate task to avoid OOM
+        # The embedding model (~1.3GB) + encoding large docs exceeds memory in fork workers.
+        # Dispatch to recompute_embeddings_for_document which handles batching safely.
+        if task_type in ["embedding", "full_pipeline"] and chunks:
+            try:
+                from app.tasks.embedding_tasks import recompute_embeddings_for_document
 
-            from app.models.document import DocumentChunk
-            from app.services.embedding_service import embedding_service
+                recompute_embeddings_for_document.delay(str(document.id))
+                logger.info(f"Embedding generation dispatched for document {document_id}")
+            except Exception as embed_err:
+                logger.warning(f"Failed to queue embedding for {document_id}: {embed_err}")
 
-            # Get chunks from database
-            db_chunks = (
-                db.query(DocumentChunk)
-                .filter(DocumentChunk.document_id == document.id)
-                .order_by(DocumentChunk.chunk_index)
-                .all()
-            )
-
-            if db_chunks:
-                # Generate embeddings for all chunks
-                chunk_texts = [chunk.chunk_text for chunk in db_chunks]
-
-                embedding_success = False
-                try:
-                    embeddings = embedding_service.encode(texts=chunk_texts, batch_size=32, show_progress=False)
-
-                    # Store embeddings in the dedicated vector column
-                    for i, chunk in enumerate(db_chunks):
-                        if i < len(embeddings):
-                            # Store embedding in vector column (pgvector)
-                            chunk.embedding_vector = embeddings[i]
-
-                    document.embedding_generated = True
-                    processing_task.progress_percentage = 90
-                    db.commit()
-
-                    logger.info(f"Generated {len(embeddings)} embeddings for document {document_id}")
-                    embedding_success = True
-
-                except Exception as embed_error:
-                    logger.error(f"Error generating embeddings for document {document_id}: {embed_error}")
-                    # Mark embedding as failed in metadata but continue with text indexing
-                    doc_metadata = document.document_metadata or {}
-                    doc_metadata["embedding_error"] = str(embed_error)
-                    doc_metadata["embedding_failed_at"] = datetime.utcnow().isoformat()
-                    document.document_metadata = doc_metadata
-                    processing_task.error_message = f"Embedding failed: {str(embed_error)[:400]}"
-                    db.commit()
-                    # Document can still be searched via text, so we continue
-                finally:
-                    # Ensure progress is updated even on partial failure
-                    if not embedding_success:
-                        logger.warning(
-                            f"Embedding generation incomplete for document {document_id}, "
-                            "document will be searchable via text only"
-                        )
-            else:
-                logger.warning(f"No chunks found for embedding generation (document {document_id})")
-
-        log_task_memory("process_document", "after_embedding")
+        log_task_memory("process_document", "after_chunking")
 
         # Step 4: Update document status
-        document.status = DocumentStatus.INDEXED
-        processing_task.status = TaskStatus.COMPLETED
-        processing_task.progress_percentage = 100
+        if document.chunk_count and document.chunk_count > 0:
+            document.status = DocumentStatus.INDEXED
+            processing_task.status = TaskStatus.COMPLETED
+            processing_task.progress_percentage = 100
+        else:
+            document.status = DocumentStatus.ERROR
+            processing_task.status = TaskStatus.FAILED
+            processing_task.error_message = "No chunks generated — text extraction or chunking failed"
+            logger.error(f"Document {document_id} produced 0 chunks, marking as ERROR")
         db.commit()
+
+        # Step 5: Queue article generation (async, non-blocking)
+        if document.status == DocumentStatus.INDEXED:
+            try:
+                from app.tasks.article_tasks import generate_articles_for_document as gen_articles
+
+                gen_articles.delay(str(document.id))
+                logger.info(f"Article generation queued for document {document_id}")
+            except Exception as article_err:
+                logger.warning(f"Failed to queue article generation for {document_id}: {article_err}")
 
         log_task_memory("process_document", "end")
         logger.info(f"Document {document_id} processed successfully")

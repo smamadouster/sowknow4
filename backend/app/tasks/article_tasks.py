@@ -273,14 +273,7 @@ def _get_llm_service(is_confidential: bool):
             logger.error("Ollama unavailable for confidential article generation")
             raise RuntimeError("Ollama required for confidential documents but unavailable")
 
-    # Public docs: try OpenRouter first (confirmed working), then MiniMax, then Kimi
-    try:
-        from app.services.openrouter_service import openrouter_service
-        if getattr(openrouter_service, "api_key", None):
-            return openrouter_service, "openrouter"
-    except Exception:
-        pass
-
+    # Public docs: MiniMax 2.7 → mistral-small-2603 (OpenRouter) → Ollama
     try:
         from app.services.minimax_service import minimax_service
         if getattr(minimax_service, "api_key", None):
@@ -289,9 +282,15 @@ def _get_llm_service(is_confidential: bool):
         pass
 
     try:
-        from app.services.kimi_service import kimi_service
-        if getattr(kimi_service, "api_key", None):
-            return kimi_service, "kimi"
+        from app.services.openrouter_service import openrouter_service
+        if getattr(openrouter_service, "api_key", None):
+            return openrouter_service, "openrouter"
+    except Exception:
+        pass
+
+    try:
+        from app.services.ollama_service import ollama_service
+        return ollama_service, "ollama"
     except Exception:
         pass
 

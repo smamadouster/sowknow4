@@ -11,10 +11,10 @@ from app.models.base import Base, GUIDType, TimestampMixin
 class LLMProvider(enum.StrEnum):
     """LLM providers used for chat responses"""
 
-    MINIMAX = "minimax"  # MiniMax M2.5 — default for all public docs (direct API)
-    KIMI = "kimi"  # Moonshot direct API (legacy / Telegram bot only)
-    OLLAMA = "ollama"  # Local Ollama — confidential documents (privacy guarantee)
-    OPENROUTER = "openrouter"  # OpenRouter gateway — Kimi K2.5 fallback for public docs
+    MINIMAX = "minimax"  # MiniMax M2.7 — search agent, article generation (direct API)
+    KIMI = "kimi"  # Moonshot direct API (legacy — phased out)
+    OLLAMA = "ollama"  # Local Ollama (mistral:7b) — confidential documents (privacy guarantee)
+    OPENROUTER = "openrouter"  # OpenRouter gateway — Mistral Small 2603 for chat/collections/telegram
 
 
 class MessageRole(enum.StrEnum):

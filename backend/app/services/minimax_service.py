@@ -1,5 +1,5 @@
 """
-MiniMax service for direct API access (no OpenRouter markup)
+MiniMax service for direct API access (M2.7 — search agent, article generation)
 """
 
 import json
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY")
 MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.chat")
-MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.5")
+MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
 
 # Context window limits (in tokens)
 MINIMAX_CONTEXT_WINDOW = 128000

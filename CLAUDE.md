@@ -1,10 +1,10 @@
 # Project Configuration - SOWKNOW Multi-Generational Legacy Knowledge System
 
 ## CRITICAL RULES
-- **PRIVACY FIRST**: Zero PII ever sent to cloud APIs (MiniMax/Kimi/PaddleOCR)
-- **CONFIDENTIAL ROUTING**: Auto-switch to shared Ollama when confidential documents detected
+- **PRIVACY FIRST**: Zero PII ever sent to cloud APIs (MiniMax/OpenRouter/PaddleOCR)
+- **CONFIDENTIAL ROUTING**: Auto-switch to shared Ollama (mistral:7b local) when confidential documents detected
 - **VPS RESOURCE CONSTRAINTS**: Total SOWKNOW container memory <= 6.4GB (shared 16GB VPS)
-- **TRI-LLM STRATEGY**: MiniMax for public docs, Kimi for chatbot/telegram/search, Ollama for confidential docs
+- **TRI-LLM STRATEGY**: MiniMax M2.7 for search/articles, Mistral Small 2603 (OpenRouter) for chat/collections/telegram, Ollama (mistral:7b local) for confidential docs
 - **ROLE-BASED ACCESS**: Strict RBAC with 3 roles: Admin (full), Super User (view all), User (public only)
 - **NO GPU**: OCR via PaddleOCR with Tesseract fallback, embeddings via CPU with multilingual-e5-large
 - **FRENCH DEFAULT**: Interface defaults to French with full English support
@@ -49,9 +49,9 @@
 - **Project Type**: Privacy-first AI-powered legacy knowledge vault with conversational interface
 - **Primary Goal**: Transform 100GB+ of scattered digital life into queryable wisdom system
 - **Core Stack**: FastAPI + Next.js + PostgreSQL/pgvector + Celery + Redis
-- **AI Stack**: MiniMax (public docs via OpenRouter) + Kimi (chatbot/telegram/search) + Ollama (confidential docs) + multilingual-e5-large embeddings
+- **AI Stack**: MiniMax M2.7 (search/articles) + Mistral Small 2603 via OpenRouter (chat/telegram/collections) + Ollama mistral:7b (confidential docs) + multilingual-e5-large embeddings
 - **Architecture**: Containerized microservices (8 containers) on shared Hostinger VPS
-- **Key Innovation**: Tri-LLM routing with automatic privacy protection for confidential docs; MiniMax context caching for cost optimization
+- **Key Innovation**: Tri-LLM routing with automatic privacy protection for confidential docs; OpenRouter caching for cost optimization
 
 ## DEVELOPMENT PATTERNS
 - **Frontend**: Next.js 14 PWA with TypeScript, Tailwind CSS, Zustand state management
@@ -75,7 +75,7 @@
 - **Decision Tracking**: Audit logs for confidential access, LLM routing decisions logged
 - **Session Management**: Redis for chat sessions, JWT refresh tokens
 - **Embedding Cache**: multilingual-e5-large model loaded in Celery worker (1.3GB)
-- **Prompt Optimization**: MiniMax context caching for cost optimization on repeated queries
+- **Prompt Optimization**: OpenRouter response caching for cost optimization on repeated queries
 - **Knowledge Persistence**: Daily backups, encrypted cold storage, 7-4-3 retention policy
 
 ## DEPLOYMENT & CI/CD
@@ -89,9 +89,9 @@
 - **Admin Routes**: Administrative endpoints are located in main_minimal.py for security isolation
 
 ## MONITORING & ANALYTICS
-- **Performance Tracking**: Search latency (<3s MiniMax/Kimi, <8s Ollama), processing throughput (>50 docs/hour)
+- **Performance Tracking**: Search latency (<3s MiniMax/OpenRouter, <8s Ollama), processing throughput (>50 docs/hour)
 - **Error Monitoring**: 5xx error rate alerts (>5%), processing queue depth (>100)
-- **Cost Analytics**: Daily MiniMax/Kimi API cost tracking with cache hit-rate metrics, budget caps
+- **Cost Analytics**: Daily MiniMax/OpenRouter API cost tracking with cache hit-rate metrics, budget caps
 - **Quality Metrics**: OCR accuracy (>97%), search relevance (>90% satisfaction), cache hit-rate (>50% target)
 - **User Analytics**: Feature adoption (Smart Collections/Folders >3/5 users)
 - **System Health**: Daily anomaly reports (09:00 AM) for stuck processing jobs, cache effectiveness monitoring

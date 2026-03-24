@@ -2,7 +2,7 @@
 Report Generation Service for Smart Collections
 
 Generates PDF reports in Short/Standard/Comprehensive formats from collection
-data using MiniMax (public documents) or Ollama (confidential documents) for
+data using OpenRouter/mistral-small-2603 (public documents) or Ollama (confidential documents) for
 analysis and synthesis.
 """
 
@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.collection import Collection, CollectionItem
 from app.models.document import Document
 from app.models.user import User
-from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
+from app.services.openrouter_service import openrouter_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class ReportService:
     """Service for generating reports from collections"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
+        self.openrouter_service = openrouter_service
         self.ollama_service = ollama_service
 
     async def generate_report(
@@ -97,14 +97,14 @@ class ReportService:
             )
             llm_used = "ollama"
         else:
-            report_content = await self._generate_report_with_minimax(
+            report_content = await self._generate_report_with_openrouter(
                 collection=collection,
                 document_context=document_context,
                 format=format,
                 include_citations=include_citations,
                 language=language,
             )
-            llm_used = "minimax"
+            llm_used = "openrouter"
 
         # Extract citations
         citations = []
@@ -178,7 +178,7 @@ class ReportService:
 
         return context
 
-    async def _generate_report_with_minimax(
+    async def _generate_report_with_openrouter(
         self,
         collection: Collection,
         document_context: list[dict[str, Any]],
@@ -186,7 +186,7 @@ class ReportService:
         include_citations: bool,
         language: str,
     ) -> str:
-        """Generate report using MiniMax"""
+        """Generate report using OpenRouter (mistral-small-2603)"""
 
         # Build format guidelines
         format_guides = {
@@ -267,8 +267,8 @@ Generate the complete report now:"""
         ]
 
         response_parts = []
-        # Use MiniMax for public documents
-        async for chunk in self.minimax_service.chat_completion(
+        # Use OpenRouter (mistral-small-2603) for public documents
+        async for chunk in self.openrouter_service.chat_completion(
             messages=messages, stream=False, temperature=0.5, max_tokens=8192
         ):
             if chunk and not chunk.startswith("Error:"):

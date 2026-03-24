@@ -1,8 +1,8 @@
 """
 Collection Chat Service for follow-up Q&A
 
-Manages chat sessions scoped to specific collections with MiniMax 2.5
-for public documents and Ollama for confidential documents.
+Manages chat sessions scoped to specific collections with Mistral Small 2603
+(via OpenRouter) for public documents and Ollama for confidential documents.
 """
 
 import json
@@ -17,8 +17,8 @@ from app.models.audit import AuditAction, AuditLog
 from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.collection import Collection, CollectionChatSession
 from app.models.user import User
-from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
+from app.services.openrouter_service import openrouter_service
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ class CollectionChatService:
     """Service for collection-scoped chat with context caching"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
+        self.openrouter_service = openrouter_service
         self.ollama_service = ollama_service
 
     async def get_or_create_chat_session(
@@ -91,7 +91,7 @@ class CollectionChatService:
         session = ChatSession(
             user_id=user.id,
             title=session_name or f"Chat about {collection.name}",
-            model_preference=LLMProvider.MINIMAX,
+            model_preference=LLMProvider.OPENROUTER,
             document_scope=[],  # Will be populated with collection documents
         )
 
@@ -106,7 +106,7 @@ class CollectionChatService:
             collection_id=collection_id,
             user_id=user.id,
             session_name=session_name,
-            llm_used="minimax",
+            llm_used="openrouter",
         )
         db.add(collection_chat)
 
@@ -201,7 +201,7 @@ class CollectionChatService:
             session_id=session.id,
             role=MessageRole.USER,
             content=message,
-            llm_used=LLMProvider.OLLAMA if has_confidential else LLMProvider.MINIMAX,
+            llm_used=LLMProvider.OLLAMA if has_confidential else LLMProvider.OPENROUTER,
         )
         db.add(user_msg)
         db.flush()
@@ -216,7 +216,7 @@ class CollectionChatService:
                 db=db,
             )
         else:
-            response_data = await self._chat_with_minimax(
+            response_data = await self._chat_with_openrouter(
                 message=message,
                 collection=collection,
                 document_context=document_context,
@@ -289,7 +289,7 @@ class CollectionChatService:
 
         return context
 
-    async def _chat_with_minimax(
+    async def _chat_with_openrouter(
         self,
         message: str,
         collection: Collection,
@@ -297,7 +297,7 @@ class CollectionChatService:
         session: ChatSession,
         db: AsyncSession,
     ) -> dict[str, Any]:
-        """Chat with MiniMax for public collections"""
+        """Chat with OpenRouter (mistral-small-2603) for public collections"""
 
         # Build system prompt with collection context
         system_prompt = f"""You are SOWKNOW, a helpful assistant for a document collection called "{collection.name}".
@@ -351,10 +351,10 @@ When answering:
             }
         )
 
-        # Generate response with MiniMax for public collections
+        # Generate response with OpenRouter (mistral-small-2603) for public collections
         response_parts = []
 
-        async for chunk in self.minimax_service.chat_completion(
+        async for chunk in self.openrouter_service.chat_completion(
             messages=messages, stream=False, temperature=0.7, max_tokens=2048
         ):
             if chunk and not chunk.startswith("Error:"):
@@ -375,7 +375,7 @@ When answering:
         return {
             "response": response_text,
             "sources": sources,
-            "llm_used": "minimax",
+            "llm_used": "openrouter",
         }
 
     async def _chat_with_ollama(

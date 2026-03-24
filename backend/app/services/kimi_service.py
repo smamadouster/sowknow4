@@ -1,10 +1,9 @@
 """
-Kimi service for general chat (Moonshot AI)
+Kimi service for Moonshot AI (legacy — being phased out)
 
 LLM Routing Role:
-- General chat (no document context): Kimi 2.5 (moonshot-v1-8k/32k/128k)
-- Chatbot, Telegram bot, search agentic flows
-- Falls back to MiniMax if unavailable (handled by caller in chat_service.py)
+- No longer primary for any use case (replaced by MiniMax 2.7 + Mistral Small 2603)
+- Kept available as an optional fallback if explicitly configured
 
 API: Moonshot AI OpenAI-compatible endpoint
 Auth: KIMI_API_KEY environment variable

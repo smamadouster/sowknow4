@@ -3,7 +3,7 @@ Chat service for RAG-powered conversations
 
 LLM Routing Strategy:
 - Confidential Docs: Ollama (privacy — never leaves the server)
-- All public (RAG + general): MiniMax M2.5 (direct API) -> Kimi K2.5 (OpenRouter) -> Ollama
+- All public (RAG + general): MiniMax M2.7 (direct API) -> mistral-small-2603 (OpenRouter) -> Ollama
 """
 
 import json
@@ -384,7 +384,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         # Select LLM based on confidentiality — unified routing for all public interactions
         # 1. Confidential docs -> Ollama (privacy guarantee)
-        # 2. All public (RAG + general) -> MiniMax M2.5 (direct) -> Kimi K2.5 (OpenRouter) -> Ollama
+        # 2. All public (RAG + general) -> MiniMax M2.7 (direct) -> mistral-small-2603 (OpenRouter) -> Ollama
 
         if has_confidential:
             ollama_health = await self.ollama_service.health_check()

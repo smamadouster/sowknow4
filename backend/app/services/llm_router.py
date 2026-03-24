@@ -8,8 +8,8 @@ this module instead of embedding routing logic inline.
 Routing strategy
 ----------------
 * Confidential docs or PII detected → Ollama only (privacy guarantee)
-* Public docs (RAG)                 → MiniMax M2.5 → OpenRouter (Kimi K2.5) → Ollama
-* General chat (no docs)            → Kimi (direct) → MiniMax → OpenRouter → Ollama
+* Public docs (RAG)                 → MiniMax M2.7 → OpenRouter (mistral-small-2603) → Ollama
+* General chat (no docs)            → MiniMax M2.7 → OpenRouter (mistral-small-2603) → Ollama
 """
 
 import logging
@@ -77,7 +77,7 @@ class LLMRouter:
     fallback_chains: dict[str, list[str]] = {
         "confidential": ["ollama"],
         "public_docs": ["minimax", "openrouter", "ollama"],
-        "general_chat": ["kimi", "minimax", "openrouter", "ollama"],
+        "general_chat": ["minimax", "openrouter", "ollama"],
     }
 
     def __init__(
@@ -219,9 +219,8 @@ class LLMRouter:
             ]
             reason = RoutingReason.PUBLIC_DOCS_RAG
         else:
-            # General chat: Kimi → MiniMax → OpenRouter → Ollama
+            # General chat: MiniMax → OpenRouter → Ollama
             chain = [
-                ("kimi", self._kimi, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("openrouter", self._openrouter, lambda s: s is not None),
                 ("ollama", self._ollama, lambda s: s is not None),

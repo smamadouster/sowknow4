@@ -127,12 +127,12 @@ class TestPublicRouting:
 
     @pytest.mark.asyncio
     async def test_empty_chunk_list_uses_chat_chain(self):
-        """No context chunks → general chat chain (Kimi first)."""
+        """No context chunks → general chat chain (MiniMax first)."""
         router = _make_router()
         decision = await router.select_provider(query="Hello!", context_chunks=[])
 
         assert decision.provider_name != "ollama"
-        assert decision.provider_name == "kimi"
+        assert decision.provider_name == "minimax"
         assert decision.reason == RoutingReason.GENERAL_CHAT
 
     @pytest.mark.asyncio

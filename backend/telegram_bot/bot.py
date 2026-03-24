@@ -483,7 +483,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 • Just ask me anything
 
 💬 <b>Chat</b>
-• Conversational AI powered by MiniMax
+• Conversational AI powered by Mistral
 
 📌 Commands:
 /start - Show this message

@@ -17,10 +17,12 @@ from guardian_hc.checks.ssl_check import SslChecker
 from guardian_hc.checks.config_drift import ConfigDriftChecker
 from guardian_hc.checks.ollama_health import OllamaChecker
 from guardian_hc.checks.vps_load import VpsLoadChecker
+from guardian_hc.checks.network_health import NetworkHealthChecker
 from guardian_hc.healers.container_healer import ContainerHealer
 from guardian_hc.healers.disk_healer import DiskHealer
 from guardian_hc.healers.ssl_healer import SslHealer
 from guardian_hc.healers.memory_healer import MemoryHealer
+from guardian_hc.healers.network_healer import NetworkHealer
 from guardian_hc.patrol.runner import PatrolRunner
 from guardian_hc.alerts import AlertManager
 
@@ -46,6 +48,7 @@ class GuardianConfig:
     ssl: dict = field(default_factory=dict)
     ollama: dict = field(default_factory=dict)
     vps_load: dict = field(default_factory=dict)
+    network: dict = field(default_factory=dict)
     dashboard_port: int = 9090
 
 
@@ -66,6 +69,8 @@ class GuardianHC:
         self.drift_checker = ConfigDriftChecker(config)
         self.ollama_checker = OllamaChecker(config.ollama)
         self.vps_load_checker = VpsLoadChecker(config.vps_load)
+        self.network_checker = NetworkHealthChecker(config.network)
+        self.network_healer = NetworkHealer({"compose_file": config.compose_file})
         self.patrol_runner = PatrolRunner(self)
         self._shutdown = False
         self._history: list[dict] = []
@@ -95,6 +100,7 @@ class GuardianHC:
             ssl=raw.get("ssl", {}),
             ollama=raw.get("ollama", {}),
             vps_load=raw.get("vps_load", {}),
+            network=raw.get("network", {}),
             dashboard_port=raw.get("dashboard", {}).get("port", 9090),
         )
         return cls(config)
@@ -164,6 +170,33 @@ class GuardianHC:
                     self.log_action({"target": ms["container"], "action": "memory_restart", **heal})
                     if heal.get("healed"):
                         results["healed"] += 1
+
+            # Network health -- CRITICAL: detect stale nftables + broken connectivity
+            net_status = await self.network_checker.check()
+            results["checks"].append({"type": "network_health", **net_status})
+            if net_status.get("needs_healing"):
+                stale = net_status.get("stale_bridges", [])
+                probes_failed = [p for p in net_status.get("probe_results", []) if not p.get("ok")]
+                stale_summary = ", ".join(s.get("bridge", "?") for s in stale) if stale else "none"
+                probe_summary = ", ".join(p.get("to", "?") for p in probes_failed) if probes_failed else "none"
+
+                await self.alert_manager.send(
+                    f"CRITICAL: Docker network broken!\n"
+                    f"Stale nftables bridges: {stale_summary}\n"
+                    f"Failed probes: {probe_summary}\n"
+                    f"Auto-healing: flushing nftables + restarting Docker...")
+
+                heal = await self.network_healer.heal(stale_bridges=stale)
+                self.log_action({"target": "network", "action": "nftables_flush", **heal})
+                if heal.get("healed"):
+                    results["healed"] += 1
+                    await self.alert_manager.send(
+                        f"Network healed: {', '.join(heal.get('actions', []))}")
+                else:
+                    results["failed"] += 1
+                    await self.alert_manager.send(
+                        f"Network healing FAILED: {heal.get('error', 'unknown')}\n"
+                        f"Manual intervention required!")
 
             ollama_status = await self.ollama_checker.check()
             results["checks"].append({"type": "ollama_health", **ollama_status})

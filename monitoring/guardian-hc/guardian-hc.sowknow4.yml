@@ -102,10 +102,10 @@ patrols:
     checks: [containers, api_health]
   standard:
     interval: "10m"
-    checks: [containers, api_health, disk, memory, ollama_health, vps_load]
+    checks: [containers, api_health, disk, memory, network_health, ollama_health, vps_load]
   deep:
     interval: "1h"
-    checks: [containers, api_health, disk, memory, ssl, config_drift, ollama_health, vps_load]
+    checks: [containers, api_health, disk, memory, ssl, config_drift, network_health, ollama_health, vps_load]
 
 disk:
   warning_threshold: 70
@@ -129,6 +129,17 @@ ollama:
 vps_load:
   load_threshold: 6.0
   steal_threshold: 20.0
+
+# Docker network health -- detects stale nftables rules from dead bridges
+# (Docker 29.x bug: raw PREROUTING rules not cleaned up on network destroy)
+network:
+  probe_pairs:
+    - from: "sowknow4-backend"
+      to_host: "redis"
+      to_port: 6379
+    - from: "sowknow4-backend"
+      to_host: "postgres"
+      to_port: 5432
 
 dashboard:
   port: 9090

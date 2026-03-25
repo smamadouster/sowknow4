@@ -9,9 +9,11 @@ Tasks:
 
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime
 
+import httpx
 from celery import shared_task
 
 from app.tasks.base import log_task_memory
@@ -19,14 +21,97 @@ from app.tasks.base import log_task_memory
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Ollama circuit breaker -- prevents hammering an overloaded/dead service
+# ---------------------------------------------------------------------------
+
+class OllamaCircuitBreaker:
+    """Simple circuit breaker for Ollama.
+
+    States:
+      CLOSED  — normal, requests go through
+      OPEN    — Ollama is down/overloaded, reject immediately
+      HALF    — allow one probe request to check recovery
+
+    Opens after `failure_threshold` consecutive failures.
+    Stays open for `recovery_timeout` seconds before probing.
+    """
+
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 120):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.state = self.CLOSED
+        self.failures = 0
+        self.last_failure_time = 0.0
+
+    def record_success(self):
+        self.failures = 0
+        self.state = self.CLOSED
+
+    def record_failure(self):
+        self.failures += 1
+        self.last_failure_time = time.monotonic()
+        if self.failures >= self.failure_threshold:
+            self.state = self.OPEN
+            logger.warning(
+                "Ollama circuit breaker OPEN after %d failures — "
+                "blocking requests for %ds",
+                self.failures, self.recovery_timeout,
+            )
+
+    def allow_request(self) -> bool:
+        if self.state == self.CLOSED:
+            return True
+        if self.state == self.OPEN:
+            elapsed = time.monotonic() - self.last_failure_time
+            if elapsed >= self.recovery_timeout:
+                self.state = self.HALF_OPEN
+                logger.info("Ollama circuit breaker HALF_OPEN — probing")
+                return True
+            return False
+        # HALF_OPEN: allow one probe
+        return True
+
+
+_ollama_breaker = OllamaCircuitBreaker()
+
+
+def _check_ollama_health() -> bool:
+    """Synchronous Ollama health probe (used inside Celery tasks)."""
+    from app.services.ollama_service import OLLAMA_BASE_URL
+
+    if not _ollama_breaker.allow_request():
+        logger.info("Ollama circuit breaker is OPEN — skipping health check")
+        return False
+
+    try:
+        resp = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=10.0)
+        resp.raise_for_status()
+        _ollama_breaker.record_success()
+        return True
+    except Exception as e:
+        _ollama_breaker.record_failure()
+        logger.warning("Ollama health check failed: %s", e)
+        return False
+
+
+class OllamaUnavailableError(Exception):
+    """Raised when Ollama is down and the circuit breaker is open."""
+
+
 @shared_task(
     bind=True,
     name="app.tasks.article_tasks.generate_articles_for_document",
-    autoretry_for=(Exception,),
+    autoretry_for=(httpx.TimeoutException, httpx.ConnectError, OllamaUnavailableError),
     max_retries=2,
     retry_backoff=True,
-    soft_time_limit=600,
-    time_limit=720,
+    retry_backoff_max=300,
+    soft_time_limit=3600,
+    time_limit=3900,
 )
 def generate_articles_for_document(self, document_id: str, force: bool = False) -> dict:
     """
@@ -88,6 +173,13 @@ def generate_articles_for_document(self, document_id: str, force: bool = False) 
 
         # Select LLM based on document bucket
         is_confidential = document.bucket == DocumentBucket.CONFIDENTIAL
+
+        # Health gate: check Ollama before dispatching confidential docs
+        if is_confidential and not _check_ollama_health():
+            raise OllamaUnavailableError(
+                f"Ollama unavailable (circuit breaker) — retrying doc {document_id} later"
+            )
+
         llm_service, provider_name = _get_llm_service(is_confidential)
 
         log_task_memory("generate_articles", "before_llm")
@@ -235,9 +327,16 @@ def backfill_articles() -> dict:
     """
     Generate articles for all indexed documents that don't have them yet.
     Admin-triggerable maintenance task.
+
+    Dispatches in batches of 10, staggered 60s apart.
+    Public documents are prioritised first (fast cloud APIs),
+    then confidential documents (slower Ollama).
     """
     from app.database import SessionLocal
-    from app.models.document import Document, DocumentStatus
+    from app.models.document import Document, DocumentBucket, DocumentStatus
+
+    BATCH_SIZE = 10
+    BATCH_INTERVAL_SECONDS = 60
 
     db = SessionLocal()
     try:
@@ -251,13 +350,45 @@ def backfill_articles() -> dict:
             .all()
         )
 
-        queued = 0
-        for doc in documents:
-            generate_articles_for_document.delay(str(doc.id))
-            queued += 1
+        # Split into public-first, then confidential
+        public_docs = [d for d in documents if d.bucket != DocumentBucket.CONFIDENTIAL]
+        confidential_docs = [d for d in documents if d.bucket == DocumentBucket.CONFIDENTIAL]
+        ordered_docs = public_docs + confidential_docs
 
-        logger.info(f"Backfill: queued article generation for {queued} documents")
-        return {"status": "success", "queued": queued}
+        queued_public = 0
+        queued_confidential = 0
+
+        for batch_index, offset in enumerate(range(0, len(ordered_docs), BATCH_SIZE)):
+            batch = ordered_docs[offset : offset + BATCH_SIZE]
+            countdown = batch_index * BATCH_INTERVAL_SECONDS
+
+            for doc in batch:
+                generate_articles_for_document.apply_async(
+                    args=[str(doc.id)],
+                    countdown=countdown,
+                )
+                if doc.bucket == DocumentBucket.CONFIDENTIAL:
+                    queued_confidential += 1
+                else:
+                    queued_public += 1
+
+        total = queued_public + queued_confidential
+        logger.info(
+            "Backfill: queued %d documents (public=%d, confidential=%d) "
+            "in %d batches of %d, %ds apart",
+            total,
+            queued_public,
+            queued_confidential,
+            (total + BATCH_SIZE - 1) // BATCH_SIZE if total else 0,
+            BATCH_SIZE,
+            BATCH_INTERVAL_SECONDS,
+        )
+        return {
+            "status": "success",
+            "queued": total,
+            "queued_public": queued_public,
+            "queued_confidential": queued_confidential,
+        }
 
     finally:
         db.close()

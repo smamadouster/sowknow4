@@ -1,0 +1,134 @@
+# Guardian HC -- SOWKNOW4 Configuration
+# Self-healing health check for the SOWKNOW4 Legacy Knowledge Vault
+#
+# Production: /var/docker/sowknow4
+# Dev:        /home/development/src/active/sowknow4
+
+app:
+  name: "SOWKNOW4 Legacy Knowledge Vault"
+  compose_file: "/var/docker/sowknow4/docker-compose.yml"
+
+services:
+  # --- Infrastructure ---
+
+  - name: "postgres"
+    container: "sowknow4-postgres"
+    health_check:
+      type: tcp
+      host: postgres
+      port: 5432
+    auto_heal:
+      restart: true
+
+  - name: "redis"
+    container: "sowknow4-redis"
+    health_check:
+      type: tcp
+      host: redis
+      port: 6379
+    auto_heal:
+      restart: true
+
+  - name: "vault"
+    container: "sowknow4-vault"
+    health_check:
+      type: tcp
+      host: vault
+      port: 8200
+    auto_heal:
+      restart: true
+
+  - name: "nats"
+    container: "sowknow4-nats"
+    health_check:
+      type: tcp
+      host: nats
+      port: 4222
+    auto_heal:
+      restart: true
+
+  # --- Application ---
+
+  - name: "backend"
+    container: "sowknow4-backend"
+    health_check:
+      type: http
+      url: "http://backend:8000/api/v1/health"
+      timeout: 15
+    auto_heal:
+      restart: true
+      rebuild_on_failure: true
+
+  - name: "celery-worker"
+    container: "sowknow4-celery-worker"
+    health_check:
+      type: container
+    auto_heal:
+      restart: true
+      rebuild_on_failure: true
+
+  - name: "celery-beat"
+    container: "sowknow4-celery-beat"
+    health_check:
+      type: container
+    auto_heal:
+      restart: true
+
+  - name: "frontend"
+    container: "sowknow4-frontend"
+    health_check:
+      type: http
+      url: "http://frontend:3000/"
+      timeout: 10
+    auto_heal:
+      restart: true
+      rebuild_on_failure: true
+
+  - name: "telegram-bot"
+    container: "sowknow4-telegram-bot"
+    health_check:
+      type: container
+    auto_heal:
+      restart: true
+
+alerts:
+  telegram:
+    token: "${TELEGRAM_BOT_TOKEN}"
+    chat_id: "${TELEGRAM_CHAT_ID}"
+
+patrols:
+  critical:
+    interval: "2m"
+    checks: [containers, api_health]
+  standard:
+    interval: "10m"
+    checks: [containers, api_health, disk, memory, ollama_health, vps_load]
+  deep:
+    interval: "1h"
+    checks: [containers, api_health, disk, memory, ssl, config_drift, ollama_health, vps_load]
+
+disk:
+  warning_threshold: 70
+  critical_threshold: 85
+  emergency_threshold: 90
+  auto_clean:
+    journal_vacuum: "100M"
+    docker_prune: true
+    log_max_size: "50M"
+
+ssl:
+  domains:
+    - "sowknow.gollamtech.com"
+  auto_renew: true
+  warning_days: 14
+  critical_days: 3
+
+ollama:
+  url: "http://host.docker.internal:11434"
+
+vps_load:
+  load_threshold: 6.0
+  steal_threshold: 20.0
+
+dashboard:
+  port: 9090

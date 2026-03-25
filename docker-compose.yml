@@ -1,22 +1,24 @@
-# SOWKNOW4 Docker Compose — Single Source of Truth
+# SOWKNOW4 Docker Compose -- Single Source of Truth
 # Domain: sowknow.gollamtech.com
-# Total Memory Budget: 6.4GB on shared 16GB VPS
+# VPS: Hostinger 32GB shared VPS (upgraded from 16GB on 2026-03-23)
 #
 # NAMING CONVENTION: All containers use "sowknow4-" prefix. No exceptions.
 # PORT POLICY: Only backend (8001) and frontend (3000) exposed to host.
 #              Internal services (postgres, redis, vault, nats) are network-only.
 #
 # Memory Allocation:
+#   celery-worker:   4608MB  (embeddings model ~1.3GB + processing overhead)
 #   postgres:        1536MB  (pgvector, 5 concurrent users)
-#   celery-worker:   2560MB  (embeddings model ~1.3GB + overhead)
 #   backend:          512MB  (FastAPI)
 #   frontend:         512MB  (Next.js)
 #   redis:            256MB  (cache/queue)
 #   vault:            256MB  (secrets)
+#   telegram-bot:     256MB  (Telegram interface)
 #   celery-beat:      128MB  (scheduler)
 #   nats:             128MB  (message broker)
-#   certbot:          128MB  (TLS renewal)
-#   TOTAL:          ~6016MB  (within 6.4GB budget)
+#   guardian-hc:      128MB  (self-healing monitor, monitoring profile)
+#   certbot:          128MB  (TLS renewal, tls profile)
+#   TOTAL:          ~8448MB  (plenty of headroom on 32GB VPS)
 
 x-common-env: &common-env
   env_file:
@@ -53,6 +55,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -77,6 +80,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -141,6 +145,9 @@ services:
 
   backend:
     <<: *common-env
+    init: true
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - .env
       - .secrets
@@ -159,7 +166,7 @@ services:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - VAULT_ADDR=http://vault:8200
-      - VAULT_TOKEN=${VAULT_ROOT_TOKEN:-sowknow-dev-token}
+      - VAULT_TOKEN=${VAULT_ROOT_TOKEN:?VAULT_ROOT_TOKEN must be set in .env}
       - NATS_URL=nats://nats:4222
       - APP_ENV=${APP_ENV:-production}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
@@ -188,9 +195,9 @@ services:
       # main_minimal.py has /health at root, but that's overridden by the bind mount.
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/health || curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -201,6 +208,9 @@ services:
 
   celery-worker:
     <<: *common-env
+    init: true
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
@@ -246,6 +256,9 @@ services:
 
   celery-beat:
     <<: *common-env
+    init: true
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
@@ -261,8 +274,10 @@ services:
     volumes:
       - ./backend:/app
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
       interval: 60s
@@ -278,6 +293,9 @@ services:
       - sowknow-net
 
   frontend:
+    init: true
+    security_opt:
+      - no-new-privileges:true
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -306,6 +324,9 @@ services:
 
   telegram-bot:
     <<: *common-env
+    init: true
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - .env
       - .secrets
@@ -342,7 +363,7 @@ services:
   # --- Optional profiles (activate with --profile) ---
 
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v3.3.0
     container_name: sowknow4-certbot
     restart: unless-stopped
     profiles:
@@ -351,6 +372,12 @@ services:
       - ./nginx/ssl:/etc/letsencrypt
       - sowknow-certbot-webroot:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done'"
+    healthcheck:
+      test: ["CMD-SHELL", "certbot --version || exit 1"]
+      interval: 300s
+      timeout: 10s
+      retries: 2
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -360,7 +387,7 @@ services:
       - sowknow-net
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     container_name: sowknow4-nginx
     restart: unless-stopped
     logging: *default-logging
@@ -392,8 +419,39 @@ services:
     networks:
       - sowknow-net
 
+  guardian-hc:
+    build:
+      context: ./monitoring/guardian-hc
+      dockerfile: Dockerfile
+    container_name: sowknow4-guardian-hc
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+      - monitoring
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/guardian-hc/guardian-hc.sowknow4.yml:/config/guardian-hc.yml:ro
+    # NO ports -- dashboard is internal only, access via docker exec or SSH tunnel
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import guardian_hc; print(\"ok\")' || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.2.1
     container_name: sowknow4-prometheus
     restart: unless-stopped
     logging: *default-logging

@@ -38,6 +38,7 @@ celery_app = Celery(
         "app.tasks.embedding_tasks",
         "app.tasks.report_tasks",
         "app.tasks.monitoring_tasks",
+        "app.tasks.article_tasks",
     ],
 )
 
@@ -68,6 +69,7 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.document_tasks.*": {"queue": "document_processing"},
         "app.tasks.embedding_tasks.*": {"queue": "document_processing"},
+        "app.tasks.article_tasks.*": {"queue": "document_processing"},
         "app.tasks.anomaly_tasks.*": {"queue": "scheduled"},
         "app.tasks.report_tasks.*": {"queue": "celery"},
     },

@@ -311,7 +311,7 @@ class QueueMonitor:
         if self._redis_client is None:
             with self._lock:
                 if self._redis_client is None:
-                    self._redis_client = redis.from_url(self._redis_url, decode_responses=True)
+                    self._redis_client = redis.from_url(self._redis_url, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
         return self._redis_client
 
     def get_queue_depth(self, queue_name: str = "celery") -> int:

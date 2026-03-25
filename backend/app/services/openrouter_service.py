@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def _get_redis_client():
         try:
             import redis
 
-            _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+            _redis_client = redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
             _redis_client.ping()
             logger.info("OpenRouter cache: Redis connection established")
         except Exception as e:
@@ -189,7 +189,6 @@ class OpenRouterService:
             headers["X-Title"] = self.site_name
         return headers
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def chat_completion(
         self,
         messages: list[dict[str, str]],

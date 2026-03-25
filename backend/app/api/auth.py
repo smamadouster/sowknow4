@@ -121,7 +121,7 @@ from app.core.redis_url import safe_redis_url
 
 _redis_url = safe_redis_url()
 try:
-    redis_client = redis.from_url(_redis_url, decode_responses=True)
+    redis_client = redis.from_url(_redis_url, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
     redis_client.ping()  # Test connection
     logger.info("Token blacklist Redis connection established")
 except Exception as e:

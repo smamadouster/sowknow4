@@ -120,12 +120,12 @@ class TestConfidentialDocumentRoutingSecurity:
         provider = determine_llm_provider(has_confidential=True)
         assert provider.value == "ollama"
 
-    def test_public_doc_can_use_kimi(self):
-        """Test that public documents without PII can use Kimi"""
+    def test_public_doc_uses_openrouter(self):
+        """Test that public documents without PII use OpenRouter (Mistral Small 2603)"""
         from app.api.chat import determine_llm_provider
 
         provider = determine_llm_provider(has_confidential=False)
-        assert provider.value == "kimi"
+        assert provider.value == "openrouter"
 
     def test_regular_user_cannot_access_confidential_documents(self):
         """Test that regular users can't see confidential documents"""

@@ -244,16 +244,16 @@ class TestLLMRoutingConfidential:
         result = determine_llm_provider(has_confidential=True)
         assert result.value == "ollama", "Confidential content MUST use Ollama"
 
-    def test_chat_endpoint_routes_public_to_kimi(self):
-        """Verify chat API can use Kimi (cloud LLM) for public content"""
+    def test_chat_endpoint_routes_public_to_openrouter(self):
+        """Verify chat API uses OpenRouter (Mistral Small 2603) for public content"""
         from app.api.chat import determine_llm_provider
 
-        # Public content can use cloud providers (Kimi or MiniMax via OpenRouter)
+        # Public content uses OpenRouter (Mistral Small 2603)
         result = determine_llm_provider(has_confidential=False)
-        assert result.value == "kimi", "Public content can use cloud LLM (Kimi)"
+        assert result.value == "openrouter", "Public content uses OpenRouter (Mistral Small 2603)"
 
     def test_determine_llm_provider_respects_confidentiality(self):
-        """Test the core routing logic: confidential -> Ollama, public -> Kimi/MiniMax"""
+        """Test the core routing logic: confidential -> Ollama, public -> OpenRouter"""
         from app.api.chat import determine_llm_provider
         from app.models.chat import LLMProvider
 
@@ -264,8 +264,8 @@ class TestLLMRoutingConfidential:
 
         # Test public routing
         provider_public = determine_llm_provider(has_confidential=False)
-        assert provider_public == LLMProvider.KIMI, \
-            "Public content can use cloud LLM (Kimi) for chatbot/search"
+        assert provider_public == LLMProvider.OPENROUTER, \
+            "Public content uses OpenRouter (Mistral Small 2603) for chatbot/search"
 
     def test_multi_agent_orchestrator_respects_bucket_routing(self):
         """Test that multi-agent orchestrator can route by document confidentiality"""

@@ -225,7 +225,7 @@ class TestSearchConcurrencyLimit:
     @pytest.mark.asyncio
     async def test_semaphore_allows_up_to_max_concurrent(self):
         """MAX_CONCURRENT_SEARCHES requests should all be accepted."""
-        import app.api.search as search_module
+        import app.api.search_agent_router as search_module
 
         original_semaphore = search_module._search_semaphore
         # Create a fresh semaphore so tests don't interfere with each other
@@ -245,7 +245,7 @@ class TestSearchConcurrencyLimit:
     @pytest.mark.asyncio
     async def test_semaphore_signals_full_at_sixth_request(self):
         """The 6th request sees _value == 0 and should receive 429."""
-        import app.api.search as search_module
+        import app.api.search_agent_router as search_module
 
         original_semaphore = search_module._search_semaphore
         search_module._search_semaphore = asyncio.Semaphore(5)
@@ -321,7 +321,7 @@ class TestSearchConcurrencyLimit:
     @pytest.mark.asyncio
     async def test_semaphore_released_after_successful_search(self):
         """Verify semaphore slot is freed after the request completes."""
-        import app.api.search as search_module
+        import app.api.search_agent_router as search_module
 
         original_semaphore = search_module._search_semaphore
         search_module._search_semaphore = asyncio.Semaphore(5)
@@ -342,7 +342,7 @@ class TestSearchConcurrencyLimit:
     @pytest.mark.asyncio
     async def test_semaphore_released_after_exception(self):
         """Verify semaphore slot is freed even when an exception is raised."""
-        import app.api.search as search_module
+        import app.api.search_agent_router as search_module
 
         original_semaphore = search_module._search_semaphore
         search_module._search_semaphore = asyncio.Semaphore(5)

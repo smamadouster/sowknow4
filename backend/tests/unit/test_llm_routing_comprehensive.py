@@ -18,11 +18,11 @@ class TestDetermineLLMProviderFunction:
         provider = determine_llm_provider(has_confidential=True)
         assert provider == LLMProvider.OLLAMA
 
-    def test_kimi_when_has_confidential_false(self):
-        """Test that Kimi is selected when has_confidential is False"""
+    def test_openrouter_when_has_confidential_false(self):
+        """Test that OpenRouter is selected when has_confidential is False"""
         from app.api.chat import determine_llm_provider
         provider = determine_llm_provider(has_confidential=False)
-        assert provider == LLMProvider.KIMI
+        assert provider == LLMProvider.OPENROUTER
 
 
 class TestRoutingWithPIIDetection:
@@ -39,8 +39,8 @@ class TestRoutingWithPIIDetection:
         provider = determine_llm_provider(has_confidential=has_pii)
         assert provider == LLMProvider.OLLAMA
 
-    def test_no_pii_allows_kimi(self):
-        """Test that queries without PII can use Kimi"""
+    def test_no_pii_allows_openrouter(self):
+        """Test that queries without PII can use OpenRouter"""
         query_no_pii = "What are the main features of our product?"
 
         has_pii = pii_detection_service.detect_pii(query_no_pii)
@@ -48,7 +48,7 @@ class TestRoutingWithPIIDetection:
 
         from app.api.chat import determine_llm_provider
         provider = determine_llm_provider(has_confidential=has_pii)
-        assert provider == LLMProvider.KIMI
+        assert provider == LLMProvider.OPENROUTER
 
 
 class TestUserRoleRouting:
@@ -143,7 +143,7 @@ class TestEdgeCases:
         """Test empty query handling"""
         from app.api.chat import determine_llm_provider
         provider = determine_llm_provider(has_confidential=False)
-        assert provider == LLMProvider.KIMI
+        assert provider == LLMProvider.OPENROUTER
 
     def test_very_long_query(self):
         """Test very long query"""
@@ -151,7 +151,7 @@ class TestEdgeCases:
         has_pii = pii_detection_service.detect_pii(long_query)
         from app.api.chat import determine_llm_provider
         provider = determine_llm_provider(has_confidential=has_pii)
-        assert provider in [LLMProvider.KIMI, LLMProvider.OLLAMA]
+        assert provider in [LLMProvider.OPENROUTER, LLMProvider.OLLAMA]
 
 
 class TestMultiAgentOrchestratorRouting:

@@ -11,10 +11,30 @@ Tests cover:
 """
 
 import io
-from unittest.mock import patch
+import tempfile
+import os
+from unittest.mock import patch, AsyncMock
 
 import pytest
 from PIL import Image
+
+
+def _make_image_bytes():
+    """Create minimal PNG image bytes for testing."""
+    img = Image.new("RGB", (100, 100), color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _write_temp_image():
+    """Write a minimal PNG to a temp file and return the path."""
+    img_bytes = _make_image_bytes()
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    tmp.write(img_bytes)
+    tmp.flush()
+    tmp.close()
+    return tmp.name
 
 
 class TestOCRMode:
@@ -94,14 +114,6 @@ class TestOCRService:
 
         return OCRService()
 
-    @pytest.fixture
-    def sample_image_bytes(self):
-        """Create sample image bytes"""
-        img = Image.new("RGB", (100, 100), color="white")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        return img_bytes.getvalue()
-
     def test_get_available_modes(self, ocr_service):
         """Test getting available modes"""
         from app.services.ocr_service import OCRMode  # noqa: PLC0415
@@ -163,7 +175,7 @@ class TestOCRService:
 
 
 class TestOCRModeParameter:
-    """Tests for mode parameter handling"""
+    """Tests for mode parameter handling via _extract_full"""
 
     @pytest.fixture
     def ocr_service(self):
@@ -172,71 +184,78 @@ class TestOCRModeParameter:
         return OCRService()
 
     @pytest.fixture
-    def sample_image_bytes(self):
-        img = Image.new("RGB", (100, 100), color="white")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        return img_bytes.getvalue()
+    def temp_image_path(self):
+        path = _write_temp_image()
+        yield path
+        os.unlink(path)
 
     @pytest.mark.asyncio
-    async def test_mode_base(self, ocr_service, sample_image_bytes):
+    async def test_mode_base(self, ocr_service, temp_image_path):
         """Test Base mode parameter"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
+        with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
             mock_tesseract.return_value = {
                 "text": "test",
                 "confidence": 0.9,
                 "engine": "tesseract",
                 "mode": "base",
             }
+            with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+                mock_paddle.side_effect = Exception("no paddle")
 
-            result = await ocr_service.extract_text(sample_image_bytes, mode="base")
+                result = await ocr_service._extract_full(temp_image_path, mode="base")
 
-            assert result["mode"] == "base"
+                assert result["mode"] == "base"
 
     @pytest.mark.asyncio
-    async def test_mode_large(self, ocr_service, sample_image_bytes):
+    async def test_mode_large(self, ocr_service, temp_image_path):
         """Test Large mode parameter"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
+        with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
             mock_tesseract.return_value = {
                 "text": "test",
                 "confidence": 0.9,
                 "engine": "tesseract",
                 "mode": "large",
             }
+            with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+                mock_paddle.side_effect = Exception("no paddle")
 
-            result = await ocr_service.extract_text(sample_image_bytes, mode="large")
+                result = await ocr_service._extract_full(temp_image_path, mode="large")
 
-            assert result["mode"] == "large"
+                assert result["mode"] == "large"
 
     @pytest.mark.asyncio
-    async def test_mode_gundam(self, ocr_service, sample_image_bytes):
+    async def test_mode_gundam(self, ocr_service, temp_image_path):
         """Test Gundam mode parameter"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
+        with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
             mock_tesseract.return_value = {
                 "text": "test",
                 "confidence": 0.9,
                 "engine": "tesseract",
                 "mode": "gundam",
             }
+            with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+                mock_paddle.side_effect = Exception("no paddle")
 
-            result = await ocr_service.extract_text(sample_image_bytes, mode="gundam")
+                result = await ocr_service._extract_full(temp_image_path, mode="gundam")
 
-            assert result["mode"] == "gundam"
+                assert result["mode"] == "gundam"
 
     @pytest.mark.asyncio
-    async def test_default_mode_is_base(self, ocr_service, sample_image_bytes):
+    async def test_default_mode_is_base(self, ocr_service, temp_image_path):
         """Test that default mode is Base when no mode specified"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
+        with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
             mock_tesseract.return_value = {
                 "text": "test",
                 "confidence": 0.9,
                 "engine": "tesseract",
                 "mode": "base",
             }
+            with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+                mock_paddle.side_effect = Exception("no paddle")
 
-            result = await ocr_service.extract_text(sample_image_bytes)
+                result = await ocr_service._extract_full(temp_image_path)
 
-            assert result["mode"] == "base"
+                assert result["mode"] == "base"
 
 
 class TestOCREngineFallback:
@@ -249,39 +268,39 @@ class TestOCREngineFallback:
         return OCRService()
 
     @pytest.fixture
-    def sample_image_bytes(self):
-        img = Image.new("RGB", (100, 100), color="white")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        return img_bytes.getvalue()
+    def temp_image_path(self):
+        path = _write_temp_image()
+        yield path
+        os.unlink(path)
 
     @pytest.mark.asyncio
-    async def test_force_tesseract(self, ocr_service, sample_image_bytes):
-        """Test forcing Tesseract engine"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "test",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-            }
+    async def test_force_tesseract(self, ocr_service, temp_image_path):
+        """Test that tesseract is used when paddle is unavailable"""
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("PaddleOCR not available")
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, force_engine="tesseract"
-            )
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "test",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                }
 
-            mock_tesseract.assert_called_once()
-            assert result["engine"] == "tesseract"
+                result = await ocr_service._extract_full(temp_image_path)
+
+                mock_tesseract.assert_called_once()
+                assert result["engine"] == "tesseract"
 
     @pytest.mark.asyncio
-    async def test_paddle_fallback_to_tesseract(self, ocr_service, sample_image_bytes):
+    async def test_paddle_fallback_to_tesseract(self, ocr_service, temp_image_path):
         """Test PaddleOCR fallback to Tesseract on failure"""
         ocr_service._paddle_model = None
 
         with patch.object(ocr_service, "_get_paddle_model") as mock_get_paddle:
             mock_get_paddle.side_effect = Exception("PaddleOCR not available")
 
-            with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
                 mock_tesseract.return_value = {
                     "text": "fallback text",
                     "confidence": 0.85,
@@ -289,7 +308,7 @@ class TestOCREngineFallback:
                     "mode": "base",
                 }
 
-                result = await ocr_service.extract_text(sample_image_bytes)
+                result = await ocr_service._extract_full(temp_image_path)
 
                 assert result["engine"] == "tesseract"
 
@@ -304,89 +323,88 @@ class TestOCRResultFormat:
         return OCRService()
 
     @pytest.fixture
-    def sample_image_bytes(self):
-        img = Image.new("RGB", (100, 100), color="white")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        return img_bytes.getvalue()
+    def temp_image_path(self):
+        path = _write_temp_image()
+        yield path
+        os.unlink(path)
 
     @pytest.mark.asyncio
-    async def test_result_contains_engine(self, ocr_service, sample_image_bytes):
+    async def test_result_contains_engine(self, ocr_service, temp_image_path):
         """Test that result contains engine field for audit"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "test",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-                "passes": 1,
-            }
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("no paddle")
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "test",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                    "passes": 1,
+                }
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, force_engine="tesseract"
-            )
+                result = await ocr_service._extract_full(temp_image_path)
 
-            assert "engine" in result
-            assert result["engine"] in ["paddle", "tesseract", "none"]
+                assert "engine" in result
+                assert result["engine"] in ["paddle", "tesseract", "none"]
 
     @pytest.mark.asyncio
-    async def test_result_contains_mode(self, ocr_service, sample_image_bytes):
+    async def test_result_contains_mode(self, ocr_service, temp_image_path):
         """Test that result contains mode field"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "test",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-                "passes": 1,
-            }
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("no paddle")
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "test",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                    "passes": 1,
+                }
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, mode="base", force_engine="tesseract"
-            )
+                result = await ocr_service._extract_full(temp_image_path, mode="base")
 
-            assert "mode" in result
-            assert result["mode"] in ["base", "large", "gundam"]
+                assert "mode" in result
+                assert result["mode"] in ["base", "large", "gundam"]
 
     @pytest.mark.asyncio
     async def test_result_contains_processing_time(
-        self, ocr_service, sample_image_bytes
+        self, ocr_service, temp_image_path
     ):
         """Test that result contains processing_time for monitoring"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "test",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-            }
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("no paddle")
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "test",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                }
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, force_engine="tesseract"
-            )
+                result = await ocr_service._extract_full(temp_image_path)
 
-            assert "processing_time" in result
-            assert isinstance(result["processing_time"], float)
-            assert result["processing_time"] >= 0
+                assert "processing_time" in result
+                assert isinstance(result["processing_time"], float)
+                assert result["processing_time"] >= 0
 
     @pytest.mark.asyncio
-    async def test_result_contains_confidence(self, ocr_service, sample_image_bytes):
+    async def test_result_contains_confidence(self, ocr_service, temp_image_path):
         """Test that result contains confidence score"""
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "test",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-            }
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("no paddle")
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "test",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                }
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, force_engine="tesseract"
-            )
+                result = await ocr_service._extract_full(temp_image_path)
 
-            assert "confidence" in result
-            assert isinstance(result["confidence"], float)
-            assert 0 <= result["confidence"] <= 1
+                assert "confidence" in result
+                assert isinstance(result["confidence"], float)
+                assert 0 <= result["confidence"] <= 1
 
 
 class TestOCRPDFExtraction:
@@ -419,79 +437,73 @@ class TestBilingualSupport:
 
         return OCRService()
 
+    @pytest.fixture
+    def temp_image_path(self):
+        path = _write_temp_image()
+        yield path
+        os.unlink(path)
+
     @pytest.mark.asyncio
-    async def test_french_language_parameter(
-        self, ocr_service, sample_image_bytes=None
-    ):
+    async def test_french_language_parameter(self, ocr_service, temp_image_path):
         """Test French language parameter"""
-        if sample_image_bytes is None:
-            img = Image.new("RGB", (100, 100), color="white")
-            img_bytes = io.BytesIO()
-            img.save(img_bytes, format="PNG")
-            sample_image_bytes = img_bytes.getvalue()
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("no paddle")
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "texte français",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                }
 
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "texte français",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-            }
+                result = await ocr_service._extract_full(
+                    temp_image_path, language="fr"
+                )
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, language="fr", force_engine="tesseract"
-            )
-
-            assert (
-                "français" in result["text"].lower()
-                or "texte" in result["text"].lower()
-            )
+                assert (
+                    "français" in result["text"].lower()
+                    or "texte" in result["text"].lower()
+                )
 
     @pytest.mark.asyncio
-    async def test_english_language_parameter(self, ocr_service):
+    async def test_english_language_parameter(self, ocr_service, temp_image_path):
         """Test English language parameter"""
-        img = Image.new("RGB", (100, 100), color="white")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        sample_image_bytes = img_bytes.getvalue()
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("no paddle")
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "english text",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                }
 
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "english text",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-            }
+                result = await ocr_service._extract_full(
+                    temp_image_path, language="en"
+                )
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, language="en", force_engine="tesseract"
-            )
-
-            assert (
-                "english" in result["text"].lower() or "text" in result["text"].lower()
-            )
+                assert (
+                    "english" in result["text"].lower() or "text" in result["text"].lower()
+                )
 
     @pytest.mark.asyncio
-    async def test_auto_language_parameter(self, ocr_service):
+    async def test_auto_language_parameter(self, ocr_service, temp_image_path):
         """Test auto language detection"""
-        img = Image.new("RGB", (100, 100), color="white")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        sample_image_bytes = img_bytes.getvalue()
+        with patch.object(ocr_service, "_extract_with_paddle", new_callable=AsyncMock) as mock_paddle:
+            mock_paddle.side_effect = Exception("no paddle")
+            with patch.object(ocr_service, "_extract_with_tesseract", new_callable=AsyncMock) as mock_tesseract:
+                mock_tesseract.return_value = {
+                    "text": "detected text",
+                    "confidence": 0.85,
+                    "engine": "tesseract",
+                    "mode": "base",
+                }
 
-        with patch.object(ocr_service, "_extract_text_tesseract") as mock_tesseract:
-            mock_tesseract.return_value = {
-                "text": "detected text",
-                "confidence": 0.85,
-                "engine": "tesseract",
-                "mode": "base",
-            }
+                result = await ocr_service._extract_full(
+                    temp_image_path, language="auto"
+                )
 
-            result = await ocr_service.extract_text(
-                sample_image_bytes, language="auto", force_engine="tesseract"
-            )
-
-            assert "text" in result["text"].lower()
+                assert "text" in result["text"].lower()
 
 
 class TestOCRServiceIntegration:

@@ -9,6 +9,7 @@ LLM Routing Strategy:
 import json
 import logging
 import os
+import time as _time
 from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import UUID
@@ -22,6 +23,11 @@ from app.models.user import User
 from app.services.deferred_query_service import deferred_query_service
 from app.services.llm_router import llm_router
 from app.services.pii_detection_service import pii_detection_service
+from app.services.prometheus_metrics import (
+    llm_request_duration,
+    llm_request_total,
+    llm_retry_total,
+)
 from app.services.search_service import search_service
 
 # Import all LLM services
@@ -342,10 +348,22 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         # Generate response
         response_text = ""
-        async for chunk in llm_service.chat_completion(messages, stream=False):
-            if chunk.startswith("__USAGE__"):
-                continue
-            response_text += chunk
+        _provider_name = llm_provider.value
+        _model_name = getattr(llm_service, "model", "unknown")
+        _start = _time.monotonic()
+        try:
+            async for chunk in llm_service.chat_completion(messages, stream=False):
+                if chunk.startswith("__USAGE__"):
+                    continue
+                response_text += chunk
+            _elapsed = _time.monotonic() - _start
+            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
+            llm_request_total.inc(labels={"provider": _provider_name, "status": "success"})
+        except Exception:
+            _elapsed = _time.monotonic() - _start
+            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
+            llm_request_total.inc(labels={"provider": _provider_name, "status": "error"})
+            raise
 
         # Format sources for response
         formatted_sources = []
@@ -461,8 +479,20 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
             yield f"data: {json.dumps({'type': 'message', 'content': cached_content})}\n\n"
         else:
             # Stream live response from LLM
-            async for chunk in llm_service.chat_completion(messages, stream=True):
-                yield f"data: {json.dumps({'type': 'message', 'content': chunk})}\n\n"
+            _stream_provider = llm_provider.value
+            _stream_model = getattr(llm_service, "model", "unknown")
+            _stream_start = _time.monotonic()
+            try:
+                async for chunk in llm_service.chat_completion(messages, stream=True):
+                    yield f"data: {json.dumps({'type': 'message', 'content': chunk})}\n\n"
+                _stream_elapsed = _time.monotonic() - _stream_start
+                llm_request_duration.observe(_stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model})
+                llm_request_total.inc(labels={"provider": _stream_provider, "status": "success"})
+            except Exception:
+                _stream_elapsed = _time.monotonic() - _stream_start
+                llm_request_duration.observe(_stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model})
+                llm_request_total.inc(labels={"provider": _stream_provider, "status": "error"})
+                raise
 
         # Send sources
         formatted_sources = []

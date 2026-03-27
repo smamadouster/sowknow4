@@ -415,3 +415,24 @@ def track_http_request(func: Callable) -> Callable:
 
 # Initialize standard metrics on import
 setup_standard_metrics()
+
+
+# --- LLM Provider Metrics ---
+
+llm_request_duration = Metric(
+    name="sowknow_llm_request_duration_seconds",
+    help_text="Duration of LLM API requests in seconds",
+    labels=["provider", "model"],
+)
+
+llm_request_total = Metric(
+    name="sowknow_llm_requests_total",
+    help_text="Total number of LLM API requests",
+    labels=["provider", "status"],
+)
+
+llm_retry_total = Metric(
+    name="sowknow_llm_retries_total",
+    help_text="Total number of LLM API retries",
+    labels=["provider"],
+)

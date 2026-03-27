@@ -51,20 +51,20 @@ def check_worker_memory(self) -> dict:
         severity = "CRITICAL"
         title = "Celery worker memory CRITICAL"
         message = (
-            f"Celery worker RSS is {rss_mb} MB — exceeds the CRITICAL "
+            f"Celery worker RSS is {rss_mb} MB -- exceeds the CRITICAL "
             f"threshold of {_CRIT_THRESHOLD_MB} MB "
             f"(container limit: 1280 MB).  Consider restarting the worker."
         )
         result["action"] = "critical_alert"
     elif rss_mb >= _WARN_THRESHOLD_MB:
-        severity = "HIGH"
-        title = "Celery worker memory WARNING"
-        message = (
-            f"Celery worker RSS is {rss_mb} MB — exceeds the WARNING "
-            f"threshold of {_WARN_THRESHOLD_MB} MB "
-            f"(container limit: 1280 MB)."
+        # Warning-level memory usage is logged but not sent to Telegram.
+        # Guardian HC auto-healing will restart if it hits 90% of container limit.
+        logger.warning(
+            "Celery worker RSS is %d MB (WARNING threshold %d MB)",
+            rss_mb, _WARN_THRESHOLD_MB,
         )
-        result["action"] = "warning_alert"
+        result["action"] = "warning_logged"
+        return result
     else:
         return result
 

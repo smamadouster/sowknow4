@@ -717,3 +717,45 @@ def on_generate_embeddings_failure(self, exc, task_id, args, kwargs, einfo) -> N
         traceback=einfo,
         is_critical=False,
     )
+
+
+@shared_task(name="app.tasks.document_tasks.reprocess_pending_documents")
+def reprocess_pending_documents() -> dict:
+    """Dispatch processing for all pending documents in staggered batches."""
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentStatus
+
+    BATCH_SIZE = 40
+    BATCH_INTERVAL_SECONDS = 30
+
+    db = SessionLocal()
+    try:
+        docs = (
+            db.query(Document)
+            .filter(Document.status == DocumentStatus.PENDING)
+            .order_by(Document.created_at)
+            .all()
+        )
+
+        queued = 0
+        for batch_index, offset in enumerate(range(0, len(docs), BATCH_SIZE)):
+            batch = docs[offset : offset + BATCH_SIZE]
+            countdown = batch_index * BATCH_INTERVAL_SECONDS
+            for doc in batch:
+                process_document.apply_async(
+                    args=[str(doc.id)],
+                    countdown=countdown,
+                )
+                queued += 1
+
+        logger.info(
+            "Reprocess: queued %d pending documents in %d batches of %d, %ds apart",
+            queued,
+            (queued + BATCH_SIZE - 1) // BATCH_SIZE if queued else 0,
+            BATCH_SIZE,
+            BATCH_INTERVAL_SECONDS,
+        )
+        return {"status": "success", "queued": queued}
+
+    finally:
+        db.close()

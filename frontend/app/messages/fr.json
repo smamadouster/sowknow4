@@ -37,7 +37,8 @@
     "toggle_navigation": "Basculer la navigation",
     "main_navigation": "Navigation principale",
     "close_menu": "Fermer le menu",
-    "knowledge_graph": "Graphe de Connaissances"
+    "knowledge_graph": "Graphe de Connaissances",
+    "monitoring": "Surveillance"
   },
   "auth": {
     "login_title": "Connexion à SOWKNOW",
@@ -410,5 +411,30 @@
     "zoom": "Zoom",
     "reset_zoom": "Réinitialiser le Zoom",
     "export_graph": "Exporter le Graphe"
+  },
+  "monitoring": {
+    "title": "Surveillance Systeme",
+    "subtitle": "Guardian HC -- Etat de sante en temps reel de tous les services SOWKNOW4",
+    "all_healthy": "Tous les systemes sont operationnels",
+    "degraded": "Degrade -- Certains services impactes",
+    "critical": "Critique -- Services principaux en panne",
+    "loading": "Verification des services...",
+    "services_healthy": "{healthy} sur {total} services operationnels",
+    "last_check": "Derniere verification",
+    "auto_refresh": "Actualisation auto (30s)",
+    "refresh": "Actualiser",
+    "celery_title": "File de taches Celery",
+    "workers": "Workers",
+    "active_tasks": "Taches actives",
+    "reserved_tasks": "Taches reservees",
+    "worker_name": "Nom du worker",
+    "celery_unavailable": "Le worker Celery ne repond pas",
+    "architecture_title": "Architecture Guardian HC",
+    "layer_1": "Couche 1 -- Watchdog externe :",
+    "layer_1_desc": "Tache cron sur l'hote (toutes les 2 min). Surveille le stack Docker : daemon, conteneurs, API. Redemarrage et reconstruction automatiques.",
+    "layer_2": "Couche 2 -- Guardian interne :",
+    "layer_2_desc": "Conteneur Docker executant des patrouilles (critique/2m, standard/10m, approfondie/1h). Surveille la sante applicative, disque, memoire, SSL, derive de config.",
+    "layer_3": "Couche 3 -- Validateur pre-deploiement :",
+    "layer_3_desc": "Execute avant le deploiement. Detecte les secrets manquants, Dockerfiles casses, erreurs de syntaxe, conflits de ports."
   }
 }

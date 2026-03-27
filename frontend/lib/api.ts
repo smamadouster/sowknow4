@@ -178,14 +178,35 @@ class ApiClient {
     });
   }
 
-  async getDocuments(page: number = 1, pageSize: number = 50, bucket?: string) {
+  async getDocuments(page: number = 1, pageSize: number = 50, bucket?: string, search?: string, sortBy?: string, sortDir?: string) {
+    interface DocumentsResponse {
+      documents: Array<{
+        id: string;
+        filename: string;
+        original_filename: string;
+        bucket: string;
+        status: string;
+        file_size: number;
+        mime_type: string;
+        page_count: number;
+        created_at: string;
+        updated_at: string;
+      }>;
+      total: number;
+      page: number;
+      page_size: number;
+    }
+
     const params = new URLSearchParams({
       page: page.toString(),
       page_size: pageSize.toString(),
     });
     if (bucket) params.append('bucket', bucket);
+    if (search) params.append('search', search);
+    if (sortBy) params.append('sort_by', sortBy);
+    if (sortDir) params.append('sort_dir', sortDir);
 
-    return this.request(`/v1/documents?${params.toString()}`);
+    return this.request<DocumentsResponse>(`/v1/documents?${params.toString()}`);
   }
 
   async getDocument(id: string) {

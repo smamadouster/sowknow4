@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { useTranslations } from 'next-intl';
 import { useAuthStore, useUploadStore, canAccessConfidential } from '@/lib/store';
-import { getCsrfToken } from '@/lib/api';
+import api, { getCsrfToken } from '@/lib/api';
 
 interface Document {
   id: string;
@@ -59,6 +59,8 @@ export default function DocumentsPage() {
   // Batch upload state
   const [fileQueue, setFileQueue] = useState<FileUploadItem[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
+  // Upload bucket selector - separate from view filter
+  const [uploadBucket, setUploadBucket] = useState<'public' | 'confidential'>('public');
 
   const pageSize = 50;
 
@@ -269,7 +271,7 @@ export default function DocumentsPage() {
     uploadingCount.current++;
     setUploading(true);
     setIsUploading(true);
-    const bucket = bucketFilter === 'all' ? 'public' : bucketFilter;
+    const bucket = uploadBucket;
 
     for (const item of items) {
       // Update status to uploading
@@ -321,29 +323,18 @@ export default function DocumentsPage() {
     setError(null);
 
     try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        page_size: pageSize.toString(),
-      });
-      if (bucketFilter !== 'all') {
-        params.append('bucket', bucketFilter);
-      }
-      // R8 — search param
-      if (debouncedSearch) {
-        params.append('search', debouncedSearch);
-      }
-      // R7 — sort params
-      params.append('sort_by', sortBy);
-      params.append('sort_dir', sortDir);
+      const response = await api.getDocuments(
+        page,
+        pageSize,
+        bucketFilter !== 'all' ? bucketFilter : undefined,
+        debouncedSearch || undefined,
+        sortBy,
+        sortDir
+      );
 
-      const res = await fetch(`${API_BASE}/v1/documents?${params}`, {
-        credentials: 'include',
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data.documents || []);
-        setTotal(data.total || 0);
+      if (response.status === 200 && response.data) {
+        setDocuments(response.data.documents || []);
+        setTotal(response.data.total || 0);
       } else {
         setError(tCommon('error'));
       }
@@ -385,13 +376,9 @@ export default function DocumentsPage() {
     if (!confirm(t('delete_confirm'))) return;
 
     try {
-      const res = await fetch(`${API_BASE}/v1/documents/${docId}`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-Token': getCsrfToken() },
-        credentials: 'include',
-      });
+      const response = await api.deleteDocument(docId);
 
-      if (res.ok) {
+      if (response.status === 200) {
         loadDocuments();
       }
     } catch (e) {
@@ -487,6 +474,22 @@ export default function DocumentsPage() {
               </svg>
               {uploading ? t('uploading') : t('upload')}
             </button>
+          </div>
+
+          {/* Upload bucket selector - separate from view filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">{t('upload_to') || 'Upload to:'}</span>
+            <select
+              value={uploadBucket}
+              onChange={(e) => setUploadBucket(e.target.value as 'public' | 'confidential')}
+              disabled={uploading}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="public">{t('bucket_public')}</option>
+              {canAccessConf && (
+                <option value="confidential">{t('bucket_confidential')}</option>
+              )}
+            </select>
           </div>
         </div>
       </div>

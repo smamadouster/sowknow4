@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
+import { useAuthStore } from '@/lib/store';
 
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
   const locale = useLocale();
+  const { setUser } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -42,6 +44,13 @@ export default function LoginPage() {
       });
 
       if (response.ok) {
+        const meResponse = await fetch(`${apiUrl}/v1/auth/me`, {
+          credentials: 'include',
+        });
+        if (meResponse.ok) {
+          const userData = await meResponse.json();
+          setUser(userData);
+        }
         router.push(`/${locale}/dashboard`);
       } else {
         const data = await response.json();

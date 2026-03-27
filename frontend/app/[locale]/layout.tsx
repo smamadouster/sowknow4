@@ -25,8 +25,8 @@ export default async function LocaleLayout({
   const tNav = await getTranslations({ locale, namespace: 'nav' });
 
   return (
-    <html lang={locale}>
-      <body style={{ margin: 0, padding: 0, fontFamily: 'Arial, sans-serif' }}>
+    <html lang={locale} suppressHydrationWarning>
+      <body style={{ margin: 0, padding: 0, fontFamily: 'Arial, sans-serif' }} suppressHydrationWarning>
         <NextIntlClientProvider messages={messages}>
           <a
             href="#main-content"

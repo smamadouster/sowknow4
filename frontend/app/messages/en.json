@@ -37,7 +37,8 @@
     "toggle_navigation": "Toggle navigation",
     "main_navigation": "Main navigation",
     "close_menu": "Close menu",
-    "knowledge_graph": "Knowledge Graph"
+    "knowledge_graph": "Knowledge Graph",
+    "monitoring": "Monitoring"
   },
   "auth": {
     "login_title": "Login to SOWKNOW",
@@ -410,5 +411,30 @@
     "zoom": "Zoom",
     "reset_zoom": "Reset Zoom",
     "export_graph": "Export Graph"
+  },
+  "monitoring": {
+    "title": "System Monitoring",
+    "subtitle": "Guardian HC -- Real-time health status of all SOWKNOW4 services",
+    "all_healthy": "All Systems Healthy",
+    "degraded": "Degraded -- Some Services Impacted",
+    "critical": "Critical -- Core Services Down",
+    "loading": "Checking services...",
+    "services_healthy": "{healthy} of {total} services healthy",
+    "last_check": "Last check",
+    "auto_refresh": "Auto-refresh (30s)",
+    "refresh": "Refresh",
+    "celery_title": "Celery Task Queue",
+    "workers": "Workers",
+    "active_tasks": "Active Tasks",
+    "reserved_tasks": "Reserved Tasks",
+    "worker_name": "Worker Name",
+    "celery_unavailable": "Celery worker is not responding",
+    "architecture_title": "Guardian HC Architecture",
+    "layer_1": "Layer 1 -- External Watchdog:",
+    "layer_1_desc": "Cron job on the host (every 2 min). Watches the Docker stack itself: daemon, containers, API. Auto-restarts and rebuilds.",
+    "layer_2": "Layer 2 -- Internal Guardian:",
+    "layer_2_desc": "Docker container running patrols (critical/2m, standard/10m, deep/1h). Monitors app health, disk, memory, SSL, config drift.",
+    "layer_3": "Layer 3 -- Pre-Flight Validator:",
+    "layer_3_desc": "Run before deploy. Catches missing secrets, broken Dockerfiles, syntax errors, port conflicts."
   }
 }

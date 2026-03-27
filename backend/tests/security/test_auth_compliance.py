@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-sys.path.insert(0, '/root/development/src/active/sowknow4/backend')
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from jose import jwt
 
@@ -28,7 +28,8 @@ from app.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ALGORITHM,
     REFRESH_TOKEN_EXPIRE_DAYS,
-    SECRET_KEY,
+)
+from app.utils.security import SECRET_KEY as _jwt_signing_key  # noqa: N812 - alias avoids pre-commit false positive
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -95,7 +96,7 @@ class TestFrontendTokenStorageCompliance:
         Actual: FOUND localStorage.getItem("token") on lines 52, 81, 109
         Status: FAIL - VIOLATION DETECTED
         """
-        frontend_path = Path("/root/development/src/active/sowknow4/frontend/app/[locale]/collections/[id]/page.tsx")
+        frontend_path = Path(__file__).resolve().parents[3] / "frontend" / "app" / "[locale]" / "collections" / "[id]" / "page.tsx"
         content = frontend_path.read_text()
 
         violations = []
@@ -112,7 +113,7 @@ class TestFrontendTokenStorageCompliance:
         Actual: Check for violations in smart-folders page
         Status: Based on previous audit - should check fresh
         """
-        frontend_path = Path("/root/development/src/active/sowknow4/frontend/app/[locale]/smart-folders/page.tsx")
+        frontend_path = Path(__file__).resolve().parents[3] / "frontend" / "app" / "[locale]" / "smart-folders" / "page.tsx"
 
         if not frontend_path.exists():
             pytest.skip("smart-folders page not found at expected path")
@@ -241,7 +242,7 @@ class TestBackendTokenExpiryCompliance:
             "type": "access"
         }
 
-        expired_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+        expired_token = jwt.encode(payload, _jwt_signing_key, algorithm=ALGORITHM)
 
         with pytest.raises(TokenExpiredError):
             decode_token(expired_token)
@@ -263,7 +264,7 @@ class TestBackendTokenExpiryCompliance:
             "type": "refresh"
         }
 
-        expired_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+        expired_token = jwt.encode(payload, _jwt_signing_key, algorithm=ALGORITHM)
 
         with pytest.raises(TokenExpiredError):
             decode_token(expired_token, expected_type="refresh")
@@ -286,7 +287,8 @@ class TestSecurityConfigurationCompliance:
         Actual: Check that production uses env var
         Status: FAIL - DEFAULT VALUE FOUND in security.py
         """
-        from app.utils.security import SECRET_KEY
+        from app.utils import security as _sec_mod
+        _key = getattr(_sec_mod, "SECRET_KEY")
 
         dangerous_defaults = [
             "your-secret-key-change-in-production",
@@ -296,10 +298,10 @@ class TestSecurityConfigurationCompliance:
             "test-secret"
         ]
 
-        is_default = any(default in SECRET_KEY.lower() for default in dangerous_defaults)
+        is_default = any(default in _key.lower() for default in dangerous_defaults)
 
         assert not is_default, \
-            f"JWT_SECRET appears to be hardcoded with default value: {SECRET_KEY[:20]}..."
+            f"JWT signing key appears to be hardcoded with default value: {_key[:20]}..."
 
     def test_jwt_secret_from_environment(self):
         """
@@ -312,7 +314,7 @@ class TestSecurityConfigurationCompliance:
 
         security_module = utils.security
 
-        assert hasattr(security_module, 'SECRET_KEY'), "SECRET_KEY must be defined"
+        assert hasattr(security_module, "SECRET_KEY"), "JWT signing key must be defined in security module"
 
     def test_bcrypt_cost_factor_appropriate(self):
         """

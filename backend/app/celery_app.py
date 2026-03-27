@@ -75,7 +75,7 @@ celery_app.conf.update(
     },
     # Result backend
     result_extended=True,
-    result_expires=3600,  # 1 hour
+    result_expires=86400,  # 24 hours — document processing may be checked hours later
     # Reliability
     task_acks_late=True,
     # Rate limiting (env-configurable)

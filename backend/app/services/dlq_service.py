@@ -72,29 +72,34 @@ class DeadLetterQueueService:
             db.refresh(record)
             logger.info(f"DLQ: stored failed task {task_name} (task_id={task_id}, retries={retry_count})")
 
-            # Fire async alert (best-effort; don't block if event loop unavailable)
+            # Best-effort alert (sync-safe — no async event loop required)
             try:
-                import asyncio
+                import threading
 
-                from app.services.alert_service import alert_service
+                def _send_alert():
+                    try:
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        try:
+                            from app.services.alert_service import alert_service
+                            loop.run_until_complete(
+                                alert_service.send_task_failure_alert(
+                                    task_name=task_name,
+                                    task_id=task_id,
+                                    exception=str(exception),
+                                    retry_count=retry_count,
+                                    extra_metadata=extra_metadata,
+                                )
+                            )
+                        finally:
+                            loop.close()
+                    except Exception:
+                        pass  # Alert is best-effort, never block DLQ storage
 
-                coro = alert_service.send_task_failure_alert(
-                    task_name=task_name,
-                    task_id=task_id,
-                    exception=str(exception),
-                    retry_count=retry_count,
-                    extra_metadata=extra_metadata,
-                )
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.create_task(coro)
-                    else:
-                        loop.run_until_complete(coro)
-                except RuntimeError:
-                    asyncio.run(coro)
-            except Exception as alert_err:
-                logger.debug(f"DLQ: alert dispatch skipped: {alert_err}")
+                thread = threading.Thread(target=_send_alert, daemon=True)
+                thread.start()
+            except Exception:
+                pass  # Alert failure must never block DLQ storage
 
             return record
 

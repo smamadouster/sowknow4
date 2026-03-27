@@ -62,6 +62,18 @@ test_engine = (
 
 
 if _FULL_STACK_AVAILABLE:
+    # Register a compiler extension so TSVECTOR compiles as TEXT on SQLite.
+    # This must happen before any engine/metadata operations.
+    try:
+        from sqlalchemy.dialects.postgresql import TSVECTOR
+        from sqlalchemy.ext.compiler import compiles
+
+        @compiles(TSVECTOR, "sqlite")
+        def _compile_tsvector_sqlite(element, compiler, **kw):
+            return "TEXT"
+    except ImportError:
+        pass
+
     # Remove schema from all tables for SQLite compatibility
     # and replace PostgreSQL-specific types
     @event.listens_for(Base.metadata, "before_create")
@@ -74,6 +86,8 @@ if _FULL_STACK_AVAILABLE:
                 col_type = type(column.type).__name__
                 if col_type == "JSONB":
                     column.type = JSON()
+                elif col_type == "TSVECTOR":
+                    column.type = Text()
                 elif col_type == "Vector":
                     column.type = Text()
                 elif col_type == "ARRAY":
@@ -92,9 +106,12 @@ def db() -> Generator[Session, None, None]:
     """Create a fresh database for each test"""
     if not _FULL_STACK_AVAILABLE:
         pytest.skip("Full-stack dependencies not available (requires Docker environment)")
-    # Drop any leftover tables from interrupted previous runs, then create fresh
+    # Drop any leftover tables from interrupted previous runs, then create fresh.
+    # Use checkfirst=True on create_all to handle race conditions where another
+    # engine (e.g. aiosqlite async engine from app lifespan) may have already
+    # created the schema in the shared test.db file.
     Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
+    Base.metadata.create_all(bind=test_engine, checkfirst=True)
 
     # Create session
     session = TestingSessionLocal()

@@ -13,6 +13,18 @@ from sqlalchemy import JSON, Text, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+# Register a compiler extension so TSVECTOR compiles as TEXT on SQLite.
+# This must happen before any engine/metadata operations.
+try:
+    from sqlalchemy.dialects.postgresql import TSVECTOR
+    from sqlalchemy.ext.compiler import compiles
+
+    @compiles(TSVECTOR, "sqlite")
+    def _compile_tsvector_sqlite(element, compiler, **kw):
+        return "TEXT"
+except ImportError:
+    pass
+
 # Set test environment variables before importing anything
 os.environ["JWT_SECRET"] = "test-secret-key-for-security-testing-only"
 os.environ["SECRET_KEY"] = "test-secret-key-for-security-testing-only"
@@ -52,6 +64,8 @@ def _strip_pg_for_sqlite(metadata, connection, **kw):
             col_type = type(column.type).__name__
             if col_type == "JSONB":
                 column.type = JSON()
+            elif col_type == "TSVECTOR":
+                column.type = Text()
             elif col_type == "Vector":
                 column.type = Text()
             elif col_type == "ARRAY":

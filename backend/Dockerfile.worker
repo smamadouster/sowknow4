@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     # For document processing
     libpoppler-cpp-dev \
+    # For legacy .doc extraction
+    antiword \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

@@ -3,6 +3,7 @@ Text extraction service for various document formats
 """
 
 import logging
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -122,11 +123,44 @@ class TextExtractor:
             return {"text": "", "error": str(e), "pages": 0}
 
     async def _extract_from_doc(self, file_path: str) -> dict[str, Any]:
-        """Extract text from legacy DOC file (requires conversion)"""
-        # DOC files require conversion tools - for now return placeholder
+        """Extract text from legacy DOC file using antiword, with python-docx fallback"""
+        # Try antiword first (handles binary .doc format)
+        try:
+            result = subprocess.run(
+                ["antiword", "-w", "0", file_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return {"text": result.stdout.strip(), "pages": 0, "source": "antiword"}
+            if result.stderr:
+                logger.warning(f"antiword stderr for {file_path}: {result.stderr.strip()}")
+        except FileNotFoundError:
+            logger.warning("antiword not installed, trying python-docx fallback")
+        except subprocess.TimeoutExpired:
+            logger.warning(f"antiword timed out for {file_path}")
+        except Exception as e:
+            logger.warning(f"antiword failed for {file_path}: {e}")
+
+        # Fallback: some .doc files are actually OOXML and python-docx can read them
+        try:
+            from docx import Document
+            doc = Document(file_path)
+            text_parts = [p.text for p in doc.paragraphs if p.text.strip()]
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = "\t".join(cell.text for cell in row.cells)
+                    if row_text.strip():
+                        text_parts.append(row_text)
+            if text_parts:
+                return {"text": "\n".join(text_parts), "pages": 0, "source": "python-docx-fallback"}
+        except Exception as e:
+            logger.warning(f"python-docx fallback failed for {file_path}: {e}")
+
         return {
             "text": "",
-            "error": "Legacy DOC files require conversion tool",
+            "error": "Could not extract text from DOC file. Ensure antiword is installed.",
             "pages": 0,
             "source": "error",
         }

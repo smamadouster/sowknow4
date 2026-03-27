@@ -313,7 +313,7 @@ def setup_standard_metrics() -> None:
     m.counter(
         "sowknow_llm_requests_total",
         "Total number of LLM API requests",
-        ["service", "model", "operation"],
+        ["provider", "status"],
     )
 
     m.counter(
@@ -325,8 +325,14 @@ def setup_standard_metrics() -> None:
     m.histogram(
         "sowknow_llm_request_duration_seconds",
         "LLM API request latency in seconds",
-        ["service", "model"],
+        ["provider", "model"],
         buckets=[0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 30.0],
+    )
+
+    m.counter(
+        "sowknow_llm_retries_total",
+        "Total number of LLM API retries",
+        ["provider"],
     )
 
     m.gauge("sowknow_llm_cost_usd", "Total LLM API cost in USD", ["service"])
@@ -417,22 +423,23 @@ def track_http_request(func: Callable) -> Callable:
 setup_standard_metrics()
 
 
-# --- LLM Provider Metrics ---
+# --- LLM Provider Metrics (registry-backed, included in /metrics export) ---
+# These reference the same metrics registered in setup_standard_metrics().
+# get_or_create semantics: if already registered, returns existing instance.
 
-llm_request_duration = Metric(
-    name="sowknow_llm_request_duration_seconds",
-    help_text="Duration of LLM API requests in seconds",
-    labels=["provider", "model"],
+_m = get_metrics()
+llm_request_duration = _m.histogram(
+    "sowknow_llm_request_duration_seconds",
+    "LLM API request latency in seconds",
+    ["provider", "model"],
 )
-
-llm_request_total = Metric(
-    name="sowknow_llm_requests_total",
-    help_text="Total number of LLM API requests",
-    labels=["provider", "status"],
+llm_request_total = _m.counter(
+    "sowknow_llm_requests_total",
+    "Total number of LLM API requests",
+    ["provider", "status"],
 )
-
-llm_retry_total = Metric(
-    name="sowknow_llm_retries_total",
-    help_text="Total number of LLM API retries",
-    labels=["provider"],
+llm_retry_total = _m.counter(
+    "sowknow_llm_retries_total",
+    "Total number of LLM API retries",
+    ["provider"],
 )

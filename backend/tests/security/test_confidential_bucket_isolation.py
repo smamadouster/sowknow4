@@ -75,7 +75,7 @@ class TestFilesystemIsolation:
     def test_docker_volumes_are_separate(self):
         """Verify docker-compose defines separate volumes for public/confidential"""
         # Read development docker-compose
-        dev_compose_path = "/root/development/src/active/sowknow4/docker-compose.yml"
+        dev_compose_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docker-compose.yml")
 
         if os.path.exists(dev_compose_path):
             with open(dev_compose_path) as f:
@@ -89,7 +89,7 @@ class TestFilesystemIsolation:
 
     def test_production_has_public_volume_mount(self):
         """CRITICAL: Verify production docker-compose mounts /data/public volume"""
-        prod_compose_path = "/root/development/src/active/sowknow4/docker-compose.production.yml"
+        prod_compose_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docker-compose.production.yml")
 
         if os.path.exists(prod_compose_path):
             with open(prod_compose_path) as f:
@@ -109,7 +109,7 @@ class TestFilesystemIsolation:
 
     def test_production_has_correct_volume_paths(self):
         """CRITICAL: Verify production volumes map to correct container paths"""
-        prod_compose_path = "/root/development/src/active/sowknow4/docker-compose.production.yml"
+        prod_compose_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docker-compose.production.yml")
 
         if os.path.exists(prod_compose_path):
             with open(prod_compose_path) as f:

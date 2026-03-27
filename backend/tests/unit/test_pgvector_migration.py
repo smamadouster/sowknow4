@@ -188,15 +188,15 @@ class TestMigration:
         """Verify backfill script exists"""
         import os
 
-        script_path = "/root/development/src/active/sowknow4/scripts/backfill_embeddings_to_vector.py"
-        assert os.path.exists(script_path)
+        script_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "scripts", "backfill_embeddings_to_vector.py")
+        assert os.path.exists(script_path), f"Script not found at {os.path.abspath(script_path)}"
 
     def test_migration_file_exists(self):
         """Verify migration file exists"""
         import os
 
-        migration_path = "/root/development/src/active/sowknow4/backend/alembic/versions/004_add_pgvector_column.py"
-        assert os.path.exists(migration_path)
+        migration_path = os.path.join(os.path.dirname(__file__), "..", "..", "alembic", "versions", "004_add_pgvector_column.py")
+        assert os.path.exists(migration_path), f"Migration not found at {os.path.abspath(migration_path)}"
 
 
 class TestBackwardCompatibility:

@@ -20,6 +20,49 @@ import pytest
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["APP_ENV"] = "development"
 
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line("markers", "requires_postgres: test needs PostgreSQL (skipped on SQLite)")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip tests that require PostgreSQL when running on SQLite.
+
+    Tests are marked as requiring PostgreSQL if they:
+    1. Have the @pytest.mark.requires_postgres decorator, OR
+    2. Live in tests/integration/, tests/e2e/, tests/security/, or tests/performance/ directories
+
+    This implements industry-standard tiered testing:
+    - Unit tests run everywhere (SQLite, CI, local)
+    - Integration/E2E/Security tests run only with PostgreSQL (Docker, CI)
+    """
+    db_url = os.environ.get("DATABASE_URL", "")
+    is_postgres = "postgresql" in db_url or "postgres" in db_url
+
+    if is_postgres:
+        return  # All tests can run
+
+    skip_postgres = pytest.mark.skip(
+        reason="Requires PostgreSQL (set DATABASE_URL=postgresql://... or run in Docker). "
+               "Run: pytest -m 'not requires_postgres' for SQLite-safe tests only."
+    )
+
+    # Directories that require PostgreSQL
+    pg_dirs = ("integration", "e2e", "security", "performance")
+
+    for item in items:
+        # Skip if explicitly marked
+        if "requires_postgres" in item.keywords:
+            item.add_marker(skip_postgres)
+            continue
+
+        # Skip if in a PostgreSQL-required directory
+        rel_path = str(item.fspath.relto(config.rootdir))
+        if any(f"tests/{d}/" in rel_path or f"tests\\{d}\\" in rel_path for d in pg_dirs):
+            item.add_marker(skip_postgres)
+
+
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event

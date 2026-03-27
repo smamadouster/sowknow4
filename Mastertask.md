@@ -5,7 +5,96 @@ Lead: Orchestrator
 ---
 
 ## ═══════════════════════════════════════════════════
-## CURRENT STATUS — 2026-02-24 (Security Remediation)
+## CURRENT STATUS — 2026-03-27 (Codebase Remediation + Test Infrastructure)
+## ═══════════════════════════════════════════════════
+
+### Session Summary
+Full codebase analysis + performance review → 10-task remediation plan executed by parallel agent swarm → test infrastructure overhaul. 21 commits total.
+
+### Test Results
+
+| Environment | Passed | Failed | Skipped | Errors | Runtime |
+|-------------|--------|--------|---------|--------|---------|
+| SQLite (unit only) | **422** | **0** | 551 | 0 | **12s** |
+| PostgreSQL (full) | **782** | 175 | 10 | 6 | **98s** |
+| **Start of session** | 187 | 58 | 5 | 22 | N/A |
+
+### ✅ DONE — Codebase Remediation (10 tasks)
+
+| Commit | Task | Severity |
+|--------|------|----------|
+| `b9f95ce` | Remove orphaned alembic migration (005_add_fulltext_search) | Critical |
+| `d04ddb3` | Fix DLQ async boundary — daemon thread for alert dispatch | Critical |
+| `84425f2` | Cache invalidation on 5 collection mutation endpoints (15 tests) | High |
+| `1681831` | selectinload to prevent N+1 on collection item.document | High |
+| `afef033` + `c299d0a` | LLM provider metrics (duration/count/retry) + Prometheus registry wiring | High |
+| `f551d76` | Enable Next.js image optimization (AVIF/WebP + responsive sizes) | Medium |
+| `2de86e3` | Celery task result TTL 1h → 24h | Medium |
+| `2154439` | Consolidate duplicate test files (unit/test_rbac + unit/test_auth) | Low |
+| `fab82c8` | Archive 21 stale docs to docs/archive/ (root .md: 35 → 14) | Low |
+| — | Remove 6 empty API subdirectories (git untracked) | Low |
+
+### ✅ DONE — Test Environment Fixes
+
+| Commit | Fix |
+|--------|-----|
+| `7cc761e` + `0b40bfb` + `c3996c8` | Replace hardcoded `/root/` paths with relative `Path(__file__)` |
+| `ae7a73f` | Update OCR test mocks to match refactored service API (29/29 pass) |
+| `29c54a5` | Update LLM routing expectations: kimi → openrouter |
+| `71809f5` | Register TSVECTOR → TEXT compiler adapter for SQLite tests |
+| `33f95e0` | Replace MagicMock with AsyncMock, fix session patching, root test imports |
+| `9622bfc` + `6dceccf` | Tiered test strategy: auto-skip integration tests on SQLite |
+| `416448b` | PostgreSQL test database support with transaction rollback isolation |
+| — | Reinstalled 6 corrupted Python packages (idna, aiosqlite, click, certifi, redis, slowapi) |
+| — | Fixed timezone-naive datetime bug in anomaly_tasks.py (utcnow → now(UTC)) |
+
+### ✅ DONE — Test Infrastructure
+
+**Tiered test strategy (industry standard):**
+- `pytest tests/unit/` — Fast, SQLite-safe, no infrastructure needed (422 tests, 12s)
+- `pytest -m 'not requires_postgres'` — All SQLite-safe tests
+- `DATABASE_URL=postgresql+asyncpg://... pytest tests/` — Full suite with PostgreSQL
+- Tests in `integration/`, `e2e/`, `security/`, `performance/` auto-skip when no PostgreSQL
+
+**PostgreSQL test DB created:** `sowknow_test` on `sowknow4-postgres` container with pgvector extension.
+
+### 🔴 REMAINING — 175 Integration Test Failures (PostgreSQL suite)
+
+These are **real integration test bugs**, not environment issues. All require code changes:
+
+#### Priority 1: Sync/Async Session Mismatch (~95 tests → 500 Internal Server Errors)
+**Root cause:** The `client` fixture injects a sync `Session` via `get_db` override, but FastAPI endpoints use `AsyncSession` with `await db.execute(...)`. The sync session can't be awaited.
+**Fix:** Replace the `db` fixture with an async-compatible session. Options:
+1. Use `httpx.AsyncClient` with `ASGITransport` instead of `TestClient`
+2. Create an `AsyncSession` wrapper around the sync test session
+3. Use `pytest-asyncio` fixtures with a real async engine for integration tests
+**Files:** `backend/tests/conftest.py` (db + client fixtures), all integration/e2e/security tests that use `client`
+**Estimated effort:** Medium — fixture rewrite + test adapter pattern
+
+#### Priority 2: Auth Status Code Mismatches (~23 tests → 403 vs 401)
+**Root cause:** Tests expect `401 Unauthorized` but endpoints return `403 Forbidden`, or vice versa. The auth middleware returns 403 for "authenticated but not authorized" vs 401 for "not authenticated".
+**Fix:** Audit each test's expected status code against actual endpoint behavior. Some tests have wrong expectations; some endpoints return the wrong code.
+**Files:** `tests/security/test_auth_security.py`, `tests/integration/test_auth_integration.py`, `tests/security/test_rbac.py`
+
+#### Priority 3: Stale Mock Targets (~20 tests)
+**Root cause:** Tests mock `document_tasks.SessionLocal` (doesn't exist), use `MagicMock` where `AsyncMock` needed, or reference renamed modules.
+**Fix:** Update mock targets to match current code structure.
+**Files:** `tests/unit/test_documents.py`, `tests/integration/test_telegram_multi_turn_tags.py`, `tests/integration/test_openrouter_streaming.py`
+
+#### Priority 4: Root `tests/` Import Errors (9 tests)
+**Root cause:** Root-level `tests/` use `from backend.app...` imports that don't resolve.
+**Fix:** Add `sys.path` adjustment or rewrite imports to use `from app...`.
+**Files:** `tests/conftest.py` (root), `tests/integration/test_batch_upload.py`
+
+#### Priority 5: PostgreSQL-Specific Query Failures (6 tests)
+**Root cause:** `greenlet_spawn` errors from async engine in sync context, `ARRAY` operator type casting issues.
+**Fix:** Ensure test fixtures use the correct engine type for each test tier.
+**Files:** `tests/test_fulltext_search_performance.py`, `tests/performance/test_search_concurrency.py`
+
+---
+
+## ═══════════════════════════════════════════════════
+## PREVIOUS STATUS — 2026-02-24 (Security Remediation)
 ## ═══════════════════════════════════════════════════
 
 ### ✅ DONE THIS SESSION — Secrets Management Remediation (commit bf5567f)

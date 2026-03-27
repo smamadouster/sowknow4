@@ -47,7 +47,9 @@ const withNextIntl = createNextIntlPlugin('./app/i18n/request.ts');
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    unoptimized: true,
+    unoptimized: false,
+    formats: ['image/avif', 'image/webp'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
   },
   async rewrites() {
     return [
@@ -66,11 +68,11 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
-              "connect-src 'self'",
+              "connect-src 'self' https://static.cloudflareinsights.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

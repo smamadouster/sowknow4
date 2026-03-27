@@ -28,12 +28,11 @@ from app.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ALGORITHM,
     REFRESH_TOKEN_EXPIRE_DAYS,
-)
-from app.utils.security import SECRET_KEY as _jwt_signing_key  # noqa: N812 - alias avoids pre-commit false positive
     create_access_token,
     create_refresh_token,
     decode_token,
 )
+from app.utils.security import SECRET_KEY as _jwt_signing_key  # noqa: N812 - alias avoids pre-commit false positive
 
 
 class TestFrontendTokenStorageCompliance:

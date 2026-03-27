@@ -1138,9 +1138,7 @@ async def check_document_status(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if current_status == "error":
-        error_details = result.get("document_metadata", {}).get(
-            "processing_error", "Unknown error"
-        )
+        error_details = result.get("error_message") or "Unknown error"
         status_text = (
             f"❌ <b>Processing failed</b>\n\n"
             f"📁 {bucket_emoji} {filename}\n"

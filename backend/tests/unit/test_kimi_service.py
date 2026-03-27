@@ -51,7 +51,9 @@ def _sse_lines(content_chunks: list[str], done: bool = True) -> list[str]:
 
 class TestKimiServiceInit:
     def test_initializes_with_api_key(self):
-        with patch.dict(os.environ, {"KIMI_API_KEY": "test-key-123"}):
+        # Must patch both MOONSHOT_API_KEY and KIMI_API_KEY since the module
+        # reads MOONSHOT_API_KEY first: `os.getenv("MOONSHOT_API_KEY") or os.getenv("KIMI_API_KEY")`
+        with patch.dict(os.environ, {"MOONSHOT_API_KEY": "test-key-123", "KIMI_API_KEY": "test-key-123"}):
             from importlib import reload
 
             import app.services.kimi_service as ks_module
@@ -62,7 +64,8 @@ class TestKimiServiceInit:
             assert "moonshot" in svc.model
 
     def test_initializes_without_api_key(self):
-        env = {k: v for k, v in os.environ.items() if k != "KIMI_API_KEY"}
+        # Remove both MOONSHOT_API_KEY and KIMI_API_KEY to test the no-key path
+        env = {k: v for k, v in os.environ.items() if k not in ("KIMI_API_KEY", "MOONSHOT_API_KEY")}
         with patch.dict(os.environ, env, clear=True):
             from importlib import reload
 

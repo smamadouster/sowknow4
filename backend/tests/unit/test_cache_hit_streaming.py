@@ -16,6 +16,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
+# Helper: build a RoutingDecision-like object for patching llm_router
+# ---------------------------------------------------------------------------
+
+def _make_routing_decision(service, provider_name: str):
+    """Return a minimal RoutingDecision-compatible object."""
+    from app.services.llm_router import RoutingDecision, RoutingReason
+    return RoutingDecision(
+        provider_name=provider_name,
+        reason=RoutingReason.GENERAL_CHAT,
+        service=service,
+    )
+
+# ---------------------------------------------------------------------------
 # OpenRouterService.check_cache()
 # ---------------------------------------------------------------------------
 
@@ -146,8 +159,9 @@ class TestStreamingCacheHit:
         svc.kimi_service = None
         svc.minimax_service = None
         svc.openrouter_service = None
-        # Use spec to prevent MagicMock auto-creating check_cache on ollama mock
-        svc.ollama_service = MagicMock(spec=["chat_completion"])
+        # Include health_check in spec since confidential path calls it
+        svc.ollama_service = MagicMock(spec=["chat_completion", "health_check"])
+        svc.ollama_service.health_check = AsyncMock(return_value={"status": "healthy"})
         return svc
 
     @pytest.mark.asyncio
@@ -162,9 +176,12 @@ class TestStreamingCacheHit:
 
         svc.ollama_service.chat_completion = fake_ollama_stream
 
+        routing = _make_routing_decision(svc.ollama_service, "ollama")
+
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "hi"}]):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "hi"}]), \
+             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="hi", db=MagicMock(), current_user=MagicMock()
@@ -185,9 +202,14 @@ class TestStreamingCacheHit:
 
         svc.ollama_service.chat_completion = fake_stream
 
-        with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], True))), \
+        routing = _make_routing_decision(svc.ollama_service, "ollama")
+
+        # has_confidential=False so we skip the pre-stream health check;
+        # llm_router is patched to return ollama routing.
+        with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
+             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -216,12 +238,16 @@ class TestStreamingCacheHit:
         mock_openrouter.chat_completion = fake_llm_stream
         svc.openrouter_service = mock_openrouter
 
+        # Route to the mock openrouter service via llm_router patch
+        routing = _make_routing_decision(mock_openrouter, "openrouter")
+
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=(
             [{"document_id": "d1", "document_name": "doc.pdf", "chunk_id": "c1",
               "chunk_text": "ctx", "relevance_score": 0.9, "document_bucket": "public"}], False
         ))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
+             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -258,12 +284,16 @@ class TestStreamingCacheHit:
         mock_openrouter.chat_completion = fake_llm_stream
         svc.openrouter_service = mock_openrouter
 
+        # Route to mock openrouter service so check_cache is invoked
+        routing = _make_routing_decision(mock_openrouter, "openrouter")
+
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=(
             [{"document_id": "d1", "document_name": "doc.pdf", "chunk_id": "c1",
               "chunk_text": "ctx", "relevance_score": 0.9, "document_bucket": "public"}], False
         ))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
+             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -287,9 +317,12 @@ class TestStreamingCacheHit:
 
         svc.ollama_service.chat_completion = fake_stream
 
+        routing = _make_routing_decision(svc.ollama_service, "ollama")
+
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
+             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -309,17 +342,15 @@ class TestStreamingCacheHit:
 
     @pytest.mark.asyncio
     async def test_kimi_path_has_no_check_cache(self):
-        """OpenRouter service without check_cache must default to cache_hit=False.
+        """Service without check_cache must default to cache_hit=False.
 
-        The routing chain is: confidential→Ollama, minimax→MiniMax, openrouter→OpenRouter,
-        else→Ollama.  We wire a mock openrouter service whose spec omits check_cache
-        (mimicking a Kimi-only deployment where the cache layer isn't present) and
-        verify cache_hit=False is emitted and the LLM is still called.
+        We wire a mock service whose spec omits check_cache and verify
+        cache_hit=False is emitted and the LLM is still called.
         """
 
         svc = self._make_chat_service()
 
-        # OpenRouter service without check_cache attribute
+        # Service without check_cache attribute
         mock_openrouter = MagicMock(spec=["chat_completion"])  # no check_cache
         svc.minimax_service = None
         svc.openrouter_service = mock_openrouter
@@ -331,9 +362,13 @@ class TestStreamingCacheHit:
 
         mock_openrouter.chat_completion = fake_openrouter_stream
 
+        # Route to the no-check_cache service
+        routing = _make_routing_decision(mock_openrouter, "openrouter")
+
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
+             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()

@@ -43,13 +43,11 @@ AsyncSessionLocal = async_sessionmaker(
 _sync_db_url = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").replace(
     "postgresql+psycopg2://", "postgresql://"
 )
-sync_engine = create_engine(
-    _sync_db_url,
-    pool_pre_ping=True,
-    pool_recycle=300,
-    pool_size=5,
-    max_overflow=10,
-)
+# SQLite does not support pool_size / max_overflow — use minimal kwargs for test environments
+_sync_engine_kwargs: dict = {"pool_pre_ping": True}
+if not _sync_db_url.startswith("sqlite"):
+    _sync_engine_kwargs.update({"pool_recycle": 300, "pool_size": 5, "max_overflow": 10})
+sync_engine = create_engine(_sync_db_url, **_sync_engine_kwargs)
 SessionLocal = sessionmaker(sync_engine, expire_on_commit=False)
 
 Base = declarative_base()

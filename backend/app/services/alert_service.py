@@ -1,12 +1,12 @@
 """
 Unified alert service with severity-based routing.
 
-Severity → channels mapping:
-  CRITICAL  →  Telegram + Email
-  HIGH      →  Telegram
-  MEDIUM    →  Telegram
-  LOW       →  (logged only, no external notification)
-  INFO      →  (logged only)
+Severity -> channels mapping:
+  CRITICAL  ->  Telegram (only truly unresolvable issues)
+  HIGH      ->  (logged only -- Guardian HC handles auto-healing)
+  MEDIUM    ->  (logged only -- included in daily report if unresolved)
+  LOW       ->  (logged only)
+  INFO      ->  (logged only)
 
 Usage:
     from app.services.alert_service import alert_service
@@ -20,11 +20,13 @@ from app.services.telegram_notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
-# Severity → list of channels that should receive the alert
+# Severity -> list of channels that should receive the alert
+# ONLY CRITICAL goes to Telegram -- everything else is logged and
+# surfaced via the daily 7 AM report if still unresolved.
 _CHANNEL_MAP: dict[str, list[str]] = {
-    "CRITICAL": ["telegram", "email"],
-    "HIGH": ["telegram"],
-    "MEDIUM": ["telegram"],
+    "CRITICAL": ["telegram"],
+    "HIGH": [],
+    "MEDIUM": [],
     "LOW": [],
     "INFO": [],
 }
@@ -102,7 +104,7 @@ class AlertService:
         metadata = {
             "task_name": task_name,
             "task_id": task_id,
-            "exception": exception[:300],
+            "exception": str(exception)[:300],
             "retry_count": retry_count,
             **(extra_metadata or {}),
         }

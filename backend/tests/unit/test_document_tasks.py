@@ -14,6 +14,30 @@ from app.models.processing import ProcessingQueue, TaskStatus, TaskType
 from app.tasks.anomaly_tasks import recover_stuck_documents
 
 
+def _run_recovery(db: Session, max_processing_minutes: int = 5) -> dict:
+    """
+    Run recover_stuck_documents using the provided test db session.
+
+    The task internally calls SessionLocal() which would try to connect to
+    the real database.  We patch it to return the test fixture's session so
+    tests operate on the same SQLite database that the fixtures populate.
+    """
+    mock_pd = Mock()
+    mock_pd.delay = Mock(return_value=None)
+
+    with patch("app.database.SessionLocal", return_value=db), \
+         patch("app.tasks.document_tasks.process_document", mock_pd):
+        # Prevent the task from closing the shared test session
+        original_close = db.close
+        db.close = Mock()
+        try:
+            result = recover_stuck_documents(max_processing_minutes=max_processing_minutes)
+        finally:
+            db.close = original_close
+
+    return result
+
+
 class TestStuckDocumentRecovery:
     """Tests for the periodic stuck document recovery task"""
 
@@ -42,9 +66,7 @@ class TestStuckDocumentRecovery:
         db.add(processing_task)
         db.commit()
 
-        with patch("app.tasks.document_tasks.process_document") as mock_pd:
-            mock_pd.delay = Mock(return_value=None)
-            result = recover_stuck_documents(max_processing_minutes=5)
+        result = _run_recovery(db)
 
         assert result["stuck_count"] == 1
         assert len(result["recovered"]) == 1
@@ -67,7 +89,7 @@ class TestStuckDocumentRecovery:
         db.add(doc)
         db.commit()
 
-        result = recover_stuck_documents(max_processing_minutes=5)
+        result = _run_recovery(db)
 
         assert result["stuck_count"] == 0
         assert len(result["recovered"]) == 0
@@ -88,7 +110,7 @@ class TestStuckDocumentRecovery:
         db.add(doc)
         db.commit()
 
-        recover_stuck_documents(max_processing_minutes=5)
+        _run_recovery(db)
 
         db.refresh(doc)
         assert doc.status == DocumentStatus.PENDING
@@ -113,9 +135,7 @@ class TestStuckDocumentRecovery:
             db.add(doc)
         db.commit()
 
-        with patch("app.tasks.document_tasks.process_document") as mock_pd:
-            mock_pd.delay = Mock(return_value=None)
-            result = recover_stuck_documents(max_processing_minutes=5)
+        result = _run_recovery(db)
 
         assert result["stuck_count"] == 3
         assert len(result["recovered"]) == 3
@@ -144,7 +164,7 @@ class TestStuckDocumentRecovery:
             db.add(doc)
         db.commit()
 
-        result = recover_stuck_documents(max_processing_minutes=5)
+        result = _run_recovery(db)
 
         assert result["stuck_count"] == 1
 
@@ -174,7 +194,7 @@ class TestStuckDocumentRecovery:
         db.add(processing_task)
         db.commit()
 
-        recover_stuck_documents(max_processing_minutes=5)
+        _run_recovery(db)
 
         db.refresh(processing_task)
         assert processing_task.status == TaskStatus.PENDING
@@ -423,7 +443,7 @@ class TestRecoveryAttemptCap:
         db.add(doc)
         db.commit()
 
-        result = recover_stuck_documents(max_processing_minutes=5)
+        result = _run_recovery(db)
 
         db.refresh(doc)
         assert doc.status == DocumentStatus.ERROR
@@ -449,7 +469,7 @@ class TestRecoveryAttemptCap:
         db.add(doc)
         db.commit()
 
-        recover_stuck_documents(max_processing_minutes=5)
+        _run_recovery(db)
 
         db.refresh(doc)
         # After 1st recovery: still PENDING (recovery_count=1, threshold=3)
@@ -481,7 +501,7 @@ class TestRecoveryAttemptCap:
         db.add(processing_task)
         db.commit()
 
-        recover_stuck_documents(max_processing_minutes=5)
+        _run_recovery(db)
 
         db.refresh(processing_task)
         assert processing_task.status == TaskStatus.FAILED

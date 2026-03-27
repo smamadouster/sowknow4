@@ -51,6 +51,9 @@ def pytest_collection_modifyitems(config, items):
     # Directories that require PostgreSQL
     pg_dirs = ("integration", "e2e", "security", "performance")
 
+    # Files that are integration tests despite living outside pg_dirs
+    pg_files = ("test_fulltext_search_performance.py", "test_e2e.py", "test_search_agent.py")
+
     for item in items:
         # Skip if explicitly marked
         if "requires_postgres" in item.keywords:
@@ -60,6 +63,18 @@ def pytest_collection_modifyitems(config, items):
         # Skip if in a PostgreSQL-required directory
         rel_path = str(item.fspath.relto(config.rootdir))
         if any(f"tests/{d}/" in rel_path or f"tests\\{d}\\" in rel_path for d in pg_dirs):
+            item.add_marker(skip_postgres)
+            continue
+
+        # Skip known integration test files in wrong directories
+        if any(rel_path.endswith(f) for f in pg_files):
+            item.add_marker(skip_postgres)
+            continue
+
+        # Skip unit tests that use TestClient (they're integration tests)
+        # TestClient hits real endpoints → needs PostgreSQL for SQL queries
+        fixturenames = getattr(item, "fixturenames", [])
+        if "client" in fixturenames or "test_client" in fixturenames:
             item.add_marker(skip_postgres)
 
 

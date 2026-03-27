@@ -277,6 +277,7 @@ class CollectionService:
         await db.commit()
         await db.refresh(collection)
 
+        self._invalidate_cache(collection_id)
         logger.info(f"Refreshed collection '{collection.name}' with {len(documents)} documents")
         return collection
 
@@ -380,6 +381,15 @@ class CollectionService:
 
         # Cap at 100
         return min(score, 100)
+
+    def _invalidate_cache(self, collection_id) -> None:
+        """Best-effort cache invalidation for collection LLM responses."""
+        if not _cache_invalidation_enabled:
+            return
+        try:
+            _openrouter_svc.invalidate_collection_cache(str(collection_id))
+        except Exception as e:
+            logger.warning(f"Cache invalidation failed for collection {collection_id}: {e}")
 
     async def _generate_collection_summary(
         self,

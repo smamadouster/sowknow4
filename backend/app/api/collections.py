@@ -46,6 +46,14 @@ from app.schemas.collection import (
 from app.services.collection_chat_service import collection_chat_service
 from app.services.collection_service import collection_service
 
+# Cache invalidation helper — best-effort, never raises
+def _invalidate_collection_cache(collection_id) -> None:
+    try:
+        from app.services.openrouter_service import openrouter_service as _or_svc
+        _or_svc.invalidate_collection_cache(str(collection_id))
+    except Exception as e:
+        logger.warning(f"Cache invalidation failed for collection {collection_id}: {e}")
+
 router = APIRouter(prefix="/collections", tags=["collections"])
 logger = logging.getLogger(__name__)
 
@@ -311,6 +319,7 @@ async def update_collection(
     await db.commit()
     await db.refresh(collection)
 
+    _invalidate_collection_cache(collection_id)
     return collection
 
 
@@ -336,6 +345,7 @@ async def delete_collection(
     await db.delete(collection)
     await db.commit()
 
+    _invalidate_collection_cache(collection_id)
     return None
 
 
@@ -434,6 +444,7 @@ async def add_collection_item(
     await db.commit()
     await db.refresh(item)
 
+    _invalidate_collection_cache(collection_id)
     return item
 
 
@@ -529,6 +540,7 @@ async def remove_collection_item(
 
     await db.commit()
 
+    _invalidate_collection_cache(collection_id)
     return None
 
 

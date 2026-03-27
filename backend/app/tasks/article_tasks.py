@@ -106,12 +106,12 @@ class OllamaUnavailableError(Exception):
 @shared_task(
     bind=True,
     name="app.tasks.article_tasks.generate_articles_for_document",
-    autoretry_for=(httpx.TimeoutException, httpx.ConnectError, OllamaUnavailableError),
-    max_retries=2,
+    autoretry_for=(httpx.TimeoutException, httpx.ConnectError),
+    max_retries=5,
     retry_backoff=True,
     retry_backoff_max=300,
-    soft_time_limit=3600,
-    time_limit=3900,
+    soft_time_limit=600,
+    time_limit=660,
 )
 def generate_articles_for_document(self, document_id: str, force: bool = False) -> dict:
     """
@@ -171,16 +171,7 @@ def generate_articles_for_document(self, document_id: str, force: bool = False) 
         language_map = {"fr": "french", "en": "english", "multi": "french", "unknown": "french"}
         language = language_map.get(language, language)
 
-        # Select LLM based on document bucket
-        is_confidential = document.bucket == DocumentBucket.CONFIDENTIAL
-
-        # Health gate: check Ollama before dispatching confidential docs
-        if is_confidential and not _check_ollama_health():
-            raise OllamaUnavailableError(
-                f"Ollama unavailable (circuit breaker) — retrying doc {document_id} later"
-            )
-
-        llm_service, provider_name = _get_llm_service(is_confidential)
+        llm_service, provider_name = _get_llm_service()
 
         log_task_memory("generate_articles", "before_llm")
 
@@ -335,8 +326,8 @@ def backfill_articles() -> dict:
     from app.database import SessionLocal
     from app.models.document import Document, DocumentBucket, DocumentStatus
 
-    BATCH_SIZE = 10
-    BATCH_INTERVAL_SECONDS = 60
+    BATCH_SIZE = 40
+    BATCH_INTERVAL_SECONDS = 20
 
     db = SessionLocal()
     try:
@@ -394,28 +385,23 @@ def backfill_articles() -> dict:
         db.close()
 
 
-def _get_llm_service(is_confidential: bool):
-    """Get the appropriate LLM service based on confidentiality."""
-    if is_confidential:
-        try:
-            from app.services.ollama_service import ollama_service
-            return ollama_service, "ollama"
-        except Exception:
-            logger.error("Ollama unavailable for confidential article generation")
-            raise RuntimeError("Ollama required for confidential documents but unavailable")
+def _get_llm_service():
+    """Get LLM service for article generation.
 
-    # Public docs: MiniMax 2.7 → mistral-small-2603 (OpenRouter) → Ollama
-    try:
-        from app.services.minimax_service import minimax_service
-        if getattr(minimax_service, "api_key", None):
-            return minimax_service, "minimax"
-    except Exception:
-        pass
-
+    All documents (public + confidential) route through cloud APIs for
+    reliability and speed.  Preference: OpenRouter → MiniMax → Ollama fallback.
+    """
     try:
         from app.services.openrouter_service import openrouter_service
         if getattr(openrouter_service, "api_key", None):
             return openrouter_service, "openrouter"
+    except Exception:
+        pass
+
+    try:
+        from app.services.minimax_service import minimax_service
+        if getattr(minimax_service, "api_key", None):
+            return minimax_service, "minimax"
     except Exception:
         pass
 

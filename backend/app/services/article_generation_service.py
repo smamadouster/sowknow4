@@ -70,12 +70,17 @@ class ArticleGenerationService:
 
     def create_chunk_windows(self, chunks: list[dict]) -> list[list[dict]]:
         """Create sliding windows over chunks with overlap."""
+        return self._create_windows(chunks, self.window_size, self.window_overlap)
+
+    @staticmethod
+    def _create_windows(chunks: list[dict], window_size: int, overlap: int) -> list[list[dict]]:
+        """Create sliding windows over chunks with configurable size and overlap."""
         if not chunks:
             return []
         windows = []
-        step = max(1, self.window_size - self.window_overlap)
+        step = max(1, window_size - overlap)
         for i in range(0, len(chunks), step):
-            window = chunks[i : i + self.window_size]
+            window = chunks[i : i + window_size]
             if window:
                 windows.append(window)
         return windows
@@ -118,6 +123,11 @@ class ArticleGenerationService:
                     response_text += chunk
         except Exception as e:
             logger.error(f"LLM call failed for article extraction: {e}")
+            return []
+
+        # Detect error responses from LLM service
+        if response_text.startswith("Error:"):
+            logger.warning(f"LLM returned error for article extraction: {response_text}")
             return []
 
         # Parse JSON response
@@ -234,15 +244,37 @@ class ArticleGenerationService:
         if not chunks:
             return []
 
-        windows = self.create_chunk_windows(chunks)
+        # Adapt window size and concurrency for local vs cloud LLMs
+        is_local = provider_name == "ollama"
+        MAX_WINDOWS = 50  # Cap to prevent huge docs from blocking workers for hours
+        if is_local:
+            # Local LLM: larger windows (fewer calls), sequential processing
+            window_size = 15
+            window_overlap = 3
+            concurrency = 1
+        else:
+            # Cloud LLM: larger windows for efficiency, parallel processing
+            window_size = 20
+            window_overlap = 5
+            concurrency = self.max_concurrent
+
+        windows = self._create_windows(chunks, window_size, window_overlap)
+        if len(windows) > MAX_WINDOWS:
+            logger.info(
+                f"Capping {len(windows)} windows to {MAX_WINDOWS} for {filename}"
+            )
+            windows = windows[:MAX_WINDOWS]
         logger.info(
             f"Generating articles for {filename}: {len(chunks)} chunks, "
-            f"{len(windows)} windows (size={self.window_size}, overlap={self.window_overlap})"
+            f"{len(windows)} windows (size={window_size}, overlap={window_overlap}, "
+            f"concurrency={concurrency}, provider={provider_name})"
         )
 
-        # Rate-limited concurrent LLM calls
-        semaphore = asyncio.Semaphore(self.max_concurrent)
+        # Process windows with early-exit on consecutive failures
+        semaphore = asyncio.Semaphore(concurrency)
         all_articles = []
+        consecutive_failures = 0
+        max_consecutive_failures = 3
 
         async def process_window(window):
             async with semaphore:
@@ -250,14 +282,30 @@ class ArticleGenerationService:
                     window, filename, language, llm_service, provider_name,
                 )
 
-        tasks = [process_window(w) for w in windows]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Process in batches to allow early exit if LLM is unreachable
+        batch_size = self.max_concurrent
+        for batch_start in range(0, len(windows), batch_size):
+            if consecutive_failures >= max_consecutive_failures:
+                logger.warning(
+                    f"Aborting article generation for {filename}: "
+                    f"{consecutive_failures} consecutive failures — LLM likely unreachable"
+                )
+                break
 
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"Window {i} failed: {result}")
-                continue
-            all_articles.extend(result)
+            batch_windows = windows[batch_start : batch_start + batch_size]
+            tasks = [process_window(w) for w in batch_windows]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"Window {batch_start + i} failed: {result}")
+                    consecutive_failures += 1
+                    continue
+                if not result:
+                    consecutive_failures += 1
+                else:
+                    consecutive_failures = 0
+                    all_articles.extend(result)
 
         # Deduplicate
         unique_articles = self.deduplicate_articles(all_articles)

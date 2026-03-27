@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration — OLLAMA_BASE_URL is the canonical variable name
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
 if not os.getenv("OLLAMA_BASE_URL"):
     # raise ValueError in strict mode; log warning in development so the service
@@ -43,13 +43,13 @@ class OllamaService(BaseLLMService):
         self.base_url = OLLAMA_BASE_URL
         self.model = OLLAMA_MODEL
 
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
     async def chat_completion(
         self,
         messages: list[dict[str, str]],
         stream: bool = False,
         temperature: float = 0.7,
         num_predict: int = 4096,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using Ollama
@@ -63,6 +63,9 @@ class OllamaService(BaseLLMService):
         Yields:
             Response text chunks if streaming
         """
+        # Accept max_tokens as alias for num_predict (compatibility with other LLM services)
+        effective_num_predict = max_tokens or num_predict
+
         # Convert messages format for Ollama
         ollama_messages = []
         for msg in messages:
@@ -78,11 +81,11 @@ class OllamaService(BaseLLMService):
             "model": self.model,
             "messages": ollama_messages,
             "stream": stream,
-            "options": {"temperature": temperature, "num_predict": num_predict},
+            "options": {"temperature": temperature, "num_predict": effective_num_predict},
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=600.0) as client:
                 if stream:
                     async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                         response.raise_for_status()
@@ -142,7 +145,7 @@ class OllamaService(BaseLLMService):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=600.0) as client:
                 response = await client.post(f"{self.base_url}/api/generate", json=payload)
                 response.raise_for_status()
                 result = response.json()

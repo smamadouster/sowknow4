@@ -8,7 +8,7 @@ import os
 from collections.abc import AsyncGenerator
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+
 
 from app.services.base_llm_service import BaseLLMService
 
@@ -75,7 +75,6 @@ class MiniMaxService(BaseLLMService):
             "Content-Type": "application/json",
         }
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def chat_completion(
         self,
         messages: list[dict[str, str]],

@@ -17,8 +17,11 @@ import os
 
 import pytest
 
-os.environ["DATABASE_URL"] = "sqlite:///./test.db"
-os.environ["APP_ENV"] = "development"
+# Only default to SQLite if no PostgreSQL DATABASE_URL was provided
+_provided_url = os.environ.get("DATABASE_URL", "")
+if "postgresql" not in _provided_url and "postgres" not in _provided_url:
+    os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+os.environ.setdefault("APP_ENV", "development")
 
 
 def pytest_configure(config):
@@ -37,8 +40,8 @@ def pytest_collection_modifyitems(config, items):
     - Unit tests run everywhere (SQLite, CI, local)
     - Integration/E2E/Security tests run only with PostgreSQL (Docker, CI)
     """
-    db_url = os.environ.get("DATABASE_URL", "")
-    is_postgres = "postgresql" in db_url or "postgres" in db_url
+    # Use _provided_url captured at import time (before any module could override it)
+    is_postgres = "postgresql" in _provided_url or "postgres" in _provided_url
 
     if is_postgres:
         return  # All tests can run
@@ -108,20 +111,39 @@ except (ImportError, Exception):
     TestClient = None
 
 
-# Test database URL
-TEST_DATABASE_URL = "sqlite:///./test.db"
+# Test database URL — use PostgreSQL if provided, else SQLite
+TEST_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db")
+_USE_POSTGRES = "postgresql" in TEST_DATABASE_URL or "postgres" in TEST_DATABASE_URL
 
-# Create test engine with proper UUID handling (only when full stack is available)
-test_engine = (
-    create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    if _FULL_STACK_AVAILABLE
-    else None
-)
+# For PostgreSQL, use the sync driver (psycopg2) not asyncpg
+if _USE_POSTGRES:
+    TEST_DATABASE_URL = TEST_DATABASE_URL.replace("+asyncpg", "").replace("+aiopg", "")
 
-
+# Create test engine (only when full stack is available)
 if _FULL_STACK_AVAILABLE:
+    if _USE_POSTGRES:
+        test_engine = create_engine(TEST_DATABASE_URL)
+    else:
+        test_engine = create_engine(
+            TEST_DATABASE_URL,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+else:
+    test_engine = None
+
+
+if _FULL_STACK_AVAILABLE and _USE_POSTGRES:
+    # PostgreSQL test DB: remove custom schema (models use 'sowknow' schema
+    # but test DB uses default 'public' schema)
+    @event.listens_for(Base.metadata, "before_create")
+    def _remove_schema_for_test_pg(metadata, connection, **kw):
+        for table in metadata.tables.values():
+            table.schema = None
+
+if _FULL_STACK_AVAILABLE and not _USE_POSTGRES:
+    # SQLite compatibility patches (not needed for PostgreSQL)
     # Register a compiler extension so TSVECTOR compiles as TEXT on SQLite.
-    # This must happen before any engine/metadata operations.
     try:
         from sqlalchemy.dialects.postgresql import TSVECTOR
         from sqlalchemy.ext.compiler import compiles
@@ -161,25 +183,36 @@ TestingSessionLocal = (
 
 @pytest.fixture
 def db() -> Generator[Session, None, None]:
-    """Create a fresh database for each test"""
+    """Create a fresh database for each test.
+
+    PostgreSQL: create tables once with checkfirst, use transaction rollback for isolation.
+    SQLite: drop/create per test (no enum issues).
+    """
     if not _FULL_STACK_AVAILABLE:
         pytest.skip("Full-stack dependencies not available (requires Docker environment)")
-    # Drop any leftover tables from interrupted previous runs, then create fresh.
-    # Use checkfirst=True on create_all to handle race conditions where another
-    # engine (e.g. aiosqlite async engine from app lifespan) may have already
-    # created the schema in the shared test.db file.
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine, checkfirst=True)
 
-    # Create session
-    session = TestingSessionLocal()
-
-    try:
-        yield session
-    finally:
-        session.close()
-        # Drop tables after test
+    if _USE_POSTGRES:
+        # PostgreSQL: create tables if missing, rollback after test for isolation
+        Base.metadata.create_all(bind=test_engine, checkfirst=True)
+        connection = test_engine.connect()
+        transaction = connection.begin()
+        session = TestingSessionLocal(bind=connection)
+        try:
+            yield session
+        finally:
+            session.close()
+            transaction.rollback()
+            connection.close()
+    else:
+        # SQLite: drop/create per test (no enum type conflicts)
         Base.metadata.drop_all(bind=test_engine)
+        Base.metadata.create_all(bind=test_engine, checkfirst=True)
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+            Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture

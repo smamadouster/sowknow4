@@ -28,8 +28,10 @@ except ImportError:
 # Set test environment variables before importing anything
 os.environ["JWT_SECRET"] = "test-secret-key-for-security-testing-only"
 os.environ["SECRET_KEY"] = "test-secret-key-for-security-testing-only"
-# Use SQLite for isolated unit/security testing (no external dependencies)
-os.environ["DATABASE_URL"] = "sqlite:///./security_test.db"
+# Only default to SQLite if no PostgreSQL DATABASE_URL was provided
+_provided_url = os.environ.get("DATABASE_URL", "")
+if "postgresql" not in _provided_url and "postgres" not in _provided_url:
+    os.environ["DATABASE_URL"] = "sqlite:///./security_test.db"
 os.environ["OPENROUTER_API_KEY"] = "test-key"
 os.environ["MINIMAX_API_KEY"] = "test-key"
 os.environ["KIMI_API_KEY"] = "test-key"
@@ -42,34 +44,38 @@ from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
 from app.utils.security import create_access_token, get_password_hash
 
-# Test database URL - SQLite for isolated, fast testing
-TEST_DATABASE_URL = "sqlite:///./security_test.db"
+# Test database URL — use PostgreSQL if provided, else SQLite
+TEST_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./security_test.db")
+_USE_POSTGRES = "postgresql" in TEST_DATABASE_URL or "postgres" in TEST_DATABASE_URL
 
-# Create test engine with SQLite
-test_engine = create_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool
-)
+if _USE_POSTGRES:
+    TEST_DATABASE_URL = TEST_DATABASE_URL.replace("+asyncpg", "").replace("+aiopg", "")
+    test_engine = create_engine(TEST_DATABASE_URL)
+else:
+    test_engine = create_engine(
+        TEST_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
 
-# Strip PostgreSQL schema and replace PG-specific types for SQLite compatibility
+# Strip schema for both SQLite and PostgreSQL test DB (models use 'sowknow' schema)
 @event.listens_for(Base.metadata, "before_create")
-def _strip_pg_for_sqlite(metadata, connection, **kw):
-    """Remove schemas and replace PG-specific types for SQLite compatibility."""
-
+def _strip_pg_for_test(metadata, connection, **kw):
+    """Remove schemas and replace PG-specific types for test compatibility."""
     for table in metadata.tables.values():
         table.schema = None
-        for column in table.columns:
-            col_type = type(column.type).__name__
-            if col_type == "JSONB":
-                column.type = JSON()
-            elif col_type == "TSVECTOR":
-                column.type = Text()
-            elif col_type == "Vector":
-                column.type = Text()
-            elif col_type == "ARRAY":
-                column.type = Text()
+        if not _USE_POSTGRES:
+            for column in table.columns:
+                col_type = type(column.type).__name__
+                if col_type == "JSONB":
+                    column.type = JSON()
+                elif col_type == "TSVECTOR":
+                    column.type = Text()
+                elif col_type == "Vector":
+                    column.type = Text()
+                elif col_type == "ARRAY":
+                    column.type = Text()
 
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
@@ -77,15 +83,26 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 
 @pytest.fixture
 def db() -> Generator[Session, None, None]:
-    """Create a fresh SQLite database for each security test."""
-    Base.metadata.create_all(bind=test_engine)
-    session = TestingSessionLocal()
-
-    try:
-        yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(bind=test_engine)
+    """Create a fresh database for each security test."""
+    if _USE_POSTGRES:
+        Base.metadata.create_all(bind=test_engine, checkfirst=True)
+        connection = test_engine.connect()
+        transaction = connection.begin()
+        session = TestingSessionLocal(bind=connection)
+        try:
+            yield session
+        finally:
+            session.close()
+            transaction.rollback()
+            connection.close()
+    else:
+        Base.metadata.create_all(bind=test_engine)
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+            Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@ Celery tasks for anomaly detection and scheduled reports
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from celery import shared_task
 
@@ -252,14 +252,15 @@ def daily_anomaly_report() -> dict:
     else:
         logger.info("Daily anomaly report: No anomalies detected")
 
-    # Send external alert when there are actionable issues
-    if critical_count > 0 or warning_count > 0:
+    # Send external alert ONLY for critical unresolved issues.
+    # Warnings are included in the daily Guardian HC report at 7 AM.
+    if critical_count > 0:
         try:
             import asyncio
 
             from app.services.alert_service import alert_service
 
-            severity = "CRITICAL" if critical_count > 0 else "MEDIUM"
+            severity = "CRITICAL"
             summary_lines = [
                 f"• CRITICAL: {critical_count}",
                 f"• WARNING: {warning_count}",
@@ -535,7 +536,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
     failed = []
 
     try:
-        cutoff_time = datetime.utcnow() - timedelta(minutes=max_processing_minutes)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=max_processing_minutes)
 
         # Find documents stuck in processing state
         stuck_documents = (
@@ -553,7 +554,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                 processing_task = db.query(ProcessingQueue).filter(ProcessingQueue.document_id == doc.id).first()
 
                 # Check if this is a real stuck document or just slow processing
-                stuck_duration = (datetime.utcnow() - doc.updated_at).total_seconds() / 60
+                stuck_duration = (datetime.now(timezone.utc) - doc.updated_at).total_seconds() / 60
 
                 logger.warning(
                     f"Document {doc.id} ({doc.filename}) stuck in processing for {stuck_duration:.1f} minutes"
@@ -574,7 +575,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                         "recovery_count": recovery_count,
                         "recovered_from_stuck": True,
                         "stuck_duration_minutes": stuck_duration,
-                        "recovered_at": datetime.utcnow().isoformat(),
+                        "recovered_at": datetime.now(timezone.utc).isoformat(),
                         "processing_error": (
                             f"Permanently failed: stuck in processing after {recovery_count} recovery attempts"
                         ),
@@ -601,7 +602,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                     "recovery_count": recovery_count,
                     "recovered_from_stuck": True,
                     "stuck_duration_minutes": stuck_duration,
-                    "recovered_at": datetime.utcnow().isoformat(),
+                    "recovered_at": datetime.now(timezone.utc).isoformat(),
                 }
 
                 if processing_task:

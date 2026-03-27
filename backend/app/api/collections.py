@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.database import get_db
@@ -239,9 +240,12 @@ async def get_collection(
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
-    # Get collection items with document info
+    # Get collection items with document info — selectinload avoids N+1 on item.document
     items_result = await db.execute(
-        select(CollectionItem).where(CollectionItem.collection_id == collection_id).order_by(CollectionItem.order_index)
+        select(CollectionItem)
+        .options(selectinload(CollectionItem.document))
+        .where(CollectionItem.collection_id == collection_id)
+        .order_by(CollectionItem.order_index)
     )
     items = items_result.scalars().all()
 
@@ -688,7 +692,10 @@ async def export_collection(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     items_result = await db.execute(
-        select(CollectionItem).where(CollectionItem.collection_id == collection_id).order_by(CollectionItem.order_index)
+        select(CollectionItem)
+        .options(selectinload(CollectionItem.document))
+        .where(CollectionItem.collection_id == collection_id)
+        .order_by(CollectionItem.order_index)
     )
     items = items_result.scalars().all()
 

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sowknow.autouploader</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/python3</string>
+        <string>/Users/mamadousow/sowknow-auto-uploader.py</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SOWKNOW_URL</key>
+        <string>https://sowknow.gollamtech.com</string>
+        <key>SOWKNOW_EMAIL</key>
+        <string>YOUR_EMAIL_HERE</string>
+        <key>SOWKNOW_PASSWORD</key>
+        <string>YOUR_PASSWORD_HERE</string>
+        <key>SMTP_EMAIL</key>
+        <string>YOUR_GMAIL_HERE</string>
+        <key>SMTP_PASSWORD</key>
+        <string>YOUR_GMAIL_APP_PASSWORD_HERE</string>
+        <key>REPORT_RECIPIENT</key>
+        <string>smamadouster@gmail.com</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/mamadousow/Library/Logs/sowknow-auto-uploader.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/mamadousow/Library/Logs/sowknow-auto-uploader-error.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/mamadousow</string>
+</dict>
+</plist>

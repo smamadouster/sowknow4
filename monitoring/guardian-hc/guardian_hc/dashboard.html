@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guardian HC — Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0F1923;color:#E2E8F0;min-height:100vh}
+.header{background:#1A2332;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2D3748}
+.header h1{font-size:18px;font-weight:700;color:#fff}.header h1 span{color:#E67E22}
+.header .status{padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}
+.status-healthy{background:#065F46;color:#34D399}.status-warning{background:#78350F;color:#FBBF24}.status-critical{background:#7F1D1D;color:#F87171}
+.header .time{font-size:12px;color:#9CA3AF}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:20px 24px}
+@media(max-width:768px){.grid{grid-template-columns:repeat(2,1fr)}}
+.card{background:#1A2332;border-radius:12px;padding:20px;border:1px solid #2D3748}
+.card .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9CA3AF;margin-bottom:8px}
+.card .value{font-size:36px;font-weight:700;color:#fff}
+.card .sub{font-size:12px;color:#9CA3AF;margin-top:4px}
+.card.green .value{color:#34D399}.card.orange .value{color:#FBBF24}.card.red .value{color:#F87171}.card.blue .value{color:#60A5FA}
+.panels{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 24px 24px}
+@media(max-width:900px){.panels{grid-template-columns:1fr}}
+.panel{background:#1A2332;border-radius:12px;border:1px solid #2D3748;overflow:hidden}
+.panel .panel-header{padding:14px 16px;border-bottom:1px solid #2D3748;display:flex;align-items:center;gap:8px}
+.panel .panel-header h3{font-size:14px;font-weight:600;color:#fff}
+.panel .panel-header .count{background:#2D3748;color:#9CA3AF;padding:2px 8px;border-radius:8px;font-size:11px}
+.panel .panel-body{padding:0;max-height:300px;overflow-y:auto}
+.row{padding:10px 16px;border-bottom:1px solid #1E293B;display:flex;align-items:flex-start;gap:10px;font-size:13px}
+.row:last-child{border:none}
+.row:hover{background:#1E293B}
+.row .icon{width:20px;flex-shrink:0;text-align:center}
+.row .content{flex:1;min-width:0}
+.row .target{font-weight:600;color:#E2E8F0}
+.row .detail{color:#9CA3AF;font-size:12px;margin-top:2px}
+.row .time-ago{font-size:11px;color:#6B7280;white-space:nowrap}
+.breaker{padding:10px 16px;border-bottom:1px solid #1E293B;display:flex;align-items:center;gap:10px}
+.breaker .dot{width:10px;height:10px;border-radius:50%}
+.dot-closed{background:#34D399}.dot-open{background:#F87171}.dot-half{background:#FBBF24}
+.breaker .name{flex:1;font-size:13px;font-weight:500}
+.breaker .state{font-size:11px;padding:2px 8px;border-radius:4px}
+.empty{padding:30px;text-align:center;color:#6B7280;font-size:13px}
+.full-width{grid-column:1/-1}
+.learning{padding:10px 16px;border-bottom:1px solid #1E293B}
+.learning .type{font-size:11px;color:#60A5FA;text-transform:uppercase;font-weight:600}
+.learning .text{font-size:13px;color:#E2E8F0;margin-top:4px}
+.improvement{padding:10px 16px;border-bottom:1px solid #1E293B}
+.improvement .area{font-size:11px;color:#FBBF24;text-transform:uppercase;font-weight:600}
+.improvement .finding{font-size:13px;color:#E2E8F0;margin-top:4px}
+.improvement .suggestion{font-size:12px;color:#9CA3AF;margin-top:2px}
+.refresh-bar{padding:8px 24px;background:#0F1923;display:flex;justify-content:space-between;align-items:center}
+.refresh-bar .auto{font-size:11px;color:#6B7280}
+.btn{padding:6px 14px;background:#2D3748;color:#E2E8F0;border:1px solid #4A5568;border-radius:6px;font-size:12px;cursor:pointer}
+.btn:hover{background:#4A5568}
+.btn-send{background:#E67E22;border-color:#E67E22;color:#fff}.btn-send:hover{background:#D35400}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div><h1>Guardian <span>HC</span></h1></div>
+  <div class="status status-healthy" id="overallStatus">Loading...</div>
+  <div>
+    <span class="time" id="lastUpdate">—</span>
+    <button class="btn" onclick="refresh()" style="margin-left:8px">Refresh</button>
+    <button class="btn btn-send" onclick="sendReport()">Send Report</button>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card" id="cardIncidents"><div class="label">Incidents (24h)</div><div class="value">—</div><div class="sub">total detected</div></div>
+  <div class="card green" id="cardHealed"><div class="label">Auto-Healed</div><div class="value">—</div><div class="sub">fixed without admin</div></div>
+  <div class="card" id="cardPending"><div class="label">Need Attention</div><div class="value">—</div><div class="sub">admin action required</div></div>
+  <div class="card blue" id="cardTasks"><div class="label">Tasks (24h)</div><div class="value">—</div><div class="sub">completed</div></div>
+</div>
+
+<div class="panels">
+  <!-- Auto-Healed -->
+  <div class="panel">
+    <div class="panel-header"><h3>✅ Auto-Healed</h3><span class="count" id="healedCount">0</span></div>
+    <div class="panel-body" id="healedList"><div class="empty">No incidents</div></div>
+  </div>
+
+  <!-- Pending Admin -->
+  <div class="panel">
+    <div class="panel-header"><h3>🔴 Needs Attention</h3><span class="count" id="pendingCount">0</span></div>
+    <div class="panel-body" id="pendingList"><div class="empty">All clear</div></div>
+  </div>
+
+  <!-- Circuit Breakers -->
+  <div class="panel">
+    <div class="panel-header"><h3>⚡ Circuit Breakers</h3><span class="count" id="breakerCount">0</span></div>
+    <div class="panel-body" id="breakerList"><div class="empty">No breakers registered yet</div></div>
+  </div>
+
+  <!-- Patrol History -->
+  <div class="panel">
+    <div class="panel-header"><h3>🛡️ Patrol History</h3><span class="count" id="patrolCount">0</span></div>
+    <div class="panel-body" id="patrolList"><div class="empty">No patrols yet</div></div>
+  </div>
+
+  <!-- Learnings -->
+  <div class="panel">
+    <div class="panel-header"><h3>📚 Learning Journal</h3></div>
+    <div class="panel-body" id="learningList"><div class="empty">No learnings recorded yet</div></div>
+  </div>
+
+  <!-- Improvements -->
+  <div class="panel">
+    <div class="panel-header"><h3>💡 Improvements Needed</h3></div>
+    <div class="panel-body" id="improvementList"><div class="empty">No improvements suggested</div></div>
+  </div>
+</div>
+
+<div class="refresh-bar">
+  <span class="auto">Auto-refresh: every 30s</span>
+  <span class="auto" id="diskInfo">Disk: —</span>
+</div>
+
+<script>
+const API = location.port === '' || location.port === '443'
+  ? location.origin : `${location.protocol}//${location.hostname}:8080`;
+const token = localStorage.getItem('ghc_token') || '';
+const headers = token ? {'Authorization': `Bearer ${token}`} : {};
+
+async function refresh() {
+  try {
+    const resp = await fetch(`${API}/api/metrics`, {headers});
+    if (resp.status === 401) { window.location.href = '/'; return; }
+    const d = await resp.json();
+    render(d);
+  } catch(e) {
+    document.getElementById('overallStatus').textContent = 'Disconnected';
+    document.getElementById('overallStatus').className = 'status status-critical';
+  }
+}
+
+function render(d) {
+  // Status
+  const pending = d.incidents?.pending || 0;
+  const total = d.incidents?.total_24h || 0;
+  const healed = d.incidents?.auto_healed || 0;
+  const openBreakers = d.circuit_breakers?.open || 0;
+  const stuck = d.tasks?.stuck || 0;
+
+  const statusEl = document.getElementById('overallStatus');
+  if (pending > 0 || openBreakers > 0) {
+    statusEl.textContent = 'NEEDS ATTENTION'; statusEl.className = 'status status-critical';
+  } else if (total > 0 || stuck > 0) {
+    statusEl.textContent = 'INCIDENTS HANDLED'; statusEl.className = 'status status-warning';
+  } else {
+    statusEl.textContent = 'ALL SYSTEMS HEALTHY'; statusEl.className = 'status status-healthy';
+  }
+
+  document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+  // Cards
+  setCard('cardIncidents', total, total > 0 ? (pending > 0 ? 'red' : 'orange') : '');
+  setCard('cardHealed', healed, 'green');
+  setCard('cardPending', pending, pending > 0 ? 'red' : '');
+  setCard('cardTasks', d.tasks?.completed || 0, 'blue',
+    `${d.tasks?.failed||0} failed, ${stuck} stuck, ${d.tasks?.in_progress||0} active`);
+
+  // Healed list
+  const healedItems = (d.incidents?.history || []).filter(h => h.result === 'healed');
+  renderList('healedList', 'healedCount', healedItems, i =>
+    `<div class="row"><div class="icon">✅</div><div class="content"><div class="target">${esc(i.target)}</div><div class="detail">${esc(i.diagnosis||'')} → ${esc(i.action||'')}</div></div></div>`);
+
+  // Pending list
+  const pendingItems = (d.incidents?.history || []).filter(h => h.result === 'failed');
+  renderList('pendingList', 'pendingCount', pendingItems, i =>
+    `<div class="row"><div class="icon">🔴</div><div class="content"><div class="target">${esc(i.target)}</div><div class="detail">${esc(i.diagnosis||'')}</div><div class="detail"><b>Action:</b> ${esc(i.action||'')}</div></div></div>`,
+    'All clear — no pending issues');
+
+  // Breakers
+  const breakers = d.circuit_breakers?.breakers || [];
+  document.getElementById('breakerCount').textContent = breakers.length;
+  const bl = document.getElementById('breakerList');
+  if (breakers.length === 0) { bl.innerHTML = '<div class="empty">No breakers registered</div>'; }
+  else {
+    bl.innerHTML = breakers.map(b => {
+      const dotClass = b.state === 'closed' ? 'dot-closed' : b.state === 'open' ? 'dot-open' : 'dot-half';
+      const stateStyle = b.state === 'open' ? 'background:#7F1D1D;color:#F87171' : 'background:#1E293B;color:#9CA3AF';
+      return `<div class="breaker"><div class="dot ${dotClass}"></div><div class="name">${esc(b.name)}</div><div class="state" style="${stateStyle}">${b.state}</div></div>`;
+    }).join('');
+  }
+
+  // Patrols
+  const patrols = d.patrols?.history || [];
+  document.getElementById('patrolCount').textContent = patrols.length;
+  const pl = document.getElementById('patrolList');
+  if (!patrols.length) { pl.innerHTML = '<div class="empty">No patrols yet</div>'; }
+  else {
+    pl.innerHTML = patrols.reverse().map(p => {
+      const icon = p.status === 'clean' ? '🟢' : p.status === 'healed' ? '🟡' : '🔴';
+      return `<div class="row"><div class="icon">${icon}</div><div class="content"><div class="target">${p.patrol_type} patrol</div><div class="detail">${p.checks_run} checks, ${p.auto_healed||0} healed, ${p.escalated||0} escalated</div></div><div class="time-ago">${p.timestamp ? new Date(p.timestamp).toLocaleTimeString() : '?'}</div></div>`;
+    }).join('');
+  }
+
+  // Learnings
+  const learnings = d.learnings || [];
+  const memStats = d.memory_stats || {};
+  const ll = document.getElementById('learningList');
+  let learnHtml = '';
+  if (memStats.collections) {
+    for (const [col, count] of Object.entries(memStats.collections)) {
+      learnHtml += `<div class="learning"><div class="type">${esc(col)}</div><div class="text">${count} entries stored</div></div>`;
+    }
+  }
+  for (const l of learnings) {
+    learnHtml += `<div class="learning"><div class="type">${esc(l.type||'')}</div><div class="text">${esc(l.detail||'')}</div></div>`;
+  }
+  ll.innerHTML = learnHtml || '<div class="empty">No learnings yet — system learns from every interaction</div>';
+
+  // Improvements
+  const imps = d.improvements || [];
+  const il = document.getElementById('improvementList');
+  if (!imps.length) { il.innerHTML = '<div class="empty">No improvements needed right now</div>'; }
+  else {
+    il.innerHTML = imps.map(i =>
+      `<div class="improvement"><div class="area">${esc(i.area||'')}</div><div class="finding">${esc(i.finding||'')}</div><div class="suggestion">💡 ${esc(i.suggestion||'')}</div></div>`
+    ).join('');
+  }
+
+  // Disk
+  document.getElementById('diskInfo').textContent = `Disk: ${d.disk?.usage_pct||'?'}% used (${d.disk?.available||'?'} free)`;
+}
+
+function setCard(id, value, colorClass, sub) {
+  const card = document.getElementById(id);
+  card.querySelector('.value').textContent = value;
+  card.className = `card ${colorClass || ''}`;
+  if (sub) card.querySelector('.sub').textContent = sub;
+}
+
+function renderList(listId, countId, items, template, emptyMsg) {
+  document.getElementById(countId).textContent = items.length;
+  const el = document.getElementById(listId);
+  if (!items.length) { el.innerHTML = `<div class="empty">${emptyMsg || 'None'}</div>`; return; }
+  el.innerHTML = items.slice(-10).reverse().map(template).join('');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function sendReport() {
+  try {
+    const resp = await fetch(`${API}/api/report/send`, {method:'POST', headers});
+    const r = await resp.json();
+    alert(r.email_sent ? 'Report sent!' : `Email: ${r.email_error || 'not configured'}\nTelegram: ${r.telegram_sent ? 'sent' : 'failed'}`);
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

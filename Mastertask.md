@@ -109,15 +109,18 @@ These are **real integration test bugs**, not environment issues. All require co
 | Sanitize backend/.env.production: hardcoded creds → ${ENV_VAR} | ✅ Done |
 | QA: 7/7 security checks pass | ✅ Done |
 
-### ⚠️ REQUIRED MANUAL ACTIONS (blocking production)
-The following credentials were exposed in git history and **MUST be rotated**:
-- `TELEGRAM_BOT_TOKEN` — get new token from @BotFather on Telegram
-- `BOT_API_KEY` — `openssl rand -hex 32`
-- `POSTGRES_PASSWORD` — `openssl rand -hex 24`
-- `REDIS_PASSWORD` — `openssl rand -hex 24`
-- `SECRET_KEY` — `openssl rand -hex 32`
-- `JWT_SECRET_KEY` — `openssl rand -hex 32`
-See `.secrets` file for placeholders. Do NOT reuse any exposed values.
+### ✅ CREDENTIAL ROTATION — Completed 2026-03-28
+Credentials exposed in git history have been rotated:
+- ✅ `DATABASE_PASSWORD` / `POSTGRES_PASSWORD` — rotated (changed in DB + .env)
+- ✅ `REDIS_PASSWORD` — rotated (changed at runtime + .env)
+- ✅ `JWT_SECRET` — rotated (existing user sessions invalidated, users re-login)
+- ✅ `BOT_API_KEY` — rotated
+- ⚠️ `TELEGRAM_BOT_TOKEN` — **STILL NEEDS MANUAL ROTATION via @BotFather**
+  - Go to Telegram → @BotFather → /revoke → select your bot → get new token
+  - Update `TELEGRAM_BOT_TOKEN` in `/var/docker/sowknow4/.env`
+  - Run: `docker compose up -d --force-recreate telegram-bot`
+
+New credentials stored in `/var/docker/sowknow4/.secrets` (not in git).
 
 ---
 

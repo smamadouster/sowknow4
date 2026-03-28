@@ -89,3 +89,5 @@ certificates/
 *.backup
 .env
 .env.*
+-X
+docs/guardian-hc-v1.1.0.tar.gz

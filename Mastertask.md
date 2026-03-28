@@ -115,10 +115,7 @@ Credentials exposed in git history have been rotated:
 - ✅ `REDIS_PASSWORD` — rotated (changed at runtime + .env)
 - ✅ `JWT_SECRET` — rotated (existing user sessions invalidated, users re-login)
 - ✅ `BOT_API_KEY` — rotated
-- ⚠️ `TELEGRAM_BOT_TOKEN` — **STILL NEEDS MANUAL ROTATION via @BotFather**
-  - Go to Telegram → @BotFather → /revoke → select your bot → get new token
-  - Update `TELEGRAM_BOT_TOKEN` in `/var/docker/sowknow4/.env`
-  - Run: `docker compose up -d --force-recreate telegram-bot`
+- ✅ `TELEGRAM_BOT_TOKEN` — rotated via @BotFather /revoke on 2026-03-28
 
 New credentials stored in `/var/docker/sowknow4/.secrets` (not in git).
 

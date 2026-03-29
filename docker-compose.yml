@@ -271,6 +271,7 @@ services:
       - REDIS_HOST=redis
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY}
+      - SKIP_MODEL_DOWNLOAD=1
     command: celery -A app.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     volumes:
       - ./backend:/app

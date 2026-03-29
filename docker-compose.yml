@@ -223,12 +223,13 @@ services:
       - KIMI_API_KEY=${KIMI_API_KEY}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - SENTENCE_TRANSFORMERS_HOME=/root/.cache/torch/sentence_transformers
-      - HF_HOME=/tmp/hf_cache
-      - TRANSFORMERS_CACHE=/tmp/hf_cache
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
+      - sowknow-model-cache:/models
       - ./backend:/app
     depends_on:
       postgres:
@@ -492,4 +493,5 @@ volumes:
   sowknow-nats-data:
   sowknow-vault-data:
   sowknow-certbot-webroot:
+  sowknow-model-cache:
   sowknow-prometheus-data:

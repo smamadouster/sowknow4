@@ -2,7 +2,7 @@ FROM python:3.11.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for ML/AI
+# Install system dependencies for ML/AI and OCR
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -30,30 +30,33 @@ RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
 
 # Copy requirements
 COPY requirements.txt .
+
+# Install CPU-only PyTorch first (200MB vs 2GB for full torch)
+RUN pip install --no-cache-dir torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining dependencies (torch already satisfied, won't re-download)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download multilingual-e5-large model on build (as root for model cache)
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-    SentenceTransformer('intfloat/multilingual-e5-large')" || echo "Model will download on first run"
-
-# Make model cache readable by non-root user
-RUN chmod -R a+rX /root/.cache || true
-
-# Copy application
-COPY . .
+# Model cache directory — volume-mounted at runtime, NOT baked into image
+# Docker preserves ownership from image when creating new named volumes
+RUN mkdir -p /models && chown appuser:appuser /models
 
 # Create directories for file storage with proper permissions
+# NOTE: COPY . . is intentionally omitted — bind mount ./backend:/app overrides it
 RUN mkdir -p /data/public /data/confidential && \
     chown -R appuser:appuser /app /data
 
 # Set Python path
 ENV PYTHONPATH=/app
 
-# Configure DNS fallback (8.8.8.8 for environments without proper DNS)
-RUN echo "nameserver 8.8.8.8" >> /etc/resolv.conf || true
+# Copy and set entrypoint (downloads model on first run from volume)
+COPY worker-entrypoint.sh /worker-entrypoint.sh
+RUN chmod +x /worker-entrypoint.sh
 
 # Switch to non-root user
 USER appuser
+
+ENTRYPOINT ["/worker-entrypoint.sh"]
 
 # Default command for Celery worker
 CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "celery,document_processing,scheduled"]

@@ -130,6 +130,9 @@ class UploadState:
 # SOWKNOW API CLIENT
 # =============================================================================
 class SowknowClient:
+    # Proactively re-login after this many minutes (well before token expiry)
+    TOKEN_REFRESH_INTERVAL = 45 * 60  # 45 minutes in seconds
+
     def __init__(self, base_url: str, email: str, password: str):
         self.base_url = base_url.rstrip("/")
         self.email = email
@@ -137,6 +140,8 @@ class SowknowClient:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "SOWKNOW-AutoUploader/1.0"})
         self._authenticated = False
+        self._login_time: float = 0  # epoch time of last successful login
+        self._upload_count: int = 0  # uploads since last login
 
     def login(self) -> bool:
         try:
@@ -152,6 +157,8 @@ class SowknowClient:
                 if access_token:
                     self.session.headers["Authorization"] = f"Bearer {access_token}"
                 self._authenticated = True
+                self._login_time = time.time()
+                self._upload_count = 0
                 log.info("Authenticated to SOWKNOW successfully")
                 return True
             log.error(f"Login failed: {resp.status_code} {resp.text[:200]}")
@@ -160,9 +167,18 @@ class SowknowClient:
             log.error(f"Login request failed: {e}")
             return False
 
+    def _token_age(self) -> float:
+        """Seconds since last login."""
+        return time.time() - self._login_time if self._login_time else float("inf")
+
     def ensure_auth(self) -> bool:
         if self._authenticated:
-            # Check an auth-required endpoint to verify token is still valid
+            # Proactively refresh if token is getting old (don't wait for 401)
+            if self._token_age() > self.TOKEN_REFRESH_INTERVAL:
+                log.info(f"Proactive token refresh after {int(self._token_age())}s / {self._upload_count} uploads")
+                self._authenticated = False
+                return self.login()
+            # Verify token is still valid
             try:
                 r = self.session.get(f"{self.base_url}/api/v1/auth/me", timeout=10)
                 if r.status_code == 200:
@@ -170,6 +186,7 @@ class SowknowClient:
             except requests.RequestException:
                 pass
             # Token expired or invalid, re-login
+            log.info("Token validation failed, re-authenticating...")
             self._authenticated = False
         return self.login()
 
@@ -187,6 +204,7 @@ class SowknowClient:
             )
 
         if resp.status_code in (200, 201, 202):
+            self._upload_count += 1
             log.info(f"Uploaded: {filename} -> {bucket}")
             return resp.json()
 
@@ -202,6 +220,7 @@ class SowknowClient:
                         timeout=120,
                     )
                 if resp.status_code in (200, 201, 202):
+                    self._upload_count += 1
                     log.info(f"Uploaded (retry): {filename} -> {bucket}")
                     return resp.json()
 

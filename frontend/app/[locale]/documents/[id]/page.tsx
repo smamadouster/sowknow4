@@ -1,11 +1,240 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
 import { getCsrfToken } from '@/lib/api';
+
+// ---------- Document Preview helpers ----------
+
+const PREVIEWABLE_MIME_TYPES: Record<string, 'csv' | 'xml' | 'json' | 'text' | 'image' | 'pdf'> = {
+  'text/csv': 'csv',
+  'application/csv': 'csv',
+  'text/xml': 'xml',
+  'application/xml': 'xml',
+  'application/json': 'json',
+  'text/plain': 'text',
+  'text/markdown': 'text',
+  'image/png': 'image',
+  'image/jpeg': 'image',
+  'image/gif': 'image',
+  'image/bmp': 'image',
+  'application/pdf': 'pdf',
+};
+
+function getPreviewType(mimeType: string): 'csv' | 'xml' | 'json' | 'text' | 'image' | 'pdf' | null {
+  return PREVIEWABLE_MIME_TYPES[mimeType] ?? null;
+}
+
+function parseCsv(raw: string): string[][] {
+  const rows: string[][] = [];
+  let current = '';
+  let inQuotes = false;
+  let row: string[] = [];
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inQuotes) {
+      if (ch === '"' && raw[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(current);
+        current = '';
+      } else if (ch === '\n' || (ch === '\r' && raw[i + 1] === '\n')) {
+        row.push(current);
+        current = '';
+        if (row.some(c => c.trim())) rows.push(row);
+        row = [];
+        if (ch === '\r') i++;
+      } else {
+        current += ch;
+      }
+    }
+  }
+  if (current || row.length) {
+    row.push(current);
+    if (row.some(c => c.trim())) rows.push(row);
+  }
+  return rows;
+}
+
+function CsvPreview({ content }: { content: string }) {
+  const rows = parseCsv(content);
+  if (rows.length === 0) return <p className="text-sm text-gray-400">Empty CSV</p>;
+
+  const header = rows[0];
+  const body = rows.slice(1);
+  const maxRows = 200;
+
+  return (
+    <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-lg">
+      <table className="min-w-full text-xs">
+        <thead className="bg-gray-100 sticky top-0">
+          <tr>
+            {header.map((cell, i) => (
+              <th key={i} className="px-3 py-2 text-left font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">
+                {cell}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.slice(0, maxRows).map((row, ri) => (
+            <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              {row.map((cell, ci) => (
+                <td key={ci} className="px-3 py-1.5 text-gray-800 border-b border-gray-100 whitespace-nowrap">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {body.length > maxRows && (
+        <p className="text-xs text-gray-400 p-2 text-center">
+          Showing {maxRows} of {body.length} rows
+        </p>
+      )}
+    </div>
+  );
+}
+
+function XmlPreview({ content }: { content: string }) {
+  return (
+    <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-lg">
+      <pre className="text-xs p-4 bg-gray-50 whitespace-pre-wrap break-words font-mono leading-relaxed">
+        {content}
+      </pre>
+    </div>
+  );
+}
+
+function DocumentPreview({ docId, mimeType, apiBase }: { docId: string; mimeType: string; apiBase: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  const previewType = getPreviewType(mimeType);
+
+  const fetchContent = useCallback(async () => {
+    if (!previewType) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const res = await fetch(`${apiBase}/v1/documents/${docId}/download`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        setPreviewError('Failed to load preview');
+        return;
+      }
+      if (previewType === 'image') {
+        const blob = await res.blob();
+        setBlobUrl(URL.createObjectURL(blob));
+      } else if (previewType === 'pdf') {
+        const blob = await res.blob();
+        setBlobUrl(URL.createObjectURL(blob));
+      } else {
+        const text = await res.text();
+        setContent(text);
+      }
+    } catch {
+      setPreviewError('Failed to load preview');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [docId, apiBase, previewType]);
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
+  if (!previewType) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <button
+        onClick={() => {
+          setExpanded(v => !v);
+          if (!expanded && content === null && blobUrl === null) fetchContent();
+        }}
+        className="flex items-center justify-between w-full"
+      >
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          Preview
+        </h2>
+        <svg
+          className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="mt-4">
+          {previewLoading && (
+            <div className="flex items-center gap-3 text-sm text-gray-400 py-4">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+              Loading preview...
+            </div>
+          )}
+          {previewError && (
+            <p className="text-sm text-red-500">{previewError}</p>
+          )}
+          {!previewLoading && !previewError && content !== null && previewType === 'csv' && (
+            <CsvPreview content={content} />
+          )}
+          {!previewLoading && !previewError && content !== null && previewType === 'xml' && (
+            <XmlPreview content={content} />
+          )}
+          {!previewLoading && !previewError && content !== null && previewType === 'json' && (
+            <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-lg">
+              <pre className="text-xs p-4 bg-gray-50 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                {(() => { try { return JSON.stringify(JSON.parse(content), null, 2); } catch { return content; } })()}
+              </pre>
+            </div>
+          )}
+          {!previewLoading && !previewError && content !== null && previewType === 'text' && (
+            <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-lg">
+              <pre className="text-xs p-4 bg-gray-50 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                {content}
+              </pre>
+            </div>
+          )}
+          {!previewLoading && !previewError && blobUrl && previewType === 'image' && (
+            <div className="flex justify-center border border-gray-200 rounded-lg bg-gray-50 p-4">
+              <img src={blobUrl} alt="Document preview" className="max-h-[500px] max-w-full object-contain" />
+            </div>
+          )}
+          {!previewLoading && !previewError && blobUrl && previewType === 'pdf' && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <iframe src={blobUrl} className="w-full h-[500px]" title="PDF preview" />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Tag {
   id: string;
@@ -441,6 +670,9 @@ export default function DocumentDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Document preview — CSV table, XML/JSON/TXT code, images, PDF */}
+      <DocumentPreview docId={doc.id} mimeType={doc.mime_type} apiBase={API_BASE} />
 
       {/* Processing metadata section — collapsible */}
       {metaKeys.length > 0 && (

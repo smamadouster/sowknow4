@@ -25,6 +25,8 @@ class TextExtractor:
             ".txt": self._extract_from_txt,
             ".md": self._extract_from_txt,
             ".json": self._extract_from_json,
+            ".csv": self._extract_from_csv,
+            ".xml": self._extract_from_xml,
             ".epub": self._extract_from_epub,
         }
 
@@ -275,6 +277,66 @@ class TextExtractor:
 
         except Exception as e:
             logger.error(f"Error extracting from JSON: {str(e)}")
+            return {"text": "", "error": str(e), "pages": 0}
+
+    async def _extract_from_csv(self, file_path: str) -> dict[str, Any]:
+        """Extract text from CSV file"""
+        try:
+            import csv
+
+            try:
+                with open(file_path, encoding="utf-8", newline="") as f:
+                    reader = csv.reader(f)
+                    rows = list(reader)
+            except UnicodeDecodeError:
+                with open(file_path, encoding="latin-1", newline="") as f:
+                    reader = csv.reader(f)
+                    rows = list(reader)
+
+            text_lines = []
+            for row in rows:
+                line = " | ".join(str(cell) for cell in row)
+                if line.strip():
+                    text_lines.append(line)
+
+            return {
+                "text": "\n".join(text_lines),
+                "pages": 0,
+                "source": "csv",
+            }
+
+        except Exception as e:
+            logger.error(f"Error extracting from CSV: {str(e)}")
+            return {"text": "", "error": str(e), "pages": 0}
+
+    async def _extract_from_xml(self, file_path: str) -> dict[str, Any]:
+        """Extract text from XML file"""
+        try:
+            import xml.etree.ElementTree as ET
+
+            tree = ET.parse(file_path)  # noqa: S314
+            root = tree.getroot()
+
+            def extract_text_recursive(element: ET.Element) -> list[str]:
+                parts = []
+                if element.text and element.text.strip():
+                    parts.append(element.text.strip())
+                for child in element:
+                    parts.extend(extract_text_recursive(child))
+                    if child.tail and child.tail.strip():
+                        parts.append(child.tail.strip())
+                return parts
+
+            text_parts = extract_text_recursive(root)
+
+            return {
+                "text": "\n".join(text_parts),
+                "pages": 0,
+                "source": "xml",
+            }
+
+        except Exception as e:
+            logger.error(f"Error extracting from XML: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
     async def _extract_from_epub(self, file_path: str) -> dict[str, Any]:

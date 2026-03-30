@@ -75,6 +75,11 @@ class OCRService:
         """Lazy load PaddleOCR model"""
         if self._paddle_model is None:
             try:
+                # Ensure PaddleOCR has a writable cache directory regardless of HOME permissions
+                if "PADDLEOCR_HOME" not in os.environ:
+                    os.environ["PADDLEOCR_HOME"] = "/tmp/paddleocr"
+                os.makedirs(os.environ["PADDLEOCR_HOME"], exist_ok=True)
+
                 from paddleocr import PaddleOCR
 
                 self._paddle_model = PaddleOCR(

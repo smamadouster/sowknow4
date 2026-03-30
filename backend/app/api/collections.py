@@ -46,6 +46,7 @@ from app.schemas.collection import (
 )
 from app.services.collection_chat_service import collection_chat_service
 from app.services.collection_service import collection_service
+from app.services.input_guard import input_guard
 
 # Cache invalidation helper — best-effort, never raises
 def _invalidate_collection_cache(collection_id) -> None:
@@ -623,6 +624,33 @@ async def chat_with_collection(
 
     if not collection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+
+    # --- InputGuard pre-processing ---
+    try:
+        guard_result = await input_guard.process(
+            query=chat_data.message,
+            user_role=current_user.role.value if hasattr(current_user, 'role') else "user",
+            document_ids=None,
+        )
+        logger.info(
+            "InputGuard[collection_chat]: lang=%s intent=%s vault=%s pii=%s",
+            guard_result.language, guard_result.intent,
+            guard_result.vault_hint, guard_result.pii_detected,
+        )
+        if guard_result.pii_detected:
+            logger.warning("InputGuard: PII detected in collection chat from user %s", current_user.id)
+        if guard_result.is_duplicate:
+            return CollectionChatResponse(
+                response="Cette requête est en cours de traitement. / This query is already being processed.",
+                sources=[],
+                llm_used="input_guard",
+                session_id=collection_id,
+                collection_id=collection_id,
+                message_count=0,
+                cache_hit=False,
+            )
+    except Exception as e:
+        logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
 
     try:
         response = await collection_chat_service.chat_with_collection(

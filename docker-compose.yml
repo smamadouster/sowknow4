@@ -161,7 +161,7 @@ services:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_HOST=redis
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
-      - KIMI_API_KEY=${KIMI_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -220,12 +220,13 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_HOST=redis
-      - KIMI_API_KEY=${KIMI_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - SENTENCE_TRANSFORMERS_HOME=/models
       - HF_HOME=/models
       - TRANSFORMERS_CACHE=/models
+      - PADDLEOCR_HOME=/tmp/paddleocr
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -270,7 +271,7 @@ services:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_HOST=redis
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
-      - KIMI_API_KEY=${KIMI_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
       - SKIP_MODEL_DOWNLOAD=1
     command: celery -A app.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     volumes:

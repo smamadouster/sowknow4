@@ -25,8 +25,8 @@ RUN apt-get update && apt-get install -y \
     antiword \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
+# Create non-root user with home directory (PaddleOCR needs a writable HOME)
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 -m appuser
 
 # Copy requirements
 COPY requirements.txt .
@@ -46,8 +46,9 @@ RUN mkdir -p /models && chown appuser:appuser /models
 RUN mkdir -p /data/public /data/confidential && \
     chown -R appuser:appuser /app /data
 
-# Set Python path
+# Set Python path and PaddleOCR cache directory
 ENV PYTHONPATH=/app
+ENV PADDLEOCR_HOME=/tmp/paddleocr
 
 # Copy and set entrypoint (downloads model on first run from volume)
 COPY worker-entrypoint.sh /worker-entrypoint.sh

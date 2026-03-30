@@ -23,6 +23,11 @@ from app.schemas.chat import (
     ChatSessionResponse,
 )
 from app.services.chat_service import chat_service
+from app.services.input_guard import input_guard
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -130,6 +135,28 @@ async def send_message(
 
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    # --- InputGuard pre-processing ---
+    try:
+        guard_result = await input_guard.process(
+            query=message_data.content,
+            user_role=current_user.role.value if hasattr(current_user, 'role') else "user",
+            document_ids=None,
+        )
+        logger.info(
+            "InputGuard: lang=%s intent=%s vault=%s pii=%s",
+            guard_result.language, guard_result.intent,
+            guard_result.vault_hint, guard_result.pii_detected,
+        )
+        if guard_result.pii_detected:
+            logger.warning("InputGuard: PII detected in chat message from user %s", current_user.id)
+        if guard_result.is_duplicate:
+            return {
+                "content": "Cette requête est en cours de traitement. / This query is already being processed.",
+                "duplicate": True,
+            }
+    except Exception as e:
+        logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
 
     # Save user message
     user_message = ChatMessage(id=uuid4(), session_id=session_id, role=MessageRole.USER, content=message_data.content)

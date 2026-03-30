@@ -30,6 +30,7 @@ from app.services.search_models import (
     RawChunk,
     SearchMode,
 )
+from app.services.input_guard import input_guard
 from app.services.search_service import HybridSearchService
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,34 @@ async def search(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> AgenticSearchResponse:
+    # --- InputGuard pre-processing ---
+    try:
+        guard_result = await input_guard.process(
+            query=request.query,
+            user_role=current_user.role.value if hasattr(current_user, 'role') else "user",
+            document_ids=None,
+        )
+        logger.info(
+            "InputGuard: lang=%s intent=%s vault=%s pii=%s",
+            guard_result.language, guard_result.intent,
+            guard_result.vault_hint, guard_result.pii_detected,
+        )
+        if guard_result.pii_detected:
+            logger.warning("InputGuard: PII detected in search query from user %s", current_user.id)
+        if guard_result.is_duplicate:
+            return AgenticSearchResponse(
+                query=request.query,
+                parsed_intent=QueryIntent.FACTUAL,
+                results=[],
+                citations=[],
+                total_found=0,
+                has_confidential_results=False,
+                search_time_ms=0,
+                answer_synthesis="Cette requête est en cours de traitement. / This query is already being processed.",
+            )
+    except Exception as e:
+        logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
+
     if _search_semaphore._value == 0:
         raise HTTPException(
             status_code=429,
@@ -117,6 +146,34 @@ async def search_stream(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     user_role = _role_from_user(current_user)
+
+    # --- InputGuard pre-processing ---
+    try:
+        guard_result = await input_guard.process(
+            query=request.query,
+            user_role=current_user.role.value if hasattr(current_user, 'role') else "user",
+            document_ids=None,
+        )
+        logger.info(
+            "InputGuard[stream]: lang=%s intent=%s vault=%s pii=%s",
+            guard_result.language, guard_result.intent,
+            guard_result.vault_hint, guard_result.pii_detected,
+        )
+        if guard_result.pii_detected:
+            logger.warning("InputGuard: PII detected in streaming search from user %s", current_user.id)
+        if guard_result.is_duplicate:
+            async def _dup_gen():
+                yield _sse_event("error", {
+                    "message": "Cette requête est en cours de traitement. / This query is already being processed.",
+                    "duplicate": True,
+                })
+            return StreamingResponse(
+                _dup_gen(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+    except Exception as e:
+        logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
 
     async def event_generator():
         try:

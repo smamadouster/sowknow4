@@ -810,6 +810,58 @@ def extract_entities_for_document(self, document_id: str) -> dict:
         db.close()
 
 
+@shared_task(name="app.tasks.document_tasks.batch_extract_entities")
+def batch_extract_entities(batch_size: int = 20, batch_interval: int = 60) -> dict:
+    """
+    Queue entity extraction for all indexed documents that don't have entities yet.
+    Staggers work to avoid overwhelming the worker.
+
+    Args:
+        batch_size: Documents per batch (default 20)
+        batch_interval: Seconds between batches (default 60)
+    """
+    from sqlalchemy import text as sa_text
+
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        # Find indexed documents without entity mentions
+        result = db.execute(
+            sa_text(
+                "SELECT d.id FROM sowknow.documents d "
+                "WHERE d.status = 'indexed' "
+                "AND d.id NOT IN (SELECT DISTINCT document_id FROM sowknow.entity_mentions) "
+                "ORDER BY d.created_at DESC"
+            )
+        )
+        doc_ids = [str(row[0]) for row in result.all()]
+
+        queued = 0
+        for batch_index, offset in enumerate(range(0, len(doc_ids), batch_size)):
+            batch = doc_ids[offset : offset + batch_size]
+            countdown = batch_index * batch_interval
+            for doc_id in batch:
+                extract_entities_for_document.apply_async(
+                    args=[doc_id], countdown=countdown
+                )
+                queued += 1
+
+        logger.info(
+            "batch_extract_entities: queued %d documents in %d batches, %ds apart",
+            queued,
+            (queued + batch_size - 1) // batch_size if queued else 0,
+            batch_interval,
+        )
+        return {"status": "success", "queued": queued, "total_docs": len(doc_ids)}
+
+    except Exception as e:
+        logger.error(f"batch_extract_entities error: {e}")
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
 @shared_task(name="app.tasks.document_tasks.reprocess_pending_documents")
 def reprocess_pending_documents() -> dict:
     """Dispatch processing for all pending documents in staggered batches."""

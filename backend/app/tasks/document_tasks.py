@@ -734,6 +734,8 @@ def on_generate_embeddings_failure(self, exc, task_id, args, kwargs, einfo) -> N
     max_retries=2,
     retry_backoff=True,
     retry_backoff_max=120,
+    soft_time_limit=600,
+    time_limit=660,
 )
 def extract_entities_for_document(self, document_id: str) -> dict:
     """

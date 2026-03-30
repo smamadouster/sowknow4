@@ -26,7 +26,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with home directory (PaddleOCR needs a writable HOME)
-RUN groupadd -r appuser && useradd -r -g appuser -u 1001 -m appuser
+# NOTE: Do NOT use -r (system user) with -m — system users skip home creation on some distros
+RUN groupadd -g 1001 appuser && useradd -g appuser -u 1001 -m appuser
 
 # Copy requirements
 COPY requirements.txt .

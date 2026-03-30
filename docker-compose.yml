@@ -106,11 +106,11 @@ services:
     cap_add:
       - IPC_LOCK
     healthcheck:
-      test: ["CMD-SHELL", "sealed=$(vault status -address=http://127.0.0.1:8200 -format=json 2>/dev/null | grep '\"sealed\"' | grep -c true); if [ \"$sealed\" = \"1\" ] && [ -n \"$VAULT_UNSEAL_KEY\" ]; then vault operator unseal $VAULT_UNSEAL_KEY >/dev/null 2>&1; fi; vault status -address=http://127.0.0.1:8200 2>&1 | grep -q 'Sealed.*false'"]
-      interval: 30s
+      test: ["CMD-SHELL", "vault status 2>/dev/null | grep -q 'Sealed.*true' && [ -n \"$$VAULT_UNSEAL_KEY\" ] && vault operator unseal $$VAULT_UNSEAL_KEY >/dev/null 2>&1; vault status 2>/dev/null | grep -q 'Sealed.*false'"]
+      interval: 15s
       timeout: 10s
-      retries: 5
-      start_period: 15s
+      retries: 10
+      start_period: 10s
     deploy:
       resources:
         limits:

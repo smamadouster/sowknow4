@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -175,9 +176,7 @@ class IntentParserService:
 
     def _get_intent_prompt_template(self) -> str:
         """Get the system prompt for intent parsing"""
-        return """You are an intent parser for SOWKNOW, a legacy knowledge management system. Your task is to extract structured information from natural language queries about documents.
-
-Analyze the user's query and extract:
+        return """Analyze the user's query and extract:
 1. **keywords**: Main search terms (2-5 most important words/phrases)
 2. **date_range**: Time period if specified (today, yesterday, this_week, last_week, this_month, last_month, this_year, last_year, or custom with start/end dates)
 3. **entities**: Named entities mentioned (people, organizations, locations, concepts)
@@ -400,10 +399,22 @@ Now parse the user's query:"""
             context = self._extract_current_year_context()
             prompt = f"{context}\n\n{self._intent_prompt_template}\n\nQuery: {query}"
 
+            intent_system_prompt = build_service_prompt(
+                service_name="SOWKNOW Intent Parser Service",
+                mission="Parse user queries to extract search intent including keywords, date ranges, entities, document types, and language",
+                constraints=(
+                    "- You MUST extract structured intent from natural language queries\n"
+                    "- You MUST handle both French and English queries\n"
+                    "- You MUST identify temporal references and convert to date ranges\n"
+                    "- You MUST NOT expose query content to cloud LLMs when PII is detected"
+                ),
+                task_prompt="You are a precise JSON-only intent parser. Respond only with valid JSON, no explanations or markdown.",
+            )
+
             messages = [
                 {
                     "role": "system",
-                    "content": "You are a precise JSON-only intent parser. Respond only with valid JSON, no explanations or markdown.",
+                    "content": intent_system_prompt,
                 },
                 {"role": "user", "content": prompt},
             ]

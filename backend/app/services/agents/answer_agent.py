@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.agent_identity import ANSWER_IDENTITY
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 
@@ -156,7 +157,10 @@ class AnswerAgent:
 
     async def _determine_answer_type(self, query: str) -> str:
         """Determine what type of answer the query requires"""
-        system_prompt = """Classify the query type. Return one of:
+        system_prompt = ANSWER_IDENTITY + """
+
+## Task
+Classify the query type. Return one of:
 - factual: Asking for facts/information
 - how_to: Asking for instructions/process
 - explanation: Asking for understanding/explanation
@@ -251,7 +255,10 @@ Return just the type name."""
             "conversational": "Provide a friendly, conversational answer",
         }
 
-        system_prompt = f"""You are the Answer Agent for SOWKNOW. Generate clear, accurate answers based on research.
+        system_prompt = ANSWER_IDENTITY + f"""
+
+## Task
+Generate clear, accurate answers based on research.
 
 Style: {style_instructions.get(style, style_instructions["comprehensive"])}
 Language: {language}
@@ -285,6 +292,18 @@ Structure your answer with:
         if context.get("contradicted_info"):
             research_parts.append("\nNote: Some sources may contradict on certain points.")
 
+        if context.get("entities"):
+            entity_names = []
+            for e in context["entities"][:10]:
+                name = e.get("name", "") if isinstance(e, dict) else str(e)
+                if name:
+                    entity_names.append(name)
+            if entity_names:
+                research_parts.append(f"\nKey Entities: {', '.join(entity_names)}")
+
+        if context.get("themes"):
+            research_parts.append(f"\nKey Themes: {', '.join(str(t) for t in context['themes'][:5])}")
+
         research_text = "\n".join(research_parts)
 
         user_prompt = f"""Question: {query}
@@ -315,7 +334,10 @@ Please provide a comprehensive answer:"""
 
     async def _extract_key_points(self, answer: str) -> list[str]:
         """Extract key points from the answer"""
-        system_prompt = """Extract 3-5 key points from the answer.
+        system_prompt = ANSWER_IDENTITY + """
+
+## Task
+Extract 3-5 key points from the answer.
 Return as a JSON array of strings."""
 
         messages = [
@@ -389,7 +411,10 @@ Return as a JSON array of strings."""
 
     async def _suggest_followup_questions(self, query: str, answer: str, context: dict[str, Any]) -> list[str]:
         """Suggest relevant follow-up questions"""
-        system_prompt = """Based on the original question and answer, suggest 3-5 relevant follow-up questions.
+        system_prompt = ANSWER_IDENTITY + """
+
+## Task
+Based on the original question and answer, suggest 3-5 relevant follow-up questions.
 Return as a JSON array of question strings."""
 
         user_prompt = f"""Original question: {query}

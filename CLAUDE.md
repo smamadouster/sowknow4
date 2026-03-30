@@ -1,5 +1,10 @@
 # Project Configuration - SOWKNOW Multi-Generational Legacy Knowledge System
 
+## AGENT LEARNINGS (MANDATORY)
+- **Before starting ANY new task**, read `AGENT_LEARNINGS.md` at the project root.
+- **After making a mistake** (failed deployment, broken tests, wrong approach), append a new entry to the relevant section in `AGENT_LEARNINGS.md` with Description, Impact, Pattern, Risk, or Recommendation as appropriate.
+- This file is the agent's institutional memory for avoiding repeated errors.
+
 ## CRITICAL RULES
 - **PRIVACY FIRST**: Zero PII ever sent to cloud APIs (MiniMax/OpenRouter/PaddleOCR)
 - **CONFIDENTIAL ROUTING**: Auto-switch to shared Ollama (mistral:7b local) when confidential documents detected

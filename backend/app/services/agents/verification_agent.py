@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.agent_identity import VERIFIER_IDENTITY
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 
@@ -172,7 +173,10 @@ class VerificationAgent:
 
     async def _analyze_claim(self, claim: str) -> dict[str, Any]:
         """Analyze the structure and type of claim"""
-        system_prompt = """Analyze the claim and identify its type and key components.
+        system_prompt = VERIFIER_IDENTITY + """
+
+## Task
+Analyze the claim and identify its type and key components.
 
 Return JSON:
 {
@@ -213,7 +217,10 @@ Return JSON:
 
     async def _check_source_for_claim(self, claim: str, source: dict[str, Any]) -> dict[str, Any]:
         """Check if a source supports or contradicts the claim"""
-        system_prompt = """Analyze whether the source text supports, contradicts, or is neutral to the claim.
+        system_prompt = VERIFIER_IDENTITY + """
+
+## Task
+Analyze whether the source text supports, contradicts, or is neutral to the claim.
 
 Return JSON:
 {
@@ -328,7 +335,10 @@ Return JSON:
 
     async def _find_conflicts(self, source1: dict[str, Any], source2: dict[str, Any]) -> list[dict[str, Any]]:
         """Find conflicts between two sources"""
-        system_prompt = """Identify any factual conflicts between the two source texts.
+        system_prompt = VERIFIER_IDENTITY + """
+
+## Task
+Identify any factual conflicts between the two source texts.
 
 Return JSON array of conflicts:
 [

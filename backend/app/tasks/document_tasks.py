@@ -324,6 +324,14 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             except Exception as article_err:
                 logger.warning(f"Failed to queue article generation for {document_id}: {article_err}")
 
+        # Step 6: Queue entity extraction for knowledge graph (async, non-blocking)
+        if document.status == DocumentStatus.INDEXED:
+            try:
+                extract_entities_for_document.delay(str(document.id))
+                logger.info(f"Entity extraction queued for document {document_id}")
+            except Exception as entity_err:
+                logger.warning(f"Failed to queue entity extraction for {document_id}: {entity_err}")
+
         log_task_memory("process_document", "end")
         logger.info(f"Document {document_id} processed successfully")
 
@@ -717,6 +725,87 @@ def on_generate_embeddings_failure(self, exc, task_id, args, kwargs, einfo) -> N
         traceback=einfo,
         is_critical=False,
     )
+
+
+@shared_task(
+    bind=True,
+    name="app.tasks.document_tasks.extract_entities_for_document",
+    autoretry_for=(Exception,),
+    max_retries=2,
+    retry_backoff=True,
+    retry_backoff_max=120,
+)
+def extract_entities_for_document(self, document_id: str) -> dict:
+    """
+    Extract entities and relationships from a document for the knowledge graph.
+
+    Runs after embedding generation. Uses entity_extraction_service to analyze
+    document chunks and populate the knowledge graph with people, organizations,
+    locations, concepts, and their relationships.
+
+    Args:
+        document_id: UUID of the document to extract entities from.
+
+    Returns:
+        dict with extraction results.
+    """
+    import asyncio
+
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        from app.models.document import Document, DocumentChunk
+        from app.services.entity_extraction_service import entity_extraction_service
+
+        document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
+        if not document:
+            return {"status": "error", "message": f"Document {document_id} not found"}
+
+        chunks = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == document.id)
+            .order_by(DocumentChunk.chunk_index)
+            .all()
+        )
+        if not chunks:
+            return {"status": "skipped", "message": "No chunks to extract entities from"}
+
+        result = asyncio.run(
+            entity_extraction_service.extract_entities_from_document(
+                document=document, chunks=chunks, db=db
+            )
+        )
+
+        entity_count = result.get("entities_count", 0) if isinstance(result, dict) else 0
+        relationship_count = result.get("relationships_count", 0) if isinstance(result, dict) else 0
+
+        logger.info(
+            f"Entity extraction completed for document {document_id}: "
+            f"{entity_count} entities, {relationship_count} relationships"
+        )
+
+        # Invalidate the context block cache so it picks up new entity data
+        try:
+            from app.services.context_block_service import invalidate_context_block
+
+            invalidate_context_block()
+        except Exception:
+            pass  # context_block_service may not exist yet
+
+        return {
+            "status": "success",
+            "document_id": document_id,
+            "entities_count": entity_count,
+            "relationships_count": relationship_count,
+        }
+
+    except Exception as e:
+        logger.error(f"Entity extraction error for document {document_id}: {e}")
+        raise
+
+    finally:
+        db.close()
 
 
 @shared_task(name="app.tasks.document_tasks.reprocess_pending_documents")

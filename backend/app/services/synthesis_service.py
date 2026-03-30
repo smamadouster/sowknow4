@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document, DocumentBucket, DocumentChunk
 from app.models.knowledge_graph import Entity, TimelineEvent
+from app.services.agent_identity import build_service_prompt
+from app.services.context_block_service import get_cached_context_block
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -110,6 +112,13 @@ class SynthesisPipelineService:
         Returns:
             Synthesis result with comprehensive information
         """
+        # Fetch working memory context block once for all LLM calls
+        _context_block: str | None = None
+        try:
+            _context_block = await get_cached_context_block(db)
+        except Exception:
+            pass
+
         try:
             # Step 1: Fetch and prepare documents (Map phase)
             if on_progress:
@@ -124,7 +133,8 @@ class SynthesisPipelineService:
                 on_progress("Extracting key information...", 0.3)
 
             mapped_results = await self._map_documents(
-                documents, request.topic, request.synthesis_type, db, on_progress
+                documents, request.topic, request.synthesis_type, db, on_progress,
+                context_block=_context_block,
             )
 
             # Step 3: Gather related entities if requested
@@ -154,13 +164,16 @@ class SynthesisPipelineService:
                 request.language,
                 request.max_length,
                 documents,
+                context_block=_context_block,
             )
 
             # Step 6: Extract key points
             if on_progress:
                 on_progress("Extracting key points...", 0.9)
 
-            key_points = await self._extract_key_points(synthesis, request.topic, documents)
+            key_points = await self._extract_key_points(
+                synthesis, request.topic, documents, context_block=_context_block,
+            )
 
             # Step 7: Prepare source citations
             sources = self._prepare_sources(documents, mapped_results)
@@ -198,6 +211,7 @@ class SynthesisPipelineService:
         synthesis_type: str,
         db: AsyncSession,
         on_progress: Callable[[str, float], None] | None = None,
+        context_block: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Map phase: Extract key information from each document
@@ -218,7 +232,9 @@ class SynthesisPipelineService:
                 content = "\n\n".join([c.chunk_text[:500] for c in chunks])
 
                 # Map this document
-                mapped = await self._map_single_document(doc, content, topic, synthesis_type)
+                mapped = await self._map_single_document(
+                    doc, content, topic, synthesis_type, context_block=context_block,
+                )
                 results.append(mapped)
 
                 if on_progress:
@@ -238,11 +254,21 @@ class SynthesisPipelineService:
         return results
 
     async def _map_single_document(
-        self, doc: Document, content: str, topic: str, synthesis_type: str
+        self, doc: Document, content: str, topic: str, synthesis_type: str,
+        context_block: str | None = None,
     ) -> dict[str, Any]:
         """Extract key information from a single document"""
-        system_prompt = f"""You are an expert information extractor for SOWKNOW.
-Extract the most relevant information from this document related to the topic.
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Synthesis Map Agent",
+            mission="Synthesize information from multiple documents using map-reduce analysis to extract key points, timelines, and comprehensive summaries",
+            constraints=(
+                "- You MUST process each document independently in the map phase\n"
+                "- You MUST reconcile conflicting information in the reduce phase\n"
+                "- You MUST cite source documents for all synthesized claims\n"
+                "- You MUST flag temporal inconsistencies across documents\n"
+                "- You MUST NOT include information from confidential documents in cloud-routed synthesis"
+            ),
+            task_prompt=f"""Extract the most relevant information from this document related to the topic.
 
 Topic: {topic}
 Synthesis Type: {synthesis_type}
@@ -254,7 +280,8 @@ Extract:
 4. Data points, statistics, or measurements
 5. Quotes or direct statements that are relevant
 
-Keep your extraction focused and concise. Return as structured JSON."""
+Keep your extraction focused and concise. Return as structured JSON.""",
+        )
 
         user_prompt = f"""Document: {doc.filename}
 Date: {doc.created_at.isoformat() if doc.created_at else "Unknown"}
@@ -268,6 +295,10 @@ Extract all relevant information about "{topic}" from this document:"""
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+
+        # Prepend working memory context block
+        if context_block and messages and messages[0]["role"] == "system":
+            messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
             # Determine LLM routing based on document bucket
@@ -378,6 +409,7 @@ Extract all relevant information about "{topic}" from this document:"""
         language: str,
         max_length: int,
         documents: list[Document],
+        context_block: str | None = None,
     ) -> str:
         """
         Reduce phase: Synthesize all mapped information into a coherent summary
@@ -438,7 +470,17 @@ Extract all relevant information about "{topic}" from this document:"""
             "casual": "Write in a friendly, conversational tone",
         }
 
-        system_prompt = f"""You are SOWKNOW's synthesis engine. Create a comprehensive synthesis about the topic.
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Synthesis Reduce Agent",
+            mission="Synthesize information from multiple documents using map-reduce analysis to extract key points, timelines, and comprehensive summaries",
+            constraints=(
+                "- You MUST process each document independently in the map phase\n"
+                "- You MUST reconcile conflicting information in the reduce phase\n"
+                "- You MUST cite source documents for all synthesized claims\n"
+                "- You MUST flag temporal inconsistencies across documents\n"
+                "- You MUST NOT include information from confidential documents in cloud-routed synthesis"
+            ),
+            task_prompt=f"""Create a comprehensive synthesis about the topic.
 
 Style: {style_instructions.get(style, style_instructions["informative"])}
 Language: {language}
@@ -449,7 +491,8 @@ Your synthesis should:
 2. Highlight key themes and patterns across documents
 3. Identify important relationships and connections
 4. Present a balanced view incorporating all perspectives
-5. Be well-structured with clear sections"""
+5. Be well-structured with clear sections""",
+        )
 
         user_prompt = f"""Topic: {topic}
 
@@ -462,6 +505,10 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+
+        # Prepend working memory context block
+        if context_block and messages and messages[0]["role"] == "system":
+            messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
             # Determine LLM routing based on document bucket
@@ -480,13 +527,26 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
             logger.error(f"Error in reduce synthesis: {e}")
             return f"Error synthesizing information: {str(e)}"
 
-    async def _extract_key_points(self, synthesis: str, topic: str, documents: list[Document]) -> list[str]:
+    async def _extract_key_points(
+        self, synthesis: str, topic: str, documents: list[Document],
+        context_block: str | None = None,
+    ) -> list[str]:
         """Extract key points from the synthesis"""
         # Determine bucket-based routing
         use_ollama = any(doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents)
 
-        system_prompt = """Extract the 3-7 most important key points from the text.
-Return as a JSON array of strings, each being a key point."""
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Synthesis Key Points Agent",
+            mission="Synthesize information from multiple documents using map-reduce analysis to extract key points, timelines, and comprehensive summaries",
+            constraints=(
+                "- You MUST process each document independently in the map phase\n"
+                "- You MUST reconcile conflicting information in the reduce phase\n"
+                "- You MUST cite source documents for all synthesized claims\n"
+                "- You MUST flag temporal inconsistencies across documents\n"
+                "- You MUST NOT include information from confidential documents in cloud-routed synthesis"
+            ),
+            task_prompt="Extract the 3-7 most important key points from the text.\nReturn as a JSON array of strings, each being a key point.",
+        )
 
         user_prompt = f"""Topic: {topic}
 
@@ -499,6 +559,10 @@ Extract the key points:"""
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+
+        # Prepend working memory context block
+        if context_block and messages and messages[0]["role"] == "system":
+            messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
             llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()

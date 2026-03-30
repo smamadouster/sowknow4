@@ -27,6 +27,8 @@ try:
 except ImportError:
     _cache_invalidation_enabled = False
 
+from app.services.agent_identity import build_service_prompt
+
 from app.models.collection import (
     Collection,
     CollectionItem,
@@ -422,6 +424,17 @@ class CollectionService:
 
         entities_str = ", ".join([e["name"] for e in parsed_intent.entities]) if parsed_intent.entities else "None"
 
+        collection_system_prompt = build_service_prompt(
+            service_name="SOWKNOW Collection Service",
+            mission="Create and manage smart collections of documents with AI-powered grouping and summarization",
+            constraints=(
+                "- You MUST respect document bucket isolation in collections\n"
+                "- You MUST generate collection summaries in the user's language\n"
+                "- You MUST NOT mix confidential documents into public collections"
+            ),
+            task_prompt="Summarize document collections concisely in 2-3 sentences, describing contents and key themes.",
+        )
+
         try:
             if has_confidential:
                 # Use Ollama for confidential collections - keeps data local
@@ -440,7 +453,7 @@ Generate a concise summary describing what this collection contains and its key 
 
                 response = await self.ollama_service.generate(
                     prompt=prompt,
-                    system="You are a helpful assistant that summarizes document collections concisely.",
+                    system=collection_system_prompt,
                     temperature=0.5,
                 )
                 return response.strip()
@@ -462,7 +475,7 @@ Generate a concise summary describing what this collection contains and its key 
                 messages = [
                     {
                         "role": "system",
-                        "content": "You are a helpful assistant that summarizes document collections concisely.",
+                        "content": collection_system_prompt,
                     },
                     {"role": "user", "content": prompt},
                 ]

@@ -19,6 +19,8 @@ from app.models.knowledge_graph import (
     EntityMention,
     EntityRelationship,
 )
+from app.services.agent_identity import build_service_prompt
+from app.services.context_block_service import get_cached_context_block
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -385,8 +387,7 @@ class GraphRAGService:
             related_entities = enhanced_results.get("related_entities", [])
 
             # Build system prompt
-            system_prompt = """You are SOWKNOW, an AI assistant for a knowledge management system.
-When answering questions, use the knowledge graph information provided to give more
+            graph_task_prompt = """When answering questions, use the knowledge graph information provided to give more
 complete and contextually relevant answers.
 
 Key Principles:
@@ -396,6 +397,18 @@ Key Principles:
 4. Cite the specific documents that support your claims
 5. If graph information is sparse, fall back to the document content
 6. Be explicit about uncertainty in graph relationships"""
+
+            system_prompt = build_service_prompt(
+                service_name="SOWKNOW Graph-RAG Service",
+                mission="Enhance search results using knowledge graph traversal to find related entities, relationships, and contextual connections",
+                constraints=(
+                    "- You MUST respect vault isolation when traversing the knowledge graph\n"
+                    "- You MUST include relationship context in enhanced results\n"
+                    "- You MUST NOT expose confidential entity relationships to cloud LLMs\n"
+                    "- You MUST weight graph results by relationship strength and relevance"
+                ),
+                task_prompt=graph_task_prompt,
+            )
 
             # Build user prompt with graph context
             user_prompt = f"Question: {query}\n\n"
@@ -441,6 +454,14 @@ Key Principles:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ]
+
+            # Prepend working memory context block
+            try:
+                context_block = await get_cached_context_block(db)
+                if context_block and messages and messages[0]["role"] == "system":
+                    messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
+            except Exception:
+                pass
 
             # Get appropriate LLM service based on bucket
             llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()

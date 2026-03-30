@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from app.models.document import Document, DocumentBucket, DocumentLanguage, DocumentTag
+from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -140,10 +141,9 @@ class AutoTaggingService:
         # Add filename context
         return f"Filename: {filename}\n\nContent:\n{text_preview}"
 
-    async def _extract_tags_with_minimax(self, text: str, document: Document) -> dict[str, Any] | None:
-        """Extract tags using MiniMax for public documents"""
-
-        system_prompt = """You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:
+    def _build_tagging_system_prompt(self) -> str:
+        """Build the system prompt for auto-tagging using the agent identity framework"""
+        tagging_task = """Analyze the document and extract:
 
 1. **topics**: 3-5 main topics/themes (single words or short phrases)
 2. **entities**: Named entities (people, organizations, locations) with their types
@@ -161,6 +161,21 @@ Respond ONLY with valid JSON in this exact format:
   "language": "en"
 }
 ```"""
+        return build_service_prompt(
+            service_name="SOWKNOW Auto-Tagging Service",
+            mission="Automatically tag documents with topics, entities, importance levels, and language using AI analysis",
+            constraints=(
+                "- You MUST generate tags in the document's primary language\n"
+                "- You MUST assign importance levels based on content significance\n"
+                "- You MUST NOT send confidential document content to cloud LLMs for tagging"
+            ),
+            task_prompt=tagging_task,
+        )
+
+    async def _extract_tags_with_minimax(self, text: str, document: Document) -> dict[str, Any] | None:
+        """Extract tags using MiniMax for public documents"""
+
+        system_prompt = self._build_tagging_system_prompt()
 
         user_prompt = f"""Analyze this document and extract tags:
 
@@ -211,24 +226,7 @@ Extract the tags now:"""
     async def _extract_tags_with_ollama(self, text: str, document: Document) -> dict[str, Any] | None:
         """Extract tags using Ollama"""
 
-        system_prompt = """You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:
-
-1. **topics**: 3-5 main topics/themes (single words or short phrases)
-2. **entities**: Named entities (people, organizations, locations) with their types
-3. **importance**: Overall importance level (critical, high, medium, low)
-4. **language**: Document language (en, fr, multi, unknown)
-
-Respond ONLY with valid JSON in this exact format:
-```json
-{
-  "topics": ["topic1", "topic2", "topic3"],
-  "entities": [
-    {"name": "Entity Name", "type": "person|organization|location|other", "confidence": 85}
-  ],
-  "importance": "high",
-  "language": "en"
-}
-```"""
+        system_prompt = self._build_tagging_system_prompt()
 
         user_prompt = f"""Analyze this document and extract tags:
 

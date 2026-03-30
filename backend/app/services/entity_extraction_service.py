@@ -24,6 +24,7 @@ from app.models.knowledge_graph import (
     RelationType,
     TimelineEvent,
 )
+from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,7 @@ class EntityExtractionService:
     ) -> dict[str, Any] | None:
         """Extract entities using cloud LLM (MiniMax/Kimi) or Ollama based on document confidentiality"""
 
-        system_prompt = """You are an expert entity extractor for SOWKNOW, a knowledge management system. Extract structured information from documents.
+        entity_task_prompt = """Extract structured information from documents.
 
 Extract the following types of entities:
 1. **People** (person): Names of individuals
@@ -233,6 +234,18 @@ Response format:
   ]
 }
 ```"""
+
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Entity Extraction Service",
+            mission="Extract people, organizations, locations, concepts, and relationships from document text to build the knowledge graph",
+            constraints=(
+                "- You MUST extract entities with their types and context\n"
+                "- You MUST identify relationships between entities\n"
+                "- You MUST handle both French and English text\n"
+                "- You MUST NOT send confidential document content to cloud LLMs for extraction"
+            ),
+            task_prompt=entity_task_prompt,
+        )
 
         user_prompt = f"""Extract entities and relationships from this document:
 

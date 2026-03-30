@@ -22,6 +22,7 @@ from app.models.collection import (
 )
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
+from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 from app.services.search_service import search_service
@@ -239,7 +240,7 @@ class SmartFolderService:
             "casual": "Write in a friendly, conversational tone.",
         }.get(style, "Write in an informative, clear tone.")
 
-        system_prompt = f"""You are SOWKNOW, an AI content generator. Create a {length_guide} article about the topic: "{topic}"
+        task_prompt = f"""Create a {length_guide} article about the topic: "{topic}"
 
 {style_guide}
 
@@ -255,12 +256,24 @@ Document Context:
 
 Generate the article now:"""
 
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Smart Folder Service",
+            mission="Automatically categorize documents into smart folders using intent parsing and content analysis",
+            constraints=(
+                "- You MUST respect document bucket isolation\n"
+                "- You MUST classify documents based on content, not just filename\n"
+                "- You MUST log categorization decisions for audit\n"
+                "- You MUST NOT expose confidential document metadata in public folder structures"
+            ),
+            task_prompt=task_prompt,
+        )
+
         messages = [
             {
                 "role": "system",
-                "content": "You are SOWKNOW, an AI content generator that creates well-structured articles from document context.",
+                "content": system_prompt,
             },
-            {"role": "user", "content": system_prompt},
+            {"role": "user", "content": f'Create a {length_guide} article about: "{topic}"'},
         ]
 
         response_parts = []
@@ -295,10 +308,22 @@ Length: {length}
 
 Generate a well-structured article based on these documents."""
 
+        ollama_system_prompt = build_service_prompt(
+            service_name="SOWKNOW Smart Folder Service",
+            mission="Automatically categorize documents into smart folders using intent parsing and content analysis",
+            constraints=(
+                "- You MUST respect document bucket isolation\n"
+                "- You MUST classify documents based on content, not just filename\n"
+                "- You MUST log categorization decisions for audit\n"
+                "- You MUST NOT expose confidential document metadata in public folder structures"
+            ),
+            task_prompt=f"You are a content generator. Write in a {style} style.",
+        )
+
         try:
             response = await self.ollama_service.generate(
                 prompt=prompt,
-                system=f"You are a content generator. Write in a {style} style.",
+                system=ollama_system_prompt,
                 temperature=0.7,
             )
             return response

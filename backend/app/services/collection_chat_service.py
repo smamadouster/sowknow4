@@ -17,6 +17,8 @@ from app.models.audit import AuditAction, AuditLog
 from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.collection import Collection, CollectionChatSession
 from app.models.user import User
+from app.services.agent_identity import build_service_prompt
+from app.services.context_block_service import get_cached_context_block
 from app.services.ollama_service import ollama_service
 from app.services.openrouter_service import openrouter_service
 
@@ -300,7 +302,7 @@ class CollectionChatService:
         """Chat with OpenRouter (mistral-small-2603) for public collections"""
 
         # Build system prompt with collection context
-        system_prompt = f"""You are SOWKNOW, a helpful assistant for a document collection called "{collection.name}".
+        collection_task = f"""You are answering questions about a document collection called "{collection.name}".
 
 Collection Summary: {collection.ai_summary or "No summary available"}
 Query: {collection.query}
@@ -312,6 +314,18 @@ When answering:
 2. Quote relevant passages from the documents
 3. If the information isn't in the documents, say so
 4. Be concise but thorough"""
+
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Collection Chat Service",
+            mission="Provide collection-scoped conversational AI with context isolated to the selected document collection",
+            constraints=(
+                "- You MUST restrict answers to documents within the active collection\n"
+                "- You MUST cite which collection documents support each claim\n"
+                "- You MUST route confidential collection queries to Ollama\n"
+                "- You MUST NOT reference documents outside the active collection"
+            ),
+            task_prompt=collection_task,
+        )
 
         # Build document context text
         context_parts = []
@@ -350,6 +364,14 @@ When answering:
                 "content": f"Documents context:\n{context_text}\n\nUser question: {message}",
             }
         )
+
+        # Prepend working memory context block
+        try:
+            context_block = await get_cached_context_block(db)
+            if context_block and messages and messages[0]["role"] == "system":
+                messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
+        except Exception:
+            pass
 
         # Generate response with OpenRouter (mistral-small-2603) for public collections
         response_parts = []
@@ -402,10 +424,29 @@ User question: {message}
 Answer based on the available documents. If you don't have enough information, say so."""
 
         try:
+            ollama_system = build_service_prompt(
+                service_name="SOWKNOW Collection Chat Service",
+                mission="Provide collection-scoped conversational AI with context isolated to the selected document collection",
+                constraints=(
+                    "- You MUST restrict answers to documents within the active collection\n"
+                    "- You MUST cite which collection documents support each claim\n"
+                    "- You MUST route confidential collection queries to Ollama\n"
+                    "- You MUST NOT reference documents outside the active collection"
+                ),
+                task_prompt="Answer questions about documents in this collection. Cite sources and stay within collection scope.",
+            )
+            # Prepend working memory context block
+            try:
+                context_block = await get_cached_context_block(db)
+                if context_block:
+                    ollama_system = context_block + "\n\n" + ollama_system
+            except Exception:
+                pass
+
             # Get response from Ollama
             response_text = await self.ollama_service.generate(
                 prompt=prompt,
-                system="You are SOWKNOW, a helpful document assistant.",
+                system=ollama_system,
                 temperature=0.7,
             )
 

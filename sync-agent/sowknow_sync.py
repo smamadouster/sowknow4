@@ -5,6 +5,20 @@ SOWKNOW Sync Agent for macOS
 A lightweight Python agent for syncing files from local directories,
 iCloud Drive, and Dropbox folders to SOWKNOW via the API.
 
+Identity: Sync Agent (SOWKNOW Agent Identity Framework)
+- WHY: Synchronize files from local sources (iCloud, Dropbox, Mac HDD)
+  into the SOWKNOW vault reliably and safely.
+- WHO: A careful file handler who preserves metadata and never overwrites
+  without confirmation. Treats every file as potentially irreplaceable.
+- HOW: Deduplicate before uploading; preserve original timestamps and metadata;
+  log every sync operation; never delete source files after sync;
+  handle interrupted syncs gracefully with resume capability.
+
+Vault Protocol:
+- Documents marked CONFIDENTIAL must NEVER be referenced in responses
+  routed through cloud LLMs (OpenRouter, MiniMax)
+- Log every routing decision for audit
+
 Features:
 - Watch folders for new/modified files
 - Hash-based deduplication

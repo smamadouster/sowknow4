@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.collection import Collection, CollectionItem
 from app.models.document import Document
 from app.models.user import User
+from app.services.agent_identity import build_service_prompt
+from app.services.context_block_service import get_cached_context_block
 from app.services.ollama_service import ollama_service
 from app.services.openrouter_service import openrouter_service
 
@@ -86,6 +88,13 @@ class ReportService:
         # Check for confidential documents
         has_confidential = any(item.document.bucket.value == "confidential" for item in items if item.document)
 
+        # Fetch working memory context block
+        _context_block: str | None = None
+        try:
+            _context_block = await get_cached_context_block(db)
+        except Exception:
+            pass
+
         # Generate report content
         if has_confidential:
             report_content = await self._generate_report_with_ollama(
@@ -94,6 +103,7 @@ class ReportService:
                 format=format,
                 include_citations=include_citations,
                 language=language,
+                context_block=_context_block,
             )
             llm_used = "ollama"
         else:
@@ -103,6 +113,7 @@ class ReportService:
                 format=format,
                 include_citations=include_citations,
                 language=language,
+                context_block=_context_block,
             )
             llm_used = "openrouter"
 
@@ -185,6 +196,7 @@ class ReportService:
         format: str,
         include_citations: bool,
         language: str,
+        context_block: str | None = None,
     ) -> str:
         """Generate report using OpenRouter (mistral-small-2603)"""
 
@@ -258,13 +270,29 @@ REPORT GUIDELINES:
 
 Generate the complete report now:"""
 
+        report_identity_prompt = build_service_prompt(
+            service_name="SOWKNOW Report Service",
+            mission="Generate structured reports with sections, executive summaries, and formatted output from vault documents",
+            constraints=(
+                "- You MUST structure reports with clear sections and headings\n"
+                "- You MUST include an executive summary\n"
+                "- You MUST cite source documents for all factual claims\n"
+                "- You MUST NOT include confidential document content in cloud-generated reports"
+            ),
+            task_prompt="Create well-structured business reports from document collections.",
+        )
+
         messages = [
             {
                 "role": "system",
-                "content": "You are SOWKNOW, a professional report generator that creates well-structured business reports.",
+                "content": report_identity_prompt,
             },
             {"role": "user", "content": system_prompt},
         ]
+
+        # Prepend working memory context block
+        if context_block and messages and messages[0]["role"] == "system":
+            messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         response_parts = []
         # Use OpenRouter (mistral-small-2603) for public documents
@@ -283,6 +311,7 @@ Generate the complete report now:"""
         format: str,
         include_citations: bool,
         language: str,
+        context_block: str | None = None,
     ) -> str:
         """Generate report using Ollama for confidential collections"""
 
@@ -310,9 +339,24 @@ Create a professional report with:
 {"" if language == "en" else "Rédigez le rapport en français."}"""
 
         try:
+            ollama_report_prompt = build_service_prompt(
+                service_name="SOWKNOW Report Service",
+                mission="Generate structured reports with sections, executive summaries, and formatted output from vault documents",
+                constraints=(
+                    "- You MUST structure reports with clear sections and headings\n"
+                    "- You MUST include an executive summary\n"
+                    "- You MUST cite source documents for all factual claims\n"
+                    "- You MUST NOT include confidential document content in cloud-generated reports"
+                ),
+                task_prompt="Create structured, insightful business reports from document collections.",
+            )
+            # Prepend working memory context block
+            if context_block:
+                ollama_report_prompt = context_block + "\n\n" + ollama_report_prompt
+
             response = await self.ollama_service.generate(
                 prompt=prompt,
-                system="You are a professional report generator. Create structured, insightful business reports.",
+                system=ollama_report_prompt,
                 temperature=0.5,
             )
             return response

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.document import DocumentBucket
 from app.models.knowledge_graph import Entity, EntityRelationship, TimelineEvent
 from app.models.user import User
+from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
 
 logger = logging.getLogger(__name__)
@@ -447,8 +448,8 @@ class ProgressiveRevelationService:
         # Determine LLM routing based on bucket
         use_ollama = bucket == DocumentBucket.CONFIDENTIAL
 
-        system_prompt = """You are SOWKNOW's family historian. Create a warm, engaging narrative
-that describes family relationships, connections, and key events based on the provided information.
+        narrative_task_prompt = """Create a warm, engaging narrative that describes family relationships,
+connections, and key events based on the provided information.
 
 Your narrative should:
 1. Be respectful and factual
@@ -456,6 +457,22 @@ Your narrative should:
 3. Highlight important family events
 4. Be suitable for family archival purposes
 5. Write in a narrative, storytelling style"""
+
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Progressive Revelation Service",
+            mission="Progressively reveal information to users through tiered summaries, expanding from brief overview to detailed analysis",
+            constraints=(
+                "- You MUST generate summaries at multiple detail levels\n"
+                "- You MUST maintain consistency across revelation tiers\n"
+                "- You MUST respect vault isolation in all revelation levels\n"
+                "- You MUST cite source documents at each tier"
+            ),
+            task_prompt=narrative_task_prompt,
+            persona=(
+                "You are SOWKNOW's progressive guide -- you reveal information in layers, "
+                "starting broad and narrowing to detail, respecting the user's pace of understanding."
+            ),
+        )
 
         # Build context
         context_parts = [f"Family context for {focus_person}.\n"]

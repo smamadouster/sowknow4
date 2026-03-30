@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import DocumentBucket
 from app.models.user import UserRole
+from app.services.agent_identity import build_service_prompt
+from app.services.context_block_service import get_cached_context_block
 from app.services.llm_router import llm_router
 from app.services.search_service import HybridSearchService
 from .search_models import (
@@ -219,9 +221,22 @@ def _fallback_intent(query: str) -> ParsedIntent:
 
 # ---- LLM PROMPTS ----
 
-INTENT_SYSTEM_PROMPT = """Tu es un agent d'analyse de requetes pour SOWKNOW, un systeme de gestion de connaissances personnelles.
+_SEARCH_MISSION = (
+    "Execute multi-stage agentic search across the SOWKNOW vault using intent parsing, "
+    "retrieval, reranking, and synthesis"
+)
+_SEARCH_CONSTRAINTS = (
+    "- You MUST use hybrid search (vector + full-text) for comprehensive retrieval\n"
+    "- You MUST rerank results by relevance and temporal context\n"
+    "- You MUST include source citations in synthesized results\n"
+    "- You MUST respect vault isolation between public and confidential documents"
+)
 
-Analyse la requete utilisateur et retourne un objet JSON **uniquement** (pas de markdown, pas d'explication).
+INTENT_SYSTEM_PROMPT = build_service_prompt(
+    service_name="SOWKNOW Search Intent Agent",
+    mission=_SEARCH_MISSION,
+    constraints=_SEARCH_CONSTRAINTS,
+    task_prompt="""Analyse la requete utilisateur et retourne un objet JSON **uniquement** (pas de markdown, pas d'explication).
 
 Format de sortie obligatoire :
 {
@@ -235,12 +250,14 @@ Format de sortie obligatoire :
   "detected_language": "<fr|en>",
   "requires_synthesis": <true|false>,
   "temporal_range": {"start": "<ISO date or null>", "end": "<ISO date or null>"}
-}
-"""
+}""",
+)
 
-SYNTHESIS_SYSTEM_PROMPT = """Tu es SOWKNOW Assistant, un expert en synthese de connaissances personnelles.
-
-A partir des extraits de documents fournis, genere une reponse complete, structuree et citee.
+SYNTHESIS_SYSTEM_PROMPT = build_service_prompt(
+    service_name="SOWKNOW Search Synthesis Agent",
+    mission=_SEARCH_MISSION,
+    constraints=_SEARCH_CONSTRAINTS,
+    task_prompt="""A partir des extraits de documents fournis, genere une reponse complete, structuree et citee.
 
 Regles imperatives :
 1. Commence par une reponse directe a la question (1-2 phrases).
@@ -250,17 +267,20 @@ Regles imperatives :
 5. Termine par une section "Points cles" avec 3-5 bullet points.
 6. Reponds dans la meme langue que la question de l'utilisateur.
 7. Si les documents ne contiennent pas d'information pertinente, dis-le clairement.
-8. NE PAS inventer d'informations non presentes dans les extraits.
-"""
+8. NE PAS inventer d'informations non presentes dans les extraits.""",
+)
 
-SUGGESTION_SYSTEM_PROMPT = """Tu es un assistant de recherche pour SOWKNOW.
-
-Base sur la requete originale et les resultats trouves, genere 3-5 suggestions de requetes de suivi.
+SUGGESTION_SYSTEM_PROMPT = build_service_prompt(
+    service_name="SOWKNOW Search Suggestion Agent",
+    mission=_SEARCH_MISSION,
+    constraints=_SEARCH_CONSTRAINTS,
+    task_prompt="""Base sur la requete originale et les resultats trouves, genere 3-5 suggestions de requetes de suivi.
 Retourne uniquement un tableau JSON :
 [
   {"suggestion_type": "related_query|refine|expand|temporal", "text": "...", "rationale": "..."}
-]
-"""
+]""",
+    include_vault_protocol=False,
+)
 
 
 # ---- LLM WRAPPER ----
@@ -271,6 +291,7 @@ async def _call_llm(
     has_confidential: bool,
     temperature: float = 0.1,
     max_tokens: int = 2048,
+    context_block: str | None = None,
 ) -> tuple[str, str]:
     """Call LLM via existing LLMRouter. Returns (response_text, provider_name)."""
     query_text = messages[0].get("content", "") if messages else ""
@@ -281,7 +302,12 @@ async def _call_llm(
     )
     model_name = decision.provider_name
 
-    full_messages = [{"role": "system", "content": system}] + messages
+    # Prepend working memory context block to system prompt
+    effective_system = system
+    if context_block:
+        effective_system = context_block + "\n\n" + system
+
+    full_messages = [{"role": "system", "content": effective_system}] + messages
     chunks = []
     async for chunk in llm_router.generate_completion(
         messages=full_messages,
@@ -340,6 +366,7 @@ async def synthesize_answer(
     intent: ParsedIntent,
     has_confidential: bool,
     language: str,
+    context_block: str | None = None,
 ) -> tuple[str, str]:
     top_chunks = sorted(raw_chunks, key=lambda c: c.rrf_score, reverse=True)[:5]
     context_parts = []
@@ -360,6 +387,7 @@ async def synthesize_answer(
         has_confidential=has_confidential,
         temperature=0.2,
         max_tokens=1500,
+        context_block=context_block,
     )
 
 
@@ -370,6 +398,7 @@ async def generate_suggestions(
     results: list[SearchResult],
     intent: ParsedIntent,
     has_confidential: bool,
+    context_block: str | None = None,
 ) -> list[SearchSuggestion]:
     try:
         top_titles = [r.document_title for r in results[:5]]
@@ -380,6 +409,7 @@ async def generate_suggestions(
             has_confidential=False,
             temperature=0.4,
             max_tokens=400,
+            context_block=context_block,
         )
         data = json.loads(_clean_json(raw))
         return [
@@ -428,6 +458,13 @@ async def run_agentic_search(
 ) -> AgenticSearchResponse:
     start_ms = time.monotonic()
     logger.info("Agentic search started | user=%s role=%s query='%s'", user_id, user_role, request.query)
+
+    # Fetch working memory context block once for all LLM calls
+    _context_block: str | None = None
+    try:
+        _context_block = await get_cached_context_block(db)
+    except Exception:
+        pass
 
     mode = request.mode
     if mode == SearchMode.AUTO:
@@ -506,6 +543,7 @@ async def run_agentic_search(
             intent=intent,
             has_confidential=has_confidential,
             language=intent.detected_language,
+            context_block=_context_block,
         )
 
     # Stage 6: Suggestions
@@ -513,6 +551,7 @@ async def run_agentic_search(
     if request.include_suggestions and results:
         suggestions = await generate_suggestions(
             request.query, results, intent, has_confidential,
+            context_block=_context_block,
         )
 
     citations = build_citations(results, all_chunks)

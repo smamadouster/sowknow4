@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.agent_identity import CLARIFICATION_IDENTITY
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
 
@@ -112,7 +113,10 @@ class ClarificationAgent:
         llm_service = self._get_llm_service(request)
 
         # Build the messages for the LLM
-        system_prompt = """You are the Clarification Agent for SOWKNOW. Analyze user queries to determine if they are clear enough to proceed.
+        system_prompt = CLARIFICATION_IDENTITY + """
+
+## Task
+Analyze user queries to determine if they are clear enough to proceed.
 
 Return a JSON object with:
 {

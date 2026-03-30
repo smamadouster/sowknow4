@@ -3,6 +3,13 @@ Agent Orchestrator for Multi-Agent Search System
 
 Coordinates the Clarification, Researcher, Verification, and
 Answer agents to provide comprehensive, reliable answers.
+
+Identity: Orchestrator Agent (SOWKNOW Agent Identity Framework)
+- WHY: Decompose complex queries into specialist sub-tasks and route them
+  to the correct agent while preserving vault isolation at every handoff.
+- WHO: A meticulous coordinator who never takes shortcuts on security classification.
+- HOW: Classify vault context before dispatching; pass full state to sub-agents;
+  never skip clarification for ambiguous queries.
 """
 
 import logging

@@ -28,6 +28,8 @@ from app.services.prometheus_metrics import (
     llm_request_total,
     llm_retry_total,
 )
+from app.services.agent_identity import build_service_prompt
+from app.services.context_block_service import get_cached_context_block
 from app.services.search_service import search_service
 
 # Import all LLM services
@@ -251,22 +253,27 @@ class ChatService:
         context_text = "\n".join(context_parts)
 
         # System prompt
-        system_prompt = """You are SOWKNOW, a helpful AI assistant for a multi-generational legacy knowledge system.
-
-Your role is to help users find information from their personal document vault and provide thoughtful, accurate responses.
-
-Guidelines:
-- Answer questions based on the provided context from documents
-- If the context doesn't contain enough information, say so clearly
-- Cite specific documents when providing information
-- Be conversational and helpful
-- Respect privacy and confidentiality
-- Provide information in the same language as the user's query (French or English)
+        task_prompt = """Answer questions based on the provided context from documents.
+If the context doesn't contain enough information, say so clearly.
+Cite specific documents when providing information.
+Be conversational and helpful.
 
 Context from documents:
 {context}
 
 Remember: You're helping users access their own knowledge. Be accurate but also conversational."""
+
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Chat Service",
+            mission="Provide intelligent, context-aware conversational responses using RAG over the SOWKNOW vault",
+            constraints=(
+                "- You MUST cite source documents when referencing vault content\n"
+                "- You MUST route confidential queries to Ollama\n"
+                "- You MUST maintain conversation context across turns\n"
+                "- You MUST NOT hallucinate information not in the retrieved documents"
+            ),
+            task_prompt=task_prompt,
+        )
 
         # Build messages
         messages = [{"role": "system", "content": system_prompt.format(context=context_text)}]
@@ -294,6 +301,14 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         # Build RAG context
         messages = self.build_rag_context(user_message, sources, history)
+
+        # Prepend working memory context block
+        try:
+            context_block = await get_cached_context_block(db)
+            if context_block and messages and messages[0]["role"] == "system":
+                messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
+        except Exception:
+            pass  # Context block is optional — don't break chat
 
         # Select LLM via centralized llm_router (single source of truth for routing).
         # Confidential docs → Ollama only (privacy guarantee).
@@ -399,6 +414,14 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         # Build RAG context
         messages = self.build_rag_context(user_message, sources, history)
+
+        # Prepend working memory context block
+        try:
+            context_block = await get_cached_context_block(db)
+            if context_block and messages and messages[0]["role"] == "system":
+                messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
+        except Exception:
+            pass
 
         # Select LLM based on confidentiality — unified routing for all public interactions
         # 1. Confidential docs -> Ollama (privacy guarantee)

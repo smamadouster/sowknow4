@@ -10,6 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.agent_identity import RESEARCHER_IDENTITY
 from app.services.graph_rag_service import graph_rag_service
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
@@ -223,7 +224,10 @@ class ResearcherAgent:
 
     async def _extract_themes(self, query: str, findings: list[dict[str, Any]]) -> list[str]:
         """Extract key themes from search results"""
-        system_prompt = """Analyze the search results and extract 3-5 key themes.
+        system_prompt = RESEARCHER_IDENTITY + """
+
+## Task
+Analyze the search results and extract 3-5 key themes.
 Return as a JSON array of theme strings."""
 
         # Build summary of findings
@@ -308,7 +312,10 @@ Extract the key themes:"""
         self, original_query: str, findings: list[dict[str, Any]], gaps: list[str]
     ) -> list[str]:
         """Suggest follow-up queries based on research"""
-        system_prompt = """Based on the original query and research findings,
+        system_prompt = RESEARCHER_IDENTITY + """
+
+## Task
+Based on the original query and research findings,
 suggest 3-5 follow-up queries that would help explore the topic deeper.
 
 Return as a JSON array of query strings."""

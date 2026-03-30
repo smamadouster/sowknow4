@@ -57,7 +57,7 @@ celery_app.conf.update(
     # Memory optimisation — concurrency MUST stay at 1 to prevent OOM from
     # fork-duplicating the 1.3 GB embedding model.  Matches docker-compose --concurrency=1.
     worker_concurrency=1,
-    worker_max_tasks_per_child=50,
+    worker_max_tasks_per_child=30,
     worker_prefetch_multiplier=1,
     # Serialisation — JSON only; no binary serializers permitted
     task_serializer="json",

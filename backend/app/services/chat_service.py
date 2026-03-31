@@ -216,18 +216,27 @@ class ChatService:
         # Check for confidential documents OR PII in query
         has_confidential = any(r.document_bucket == "confidential" for r in top_results) or has_pii
 
-        # Batch-fetch metadata for confidential documents
+        logger.warning("retrieve_relevant_chunks: %d results, has_confidential=%s", len(top_results), has_confidential)
+
+        # Batch-fetch metadata for confidential documents using a FRESH session
+        # (the search session may be corrupted by asyncio.wait task cancellations)
         confidential_doc_ids = [
             r.document_id for r in top_results if r.document_bucket == "confidential"
         ]
         doc_metadata: dict = {}
         if confidential_doc_ids:
-            from app.models.document import Document
-            result = await db.execute(
-                select(Document).where(Document.id.in_(confidential_doc_ids))
-            )
-            for doc in result.scalars().all():
-                doc_metadata[str(doc.id)] = doc
+            from app.models.document import Document, DocumentTag
+            from app.database import AsyncSessionLocal
+            from sqlalchemy.orm import selectinload
+
+            async with AsyncSessionLocal() as meta_db:
+                result = await meta_db.execute(
+                    select(Document)
+                    .options(selectinload(Document.tags))
+                    .where(Document.id.in_(confidential_doc_ids))
+                )
+                for doc in result.scalars().all():
+                    doc_metadata[str(doc.id)] = doc
 
         # Format as source documents
         sources = []
@@ -384,7 +393,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 llm_provider = LLMProvider.OLLAMA
             routing_reason = "emergency_fallback"
 
-        logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
+        logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
         # Generate response (with 60s timeout to prevent hanging on slow LLM)
         response_text = ""
@@ -397,7 +406,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 async for chunk in llm_service.chat_completion(messages, stream=False):
                     if not isinstance(chunk, str) or not chunk:
                         continue
-                    if chunk.startswith("__USAGE__"):
+                    if "__USAGE__" in chunk:
                         continue
                     text += chunk
                 return text
@@ -496,7 +505,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 llm_provider = LLMProvider.OLLAMA
             routing_reason = "emergency_fallback"
 
-        logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
+        logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
         # --- Cache pre-check (OpenRouter path only) ---
         # For the OpenRouter/MiniMax service, check whether an identical

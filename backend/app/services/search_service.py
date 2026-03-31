@@ -407,7 +407,7 @@ class HybridSearchService:
         offset: int = 0,
         db: AsyncSession = None,
         user: User = None,
-        timeout: float = 3.0,
+        timeout: float = 8.0,
     ) -> dict[str, Any]:
         """
         Perform hybrid search combining semantic and keyword results.

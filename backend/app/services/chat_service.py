@@ -282,28 +282,30 @@ class ChatService:
         conversation_history: list[dict[str, str]],
     ) -> list[dict[str, str]]:
         """
-        Build RAG context with system prompt and retrieved documents
+        Build RAG context with system prompt and retrieved documents.
 
-        Args:
-            query: User query
-            sources: Retrieved source documents
-            conversation_history: Previous conversation
-
-        Returns:
-            Messages list for LLM
+        Public sources include full chunk text.
+        Confidential sources include metadata only — no document content.
         """
-        # Build context from sources
         context_parts = []
         for i, source in enumerate(sources):
-            context_parts.append(f"[Document {i + 1}] {source['document_name']}\n{source['chunk_text']}\n")
+            bucket = source.get("bucket", "public")
+            if bucket == "confidential":
+                label = f"[Document {i + 1} \u2014 Confidential, metadata only] {source['document_name']}"
+            else:
+                label = f"[Document {i + 1} \u2014 Public] {source['document_name']}"
+            context_parts.append(f"{label}\n{source['chunk_text']}\n")
 
-        context_text = "\n".join(context_parts)
+        context_text = "\n".join(context_parts) if context_parts else "No relevant documents found."
 
-        # System prompt
         task_prompt = """Answer questions based on the provided context from documents.
 If the context doesn't contain enough information, say so clearly.
 Cite specific documents when providing information.
 Be conversational and helpful.
+
+For confidential documents, only metadata is provided \u2014 the document content is kept private.
+Do not fabricate or infer their contents. When referencing confidential documents, direct the
+user to review them directly in the vault.
 
 Context from documents:
 {context}
@@ -315,21 +317,18 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
             mission="Provide intelligent, context-aware conversational responses using RAG over the SOWKNOW vault",
             constraints=(
                 "- You MUST cite source documents when referencing vault content\n"
-                "- You MUST route confidential queries to Ollama\n"
                 "- You MUST maintain conversation context across turns\n"
-                "- You MUST NOT hallucinate information not in the retrieved documents"
+                "- You MUST NOT hallucinate information not in the retrieved documents\n"
+                "- For confidential documents, only reference their name and metadata \u2014 never invent content"
             ),
             task_prompt=task_prompt,
         )
 
-        # Build messages
         messages = [{"role": "system", "content": system_prompt.format(context=context_text)}]
 
-        # Add conversation history
         for msg in conversation_history:
             messages.append({"role": msg["role"], "content": msg["content"]})
 
-        # Add current query
         messages.append({"role": "user", "content": query})
 
         return messages

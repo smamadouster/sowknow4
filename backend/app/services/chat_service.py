@@ -314,9 +314,11 @@ If the context doesn't contain enough information, say so clearly.
 Cite specific documents when providing information.
 Be conversational and helpful.
 
-For confidential documents, only metadata is provided \u2014 the document content is kept private.
-Do not fabricate or infer their contents. When referencing confidential documents, direct the
-user to review them directly in the vault.
+Some documents below are marked "Confidential, metadata only" \u2014 their content is kept private
+and only their name, type, and date are shown. You MUST still acknowledge these documents exist
+and list them by name. Do not say "no documents found" when confidential documents are listed.
+Instead, tell the user which confidential documents matched and suggest they review them
+directly in the vault. Never fabricate or guess their contents.
 
 Context from documents:
 {context}

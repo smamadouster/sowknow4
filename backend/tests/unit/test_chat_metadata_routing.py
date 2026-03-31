@@ -288,3 +288,67 @@ class TestGenerateChatResponseRouting:
 
         assert result["content"] == "Here is your answer about the confidential document."
         assert result["has_confidential"] is True  # Response still flags it for UI
+
+
+class TestStreamingConfidentialRouting:
+    """Test that streaming path also routes confidential through cloud."""
+
+    @pytest.mark.asyncio
+    async def test_streaming_confidential_does_not_hit_ollama_gate(self):
+        """Streaming path should not check Ollama health for confidential queries."""
+        from app.services.chat_service import ChatService
+
+        svc = ChatService()
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.email = "test@sowknow.local"
+        mock_user.id = uuid4()
+        session_id = uuid4()
+
+        mock_async_session = AsyncMock()
+        mock_async_session.__aenter__ = AsyncMock(return_value=mock_db)
+        mock_async_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(svc, "retrieve_relevant_chunks", new_callable=AsyncMock) as mock_retrieve, \
+             patch.object(svc, "get_conversation_history", new_callable=AsyncMock) as mock_history, \
+             patch("app.services.chat_service.get_cached_context_block", new_callable=AsyncMock) as mock_ctx, \
+             patch("app.services.chat_service.llm_router") as mock_router, \
+             patch.object(svc, "ollama_service") as mock_ollama, \
+             patch("app.database.AsyncSessionLocal", return_value=mock_async_session):
+
+            mock_retrieve.return_value = (
+                [{"document_name": "secret.pdf", "chunk_text": "[Confidential — metadata only]",
+                  "bucket": "confidential", "document_id": str(uuid4()), "chunk_id": str(uuid4()),
+                  "relevance_score": 0.9}],
+                True,
+            )
+            mock_history.return_value = []
+            mock_ctx.return_value = None
+
+            mock_llm_service = MagicMock()
+
+            async def fake_stream(messages, stream=True):
+                yield "Streamed answer"
+
+            mock_llm_service.chat_completion = fake_stream
+            mock_llm_service.model = "test-model"
+
+            mock_routing = MagicMock()
+            mock_routing.service = mock_llm_service
+            mock_routing.provider_name = "openrouter"
+            mock_routing.reason.value = "public_docs_rag"
+            mock_router.select_provider = AsyncMock(return_value=mock_routing)
+
+            chunks = []
+            async for chunk in svc.generate_chat_response_stream(
+                session_id=session_id,
+                user_message="passport",
+                db=mock_db,
+                current_user=mock_user,
+            ):
+                chunks.append(chunk)
+
+        mock_ollama.health_check.assert_not_called()
+        mock_router.select_provider.assert_called_once()
+        call_kwargs = mock_router.select_provider.call_args
+        assert call_kwargs.kwargs.get("has_confidential") is False or call_kwargs[1].get("has_confidential") is False

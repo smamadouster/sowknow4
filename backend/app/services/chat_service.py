@@ -6,6 +6,7 @@ LLM Routing Strategy:
 - All public (RAG + general): MiniMax M2.7 (direct API) -> mistral-small-2603 (OpenRouter) -> Ollama
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -183,7 +184,10 @@ class ChatService:
         self, query: str, session_id: UUID, db, current_user: User
     ) -> tuple[list[dict], bool]:
         """
-        Retrieve relevant document chunks for RAG
+        Retrieve relevant document chunks for RAG.
+
+        Confidential results are stripped to metadata only — the actual chunk
+        text never reaches the LLM prompt.  Public results keep full text.
 
         Returns:
             Tuple of (source_documents, has_confidential)
@@ -205,26 +209,69 @@ class ChatService:
             scope_set = {str(doc_id) for doc_id in session.document_scope}
             search_result["results"] = [r for r in search_result["results"] if str(r.document_id) in scope_set]
 
+        top_results = search_result["results"][:5]
+
         # Check for confidential documents OR PII in query
-        has_confidential = any(r.document_bucket == "confidential" for r in search_result["results"]) or has_pii
+        has_confidential = any(r.document_bucket == "confidential" for r in top_results) or has_pii
+
+        # Batch-fetch metadata for confidential documents
+        confidential_doc_ids = [
+            r.document_id for r in top_results if r.document_bucket == "confidential"
+        ]
+        doc_metadata: dict = {}
+        if confidential_doc_ids:
+            from app.models.document import Document
+            result = await db.execute(
+                select(Document).where(Document.id.in_(confidential_doc_ids))
+            )
+            for doc in result.scalars().all():
+                doc_metadata[str(doc.id)] = doc
 
         # Format as source documents
         sources = []
-        for r in search_result["results"][:5]:  # Top 5 results
-            # Redact PII from chunk text if PII detected
-            chunk_text = r.chunk_text
-            if has_pii:
-                chunk_text, _ = pii_detection_service.redact_pii(chunk_text)
+        for r in top_results:
+            if r.document_bucket == "confidential":
+                # Metadata-only: strip chunk text, include document metadata
+                doc = doc_metadata.get(str(r.document_id))
+                tags = [t.tag_name for t in doc.tags] if doc and doc.tags else []
+                page_count = doc.page_count if doc else None
+                mime_type = doc.mime_type if doc else "unknown"
+                created_at = doc.created_at.strftime("%Y-%m-%d") if doc and doc.created_at else "unknown"
 
-            sources.append(
-                {
+                metadata_summary = (
+                    f"[Confidential document — content not sent to AI] "
+                    f"pages: {page_count or 'N/A'} | type: {mime_type} | "
+                    f"uploaded: {created_at}"
+                )
+                if tags:
+                    metadata_summary += f" | tags: {', '.join(tags)}"
+
+                sources.append({
+                    "document_id": r.document_id,
+                    "document_name": r.document_name,
+                    "chunk_id": r.chunk_id,
+                    "chunk_text": metadata_summary,
+                    "relevance_score": r.final_score,
+                    "bucket": "confidential",
+                    "page_count": page_count,
+                    "mime_type": mime_type,
+                    "created_at": created_at,
+                    "tags": tags,
+                })
+            else:
+                # Public: full chunk text
+                chunk_text = r.chunk_text
+                if has_pii:
+                    chunk_text, _ = pii_detection_service.redact_pii(chunk_text)
+
+                sources.append({
                     "document_id": r.document_id,
                     "document_name": r.document_name,
                     "chunk_id": r.chunk_id,
                     "chunk_text": chunk_text,
                     "relevance_score": r.final_score,
-                }
-            )
+                    "bucket": "public",
+                })
 
         return sources, has_confidential
 
@@ -291,12 +338,17 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         self, session_id: UUID, user_message: str, db, current_user: User
     ) -> dict[str, Any]:
         """Generate chat response (non-streaming)"""
-        # Retrieve relevant chunks
-        sources, has_confidential = await self.retrieve_relevant_chunks(
-            query=user_message, session_id=session_id, db=db, current_user=current_user
-        )
+        # Retrieve relevant chunks using a SEPARATE db session because
+        # hybrid_search uses asyncio.wait with timeouts that can cancel tasks
+        # mid-query, corrupting the shared connection.
+        from app.database import AsyncSessionLocal
 
-        # Get conversation history
+        async with AsyncSessionLocal() as search_db:
+            sources, has_confidential = await self.retrieve_relevant_chunks(
+                query=user_message, session_id=session_id, db=search_db, current_user=current_user
+            )
+
+        # Get conversation history (safe to use the original db session now)
         history = await self.get_conversation_history(session_id, db)
 
         # Build RAG context
@@ -361,19 +413,40 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
-        # Generate response
+        # Generate response (with 60s timeout to prevent hanging on slow LLM)
         response_text = ""
         _provider_name = llm_provider.value
         _model_name = getattr(llm_service, "model", "unknown")
         _start = _time.monotonic()
         try:
-            async for chunk in llm_service.chat_completion(messages, stream=False):
-                if chunk.startswith("__USAGE__"):
-                    continue
-                response_text += chunk
+            async def _collect_response():
+                text = ""
+                async for chunk in llm_service.chat_completion(messages, stream=False):
+                    if not isinstance(chunk, str) or not chunk:
+                        continue
+                    if chunk.startswith("__USAGE__"):
+                        continue
+                    text += chunk
+                return text
+
+            response_text = await asyncio.wait_for(_collect_response(), timeout=60.0)
             _elapsed = _time.monotonic() - _start
             llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
             llm_request_total.inc(labels={"provider": _provider_name, "status": "success"})
+        except asyncio.TimeoutError:
+            _elapsed = _time.monotonic() - _start
+            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
+            llm_request_total.inc(labels={"provider": _provider_name, "status": "error"})
+            logger.error("LLM call timed out after 60s (provider=%s, model=%s)", _provider_name, _model_name)
+            return {
+                "content": (
+                    "Le service IA est temporairement lent. Veuillez réessayer dans quelques instants. / "
+                    "The AI service is temporarily slow. Please try again in a moment."
+                ),
+                "llm_used": llm_provider,
+                "sources": [],
+                "has_confidential": has_confidential,
+            }
         except Exception:
             _elapsed = _time.monotonic() - _start
             llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
@@ -383,13 +456,14 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         # Format sources for response
         formatted_sources = []
         for source in sources:
+            chunk_text = source.get("chunk_text") or ""
             formatted_sources.append(
                 {
-                    "document_id": source["document_id"],
-                    "document_name": source["document_name"],
-                    "chunk_id": source["chunk_id"],
-                    "chunk_text": source["chunk_text"][:200],
-                    "relevance_score": source["relevance_score"],
+                    "document_id": source.get("document_id"),
+                    "document_name": source.get("document_name", "Unknown"),
+                    "chunk_id": source.get("chunk_id"),
+                    "chunk_text": chunk_text[:200],
+                    "relevance_score": source.get("relevance_score", 0.0),
                 }
             )
 

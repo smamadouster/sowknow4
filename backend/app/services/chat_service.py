@@ -2,8 +2,10 @@
 Chat service for RAG-powered conversations
 
 LLM Routing Strategy:
-- Confidential Docs: Ollama (privacy — never leaves the server)
-- All public (RAG + general): MiniMax M2.7 (direct API) -> mistral-small-2603 (OpenRouter) -> Ollama
+- Confidential chunks are stripped to metadata-only before reaching the LLM prompt
+  (no document content ever leaves the server).
+- All queries (public and confidential) route through cloud LLMs via llm_router.
+- Fallback chain: MiniMax M2.7 (direct API) -> mistral-small-2603 (OpenRouter) -> Ollama
 """
 
 import asyncio
@@ -361,53 +363,25 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         except Exception:
             pass  # Context block is optional — don't break chat
 
-        # Select LLM via centralized llm_router (single source of truth for routing).
-        # Confidential docs → Ollama only (privacy guarantee).
-        # Public docs/general → fallback chain per llm_router.fallback_chains.
-
-        if has_confidential:
-            ollama_health = await self.ollama_service.health_check()
-            if ollama_health["status"] not in ("healthy", "degraded"):
-                logger.error(f"Ollama unavailable for confidential query: {ollama_health.get('error', 'unknown')}")
-                # Enqueue via DeferredQueryService so the query is retried when Ollama recovers
-                deferred_id = await deferred_query_service.enqueue(
-                    user_id=str(current_user.id),
-                    query_text=user_message,
-                    document_ids=[c.get("document_id") for c in sources if c.get("document_id")],
-                )
-                logger.info(f"Confidential query queued as deferred_id={deferred_id} via DeferredQueryService")
-                return {
-                    "content": (
-                        "Votre requête implique des documents confidentiels qui nécessitent "
-                        "un traitement local sécurisé. Le service IA local est temporairement "
-                        "indisponible. Votre requête a été mise en file d'attente (queued) et sera "
-                        "traitée automatiquement dès que le service sera disponible. / "
-                        "Your query involves confidential documents requiring secure local processing. "
-                        "The local AI service is temporarily unavailable. Your query has been queued "
-                        "and will be processed automatically when the service recovers."
-                    ),
-                    "llm_used": LLMProvider.OLLAMA,
-                    "sources": [],
-                    "has_confidential": True,
-                    "error": "ollama_unavailable",
-                    "queued": True,
-                    "deferred_id": deferred_id,
-                }
-
-        # Delegate provider selection to llm_router — no inline routing here
+        # Always route through cloud LLMs — confidential chunks have already
+        # been stripped to metadata only in retrieve_relevant_chunks().
         try:
             routing_decision = await llm_router.select_provider(
                 query=user_message,
                 context_chunks=sources,
-                has_confidential=has_confidential,
+                has_confidential=False,
             )
             llm_service = routing_decision.service
             llm_provider = LLMProvider(routing_decision.provider_name)
             routing_reason = routing_decision.reason.value
         except RuntimeError as routing_err:
-            logger.error(f"llm_router.select_provider failed, falling back to Ollama: {routing_err}")
-            llm_service = self.ollama_service
-            llm_provider = LLMProvider.OLLAMA
+            logger.error(f"llm_router.select_provider failed: {routing_err}")
+            if openrouter_service is not None:
+                llm_service = openrouter_service
+                llm_provider = LLMProvider.OPENROUTER
+            else:
+                llm_service = self.ollama_service
+                llm_provider = LLMProvider.OLLAMA
             routing_reason = "emergency_fallback"
 
         logger.info(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")

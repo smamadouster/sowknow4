@@ -231,3 +231,60 @@ class TestBuildRagContext:
         system_content = messages[0]["content"]
         assert "[Document 1 — Public]" in system_content
         assert "[Document 2 — Confidential, metadata only]" in system_content
+
+
+class TestGenerateChatResponseRouting:
+    """Test that confidential queries route through cloud LLMs, not Ollama."""
+
+    @pytest.mark.asyncio
+    async def test_confidential_query_uses_cloud_llm_not_ollama(self):
+        """When search returns confidential docs, the LLM call goes to cloud, not Ollama."""
+        from app.services.chat_service import ChatService
+
+        svc = ChatService()
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.email = "test@sowknow.local"
+        mock_user.id = uuid4()
+        session_id = uuid4()
+
+        with patch.object(svc, "retrieve_relevant_chunks", new_callable=AsyncMock) as mock_retrieve, \
+             patch.object(svc, "get_conversation_history", new_callable=AsyncMock) as mock_history, \
+             patch("app.services.chat_service.get_cached_context_block", new_callable=AsyncMock) as mock_ctx, \
+             patch("app.services.chat_service.llm_router") as mock_router:
+
+            mock_retrieve.return_value = (
+                [{"document_name": "secret.pdf", "chunk_text": "[Confidential document — content not sent to AI]",
+                  "bucket": "confidential", "document_id": uuid4(), "chunk_id": uuid4(), "relevance_score": 0.9}],
+                True,  # has_confidential
+            )
+            mock_history.return_value = []
+            mock_ctx.return_value = None
+
+            mock_llm_service = AsyncMock()
+
+            async def fake_chat_completion(messages, stream=False):
+                yield "Here is your answer about the confidential document."
+
+            mock_llm_service.chat_completion = fake_chat_completion
+            mock_llm_service.model = "test-model"
+
+            mock_routing = MagicMock()
+            mock_routing.service = mock_llm_service
+            mock_routing.provider_name = "openrouter"
+            mock_routing.reason.value = "public_docs_rag"
+            mock_router.select_provider = AsyncMock(return_value=mock_routing)
+
+            result = await svc.generate_chat_response(
+                session_id=session_id,
+                user_message="show me the passport",
+                db=mock_db,
+                current_user=mock_user,
+            )
+
+        mock_router.select_provider.assert_called_once()
+        call_kwargs = mock_router.select_provider.call_args
+        assert call_kwargs.kwargs.get("has_confidential") is False or call_kwargs[1].get("has_confidential") is False
+
+        assert result["content"] == "Here is your answer about the confidential document."
+        assert result["has_confidential"] is True  # Response still flags it for UI

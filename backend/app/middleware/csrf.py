@@ -33,6 +33,7 @@ SAFE_METHODS: set[str] = {"GET", "HEAD", "OPTIONS", "TRACE"}
 EXEMPT_PATHS: set[str] = {
     "/api/v1/auth/login",
     "/api/v1/auth/register",
+    "/api/v1/auth/logout",
     "/api/v1/auth/telegram",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/resend-verification",

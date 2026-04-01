@@ -336,12 +336,15 @@ class TelegramBotClient:
         bucket: str,
         access_token: str,
         tags: list[str] | None = None,
+        document_type: str | None = None,
     ) -> dict:
         try:
             files = {"file": (filename, file_bytes)}
             data: dict[str, Any] = {"bucket": bucket}
             if tags:
                 data["tags"] = ",".join(tags)
+            if document_type:
+                data["document_type"] = document_type
             headers = {"Authorization": f"Bearer {access_token}"}
             if BOT_API_KEY:
                 headers["X-Bot-Api-Key"] = BOT_API_KEY
@@ -402,6 +405,45 @@ class TelegramBotClient:
             return {"error": "Service temporarily unavailable. Please try again later."}
         except Exception as e:
             logger.error(f"Search error: {str(e)}")
+            return {"error": str(e)}
+
+    async def create_journal_entry(
+        self, text: str, tags: list[str], access_token: str
+    ) -> dict:
+        """Create a text-only journal entry via the backend API."""
+        try:
+            response = await self._client.post(
+                "/api/v1/documents/journal",
+                json={"text": text, "tags": tags},
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "X-Bot-Api-Key": BOT_API_KEY,
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable."}
+        except Exception as e:
+            logger.error(f"Journal entry error: {str(e)}")
+            return {"error": str(e)}
+
+    async def search_journal(self, query: str, access_token: str) -> dict:
+        """Search only journal entries."""
+        try:
+            response = await self._client.post(
+                "/api/v1/search",
+                json={"query": query, "top_k": 5, "journal_only": True},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable."}
+        except Exception as e:
+            logger.error(f"Journal search error: {str(e)}")
             return {"error": str(e)}
 
     async def create_chat_session(self, access_token: str) -> dict:
@@ -485,6 +527,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 💬 <b>Chat</b>
 • Conversational AI powered by Mistral
 
+📓 <b>Journal</b>
+• Personal journal in confidential vault
+
 📌 Commands:
 /start - Show this message
 /help - Get help"""
@@ -493,6 +538,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         [InlineKeyboardButton("📤 Upload Document", callback_data="upload_prompt")],
         [InlineKeyboardButton("🔍 Search", callback_data="search_prompt")],
         [InlineKeyboardButton("💬 Chat", callback_data="chat_prompt")],
+        [InlineKeyboardButton("📓 Journal", callback_data="journal_prompt")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_html(welcome_text, reply_markup=reply_markup)
@@ -573,6 +619,68 @@ async def handle_document_upload(
     session = await session_manager.get_session(user.id)
     if not session:
         await update.message.reply_text("❌ Please use /start first to authenticate.")
+        return
+
+    # --- Journal mode: auto-upload to confidential with journal metadata ---
+    mode = session.get("mode")
+    if mode == "journal":
+        document = update.message.document
+        photo = update.message.photo
+
+        if document:
+            file = document
+            filename = document.file_name
+        elif photo:
+            file = photo[-1]
+            filename = f"journal_photo_{file.file_id}.jpg"
+        else:
+            return
+
+        caption = update.message.caption or ""
+        parsed_tags = re.findall(r"#(\w+)", caption)
+
+        try:
+            file_obj = await file.get_file()
+            file_bytes = bytes(await file_obj.download_as_bytearray())
+        except Exception as e:
+            logger.error(f"Journal file download error: {str(e)}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+            return
+
+        result = await bot_client.upload_document(
+            file_bytes=file_bytes,
+            filename=filename,
+            bucket="confidential",
+            access_token=session["access_token"],
+            tags=parsed_tags,
+            document_type="journal",
+        )
+
+        if "error" in result:
+            await update.message.reply_text(f"❌ Erreur: {result['error']}")
+        else:
+            now = datetime.now().strftime("%H:%M")
+            tag_display = " ".join(f"#{t}" for t in parsed_tags) if parsed_tags else ""
+            document_id = result.get("document_id", "N/A")
+            await update.message.reply_text(f"✅ 📷 Noté à {now} {tag_display}")
+
+            # Track for status updates
+            if document_id != "N/A":
+                document_tracking[document_id] = {
+                    "chat_id": update.message.chat_id,
+                    "message_id": update.message.message_id,
+                    "filename": filename,
+                    "bucket_emoji": "🔒",
+                    "access_token": session["access_token"],
+                    "last_status": "processing",
+                    "check_count": 0,
+                }
+                context.job_queue.run_once(
+                    check_document_status,
+                    when=5,
+                    data=document_id,
+                    name=f"status_check_{document_id}",
+                )
         return
 
     document = update.message.document
@@ -826,6 +934,63 @@ async def handle_text_message(
         await update.message.reply_text("❌ Please use /start first.")
         return
 
+    # --- Journal mode: text entries ---
+    mode = session.get("mode")
+
+    if mode == "journal":
+        # Handle /done command to exit journal mode
+        if text.strip().lower() == "/done":
+            await session_manager.update_session(user.id, {"mode": None})
+            await update.message.reply_text("📓 Mode journal terminé. Utilisez /start pour revenir au menu.")
+            return
+
+        # Extract hashtags
+        hashtags = re.findall(r"#(\w+)", text)
+        clean_text = re.sub(r"#\w+", "", text).strip()
+
+        if not clean_text:
+            await update.message.reply_text("⚠️ Le texte est vide (seuls des tags ont été détectés).")
+            return
+
+        result = await bot_client.create_journal_entry(
+            text=clean_text, tags=hashtags, access_token=session["access_token"]
+        )
+
+        if "error" in result:
+            await update.message.reply_text(f"❌ Erreur: {result['error']}")
+        else:
+            now = datetime.now().strftime("%H:%M")
+            tag_display = " ".join(f"#{t}" for t in hashtags) if hashtags else ""
+            await update.message.reply_text(
+                f"✅ Noté à {now} {tag_display}",
+                parse_mode="HTML",
+            )
+        return
+
+    if mode == "journal_search":
+        # Search journal entries
+        result = await bot_client.search_journal(text, session["access_token"])
+        await session_manager.update_session(user.id, {"mode": "journal"})
+
+        if "error" in result:
+            await update.message.reply_text(f"❌ Erreur: {result['error']}")
+            return
+
+        results = result.get("results", [])
+        if not results:
+            await update.message.reply_text("🔍 Aucun résultat dans le journal.")
+            return
+
+        lines = ["🔍 <b>Résultats du journal :</b>\n"]
+        for r in results[:5]:
+            title = r.get("document_title", "Sans titre")
+            excerpt = r.get("excerpt", "")[:150]
+            date = r.get("document_date", "")[:10]
+            lines.append(f"📅 <b>{date}</b> — {title}\n{excerpt}\n")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+        return
+
     # Handle text-based bucket selection (fallback for button clicks)
     if text.lower() in ["public", "confidential", "yes", "no"]:
         pending = session.get("pending_file")
@@ -950,6 +1115,71 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await query.answer()
     await query.edit_message_text(
         "💬 <b>Chat Mode</b>\n\nJust type your question!", parse_mode="HTML"
+    )
+
+
+async def journal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+
+    session = await session_manager.get_session(user.id)
+    if not session:
+        await query.edit_message_text("❌ Session expired. Please use /start again.")
+        return
+
+    # RBAC: journal requires admin/superuser (confidential bucket)
+    # Check role via backend API
+    try:
+        me_response = await bot_client._client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {session['access_token']}"},
+        )
+        if me_response.status_code == 200:
+            user_data = me_response.json()
+            user_role = user_data.get("role", "user")
+            if user_role not in ["admin", "superuser"]:
+                await query.edit_message_text(
+                    "❌ Accès refusé. Le journal est réservé aux administrateurs."
+                )
+                return
+    except Exception as e:
+        logger.warning(f"Could not verify role for journal access: {e}")
+
+    # Set journal mode in session
+    await session_manager.update_session(user.id, {"mode": "journal"})
+
+    keyboard = [
+        [InlineKeyboardButton("🔎 Chercher dans le journal", callback_data="journal_search")],
+        [InlineKeyboardButton("❌ Quitter Journal", callback_data="journal_exit")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        "📓 <b>Mode Journal activé</b>\n\n"
+        "Envoyez vos textes, photos ou schémas.\n"
+        "Utilisez <code>#tags</code> pour étiqueter.\n\n"
+        "Tapez /done pour quitter.",
+        parse_mode="HTML",
+        reply_markup=reply_markup,
+    )
+
+
+async def journal_exit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    await session_manager.update_session(user.id, {"mode": None})
+    await query.edit_message_text("📓 Mode journal terminé. Utilisez /start pour revenir au menu.")
+
+
+async def journal_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    await session_manager.update_session(user.id, {"mode": "journal_search"})
+    await query.edit_message_text(
+        "🔎 <b>Recherche Journal</b>\n\nEnvoyez votre recherche :",
+        parse_mode="HTML",
     )
 
 
@@ -1299,6 +1529,17 @@ def _validate_bot_token(token: str) -> bool:
         return True
 
 
+async def handle_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /done command to exit journal mode."""
+    user = update.effective_user
+    session = await session_manager.get_session(user.id)
+    if session and session.get("mode") == "journal":
+        await session_manager.update_session(user.id, {"mode": None})
+        await update.message.reply_text("📓 Mode journal terminé. Utilisez /start pour revenir au menu.")
+    else:
+        await update.message.reply_text("ℹ️ Vous n'êtes pas en mode journal.")
+
+
 def main() -> None:
     if not _validate_required_env_vars():
         # Exit cleanly (code 0) — this is a config error, not a crash.
@@ -1327,6 +1568,7 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("done", handle_done_command))
 
     application.add_handler(CallbackQueryHandler(bucket_callback, pattern="^bucket_"))
 
@@ -1337,6 +1579,9 @@ def main() -> None:
         CallbackQueryHandler(search_callback, pattern="^search_prompt")
     )
     application.add_handler(CallbackQueryHandler(chat_callback, pattern="^chat_prompt"))
+    application.add_handler(CallbackQueryHandler(journal_callback, pattern="^journal_prompt"))
+    application.add_handler(CallbackQueryHandler(journal_exit_callback, pattern="^journal_exit"))
+    application.add_handler(CallbackQueryHandler(journal_search_callback, pattern="^journal_search"))
 
     application.add_handler(
         MessageHandler(filters.Document.ALL | filters.PHOTO, handle_document_upload)

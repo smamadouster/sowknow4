@@ -21,6 +21,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import BaseModel, Field
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -192,6 +193,7 @@ async def upload_document(
     bucket: str = Form("public"),
     title: str | None = Form(None),
     tags: str | None = Form(None),
+    document_type: str | None = Form(None),
     x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -316,6 +318,21 @@ async def upload_document(
     )
 
     db.add(document)
+
+    # Set document metadata (e.g. journal type)
+    if document_type:
+        metadata = {"document_type": document_type}
+        if document_type == "journal":
+            from datetime import datetime as dt
+            metadata["journal_timestamp"] = dt.utcnow().isoformat()
+            # Journal entries must be confidential
+            if bucket != "confidential":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Journal entries must use the confidential bucket",
+                )
+        document.document_metadata = metadata
+
     await db.commit()
     await db.refresh(document)
 
@@ -389,6 +406,118 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document saved but failed to queue for processing: {str(e)}",
+        )
+
+
+class JournalEntryRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=10000)
+    tags: list[str] = Field(default_factory=list)
+    timestamp: str | None = None  # ISO format, defaults to now
+
+
+@router.post("/journal", response_model=DocumentUploadResponse)
+async def create_journal_entry(
+    entry: JournalEntryRequest,
+    x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DocumentUploadResponse:
+    """Create a text-only journal entry in the confidential bucket."""
+    # Only admin/superuser can create journal entries (confidential bucket)
+    if current_user.role.value not in ["admin", "superuser"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or Super User role required for journal entries",
+        )
+
+    # Validate bot API key if provided
+    if x_bot_api_key:
+        if not BOT_API_KEY or x_bot_api_key != BOT_API_KEY:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
+
+    # Save text as a .txt file
+    from datetime import datetime as dt
+
+    timestamp = entry.timestamp or dt.utcnow().isoformat()
+    content = entry.text.encode("utf-8")
+    filename = f"journal_{dt.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
+
+    save_result = storage_service.save_file(
+        file_content=content, original_filename=filename, bucket="confidential"
+    )
+
+    document = Document(
+        filename=save_result["filename"],
+        original_filename=filename,
+        file_path=save_result["file_path"],
+        bucket=DocumentBucket.CONFIDENTIAL,
+        status=DocumentStatus.PENDING,
+        size=save_result["size"],
+        mime_type="text/plain",
+        language=DocumentLanguage.UNKNOWN,
+        uploaded_by=current_user.id,
+        document_metadata={
+            "document_type": "journal",
+            "journal_timestamp": timestamp,
+            "journal_text": entry.text[:500],  # Preview in metadata
+        },
+    )
+
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+
+    # Add user tags
+    for tag_name in entry.tags:
+        tag = DocumentTag(
+            document_id=document.id,
+            tag_name=tag_name.strip().lower(),
+            tag_type="user",
+            auto_generated=False,
+        )
+        db.add(tag)
+    if entry.tags:
+        await db.commit()
+
+    # Log confidential upload
+    await create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        action=AuditAction.CONFIDENTIAL_UPLOADED,
+        resource_type="journal_entry",
+        resource_id=str(document.id),
+        details={"filename": filename, "type": "journal"},
+    )
+
+    # Trigger processing
+    try:
+        from app.tasks.document_tasks import process_document
+
+        task = process_document.delay(str(document.id))
+        document.status = DocumentStatus.PROCESSING
+        document.document_metadata = {
+            **document.document_metadata,
+            "celery_task_id": task.id,
+        }
+        await db.commit()
+
+        return DocumentUploadResponse(
+            document_id=document.id,
+            filename=document.filename,
+            status=document.status,
+            message="Journal entry created and queued for processing",
+        )
+    except Exception as e:
+        logger.error(f"Failed to queue journal entry {document.id}: {e}")
+        document.status = DocumentStatus.ERROR
+        document.document_metadata = {
+            **document.document_metadata,
+            "processing_error": str(e),
+        }
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Journal entry saved but processing failed: {str(e)}",
         )
 
 
@@ -681,6 +810,7 @@ async def list_documents(
     bucket: str | None = Query(None),
     status: str | None = Query(None),
     search: str | None = Query(None),
+    document_type: str | None = Query(None, description="Filter by document_type in metadata (e.g. 'journal')"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentListResponse:
@@ -712,6 +842,12 @@ async def list_documents(
     # Apply search filter
     if search:
         stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
+
+    # Apply document_type metadata filter
+    if document_type:
+        stmt = stmt.where(
+            Document.document_metadata["document_type"].astext == document_type
+        )
 
     # Get total count
     count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))

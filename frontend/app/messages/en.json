@@ -26,6 +26,7 @@
     "chat": "AI Assistant",
     "collections": "Collections",
     "smart_folders": "Smart Folders",
+    "journal": "My Journal",
     "settings": "Settings",
     "logout": "Logout",
     "logout_confirm": "Are you sure you want to log out?",
@@ -231,6 +232,21 @@
     "streaming_error": "Streaming error",
     "delete_session": "Delete conversation",
     "messages_region": "Conversation messages"
+  },
+  "journal": {
+    "title": "My Journal",
+    "subtitle": "Personal confidential journal",
+    "empty": "No journal entries yet. Use Telegram to add entries.",
+    "search_placeholder": "Search journal...",
+    "filter_tags": "Filter by tags",
+    "all_tags": "All tags",
+    "loading": "Loading...",
+    "load_more": "Load more",
+    "entry_text": "Text",
+    "entry_photo": "Photo",
+    "entry_schema": "Schema",
+    "tags": "Tags",
+    "no_results": "No results found"
   },
   "collections": {
     "title": "Smart Collections",

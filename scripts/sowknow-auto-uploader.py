@@ -429,21 +429,27 @@ def main():
     scan_existing(CONFIDENTIAL_DIR, "confidential", client, state)
     log.info("Initial scan complete")
 
-    # Start daily report thread
-    stop_event = Event()
-    report_thread = Thread(target=send_daily_report, args=(state, stop_event), daemon=True)
-    report_thread.start()
-
-    # Start filesystem watchers
+    # Start filesystem watchers before daily report thread
     observer = Observer()
     observer.schedule(UploadHandler("public", client, state), PUBLIC_DIR, recursive=False)
     observer.schedule(UploadHandler("confidential", client, state), CONFIDENTIAL_DIR, recursive=False)
     observer.start()
 
+    # Start daily report thread
+    stop_event = Event()
+    report_thread = Thread(target=send_daily_report, args=(state, stop_event), daemon=True)
+    report_thread.start()
+
+    # Periodic re-scan interval (seconds) — catches files missed by watchdog
+    RESCAN_INTERVAL = 5 * 60  # 5 minutes
+
     log.info("Watching for new documents... (Ctrl+C to stop)")
     try:
         while True:
-            time.sleep(60)
+            time.sleep(RESCAN_INTERVAL)
+            log.debug("Periodic re-scan...")
+            scan_existing(PUBLIC_DIR, "public", client, state)
+            scan_existing(CONFIDENTIAL_DIR, "confidential", client, state)
     except KeyboardInterrupt:
         log.info("Shutting down...")
     finally:

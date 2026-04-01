@@ -14,7 +14,8 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.document import DocumentBucket
+from sqlalchemy import select as sa_select
+from app.models.document import Document, DocumentBucket
 from app.models.user import UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
@@ -505,6 +506,20 @@ async def run_agentic_search(
                 rrf_score=sr.final_score,
                 tags=[],
             ))
+
+    # Stage 3b: Filter to journal entries if requested
+    if request.journal_only:
+        journal_doc_ids = set()
+        doc_ids_to_check = {c.document_id for c in all_chunks}
+        if doc_ids_to_check:
+            result = await db.execute(
+                sa_select(Document.id).where(
+                    Document.id.in_(doc_ids_to_check),
+                    Document.document_metadata["document_type"].astext == "journal",
+                )
+            )
+            journal_doc_ids = {row[0] for row in result.fetchall()}
+        all_chunks = [c for c in all_chunks if c.document_id in journal_doc_ids]
 
     # Deduplicate by chunk_id
     seen_ids: set[UUID] = set()

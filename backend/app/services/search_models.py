@@ -51,6 +51,7 @@ class AgenticSearchRequest(BaseModel):
     scope_document_ids: list[UUID] = Field(default_factory=list)
     language: Optional[str] = Field(default=None)
     include_suggestions: bool = True
+    journal_only: bool = False
 
     @field_validator("query")
     @classmethod

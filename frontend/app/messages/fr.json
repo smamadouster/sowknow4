@@ -26,6 +26,7 @@
     "chat": "Assistant IA",
     "collections": "Collections",
     "smart_folders": "Dossiers Intelligents",
+    "journal": "Mon Journal",
     "settings": "Paramètres",
     "logout": "Déconnexion",
     "logout_confirm": "Êtes-vous sûr de vouloir vous déconnecter ?",
@@ -231,6 +232,21 @@
     "streaming_error": "Erreur de streaming",
     "delete_session": "Supprimer la conversation",
     "messages_region": "Messages de la conversation"
+  },
+  "journal": {
+    "title": "Mon Journal",
+    "subtitle": "Journal personnel confidentiel",
+    "empty": "Aucune entrée de journal. Utilisez Telegram pour ajouter des entrées.",
+    "search_placeholder": "Rechercher dans le journal...",
+    "filter_tags": "Filtrer par tags",
+    "all_tags": "Tous les tags",
+    "loading": "Chargement...",
+    "load_more": "Charger plus",
+    "entry_text": "Texte",
+    "entry_photo": "Photo",
+    "entry_schema": "Schéma",
+    "tags": "Tags",
+    "no_results": "Aucun résultat trouvé"
   },
   "collections": {
     "title": "Collections Intelligentes",

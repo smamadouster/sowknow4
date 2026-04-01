@@ -8,7 +8,7 @@ import { useAuthStore, useChatStore, useUploadStore } from '@/lib/store';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 
 type NavLabelKey =
-  | 'search' | 'documents' | 'chat' | 'collections' | 'smart_folders'
+  | 'home' | 'search' | 'documents' | 'chat' | 'collections' | 'smart_folders'
   | 'knowledge_graph' | 'dashboard' | 'monitoring' | 'settings' | 'journal';
 
 interface NavItem {
@@ -19,6 +19,15 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  {
+    href: '/',
+    labelKey: 'home',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+    ),
+  },
   {
     href: '/search',
     labelKey: 'search',
@@ -125,12 +134,12 @@ export function Navigation() {
   const pathname = usePathname();
   const locale = useLocale();
   const router = useRouter();
-  const { logout, _hasHydrated } = useAuthStore();
+  const { logout, user, _hasHydrated } = useAuthStore();
   useSessionTimeout();
   const isStreaming = useChatStore((s) => s.isStreaming);
   const isUploading = useUploadStore((s) => s.isUploading);
   const [activeTab, setActiveTab] = useState<'all' | 'admin'>('all');
-  const [userRole, setUserRole] = useState<string>('user');
+  const userRole = user?.role || 'user';
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -141,23 +150,6 @@ export function Navigation() {
     await logout();
     router.push(`/${locale}/login`);
   };
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        const res = await fetch('/api/v1/auth/me', {
-          credentials: 'include',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setUserRole(data.role || 'user');
-        }
-      } catch (e) {
-        console.error('Error checking user role:', e);
-      }
-    };
-    checkAdmin();
-  }, []);
 
   // Close mobile menu on route change
   useEffect(() => {

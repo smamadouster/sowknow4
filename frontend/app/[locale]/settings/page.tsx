@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { getCsrfToken } from '@/lib/api';
+import { formatDateShort } from '@/lib/formatDate';
 
 interface User {
   id: string;
@@ -88,13 +89,6 @@ export default function SettingsPage() {
     }
   };
 
-  const formatDate = (dateStr: string): string => {
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -183,7 +177,7 @@ export default function SettingsPage() {
                       </button>
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-600">
-                      {formatDate(user.created_at)}
+                      {formatDateShort(user.created_at)}
                     </td>
                     <td className="py-3 px-4">
                       <button

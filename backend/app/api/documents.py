@@ -317,22 +317,20 @@ async def upload_document(
         uploaded_by=current_user.id,
     )
 
-    db.add(document)
-
-    # Set document metadata (e.g. journal type)
+    # Set document metadata (e.g. journal type) — validate before persisting
     if document_type:
+        if document_type == "journal" and bucket != "confidential":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Journal entries must use the confidential bucket",
+            )
         metadata = {"document_type": document_type}
         if document_type == "journal":
-            from datetime import datetime as dt
-            metadata["journal_timestamp"] = dt.utcnow().isoformat()
-            # Journal entries must be confidential
-            if bucket != "confidential":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Journal entries must use the confidential bucket",
-                )
+            from datetime import datetime as dt, timezone
+            metadata["journal_timestamp"] = dt.now(timezone.utc).isoformat()
         document.document_metadata = metadata
 
+    db.add(document)
     await db.commit()
     await db.refresh(document)
 
@@ -372,37 +370,42 @@ async def upload_document(
             details={"filename": document.filename, "original_filename": file.filename},
         )
 
-    # Trigger async processing with proper state transitions
+    return await _queue_document_for_processing(document, db)
+
+
+async def _queue_document_for_processing(
+    document: Document,
+    db: AsyncSession,
+    success_message: str = "Document uploaded successfully and queued for processing",
+) -> DocumentUploadResponse:
+    """Queue a persisted document for Celery processing and return the response.
+
+    Expects the document to already be committed (has a valid ``id``).
+    Updates status to PROCESSING on success or ERROR on failure.
+    """
     try:
         from app.tasks.document_tasks import process_document
 
         task = process_document.delay(str(document.id))
-
-        # Only set PROCESSING after successful queue
         document.status = DocumentStatus.PROCESSING
-        document.document_metadata = document.document_metadata or {}
-        document.document_metadata["celery_task_id"] = task.id
+        document.document_metadata = {**(document.document_metadata or {}), "celery_task_id": task.id}
         await db.commit()
-
         logger.info(f"Document {document.id} queued successfully with task {task.id}")
 
         return DocumentUploadResponse(
             document_id=document.id,
             filename=document.filename,
             status=document.status,
-            message="Document uploaded successfully and queued for processing",
+            message=success_message,
         )
-
     except Exception as e:
         logger.error(f"Failed to queue document {document.id} for processing: {e}")
-
-        # Set document status to ERROR on queue failure
         document.status = DocumentStatus.ERROR
-        metadata = document.document_metadata or {}
-        metadata["processing_error"] = f"Failed to queue for processing: {str(e)}"
-        document.document_metadata = metadata
+        document.document_metadata = {
+            **(document.document_metadata or {}),
+            "processing_error": f"Failed to queue for processing: {str(e)}",
+        }
         await db.commit()
-
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document saved but failed to queue for processing: {str(e)}",
@@ -436,11 +439,12 @@ async def create_journal_entry(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
 
     # Save text as a .txt file
-    from datetime import datetime as dt
+    from datetime import datetime as dt, timezone
 
-    timestamp = entry.timestamp or dt.utcnow().isoformat()
+    now = dt.now(timezone.utc)
+    timestamp = entry.timestamp or now.isoformat()
     content = entry.text.encode("utf-8")
-    filename = f"journal_{dt.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
+    filename = f"journal_{now.strftime('%Y%m%d_%H%M%S')}.txt"
 
     save_result = storage_service.save_file(
         file_content=content, original_filename=filename, bucket="confidential"
@@ -464,8 +468,7 @@ async def create_journal_entry(
     )
 
     db.add(document)
-    await db.commit()
-    await db.refresh(document)
+    await db.flush()  # Get auto-generated ID without committing
 
     # Add user tags
     for tag_name in entry.tags:
@@ -476,8 +479,9 @@ async def create_journal_entry(
             auto_generated=False,
         )
         db.add(tag)
-    if entry.tags:
-        await db.commit()
+
+    await db.commit()
+    await db.refresh(document)
 
     # Log confidential upload
     await create_audit_log(
@@ -489,36 +493,9 @@ async def create_journal_entry(
         details={"filename": filename, "type": "journal"},
     )
 
-    # Trigger processing
-    try:
-        from app.tasks.document_tasks import process_document
-
-        task = process_document.delay(str(document.id))
-        document.status = DocumentStatus.PROCESSING
-        document.document_metadata = {
-            **document.document_metadata,
-            "celery_task_id": task.id,
-        }
-        await db.commit()
-
-        return DocumentUploadResponse(
-            document_id=document.id,
-            filename=document.filename,
-            status=document.status,
-            message="Journal entry created and queued for processing",
-        )
-    except Exception as e:
-        logger.error(f"Failed to queue journal entry {document.id}: {e}")
-        document.status = DocumentStatus.ERROR
-        document.document_metadata = {
-            **document.document_metadata,
-            "processing_error": str(e),
-        }
-        await db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Journal entry saved but processing failed: {str(e)}",
-        )
+    return await _queue_document_for_processing(
+        document, db, success_message="Journal entry created and queued for processing"
+    )
 
 
 async def process_single_file_upload(
@@ -811,6 +788,7 @@ async def list_documents(
     status: str | None = Query(None),
     search: str | None = Query(None),
     document_type: str | None = Query(None, description="Filter by document_type in metadata (e.g. 'journal')"),
+    tag: str | None = Query(None, description="Filter by tag name"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentListResponse:
@@ -847,6 +825,14 @@ async def list_documents(
     if document_type:
         stmt = stmt.where(
             Document.document_metadata["document_type"].astext == document_type
+        )
+
+    # Apply tag filter
+    if tag:
+        stmt = stmt.where(
+            Document.id.in_(
+                select(DocumentTag.document_id).where(DocumentTag.tag_name == tag.strip().lower())
+            )
         )
 
     # Get total count

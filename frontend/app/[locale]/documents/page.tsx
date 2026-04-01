@@ -5,6 +5,7 @@ import { useDropzone, FileRejection } from 'react-dropzone';
 import { useTranslations } from 'next-intl';
 import { useAuthStore, useUploadStore, canAccessConfidential } from '@/lib/store';
 import api, { getCsrfToken } from '@/lib/api';
+import { formatDate } from '@/lib/formatDate';
 
 interface Document {
   id: string;
@@ -389,15 +390,6 @@ export default function DocumentsPage() {
     }
   };
 
-  const formatDate = (dateStr: string): string => {
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const getStatusColor = (status: string): string => {
     switch (status) {

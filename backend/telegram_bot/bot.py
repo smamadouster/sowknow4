@@ -292,6 +292,25 @@ class TelegramBotClient:
     async def close(self) -> None:
         await self._client.close()
 
+    def _circuit_breaker_error(self, error: CircuitBreakerOpenError, context: str = "") -> dict:
+        logger.error(f"Circuit breaker open ({context}): {str(error)}")
+        return {"error": "Service temporarily unavailable. Please try again later."}
+
+    async def get_user_info(self, access_token: str) -> dict:
+        """Fetch current user profile from the backend."""
+        try:
+            response = await self._client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            return self._circuit_breaker_error(e, "get_user_info")
+        except Exception as e:
+            logger.error(f"Get user info error: {str(e)}")
+            return {"error": str(e)}
+
     async def login(self, telegram_user_id: int) -> dict:
         try:
             response = await self._client.post(
@@ -302,8 +321,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable. Please try again later."}
+            return self._circuit_breaker_error(e, "login")
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
             return {"error": str(e)}
@@ -323,8 +341,7 @@ class TelegramBotClient:
                 "documents": data.get("documents", []),
             }
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable", "exists": False}
+            return {**self._circuit_breaker_error(e, "check_duplicate"), "exists": False}
         except Exception as e:
             logger.error(f"Check duplicate error: {str(e)}")
             return {"error": str(e), "exists": False}
@@ -369,8 +386,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable. Please try again later."}
+            return self._circuit_breaker_error(e, "upload")
         except Exception as e:
             logger.error(f"Upload error: {str(e)}")
             return {"error": str(e)}
@@ -385,8 +401,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable"}
+            return self._circuit_breaker_error(e, "get_document_status")
         except Exception as e:
             logger.error(f"Get document status error: {str(e)}")
             return {"error": str(e)}
@@ -401,8 +416,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable. Please try again later."}
+            return self._circuit_breaker_error(e, "search")
         except Exception as e:
             logger.error(f"Search error: {str(e)}")
             return {"error": str(e)}
@@ -423,8 +437,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable."}
+            return self._circuit_breaker_error(e, "journal_entry")
         except Exception as e:
             logger.error(f"Journal entry error: {str(e)}")
             return {"error": str(e)}
@@ -440,8 +453,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable."}
+            return self._circuit_breaker_error(e, "journal_search")
         except Exception as e:
             logger.error(f"Journal search error: {str(e)}")
             return {"error": str(e)}
@@ -458,8 +470,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable. Please try again later."}
+            return self._circuit_breaker_error(e, "create_chat_session")
         except Exception as e:
             logger.error(f"Create chat session error: {str(e)}")
             return {"error": str(e)}
@@ -481,8 +492,7 @@ class TelegramBotClient:
             response.raise_for_status()
             return response.json()
         except CircuitBreakerOpenError as e:
-            logger.error(f"Circuit breaker open: {str(e)}")
-            return {"error": "Service temporarily unavailable. Please try again later."}
+            return self._circuit_breaker_error(e, "chat")
         except Exception as e:
             logger.error(f"Chat error: {str(e)}")
             return {"error": str(e)}
@@ -938,12 +948,6 @@ async def handle_text_message(
     mode = session.get("mode")
 
     if mode == "journal":
-        # Handle /done command to exit journal mode
-        if text.strip().lower() == "/done":
-            await session_manager.update_session(user.id, {"mode": None})
-            await update.message.reply_text("📓 Mode journal terminé. Utilisez /start pour revenir au menu.")
-            return
-
         # Extract hashtags
         hashtags = re.findall(r"#(\w+)", text)
         clean_text = re.sub(r"#\w+", "", text).strip()
@@ -1129,22 +1133,17 @@ async def journal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     # RBAC: journal requires admin/superuser (confidential bucket)
-    # Check role via backend API
-    try:
-        me_response = await bot_client._client.get(
-            "/api/v1/auth/me",
-            headers={"Authorization": f"Bearer {session['access_token']}"},
+    # Fail-closed: deny access if role verification fails
+    user_data = await bot_client.get_user_info(session["access_token"])
+    if "error" in user_data:
+        await query.edit_message_text("❌ Impossible de vérifier vos permissions. Réessayez.")
+        return
+    user_role = user_data.get("role", "user")
+    if user_role not in ["admin", "superuser"]:
+        await query.edit_message_text(
+            "❌ Accès refusé. Le journal est réservé aux administrateurs."
         )
-        if me_response.status_code == 200:
-            user_data = me_response.json()
-            user_role = user_data.get("role", "user")
-            if user_role not in ["admin", "superuser"]:
-                await query.edit_message_text(
-                    "❌ Accès refusé. Le journal est réservé aux administrateurs."
-                )
-                return
-    except Exception as e:
-        logger.warning(f"Could not verify role for journal access: {e}")
+        return
 
     # Set journal mode in session
     await session_manager.update_session(user.id, {"mode": "journal"})

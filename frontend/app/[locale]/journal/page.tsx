@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import { formatDate } from '@/lib/formatDate';
+import api from '@/lib/api';
 
 interface JournalTag {
   id: string;
@@ -46,57 +48,38 @@ export default function JournalPage() {
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        page_size: String(PAGE_SIZE),
-        bucket: 'confidential',
-        document_type: 'journal',
+      const { data } = await api.getDocuments(
+        page, PAGE_SIZE, 'confidential', debouncedSearch || undefined,
+        undefined, undefined, 'journal', selectedTag || undefined,
+      );
+      const docs = (data?.documents || []) as unknown as JournalEntry[];
+      setEntries(prev => {
+        const allDocs = page === 1 ? docs : [...prev, ...docs];
+        // Extract unique tags from all loaded entries (for the dropdown)
+        const tagSet = new Set<string>();
+        allDocs.forEach((doc) => {
+          doc.tags?.forEach((tag) => tagSet.add(tag.tag_name));
+        });
+        setAllTags(Array.from(tagSet).sort());
+        return allDocs;
       });
-      if (debouncedSearch) params.set('search', debouncedSearch);
-
-      const res = await fetch(`/api/v1/documents?${params}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
-      setEntries(prev => page === 1 ? (data.documents || []) : [...prev, ...(data.documents || [])]);
-      setTotal(data.total || 0);
-
-      // Extract unique tags from results
-      const tagSet = new Set<string>();
-      (data.documents || []).forEach((doc: JournalEntry) => {
-        doc.tags?.forEach((tag) => tagSet.add(tag.tag_name));
-      });
-      setAllTags((prev) => {
-        const merged = new Set(prev);
-        tagSet.forEach((t) => merged.add(t));
-        return Array.from(merged).sort();
-      });
+      setTotal(data?.total || 0);
     } catch (e) {
       console.error('Error fetching journal entries:', e);
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch]);
+  }, [page, debouncedSearch, selectedTag]);
 
   useEffect(() => {
     fetchEntries();
   }, [fetchEntries]);
 
-  const filteredEntries = selectedTag
-    ? entries.filter((e) => e.tags?.some((t) => t.tag_name === selectedTag))
-    : entries;
+  // Tag filtering is done server-side via the `tag` query parameter
+  const filteredEntries = entries;
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatJournalDate = (dateStr: string) =>
+    formatDate(dateStr, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }, 'fr-FR');
 
   const isImage = (mimeType: string) =>
     mimeType.startsWith('image/');
@@ -122,7 +105,7 @@ export default function JournalPage() {
         />
         <select
           value={selectedTag}
-          onChange={(e) => setSelectedTag(e.target.value)}
+          onChange={(e) => { setSelectedTag(e.target.value); setPage(1); }}
           className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
         >
           <option value="">{t('all_tags')}</option>
@@ -182,7 +165,7 @@ export default function JournalPage() {
                 {/* Date header */}
                 <div className="flex items-center justify-between mb-3">
                   <time className="text-sm font-medium text-blue-600">
-                    {formatDate(journalTimestamp)}
+                    {formatJournalDate(journalTimestamp)}
                   </time>
                   <span className="text-xs text-gray-400 uppercase">
                     {isImage(entry.mime_type) ? t('entry_photo') : t('entry_text')}
@@ -218,9 +201,9 @@ export default function JournalPage() {
                         }`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedTag(
-                            selectedTag === tag.tag_name ? '' : tag.tag_name
-                          );
+                          const newTag = selectedTag === tag.tag_name ? '' : tag.tag_name;
+                          setSelectedTag(newTag);
+                          setPage(1);
                         }}
                       >
                         #{tag.tag_name}

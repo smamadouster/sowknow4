@@ -178,7 +178,7 @@ class ApiClient {
     });
   }
 
-  async getDocuments(page: number = 1, pageSize: number = 50, bucket?: string, search?: string, sortBy?: string, sortDir?: string) {
+  async getDocuments(page: number = 1, pageSize: number = 50, bucket?: string, search?: string, sortBy?: string, sortDir?: string, documentType?: string, tag?: string) {
     interface DocumentsResponse {
       documents: Array<{
         id: string;
@@ -205,6 +205,8 @@ class ApiClient {
     if (search) params.append('search', search);
     if (sortBy) params.append('sort_by', sortBy);
     if (sortDir) params.append('sort_dir', sortDir);
+    if (documentType) params.append('document_type', documentType);
+    if (tag) params.append('tag', tag);
 
     return this.request<DocumentsResponse>(`/v1/documents?${params.toString()}`);
   }

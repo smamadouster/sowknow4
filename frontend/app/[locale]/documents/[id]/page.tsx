@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
 import { getCsrfToken } from '@/lib/api';
+import { formatDate } from '@/lib/formatDate';
 
 // ---------- Document Preview helpers ----------
 
@@ -281,15 +282,6 @@ const formatFileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const formatDate = (dateStr: string): string => {
-  return new Date(dateStr).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
 
 const getStatusColor = (status: string): string => {
   switch (status) {

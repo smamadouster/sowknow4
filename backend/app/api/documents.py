@@ -681,6 +681,7 @@ async def list_documents(
     bucket: str | None = Query(None),
     status: str | None = Query(None),
     search: str | None = Query(None),
+    document_type: str | None = Query(None, description="Filter by document_type in metadata (e.g. 'journal')"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentListResponse:
@@ -712,6 +713,12 @@ async def list_documents(
     # Apply search filter
     if search:
         stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
+
+    # Apply document_type metadata filter
+    if document_type:
+        stmt = stmt.where(
+            Document.document_metadata["document_type"].astext == document_type
+        )
 
     # Get total count
     count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))

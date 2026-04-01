@@ -321,11 +321,17 @@ async def upload_document(
 
     # Set document metadata (e.g. journal type)
     if document_type:
-        from datetime import datetime as dt
-        document.document_metadata = {
-            "document_type": document_type,
-            "journal_timestamp": dt.utcnow().isoformat(),
-        }
+        metadata = {"document_type": document_type}
+        if document_type == "journal":
+            from datetime import datetime as dt
+            metadata["journal_timestamp"] = dt.utcnow().isoformat()
+            # Journal entries must be confidential
+            if bucket != "confidential":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Journal entries must use the confidential bucket",
+                )
+        document.document_metadata = metadata
 
     await db.commit()
     await db.refresh(document)

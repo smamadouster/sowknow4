@@ -434,7 +434,7 @@ class TelegramBotClient:
         try:
             response = await self._client.post(
                 "/api/v1/search",
-                json={"query": query, "limit": 5, "journal_only": True},
+                json={"query": query, "top_k": 5, "journal_only": True},
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             response.raise_for_status()
@@ -1127,6 +1127,24 @@ async def journal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not session:
         await query.edit_message_text("❌ Session expired. Please use /start again.")
         return
+
+    # RBAC: journal requires admin/superuser (confidential bucket)
+    # Check role via backend API
+    try:
+        me_response = await bot_client._client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {session['access_token']}"},
+        )
+        if me_response.status_code == 200:
+            user_data = me_response.json()
+            user_role = user_data.get("role", "user")
+            if user_role not in ["admin", "superuser"]:
+                await query.edit_message_text(
+                    "❌ Accès refusé. Le journal est réservé aux administrateurs."
+                )
+                return
+    except Exception as e:
+        logger.warning(f"Could not verify role for journal access: {e}")
 
     # Set journal mode in session
     await session_manager.update_session(user.id, {"mode": "journal"})

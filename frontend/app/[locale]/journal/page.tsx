@@ -59,7 +59,7 @@ export default function JournalPage() {
       });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setEntries(data.documents || []);
+      setEntries(prev => page === 1 ? (data.documents || []) : [...prev, ...(data.documents || [])]);
       setTotal(data.total || 0);
 
       // Extract unique tags from results

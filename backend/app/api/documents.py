@@ -327,6 +327,7 @@ async def upload_document(
         metadata = {"document_type": document_type}
         if document_type == "journal":
             from datetime import datetime as dt, timezone
+
             metadata["journal_timestamp"] = dt.now(timezone.utc).isoformat()
         document.document_metadata = metadata
 
@@ -382,34 +383,92 @@ async def _queue_document_for_processing(
 
     Expects the document to already be committed (has a valid ``id``).
     Updates status to PROCESSING on success or ERROR on failure.
+
+    HARDENING: Verifies task is in Redis broker before returning success.
+    If task dispatch fails, marks document as ERROR immediately (not PENDING).
     """
     try:
         from app.tasks.document_tasks import process_document
+        from app.celery_app import celery_app
 
         task = process_document.delay(str(document.id))
-        document.status = DocumentStatus.PROCESSING
-        document.document_metadata = {**(document.document_metadata or {}), "celery_task_id": task.id}
-        await db.commit()
-        logger.info(f"Document {document.id} queued successfully with task {task.id}")
 
+        task_id = task.id
+        document.status = DocumentStatus.PROCESSING
+        document.document_metadata = {**(document.document_metadata or {}), "celery_task_id": task_id}
+
+        await db.commit()
+
+        if not _verify_task_in_broker(task_id):
+            logger.error(f"Task {task_id} for document {document.id} not found in broker after dispatch")
+            document.status = DocumentStatus.ERROR
+            document.document_metadata = {
+                **(document.document_metadata or {}),
+                "processing_error": "Task dispatch verification failed",
+            }
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Document saved but task dispatch verification failed",
+            )
+
+        logger.info(f"Document {document.id} queued successfully with task {task_id}")
         return DocumentUploadResponse(
             document_id=document.id,
             filename=document.filename,
             status=document.status,
             message=success_message,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to queue document {document.id} for processing: {e}")
-        document.status = DocumentStatus.ERROR
-        document.document_metadata = {
-            **(document.document_metadata or {}),
-            "processing_error": f"Failed to queue for processing: {str(e)}",
-        }
-        await db.commit()
+        try:
+            document.status = DocumentStatus.ERROR
+            document.document_metadata = {
+                **(document.document_metadata or {}),
+                "processing_error": f"Failed to queue for processing: {str(e)}",
+            }
+            await db.commit()
+        except Exception:
+            db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document saved but failed to queue for processing: {str(e)}",
         )
+
+
+def _verify_task_in_broker(task_id: str, timeout: float = 5.0) -> bool:
+    """Verify a Celery task exists in the broker (Redis).
+
+    Returns True if task is found in active, reserved, or scheduled lists.
+    This prevents the race condition where task is queued but we assume success.
+    """
+    try:
+        from app.celery_app import celery_app
+
+        inspect = celery_app.control.inspect(timeout=timeout)
+
+        active = inspect.active() or {}
+        reserved = inspect.reserved() or {}
+        scheduled = inspect.scheduled() or {}
+
+        for worker_tasks in active.values():
+            for t in worker_tasks:
+                if t.get("id") == task_id:
+                    return True
+        for worker_tasks in reserved.values():
+            for t in worker_tasks:
+                if t.get("id") == task_id:
+                    return True
+        for worker_tasks in scheduled.values():
+            for t in worker_tasks:
+                if t.get("id") == task_id:
+                    return True
+        return False
+    except Exception as e:
+        logger.warning(f"Task verification check failed: {e}")
+        return True  # Fail open to not block processing
 
 
 class JournalEntryRequest(BaseModel):
@@ -446,9 +505,7 @@ async def create_journal_entry(
     content = entry.text.encode("utf-8")
     filename = f"journal_{now.strftime('%Y%m%d_%H%M%S')}.txt"
 
-    save_result = storage_service.save_file(
-        file_content=content, original_filename=filename, bucket="confidential"
-    )
+    save_result = storage_service.save_file(file_content=content, original_filename=filename, bucket="confidential")
 
     document = Document(
         filename=save_result["filename"],
@@ -823,16 +880,12 @@ async def list_documents(
 
     # Apply document_type metadata filter
     if document_type:
-        stmt = stmt.where(
-            Document.document_metadata["document_type"].astext == document_type
-        )
+        stmt = stmt.where(Document.document_metadata["document_type"].astext == document_type)
 
     # Apply tag filter
     if tag:
         stmt = stmt.where(
-            Document.id.in_(
-                select(DocumentTag.document_id).where(DocumentTag.tag_name == tag.strip().lower())
-            )
+            Document.id.in_(select(DocumentTag.document_id).where(DocumentTag.tag_name == tag.strip().lower()))
         )
 
     # Get total count

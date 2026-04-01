@@ -83,6 +83,54 @@ export default function DocumentsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const loadDocuments = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getDocuments(
+        page,
+        pageSize,
+        bucketFilter !== 'all' ? bucketFilter : undefined,
+        debouncedSearch || undefined,
+        sortBy,
+        sortDir
+      );
+
+      if (response.status === 200 && response.data) {
+        setDocuments(response.data.documents || []);
+        setTotal(response.data.total || 0);
+      } else {
+        setError(tCommon('error'));
+      }
+    } catch (e) {
+      console.error('Error loading documents:', e);
+      setError(tCommon('error'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshDocuments = useCallback(async () => {
+    try {
+      const response = await api.getDocuments(
+        page,
+        pageSize,
+        bucketFilter !== 'all' ? bucketFilter : undefined,
+        debouncedSearch || undefined,
+        sortBy,
+        sortDir
+      );
+
+      if (response.status === 200 && response.data) {
+        setDocuments(response.data.documents || []);
+        setTotal(response.data.total || 0);
+      }
+    } catch (e) {
+      console.error('Error refreshing documents:', e);
+    }
+  }, [page, pageSize, bucketFilter, debouncedSearch, sortBy, sortDir]);
+
   // R9 — real-time polling: refresh every 5 s while any doc is pending/processing
   useEffect(() => {
     const hasProcessing = documents.some(
@@ -91,11 +139,11 @@ export default function DocumentsPage() {
     if (!hasProcessing) return;
 
     const interval = setInterval(() => {
-      loadDocuments();
+      refreshDocuments();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [documents]);
+  }, [documents, refreshDocuments]);
 
   // R7 — sort handler
   const handleSort = (col: typeof sortBy) => {
@@ -320,34 +368,6 @@ export default function DocumentsPage() {
     setFileQueue((prev) =>
       prev.filter((f) => f.status === 'uploading' || f.status === 'pending'),
     );
-  };
-
-  const loadDocuments = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await api.getDocuments(
-        page,
-        pageSize,
-        bucketFilter !== 'all' ? bucketFilter : undefined,
-        debouncedSearch || undefined,
-        sortBy,
-        sortDir
-      );
-
-      if (response.status === 200 && response.data) {
-        setDocuments(response.data.documents || []);
-        setTotal(response.data.total || 0);
-      } else {
-        setError(tCommon('error'));
-      }
-    } catch (e) {
-      console.error('Error loading documents:', e);
-      setError(tCommon('error'));
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleDownload = async (docId: string, filename: string) => {

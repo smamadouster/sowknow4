@@ -644,6 +644,179 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
         db.close()
 
 
+@shared_task(name="app.tasks.anomaly_tasks.recover_pending_documents")
+def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
+    """
+    Find and recover documents stuck in PENDING status.
+
+    These are documents that were created but never successfully queued for
+    processing or whose processing never completed. This can happen if:
+    - The upload endpoint crashed after commit but before _queue_document_for_processing
+    - Redis was unavailable when process_document.delay() was called
+    - The database commit failed after the Celery task was queued
+    - The Celery task was queued but never picked up by a worker
+    - The Celery task failed silently
+
+    Recovery strategy:
+      - Find documents with status=PENDING (with or without celery_task_id)
+      - Check if the celery_task_id exists in Redis results
+      - If no task exists or task failed, re-queue the document
+      - After 3 failed recovery attempts, mark as ERROR
+
+    Args:
+        pending_threshold_minutes: Minutes before a PENDING doc is considered stuck.
+                                  Default 5 minutes (allows for normal processing delay).
+
+    Returns:
+        dict with recovery results
+    """
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentStatus
+    from app.tasks.document_tasks import process_document
+
+    db = SessionLocal()
+    recovered = []
+    failed = []
+    checked = []
+
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=pending_threshold_minutes)
+
+        pending_docs = (
+            db.query(Document)
+            .filter(
+                Document.status == DocumentStatus.PENDING,
+                Document.created_at < cutoff,
+            )
+            .all()
+        )
+
+        logger.info(f"Found {len(pending_docs)} PENDING documents to check")
+
+        for doc in pending_docs:
+            try:
+                existing_meta = doc.document_metadata or {}
+                recovery_count = existing_meta.get("pending_recovery_count", 0) + 1
+
+                # After 3 recovery attempts, mark as permanently failed
+                MAX_RECOVERY_ATTEMPTS = 3
+                if recovery_count > MAX_RECOVERY_ATTEMPTS:
+                    doc.status = DocumentStatus.ERROR
+                    doc.document_metadata = {
+                        **existing_meta,
+                        "pending_recovery_count": recovery_count,
+                        "recovery_error": f"Failed to queue after {MAX_RECOVERY_ATTEMPTS} attempts",
+                    }
+                    db.commit()
+                    logger.error(
+                        f"Document {doc.id} permanently marked as ERROR after {MAX_RECOVERY_ATTEMPTS} failed recovery attempts"
+                    )
+                    failed.append(
+                        {
+                            "document_id": str(doc.id),
+                            "filename": doc.filename,
+                            "error": f"Exhausted {MAX_RECOVERY_ATTEMPTS} recovery attempts",
+                        }
+                    )
+                    continue
+
+                logger.warning(f"Attempting to recover PENDING document {doc.id} ({doc.filename})")
+
+                celery_task_id = existing_meta.get("celery_task_id")
+                needs_requeue = True
+
+                if celery_task_id:
+                    try:
+                        from app.celery_app import celery_app
+
+                        inspect = celery_app.control.inspect(timeout=5.0)
+                        active_tasks = inspect.active() or {}
+                        reserved_tasks = inspect.reserved() or {}
+                        for worker_tasks in active_tasks.values():
+                            for t in worker_tasks:
+                                if t.get("id") == celery_task_id:
+                                    needs_requeue = False
+                                    logger.info(
+                                        f"Document {doc.id} has task {celery_task_id} currently active, skipping"
+                                    )
+                                    break
+                        if needs_requeue:
+                            for worker_tasks in reserved_tasks.values():
+                                for t in worker_tasks:
+                                    if t.get("id") == celery_task_id:
+                                        needs_requeue = False
+                                        logger.info(f"Document {doc.id} has task {celery_task_id} reserved, skipping")
+                                        break
+                    except Exception as inspect_err:
+                        logger.warning(f"Could not check task status for {celery_task_id}: {inspect_err}")
+
+                if not needs_requeue:
+                    already_queued.append(
+                        {
+                            "document_id": str(doc.id),
+                            "filename": doc.filename,
+                            "celery_task_id": celery_task_id,
+                        }
+                    )
+                    continue
+
+                # Try to queue the document for processing
+                task = process_document.delay(str(doc.id))
+
+                # Success - update status to PROCESSING
+                doc.status = DocumentStatus.PROCESSING
+                doc.document_metadata = {
+                    **existing_meta,
+                    "pending_recovery_count": recovery_count,
+                    "celery_task_id": task.id,
+                    "recovered_from_pending": True,
+                    "recovered_at": datetime.now(timezone.utc).isoformat(),
+                }
+                db.commit()
+
+                recovered.append(
+                    {
+                        "document_id": str(doc.id),
+                        "filename": doc.filename,
+                        "celery_task_id": task.id,
+                        "recovery_attempt": recovery_count,
+                    }
+                )
+                logger.info(f"Successfully recovered PENDING document {doc.id}, queued with task {task.id}")
+
+            except Exception as e:
+                logger.error(f"Failed to recover PENDING document {doc.id}: {e}")
+                # Increment recovery count even on failure
+                try:
+                    existing_meta = doc.document_metadata or {}
+                    doc.document_metadata = {
+                        **existing_meta,
+                        "pending_recovery_count": existing_meta.get("pending_recovery_count", 0) + 1,
+                        "last_recovery_error": str(e),
+                    }
+                    db.commit()
+                except Exception:
+                    pass
+                failed.append({"document_id": str(doc.id), "error": str(e)})
+
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "pending_threshold_minutes": pending_threshold_minutes,
+            "total_found": len(pending_docs),
+            "recovered": recovered,
+            "already_queued": already_queued,
+            "failed": failed,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in recover_pending_documents: {e}")
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # on_failure callback
 # ─────────────────────────────────────────────────────────────────────────────
@@ -666,3 +839,97 @@ def on_daily_anomaly_report_failure(self, exc, task_id, args, kwargs, einfo) -> 
         )
     except Exception as cb_err:
         logger.error(f"on_daily_anomaly_report_failure handler error: {cb_err}")
+
+
+@shared_task(name="app.tasks.anomaly_tasks.fail_stuck_processing_documents")
+def fail_stuck_processing_documents(max_processing_minutes: int = 30) -> dict:
+    """
+    Find and fail documents stuck in PROCESSING status.
+
+    This is a safety net for documents whose Celery task was:
+    - Lost in the broker
+    - Worker killed mid-processing
+    - Redis failure that lost the task
+
+    Args:
+        max_processing_minutes: Minutes before a PROCESSING doc is considered stuck.
+
+    Returns:
+        dict with failure results
+    """
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentStatus
+
+    db = SessionLocal()
+    failed = []
+    ok = []
+
+    try:
+        from app.celery_app import celery_app
+
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_processing_minutes)
+
+        stuck_docs = (
+            db.query(Document)
+            .filter(
+                Document.status == DocumentStatus.PROCESSING,
+                Document.updated_at < cutoff,
+            )
+            .all()
+        )
+
+        logger.info(f"Checking {len(stuck_docs)} PROCESSING documents for stuck status")
+
+        inspect = celery_app.control.inspect(timeout=10.0)
+        active_tasks = inspect.active() or {}
+        reserved_tasks = inspect.reserved() or {}
+
+        active_ids = set()
+        for worker, tasks in active_tasks.items():
+            for t in tasks:
+                active_ids.add(t.get("id"))
+        for worker, tasks in reserved_tasks.items():
+            for t in tasks:
+                active_ids.add(t.get("id"))
+
+        for doc in stuck_docs:
+            celery_task_id = doc.document_metadata.get("celery_task_id") if doc.document_metadata else None
+
+            if celery_task_id and celery_task_id in active_ids:
+                ok.append({"document_id": str(doc.id), "task_id": celery_task_id})
+                continue
+
+            existing_meta = doc.document_metadata or {}
+            doc.status = DocumentStatus.ERROR
+            doc.document_metadata = {
+                **existing_meta,
+                "failure_reason": f"Processing stuck > {max_processing_minutes} minutes, task {'not found in broker' if celery_task_id else 'never queued'}",
+                "failed_at": datetime.now(timezone.utc).isoformat(),
+            }
+            failed.append(
+                {
+                    "document_id": str(doc.id),
+                    "filename": doc.filename,
+                    "celery_task_id": celery_task_id,
+                }
+            )
+            logger.warning(f"Auto-failed stuck document {doc.id}: {doc.filename}")
+
+        if failed:
+            db.commit()
+
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "max_processing_minutes": max_processing_minutes,
+            "total_checked": len(stuck_docs),
+            "ok": len(ok),
+            "failed": len(failed),
+            "failed_documents": failed,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in fail_stuck_processing_documents: {e}")
+        db.rollback()
+        raise
+    finally:
+        db.close()

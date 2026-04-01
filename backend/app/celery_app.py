@@ -101,6 +101,16 @@ celery_app.conf.update(
             "schedule": 600,  # Every 10 minutes (600 seconds)
             "args": (5,),  # Max 5 minutes in processing state before recovery
         },
+        "recover-pending-documents": {
+            "task": "app.tasks.anomaly_tasks.recover_pending_documents",
+            "schedule": 300,  # Every 5 minutes (300 seconds)
+            "args": (5,),  # Max 5 minutes in PENDING state before recovery
+        },
+        "fail-stuck-processing": {
+            "task": "app.tasks.anomaly_tasks.fail_stuck_processing_documents",
+            "schedule": 900,  # Every 15 minutes
+            "args": (30,),  # Max 30 minutes in PROCESSING before auto-fail
+        },
         "cleanup-old-reports": {
             "task": "app.tasks.report_tasks.cleanup_old_reports",
             "schedule": crontab(hour=2, minute=0),  # 02:00 AM daily

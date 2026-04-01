@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useTranslations, useLocale } from "next-intl";
 import { Link as IntlLink } from "@/i18n/routing";
+import { getCsrfToken } from "@/lib/api";
 
 // Disable static optimization for this client component
 export const dynamic = 'force-dynamic';
@@ -61,8 +62,11 @@ export default function CollectionsPage() {
     }
   };
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleCreateCollection = async () => {
     if (!newQuery.trim()) return;
+    setCreateError(null);
 
     try {
       const { api } = await import("@/lib/api");
@@ -71,19 +75,24 @@ export default function CollectionsPage() {
         newQuery
       );
 
-      if (response.data && !response.error) {
+      if (response.error) {
+        setCreateError(response.error);
+        return;
+      }
+
+      if (response.data) {
         setShowCreateModal(false);
         setNewQuery("");
         fetchCollections();
       }
     } catch (error) {
       console.error("Error creating collection:", error);
+      setCreateError(error instanceof Error ? error.message : "Failed to create collection");
     }
   };
 
   const togglePin = async (collectionId: string) => {
     try {
-      const { api } = await import("@/lib/api");
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${collectionId}/pin`,
         {
@@ -91,6 +100,7 @@ export default function CollectionsPage() {
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
+            "X-CSRF-Token": getCsrfToken(),
           },
         }
       );
@@ -102,7 +112,6 @@ export default function CollectionsPage() {
 
   const toggleFavorite = async (collectionId: string) => {
     try {
-      const { api } = await import("@/lib/api");
       await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${collectionId}/favorite`,
         {
@@ -110,6 +119,7 @@ export default function CollectionsPage() {
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
+            "X-CSRF-Token": getCsrfToken(),
           },
         }
       );
@@ -317,11 +327,18 @@ export default function CollectionsPage() {
               rows={3}
             />
 
+            {createError && (
+              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>
+              </div>
+            )}
+
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowCreateModal(false);
                   setNewQuery("");
+                  setCreateError(null);
                 }}
                 className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >

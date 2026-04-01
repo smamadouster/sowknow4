@@ -621,6 +621,68 @@ async def handle_document_upload(
         await update.message.reply_text("❌ Please use /start first to authenticate.")
         return
 
+    # --- Journal mode: auto-upload to confidential with journal metadata ---
+    mode = session.get("mode")
+    if mode == "journal":
+        document = update.message.document
+        photo = update.message.photo
+
+        if document:
+            file = document
+            filename = document.file_name
+        elif photo:
+            file = photo[-1]
+            filename = f"journal_photo_{file.file_id}.jpg"
+        else:
+            return
+
+        caption = update.message.caption or ""
+        parsed_tags = re.findall(r"#(\w+)", caption)
+
+        try:
+            file_obj = await file.get_file()
+            file_bytes = bytes(await file_obj.download_as_bytearray())
+        except Exception as e:
+            logger.error(f"Journal file download error: {str(e)}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+            return
+
+        result = await bot_client.upload_document(
+            file_bytes=file_bytes,
+            filename=filename,
+            bucket="confidential",
+            access_token=session["access_token"],
+            tags=parsed_tags,
+            document_type="journal",
+        )
+
+        if "error" in result:
+            await update.message.reply_text(f"❌ Erreur: {result['error']}")
+        else:
+            now = datetime.now().strftime("%H:%M")
+            tag_display = " ".join(f"#{t}" for t in parsed_tags) if parsed_tags else ""
+            document_id = result.get("document_id", "N/A")
+            await update.message.reply_text(f"✅ 📷 Noté à {now} {tag_display}")
+
+            # Track for status updates
+            if document_id != "N/A":
+                document_tracking[document_id] = {
+                    "chat_id": update.message.chat_id,
+                    "message_id": update.message.message_id,
+                    "filename": filename,
+                    "bucket_emoji": "🔒",
+                    "access_token": session["access_token"],
+                    "last_status": "processing",
+                    "check_count": 0,
+                }
+                context.job_queue.run_once(
+                    check_document_status,
+                    when=5,
+                    data=document_id,
+                    name=f"status_check_{document_id}",
+                )
+        return
+
     document = update.message.document
     photo = update.message.photo
 
@@ -870,6 +932,63 @@ async def handle_text_message(
     session = await session_manager.get_session(user.id)
     if not session:
         await update.message.reply_text("❌ Please use /start first.")
+        return
+
+    # --- Journal mode: text entries ---
+    mode = session.get("mode")
+
+    if mode == "journal":
+        # Handle /done command to exit journal mode
+        if text.strip().lower() == "/done":
+            await session_manager.update_session(user.id, {"mode": None})
+            await update.message.reply_text("📓 Mode journal terminé. Utilisez /start pour revenir au menu.")
+            return
+
+        # Extract hashtags
+        hashtags = re.findall(r"#(\w+)", text)
+        clean_text = re.sub(r"#\w+", "", text).strip()
+
+        if not clean_text:
+            await update.message.reply_text("⚠️ Le texte est vide (seuls des tags ont été détectés).")
+            return
+
+        result = await bot_client.create_journal_entry(
+            text=clean_text, tags=hashtags, access_token=session["access_token"]
+        )
+
+        if "error" in result:
+            await update.message.reply_text(f"❌ Erreur: {result['error']}")
+        else:
+            now = datetime.now().strftime("%H:%M")
+            tag_display = " ".join(f"#{t}" for t in hashtags) if hashtags else ""
+            await update.message.reply_text(
+                f"✅ Noté à {now} {tag_display}",
+                parse_mode="HTML",
+            )
+        return
+
+    if mode == "journal_search":
+        # Search journal entries
+        result = await bot_client.search_journal(text, session["access_token"])
+        await session_manager.update_session(user.id, {"mode": "journal"})
+
+        if "error" in result:
+            await update.message.reply_text(f"❌ Erreur: {result['error']}")
+            return
+
+        results = result.get("results", [])
+        if not results:
+            await update.message.reply_text("🔍 Aucun résultat dans le journal.")
+            return
+
+        lines = ["🔍 <b>Résultats du journal :</b>\n"]
+        for r in results[:5]:
+            title = r.get("document_title", "Sans titre")
+            excerpt = r.get("excerpt", "")[:150]
+            date = r.get("document_date", "")[:10]
+            lines.append(f"📅 <b>{date}</b> — {title}\n{excerpt}\n")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
         return
 
     # Handle text-based bucket selection (fallback for button clicks)
@@ -1392,6 +1511,17 @@ def _validate_bot_token(token: str) -> bool:
         return True
 
 
+async def handle_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /done command to exit journal mode."""
+    user = update.effective_user
+    session = await session_manager.get_session(user.id)
+    if session and session.get("mode") == "journal":
+        await session_manager.update_session(user.id, {"mode": None})
+        await update.message.reply_text("📓 Mode journal terminé. Utilisez /start pour revenir au menu.")
+    else:
+        await update.message.reply_text("ℹ️ Vous n'êtes pas en mode journal.")
+
+
 def main() -> None:
     if not _validate_required_env_vars():
         # Exit cleanly (code 0) — this is a config error, not a crash.
@@ -1420,6 +1550,7 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("done", handle_done_command))
 
     application.add_handler(CallbackQueryHandler(bucket_callback, pattern="^bucket_"))
 

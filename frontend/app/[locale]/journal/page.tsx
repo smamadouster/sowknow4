@@ -68,7 +68,8 @@ export default function JournalPage() {
         doc.tags?.forEach((tag) => tagSet.add(tag.tag_name));
       });
       setAllTags((prev) => {
-        const merged = new Set([...prev, ...tagSet]);
+        const merged = new Set(prev);
+        tagSet.forEach((t) => merged.add(t));
         return Array.from(merged).sort();
       });
     } catch (e) {

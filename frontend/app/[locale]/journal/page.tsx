@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/formatDate';
 import api from '@/lib/api';
@@ -23,6 +23,10 @@ interface JournalEntry {
   size: number;
 }
 
+interface EntryContent {
+  [entryId: string]: string;
+}
+
 export default function JournalPage() {
   const t = useTranslations('journal');
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -34,6 +38,10 @@ export default function JournalPage() {
   const [selectedTag, setSelectedTag] = useState<string>('');
   const [allTags, setAllTags] = useState<string[]>([]);
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
+  const [entryContents, setEntryContents] = useState<EntryContent>({});
+  const [loadingContent, setLoadingContent] = useState<string | null>(null);
+  const [contentSearch, setContentSearch] = useState('');
+  const [contentSearchResults, setContentSearchResults] = useState<Map<string, number[]>>(new Map());
   const PAGE_SIZE = 20;
 
   // Debounce search
@@ -85,6 +93,79 @@ export default function JournalPage() {
     mimeType.startsWith('image/');
 
   const hasMore = page * PAGE_SIZE < total;
+
+  const fetchEntryContent = useCallback(async (entryId: string) => {
+    if (entryContents[entryId] || loadingContent === entryId) return;
+    setLoadingContent(entryId);
+    try {
+      const res = await fetch(`/api/v1/documents/${entryId}/download`, {
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const text = await res.text();
+        setEntryContents(prev => ({ ...prev, [entryId]: text }));
+      }
+    } catch (e) {
+      console.error('Error fetching entry content:', e);
+    } finally {
+      setLoadingContent(null);
+    }
+  }, [entryContents, loadingContent]);
+
+  const handleEntryClick = useCallback((entry: JournalEntry) => {
+    const expanded = expandedEntry === entry.id;
+    if (!expanded && !isImage(entry.mime_type) && !entryContents[entry.id]) {
+      fetchEntryContent(entry.id);
+    }
+    setExpandedEntry(expanded ? null : entry.id);
+  }, [expandedEntry, entryContents, fetchEntryContent]);
+
+  const searchInContent = useCallback((content: string, searchTerm: string): number[] => {
+    if (!searchTerm.trim()) return [];
+    const results: number[] = [];
+    const lowerContent = content.toLowerCase();
+    const lowerSearch = searchTerm.toLowerCase();
+    let pos = 0;
+    while ((pos = lowerContent.indexOf(lowerSearch, pos)) !== -1) {
+      results.push(pos);
+      pos += 1;
+    }
+    return results;
+  }, []);
+
+  useEffect(() => {
+    const newResults = new Map<string, number[]>();
+    entries.forEach(entry => {
+      const content = entryContents[entry.id];
+      if (content && contentSearch) {
+        newResults.set(entry.id, searchInContent(content, contentSearch));
+      }
+    });
+    setContentSearchResults(newResults);
+  }, [contentSearch, entryContents, entries, searchInContent]);
+
+  const highlightedContent = useMemo(() => {
+    if (!contentSearch.trim() || !expandedEntry) return null;
+    const content = entryContents[expandedEntry];
+    if (!content) return null;
+    const results = contentSearchResults.get(expandedEntry) || [];
+    if (results.length === 0) return content;
+    const parts: React.ReactNode[] = [];
+    let lastEnd = 0;
+    results.slice(0, 100).forEach((pos) => {
+      if (pos > lastEnd) {
+        parts.push(content.slice(lastEnd, pos));
+      }
+      parts.push(
+        <mark key={pos} className="bg-yellow-200 rounded px-0.5">{content.slice(pos, pos + contentSearch.length)}</mark>
+      );
+      lastEnd = pos + contentSearch.length;
+    });
+    if (lastEnd < content.length) {
+      parts.push(content.slice(lastEnd));
+    }
+    return parts;
+  }, [contentSearch, expandedEntry, entryContents, contentSearchResults]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -144,6 +225,24 @@ export default function JournalPage() {
         </div>
       )}
 
+      {/* Content search */}
+      {expandedEntry && entryContents[expandedEntry] && (
+        <div className="mb-4 flex items-center gap-3">
+          <input
+            type="text"
+            placeholder={t('search_in_content') || 'Search in document...'}
+            value={contentSearch}
+            onChange={(e) => setContentSearch(e.target.value)}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+          />
+          {contentSearch && (
+            <span className="text-sm text-gray-500">
+              {(contentSearchResults.get(expandedEntry) || []).length} {t('matches') || 'matches'}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Timeline */}
       {!loading && filteredEntries.length > 0 && (
         <div className="space-y-4">
@@ -153,14 +252,14 @@ export default function JournalPage() {
             const journalTimestamp =
               entry.metadata?.journal_timestamp || entry.created_at;
             const expanded = expandedEntry === entry.id;
+            const fullContent = entryContents[entry.id];
+            const isLoadingContent = loadingContent === entry.id;
 
             return (
               <div
                 key={entry.id}
                 className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() =>
-                  setExpandedEntry(expanded ? null : entry.id)
-                }
+                onClick={() => handleEntryClick(entry)}
               >
                 {/* Date header */}
                 <div className="flex items-center justify-between mb-3">
@@ -173,18 +272,38 @@ export default function JournalPage() {
                 </div>
 
                 {/* Content */}
-                <div className={`text-gray-800 ${expanded ? '' : 'line-clamp-3'}`}>
-                  {journalText}
-                </div>
+                {!expanded && (
+                  <div className="text-gray-800 line-clamp-3">
+                    {journalText}
+                  </div>
+                )}
 
-                {/* Image thumbnail */}
-                {isImage(entry.mime_type) && (
-                  <div className="mt-3">
-                    <img
-                      src={`/api/v1/documents/${entry.id}/content`}
-                      alt="Journal photo"
-                      className={`rounded-lg ${expanded ? 'max-w-full' : 'max-h-48 object-cover'}`}
-                    />
+                {expanded && isImage(entry.mime_type) && (
+                  <img
+                    src={`/api/v1/documents/${entry.id}/content`}
+                    alt="Journal photo"
+                    className="rounded-lg max-w-full"
+                  />
+                )}
+
+                {expanded && !isImage(entry.mime_type) && (
+                  <div>
+                    {isLoadingContent ? (
+                      <div className="flex items-center gap-2 text-gray-400 py-4">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                        <span className="text-sm">{t('loading')}</span>
+                      </div>
+                    ) : fullContent ? (
+                      <div className="max-h-[60vh] overflow-auto border border-gray-200 rounded-lg bg-gray-50">
+                        <pre className="p-4 text-sm text-gray-800 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                          {highlightedContent || fullContent}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="text-gray-800 whitespace-pre-wrap break-words">
+                        {journalText}
+                      </div>
+                    )}
                   </div>
                 )}
 

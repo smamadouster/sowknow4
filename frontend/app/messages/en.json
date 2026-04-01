@@ -1,4 +1,22 @@
 {
+  "home": {
+    "hello": "Hello {name}",
+    "welcome_title": "My Digital Legacy Vault",
+    "welcome_message": "Welcome to my digital legacy vault. Here you will find treasures of knowledge.",
+    "welcome_discovery": "HAPPY EXPLORING",
+    "services_title": "Your services",
+    "search_desc": "Intelligent search across all your documents",
+    "documents_desc": "Manage and upload your documents",
+    "chat_desc": "Converse with your knowledge base",
+    "collections_desc": "Dynamic collections with AI-powered queries",
+    "smart_folders_desc": "AI-generated summaries and reports",
+    "knowledge_graph_desc": "Explore entities, relationships and timeline",
+    "journal_desc": "Your personal confidential journal",
+    "admin_section_title": "Administration & Monitoring",
+    "dashboard_desc": "System statistics and status",
+    "monitoring_desc": "Real-time service health",
+    "settings_desc": "User management and configuration"
+  },
   "common": {
     "loading": "Loading...",
     "error": "Error",
@@ -18,6 +36,7 @@
   },
   "nav": {
     "title": "SOWKNOW",
+    "home": "Home",
     "all_users": "All Users",
     "admin_only": "Admin Only",
     "dashboard": "Dashboard",
@@ -238,6 +257,8 @@
     "subtitle": "Personal confidential journal",
     "empty": "No journal entries yet. Use Telegram to add entries.",
     "search_placeholder": "Search journal...",
+    "search_in_content": "Search in document...",
+    "matches": "matches",
     "filter_tags": "Filter by tags",
     "all_tags": "All tags",
     "loading": "Loading...",

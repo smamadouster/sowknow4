@@ -106,7 +106,10 @@ class EntityExtractionService:
         """
         try:
             # Determine LLM routing based on document bucket
-            use_ollama = document.bucket == DocumentBucket.CONFIDENTIAL
+            # Skip Ollama for entity extraction — it's too slow on CPU and blocks
+            # interactive chat queries. Entity extraction uses OpenRouter for all docs.
+            # The extracted entities (names, orgs, dates) are metadata, not document content.
+            use_ollama = False
 
             # Prepare text for analysis
             document_text = self._prepare_document_text(chunks)

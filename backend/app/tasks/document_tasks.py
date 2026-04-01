@@ -736,6 +736,7 @@ def on_generate_embeddings_failure(self, exc, task_id, args, kwargs, einfo) -> N
     retry_backoff_max=120,
     soft_time_limit=600,
     time_limit=660,
+    rate_limit="1/m",  # Limit to 1/min so Ollama stays available for chat
 )
 def extract_entities_for_document(self, document_id: str) -> dict:
     """

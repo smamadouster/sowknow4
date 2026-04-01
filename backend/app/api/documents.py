@@ -114,6 +114,8 @@ ALLOWED_EXTENSIONS = {
     ".epub",
     ".csv",
     ".xml",
+    ".tiff",
+    ".tif",
 }
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 MAX_BATCH_SIZE = 500 * 1024 * 1024  # 500MB
@@ -162,6 +164,8 @@ _EXTENSION_MIME_PREFIXES: dict = {
     ".epub": ["application/epub+zip", "application/zip"],
     ".csv": ["text/csv", "text/", "application/csv"],
     ".xml": ["text/xml", "application/xml", "text/"],
+    ".tiff": ["image/tiff"],
+    ".tif": ["image/tiff"],
 }
 
 

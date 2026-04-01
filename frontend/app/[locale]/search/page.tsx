@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { getCsrfToken } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 
@@ -250,12 +252,14 @@ function ResultCard({
   canSeeConfidential,
   confidentialLabel,
   relevanceTierLabel,
+  locale,
 }: {
   result: SearchResult;
   rank: number;
   canSeeConfidential: boolean;
   confidentialLabel: string;
   relevanceTierLabel: string;
+  locale: string;
 }) {
   const tier = result.relevance_label || 'marginal';
   const colors = RELEVANCE_COLOR[tier] || RELEVANCE_COLOR.marginal;
@@ -263,6 +267,29 @@ function ResultCard({
   const title = result.document_title || result.document_name || '—';
   const excerpt = result.excerpt || result.chunk_text || '';
   const opacity = tier === 'marginal' ? 'opacity-75' : 'opacity-100';
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/v1/documents/${result.document_id}/download`, {
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = title;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  };
 
   return (
     <div
@@ -278,7 +305,12 @@ function ResultCard({
           #{rank}
         </span>
         <div className="flex-1 min-w-0">
-          <span className="block text-sm font-semibold text-gray-900 truncate">{title}</span>
+          <Link
+            href={`/${locale}/documents/${result.document_id}`}
+            className="block text-sm font-semibold text-gray-900 truncate hover:text-blue-600 hover:underline"
+          >
+            {title}
+          </Link>
           <span className="text-xs text-gray-400 tracking-wide">
             {result.document_type?.toUpperCase()}
             {result.page_number ? ` · p.${result.page_number}` : ''}
@@ -300,6 +332,27 @@ function ResultCard({
           <span className="text-xs text-gray-400 tabular-nums">
             {Math.round(result.relevance_score * 100)}%
           </span>
+          <div className="flex items-center gap-1 ml-1">
+            <Link
+              href={`/${locale}/documents/${result.document_id}`}
+              className="p-1 text-gray-400 hover:text-blue-600 rounded"
+              title="View document"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </Link>
+            <button
+              onClick={handleDownload}
+              className="p-1 text-gray-400 hover:text-blue-600 rounded"
+              title="Download"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -438,6 +491,8 @@ function CitationsPanel({
 
 export default function SearchPage() {
   const t = useTranslations('search');
+  const params = useParams();
+  const locale = (params.locale as string) || 'fr';
   const user = useAuthStore((s) => s.user);
   const canSeeConfidential =
     user?.role === 'admin' || user?.role === 'superuser' || user?.can_access_confidential;
@@ -767,6 +822,7 @@ export default function SearchPage() {
                         canSeeConfidential={!!canSeeConfidential}
                         confidentialLabel={t('confidential')}
                         relevanceTierLabel={t(labelKey)}
+                        locale={locale}
                       />
                     ))}
                   </div>

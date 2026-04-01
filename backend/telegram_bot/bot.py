@@ -336,12 +336,15 @@ class TelegramBotClient:
         bucket: str,
         access_token: str,
         tags: list[str] | None = None,
+        document_type: str | None = None,
     ) -> dict:
         try:
             files = {"file": (filename, file_bytes)}
             data: dict[str, Any] = {"bucket": bucket}
             if tags:
                 data["tags"] = ",".join(tags)
+            if document_type:
+                data["document_type"] = document_type
             headers = {"Authorization": f"Bearer {access_token}"}
             if BOT_API_KEY:
                 headers["X-Bot-Api-Key"] = BOT_API_KEY

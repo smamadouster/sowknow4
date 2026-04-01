@@ -193,6 +193,7 @@ async def upload_document(
     bucket: str = Form("public"),
     title: str | None = Form(None),
     tags: str | None = Form(None),
+    document_type: str | None = Form(None),
     x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -317,6 +318,15 @@ async def upload_document(
     )
 
     db.add(document)
+
+    # Set document metadata (e.g. journal type)
+    if document_type:
+        from datetime import datetime as dt
+        document.document_metadata = {
+            "document_type": document_type,
+            "journal_timestamp": dt.utcnow().isoformat(),
+        }
+
     await db.commit()
     await db.refresh(document)
 

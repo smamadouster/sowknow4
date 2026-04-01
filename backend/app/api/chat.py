@@ -208,6 +208,7 @@ async def send_message(
             return ChatMessageResponse.model_validate(assistant_message)
 
         except Exception as e:
+            logger.exception("Error generating chat response: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error generating response: {str(e)}"
             )

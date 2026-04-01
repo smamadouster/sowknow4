@@ -155,7 +155,7 @@ class HybridSearchService:
             SELECT
                 dc.id as chunk_id,
                 dc.document_id,
-                d.filename as document_name,
+                COALESCE(d.original_filename, d.filename) as document_name,
                 d.bucket as document_bucket,
                 dc.chunk_text,
                 dc.chunk_index,
@@ -233,7 +233,7 @@ class HybridSearchService:
             SELECT
                 dc.id          AS chunk_id,
                 dc.document_id,
-                d.filename     AS document_name,
+                COALESCE(d.original_filename, d.filename) AS document_name,
                 d.bucket       AS document_bucket,
                 dc.chunk_text,
                 dc.chunk_index,
@@ -302,7 +302,7 @@ class HybridSearchService:
             SELECT
                 a.id as article_id,
                 a.document_id,
-                d.filename as document_name,
+                COALESCE(d.original_filename, d.filename) as document_name,
                 a.bucket as document_bucket,
                 a.title,
                 a.summary,
@@ -351,7 +351,7 @@ class HybridSearchService:
             SELECT
                 a.id as article_id,
                 a.document_id,
-                d.filename as document_name,
+                COALESCE(d.original_filename, d.filename) as document_name,
                 a.bucket as document_bucket,
                 a.title,
                 a.summary,
@@ -407,7 +407,7 @@ class HybridSearchService:
         offset: int = 0,
         db: AsyncSession = None,
         user: User = None,
-        timeout: float = 3.0,
+        timeout: float = 8.0,
     ) -> dict[str, Any]:
         """
         Perform hybrid search combining semantic and keyword results.

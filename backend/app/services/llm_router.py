@@ -211,18 +211,18 @@ class LLMRouter:
         has_context = bool(context_chunks)
 
         if has_context:
-            # RAG query: MiniMax → OpenRouter → Ollama
+            # RAG query: OpenRouter → MiniMax → Ollama
             chain = [
-                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("openrouter", self._openrouter, lambda s: s is not None),
+                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("ollama", self._ollama, lambda s: s is not None),
             ]
             reason = RoutingReason.PUBLIC_DOCS_RAG
         else:
-            # General chat: MiniMax → OpenRouter → Ollama
+            # General chat: OpenRouter → MiniMax → Ollama
             chain = [
-                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("openrouter", self._openrouter, lambda s: s is not None),
+                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("ollama", self._ollama, lambda s: s is not None),
             ]
             reason = RoutingReason.GENERAL_CHAT

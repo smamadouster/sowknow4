@@ -878,28 +878,9 @@ async def handle_text_message(
                 )
             return
 
-    # --- InputGuard pre-processing ---
-    try:
-        from app.services.input_guard import input_guard as _input_guard
-        guard_result = await _input_guard.process(
-            query=text,
-            user_role="user",  # Telegram users default to "user" role
-            document_ids=None,
-        )
-        logger.info(
-            "InputGuard[telegram]: lang=%s intent=%s vault=%s pii=%s",
-            guard_result.language, guard_result.intent,
-            guard_result.vault_hint, guard_result.pii_detected,
-        )
-        if guard_result.pii_detected:
-            logger.warning("InputGuard: PII detected in Telegram message from user %s", user.id)
-        if guard_result.is_duplicate:
-            await update.message.reply_text(
-                "⏳ Cette requête est en cours de traitement. / This query is already being processed."
-            )
-            return
-    except Exception as e:
-        logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
+    # NOTE: InputGuard (dedup, PII, language) runs in the backend chat endpoint.
+    # Do NOT run it here too — the dedup check sets a Redis key that the backend
+    # then finds, causing every Telegram query to be rejected as a duplicate.
 
     # --- Multi-turn conversation via backend chat session ---
     # The backend manages full conversation history using the session_id.

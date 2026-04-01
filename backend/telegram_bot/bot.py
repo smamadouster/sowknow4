@@ -407,6 +407,45 @@ class TelegramBotClient:
             logger.error(f"Search error: {str(e)}")
             return {"error": str(e)}
 
+    async def create_journal_entry(
+        self, text: str, tags: list[str], access_token: str
+    ) -> dict:
+        """Create a text-only journal entry via the backend API."""
+        try:
+            response = await self._client.post(
+                "/api/v1/documents/journal",
+                json={"text": text, "tags": tags},
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "X-Bot-Api-Key": BOT_API_KEY,
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable."}
+        except Exception as e:
+            logger.error(f"Journal entry error: {str(e)}")
+            return {"error": str(e)}
+
+    async def search_journal(self, query: str, access_token: str) -> dict:
+        """Search only journal entries."""
+        try:
+            response = await self._client.post(
+                "/api/v1/search",
+                json={"query": query, "limit": 5, "journal_only": True},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open: {str(e)}")
+            return {"error": "Service temporarily unavailable."}
+        except Exception as e:
+            logger.error(f"Journal search error: {str(e)}")
+            return {"error": str(e)}
+
     async def create_chat_session(self, access_token: str) -> dict:
         """Create a new backend chat session for multi-turn conversation."""
         try:
@@ -488,6 +527,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 💬 <b>Chat</b>
 • Conversational AI powered by Mistral
 
+📓 <b>Journal</b>
+• Personal journal in confidential vault
+
 📌 Commands:
 /start - Show this message
 /help - Get help"""
@@ -496,6 +538,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         [InlineKeyboardButton("📤 Upload Document", callback_data="upload_prompt")],
         [InlineKeyboardButton("🔍 Search", callback_data="search_prompt")],
         [InlineKeyboardButton("💬 Chat", callback_data="chat_prompt")],
+        [InlineKeyboardButton("📓 Journal", callback_data="journal_prompt")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_html(welcome_text, reply_markup=reply_markup)
@@ -956,6 +999,53 @@ async def chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def journal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+
+    session = await session_manager.get_session(user.id)
+    if not session:
+        await query.edit_message_text("❌ Session expired. Please use /start again.")
+        return
+
+    # Set journal mode in session
+    await session_manager.update_session(user.id, {"mode": "journal"})
+
+    keyboard = [
+        [InlineKeyboardButton("🔎 Chercher dans le journal", callback_data="journal_search")],
+        [InlineKeyboardButton("❌ Quitter Journal", callback_data="journal_exit")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        "📓 <b>Mode Journal activé</b>\n\n"
+        "Envoyez vos textes, photos ou schémas.\n"
+        "Utilisez <code>#tags</code> pour étiqueter.\n\n"
+        "Tapez /done pour quitter.",
+        parse_mode="HTML",
+        reply_markup=reply_markup,
+    )
+
+
+async def journal_exit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    await session_manager.update_session(user.id, {"mode": None})
+    await query.edit_message_text("📓 Mode journal terminé. Utilisez /start pour revenir au menu.")
+
+
+async def journal_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    await session_manager.update_session(user.id, {"mode": "journal_search"})
+    await query.edit_message_text(
+        "🔎 <b>Recherche Journal</b>\n\nEnvoyez votre recherche :",
+        parse_mode="HTML",
+    )
+
+
 async def check_completed_documents(context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Background job to check documents that may have completed after polling stopped.
@@ -1340,6 +1430,9 @@ def main() -> None:
         CallbackQueryHandler(search_callback, pattern="^search_prompt")
     )
     application.add_handler(CallbackQueryHandler(chat_callback, pattern="^chat_prompt"))
+    application.add_handler(CallbackQueryHandler(journal_callback, pattern="^journal_prompt"))
+    application.add_handler(CallbackQueryHandler(journal_exit_callback, pattern="^journal_exit"))
+    application.add_handler(CallbackQueryHandler(journal_search_callback, pattern="^journal_search"))
 
     application.add_handler(
         MessageHandler(filters.Document.ALL | filters.PHOTO, handle_document_upload)

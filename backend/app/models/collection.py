@@ -32,6 +32,14 @@ class CollectionType(enum.StrEnum):
     FOLDER = "folder"  # Smart Folder with generated content
 
 
+class CollectionStatus(enum.StrEnum):
+    """Status of collection build pipeline"""
+
+    BUILDING = "building"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class Collection(Base, TimestampMixin):
     """
     Smart Collection model for organizing documents based on natural language queries
@@ -78,6 +86,15 @@ class Collection(Base, TimestampMixin):
 
     # Document filtering criteria (for re-gathering)
     filter_criteria = Column(JSONB, default=dict)  # Stored search filters
+
+    # Build pipeline status
+    status = Column(
+        Enum(CollectionStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=CollectionStatus.READY,
+        nullable=False,
+        server_default="ready",
+    )
+    build_error = Column(String, nullable=True)
 
     # Statistics
     document_count = Column(Integer, default=0)  # Number of documents in collection

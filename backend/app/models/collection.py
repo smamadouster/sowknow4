@@ -149,6 +149,12 @@ class CollectionItem(Base, TimestampMixin):
     document_id = Column(
         GUIDType(as_uuid=True), ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    article_id = Column(
+        GUIDType(as_uuid=True),
+        ForeignKey("sowknow.articles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Relevance and ordering
     relevance_score = Column(Integer, default=50)  # 0-100 relevance score
@@ -165,6 +171,7 @@ class CollectionItem(Base, TimestampMixin):
     # Relationships
     collection = relationship("Collection", back_populates="items")
     document = relationship("Document")
+    article = relationship("Article", foreign_keys=[article_id])
 
     # Unique constraint to prevent duplicate items
     __table_args__ = (

@@ -44,9 +44,11 @@ from app.schemas.collection import (
     ExportFormat,
     ParsedIntentResponse,
 )
+from app.models.collection import CollectionStatus
 from app.services.collection_chat_service import collection_chat_service
 from app.services.collection_service import collection_service
 from app.services.input_guard import input_guard
+from app.tasks.document_tasks import build_smart_collection
 
 # Cache invalidation helper — best-effort, never raises
 def _invalidate_collection_cache(collection_id) -> None:
@@ -87,27 +89,27 @@ async def create_audit_log(
         logger.error(f"Audit logging failed: {str(e)}")
 
 
-@router.post("", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CollectionResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_collection(
     collection_data: CollectionCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionResponse:
     """
-    Create a new Smart Collection from natural language query
-
-    The query is parsed to extract keywords, date ranges, entities, and
-    document types. Documents are gathered based on the parsed intent,
-    and an AI summary is generated.
+    Create a new Smart Collection from natural language query.
+    Returns 202 Accepted immediately. The AI pipeline runs asynchronously via Celery.
+    Poll GET /api/v1/collections/{id}/status to check progress.
     """
     try:
-        collection = await collection_service.create_collection(
+        collection = await collection_service.create_collection_shell(
             collection_data=collection_data, user=current_user, db=db
         )
+        build_smart_collection.delay(str(collection.id), str(current_user.id))
         return collection
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create collection: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create collection: {str(e)}",
         )
 
 
@@ -287,6 +289,48 @@ async def get_collection(
         **CollectionResponse.model_validate(collection).model_dump(),
         items=enriched_items,
     )
+
+
+@router.get("/{collection_id}/status")
+async def get_collection_status(
+    collection_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Get collection build status.
+    Returns status (building/ready/failed), document_count, and error if failed.
+    """
+    visibility_filter = collection_service._get_user_visibility_filter(current_user)
+
+    coll_result = await db.execute(
+        select(Collection).where(
+            and_(
+                Collection.id == collection_id,
+                or_(
+                    Collection.user_id == current_user.id,
+                    Collection.visibility.in_(visibility_filter),
+                ),
+            )
+        )
+    )
+    collection = coll_result.scalar_one_or_none()
+
+    if not collection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+
+    result = {
+        "id": str(collection.id),
+        "status": collection.status.value if hasattr(collection.status, 'value') else str(collection.status),
+        "name": collection.name,
+        "document_count": collection.document_count,
+        "ai_summary": collection.ai_summary,
+    }
+
+    if hasattr(collection, 'status') and collection.status == CollectionStatus.FAILED:
+        result["error"] = collection.build_error or "Unknown error"
+
+    return result
 
 
 @router.patch("/{collection_id}", response_model=CollectionResponse)

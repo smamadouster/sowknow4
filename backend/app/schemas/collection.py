@@ -123,7 +123,8 @@ class CollectionResponse(BaseModel):
     chat_session_id: UUID | None = None
     is_pinned: bool
     is_favorite: bool
-    status: str = "active"  # Collections are always active once created
+    status: str = "ready"
+    build_error: str | None = None
     created_at: datetime
     updated_at: datetime
 

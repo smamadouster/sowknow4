@@ -43,7 +43,7 @@ EXEMPT_PATHS: set[str] = {
 }
 
 # Paths that start with these prefixes are also exempt (e.g. /api/v1/auth/verify-email/<token>)
-EXEMPT_PREFIXES = ("/api/v1/auth/verify-email/",)
+EXEMPT_PREFIXES = ("/api/v1/auth/verify-email/", "/api/v1/internal/")
 
 
 def generate_csrf_token() -> str:

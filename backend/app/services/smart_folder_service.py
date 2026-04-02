@@ -1,7 +1,7 @@
 """
 Smart Folder Service for AI-generated content from documents
 
-Uses MiniMax (public documents) or Ollama (confidential documents) to
+Uses MiniMax M2.7 directly for all documents to
 generate articles, reports, and synthesized content from gathered documents
 based on user-provided topics.
 """
@@ -24,7 +24,6 @@ from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
-from app.services.ollama_service import ollama_service
 from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
@@ -35,7 +34,6 @@ class SmartFolderService:
 
     def __init__(self):
         self.minimax_service = minimax_service
-        self.ollama_service = ollama_service
         self.search_service = search_service
 
     async def generate_smart_folder(
@@ -79,29 +77,17 @@ class SmartFolderService:
                 "llm_used": "none",
             }
 
-        # Check if confidential documents are present
-        has_confidential = any(doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents)
-
         # Gather document context
         document_context = await self._build_document_context(documents, db)
 
-        # Generate content
-        if has_confidential:
-            generated = await self._generate_with_ollama(
-                topic=topic,
-                document_context=document_context,
-                style=style,
-                length=length,
-            )
-            llm_used = "ollama"
-        else:
-            generated = await self._generate_with_minimax(
-                topic=topic,
-                document_context=document_context,
-                style=style,
-                length=length,
-            )
-            llm_used = "minimax"
+        # Generate content using MiniMax for all documents
+        generated = await self._generate_with_minimax(
+            topic=topic,
+            document_context=document_context,
+            style=style,
+            length=length,
+        )
+        llm_used = "minimax"
 
         # Create collection for the smart folder
         collection_name = f"Smart Folder: {topic[:50]}"
@@ -285,51 +271,6 @@ Generate the article now:"""
                 response_parts.append(chunk)
 
         return "".join(response_parts).strip()
-
-    async def _generate_with_ollama(
-        self,
-        topic: str,
-        document_context: list[dict[str, Any]],
-        style: str,
-        length: str,
-    ) -> str:
-        """Generate content using Ollama for confidential documents"""
-
-        # Build simpler context for Ollama
-        doc_list = "\n".join([f"- {doc['filename']}" for doc in document_context])
-
-        prompt = f"""Create an article about: {topic}
-
-Available documents:
-{doc_list}
-
-Style: {style}
-Length: {length}
-
-Generate a well-structured article based on these documents."""
-
-        ollama_system_prompt = build_service_prompt(
-            service_name="SOWKNOW Smart Folder Service",
-            mission="Automatically categorize documents into smart folders using intent parsing and content analysis",
-            constraints=(
-                "- You MUST respect document bucket isolation\n"
-                "- You MUST classify documents based on content, not just filename\n"
-                "- You MUST log categorization decisions for audit\n"
-                "- You MUST NOT expose confidential document metadata in public folder structures"
-            ),
-            task_prompt=f"You are a content generator. Write in a {style} style.",
-        )
-
-        try:
-            response = await self.ollama_service.generate(
-                prompt=prompt,
-                system=ollama_system_prompt,
-                temperature=0.7,
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Ollama generation error: {e}")
-            return f"Unable to generate content. Error: {str(e)}"
 
 
 # Global smart folder service instance

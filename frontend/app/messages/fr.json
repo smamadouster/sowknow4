@@ -309,7 +309,10 @@
     "export_error": "Échec de la génération du rapport PDF",
     "export_success": "Rapport PDF généré avec succès",
     "building": "Construction en cours...",
-    "build_failed": "La construction a echoue"
+    "build_failed": "La construction a echoue",
+    "preview": "Aperçu",
+    "download": "Télécharger",
+    "open_document": "Ouvrir le document"
   },
   "smart_folders": {
     "title": "Dossiers Intelligents",

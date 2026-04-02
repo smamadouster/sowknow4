@@ -8,13 +8,17 @@ import { getCsrfToken } from "@/lib/api";
 interface CollectionItem {
   id: string;
   document_id: string;
+  article_id?: string;
+  article_title?: string;
+  article_summary?: string;
   relevance_score: number;
   notes: string | null;
   is_highlighted: boolean;
   document?: {
     id: string;
     filename: string;
-    bucket: string;
+    mime_type?: string;
+    bucket?: string;
     created_at: string;
   };
 }
@@ -333,28 +337,61 @@ export default function CollectionDetailPage() {
                     }`}
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           {item.is_highlighted && <span>⭐</span>}
-                          <h3 className="font-medium text-gray-900 dark:text-white">
-                            {item.document?.filename || "Unknown Document"}
+                          <h3 className="font-medium text-gray-900 dark:text-white truncate">
+                            {item.article_title || item.document?.filename || "Unknown Document"}
                           </h3>
                           {item.document?.bucket === "confidential" && (
-                            <span className="text-xs px-2 py-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded">
+                            <span className="text-xs px-2 py-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded flex-shrink-0">
                               Confidential
                             </span>
                           )}
                         </div>
-                        {item.notes && (
+                        {item.article_summary && (
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                            {item.article_summary}
+                          </p>
+                        )}
+                        {!item.article_summary && item.notes && (
                           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                             {item.notes}
                           </p>
                         )}
+                        {item.article_title && item.document?.filename && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                            {item.document.filename}
+                          </p>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                         <span className="text-sm text-gray-500 dark:text-gray-400">
-                          {item.relevance_score}% relevant
+                          {item.relevance_score}%
                         </span>
+                        {item.document && (
+                          <div className="flex gap-1">
+                            <a
+                              href={`/${params.locale}/documents/${item.document.id}`}
+                              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                              title={t('collections.preview')}
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </a>
+                            <a
+                              href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/documents/${item.document.id}/download`}
+                              className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                              title={t('collections.download')}
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

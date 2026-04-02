@@ -324,48 +324,43 @@ class CollectionService:
         if not collection:
             raise ValueError(f"Collection {collection_id} not found")
 
-        # Determine if user has access to confidential documents (for LLM routing)
-        use_ollama = hasattr(user, "role") and user.role in [
-            UserRole.ADMIN,
-            UserRole.SUPERUSER,
-        ]
+        # Stage 1: UNDERSTAND
+        parsed_intent, strategy = await self._understand_query(collection.query)
 
-        # Re-parse intent from stored query
-        parsed_intent = await self.intent_parser.parse_intent(query=collection.query, use_ollama=use_ollama)
-
-        # Gather documents
-        documents = await self._gather_documents_for_intent(intent=parsed_intent, user=user, db=db)
+        # Stage 2: GATHER + VERIFY
+        results = await self._gather_and_verify(parsed_intent, strategy, user, db)
 
         # Remove existing items
         from sqlalchemy import delete as sql_delete
-
         await db.execute(sql_delete(CollectionItem).where(CollectionItem.collection_id == collection_id))
 
-        # Add new items
-        for idx, doc in enumerate(documents):
-            relevance = self._calculate_relevance(doc, parsed_intent)
-
+        # Add new items with article_id
+        from uuid import UUID as UUIDType
+        for idx, r in enumerate(results):
+            doc_id = r["document_id"]
+            art_id = r.get("article_id")
             item = CollectionItem(
                 collection_id=collection.id,
-                document_id=doc.id,
-                relevance_score=relevance,
+                document_id=UUIDType(doc_id) if isinstance(doc_id, str) else doc_id,
+                article_id=UUIDType(art_id) if isinstance(art_id, str) and art_id else None,
+                relevance_score=min(int((r.get("relevance_score") or 0.5) * 100), 100),
                 order_index=idx,
                 added_by="ai",
                 added_reason="Refreshed collection",
             )
             db.add(item)
 
-        # Update summary if requested
-        if update_summary and documents:
-            collection.ai_summary = await self._generate_collection_summary(
+        # Stage 3: SYNTHESIZE (if requested)
+        if update_summary and results:
+            collection.ai_summary = await self._synthesize_summary(
                 collection_name=collection.name,
                 query=collection.query,
-                documents=documents[:10],
-                parsed_intent=parsed_intent,
+                results=results,
+                intent=parsed_intent,
             )
 
         # Update metadata
-        collection.document_count = len(documents)
+        collection.document_count = len(results)
         collection.last_refreshed_at = datetime.utcnow().isoformat()
         collection.parsed_intent = parsed_intent.to_dict()
         collection.filter_criteria = parsed_intent.to_search_filter()
@@ -374,7 +369,7 @@ class CollectionService:
         await db.refresh(collection)
 
         self._invalidate_cache(collection_id)
-        logger.info(f"Refreshed collection '{collection.name}' with {len(documents)} documents")
+        logger.info(f"Refreshed collection '{collection.name}' with {len(results)} items")
         return collection
 
     async def _understand_query(self, query: str) -> tuple[ParsedIntentModel, str]:

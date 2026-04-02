@@ -71,7 +71,7 @@ export default function CollectionsPage() {
     try {
       const { api } = await import("@/lib/api");
       const response = await api.createCollection(
-        newQuery.slice(0, 50),
+        newQuery.slice(0, 500),
         newQuery
       );
 
@@ -323,9 +323,13 @@ export default function CollectionsPage() {
               value={newQuery}
               onChange={(e) => setNewQuery(e.target.value)}
               placeholder={t('query_placeholder')}
+              maxLength={500}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               rows={3}
             />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">
+              {newQuery.length}/500
+            </p>
 
             {createError && (
               <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">

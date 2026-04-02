@@ -51,7 +51,12 @@ class CollectionBase(BaseModel):
 
 
 class CollectionCreate(CollectionBase):
-    query: str = Field(..., min_length=1, description="Natural language query to generate collection")
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Natural language query to generate collection (up to 500 characters)",
+    )
     save: bool = Field(default=True, description="Whether to save the collection")
 
 
@@ -142,7 +147,7 @@ class CollectionListResponse(BaseModel):
 class CollectionPreviewRequest(BaseModel):
     """Request to preview collection without saving"""
 
-    query: str = Field(..., min_length=1, description="Natural language query")
+    query: str = Field(..., min_length=1, max_length=500, description="Natural language query (up to 500 characters)")
 
 
 class CollectionPreviewResponse(BaseModel):

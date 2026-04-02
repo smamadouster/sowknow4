@@ -194,52 +194,51 @@ class CollectionService:
             raise ValueError(f"User {user_id} not found")
 
         try:
-            use_ollama = hasattr(user, "role") and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+            # Stage 1: UNDERSTAND
+            parsed_intent, strategy = await self._understand_query(collection.query)
 
-            # Step 1: Parse intent
-            parsed_intent = await self.intent_parser.parse_intent(
-                query=collection.query, user_language="en", use_ollama=use_ollama,
-            )
+            # Stage 2: GATHER + VERIFY
+            results = await self._gather_and_verify(parsed_intent, strategy, user, db)
 
-            # Step 2: Gather documents
-            documents = await self._gather_documents_for_intent(intent=parsed_intent, user=user, db=db)
-
-            # Step 3: Generate summary
+            # Stage 3: SYNTHESIZE
             ai_summary = None
-            if documents:
-                ai_summary = await self._generate_collection_summary(
+            if results:
+                ai_summary = await self._synthesize_summary(
                     collection_name=parsed_intent.collection_name or collection.name,
                     query=collection.query,
-                    documents=documents[:10],
-                    parsed_intent=parsed_intent,
+                    results=results,
+                    intent=parsed_intent,
                 )
 
-            # Step 4: Add collection items
-            for idx, doc in enumerate(documents):
-                relevance = self._calculate_relevance(doc, parsed_intent)
+            # Create CollectionItems with article_id when available
+            from uuid import UUID as UUIDType
+            for idx, r in enumerate(results):
+                doc_id = r["document_id"]
+                art_id = r.get("article_id")
                 item = CollectionItem(
                     collection_id=collection.id,
-                    document_id=doc.id,
-                    relevance_score=relevance,
+                    document_id=UUIDType(doc_id) if isinstance(doc_id, str) else doc_id,
+                    article_id=UUIDType(art_id) if isinstance(art_id, str) and art_id else None,
+                    relevance_score=min(int((r.get("relevance_score") or 0.5) * 100), 100),
                     order_index=idx,
                     added_by="ai",
                     added_reason=f"Matched query: {collection.query}",
                 )
                 db.add(item)
 
-            # Step 5: Update to READY
+            # Update collection to READY
             collection.parsed_intent = parsed_intent.to_dict()
             collection.ai_summary = ai_summary
             collection.ai_keywords = parsed_intent.keywords
             collection.ai_entities = parsed_intent.entities
             collection.filter_criteria = parsed_intent.to_search_filter()
-            collection.document_count = len(documents)
+            collection.document_count = len(results)
             collection.last_refreshed_at = datetime.utcnow().isoformat()
             collection.status = CollectionStatus.READY
 
             await db.commit()
             await db.refresh(collection)
-            logger.info(f"Collection '{collection.name}' built: {len(documents)} docs, status=ready")
+            logger.info(f"Collection '{collection.name}' built: {len(results)} items, status=ready")
             return collection
 
         except Exception as e:

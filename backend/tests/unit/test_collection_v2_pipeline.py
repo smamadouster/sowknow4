@@ -301,3 +301,91 @@ class TestStage3Synthesize:
                           new_callable=AsyncMock, side_effect=Exception("API down")):
             summary = await collection_service._synthesize_summary("Test", "test", results, intent)
             assert "1 documents" in summary
+
+
+class TestFullPipelineV2:
+    """Full pipeline must call 3 stages in order."""
+
+    @pytest.mark.asyncio
+    async def test_pipeline_calls_three_stages(self):
+        import uuid
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        with patch.object(
+            collection_service, "_understand_query", new_callable=AsyncMock,
+            return_value=(ParsedIntent(query="test", keywords=["test"], collection_name="Test", confidence=0.9), "broad_hybrid"),
+        ) as mock_s1, patch.object(
+            collection_service, "_gather_and_verify", new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_s2, patch.object(
+            collection_service, "_synthesize_summary", new_callable=AsyncMock,
+            return_value="Test summary.",
+        ) as mock_s3:
+            mock_db = MagicMock()
+            mock_collection = MagicMock()
+            mock_collection.query = "test"
+            mock_collection.name = "Test"
+            mock_user = MagicMock()
+
+            mock_db.execute = AsyncMock(side_effect=[
+                MagicMock(scalar_one_or_none=MagicMock(return_value=mock_collection)),
+                MagicMock(scalar_one_or_none=MagicMock(return_value=mock_user)),
+            ])
+            mock_db.commit = AsyncMock()
+            mock_db.refresh = AsyncMock()
+            mock_db.add = MagicMock()
+
+            await collection_service.build_collection_pipeline(uuid.uuid4(), uuid.uuid4(), mock_db)
+
+            mock_s1.assert_called_once()
+            mock_s2.assert_called_once()
+            # s3 not called because results=[] -> no summary
+
+    @pytest.mark.asyncio
+    async def test_pipeline_creates_items_with_article_id(self):
+        import uuid
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        mock_results = [
+            {"document_id": "d1d1d1d1-d1d1-d1d1-d1d1-d1d1d1d1d1d1", "article_id": "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
+             "article_title": "Title", "article_summary": "Summary",
+             "document_name": "doc.pdf", "relevance_score": 0.9, "result_type": "article"},
+        ]
+
+        with patch.object(
+            collection_service, "_understand_query", new_callable=AsyncMock,
+            return_value=(ParsedIntent(query="t", keywords=["t"], collection_name="T", confidence=0.9), "broad_hybrid"),
+        ), patch.object(
+            collection_service, "_gather_and_verify", new_callable=AsyncMock,
+            return_value=mock_results,
+        ), patch.object(
+            collection_service, "_synthesize_summary", new_callable=AsyncMock,
+            return_value="Summary.",
+        ):
+            mock_db = MagicMock()
+            mock_collection = MagicMock()
+            mock_collection.query = "t"
+            mock_collection.name = "T"
+            mock_user = MagicMock()
+
+            mock_db.execute = AsyncMock(side_effect=[
+                MagicMock(scalar_one_or_none=MagicMock(return_value=mock_collection)),
+                MagicMock(scalar_one_or_none=MagicMock(return_value=mock_user)),
+            ])
+            mock_db.commit = AsyncMock()
+            mock_db.refresh = AsyncMock()
+            added_items = []
+            mock_db.add = MagicMock(side_effect=lambda x: added_items.append(x))
+
+            await collection_service.build_collection_pipeline(uuid.uuid4(), uuid.uuid4(), mock_db)
+
+            # Check that a CollectionItem was added with article_id
+            items = [x for x in added_items if hasattr(x, 'article_id')]
+            assert len(items) == 1
+            assert items[0].article_id is not None

@@ -2,6 +2,7 @@
 Document API endpoints for upload, list, get, update, and delete operations
 """
 
+import asyncio
 import json
 import logging
 import mimetypes
@@ -121,6 +122,9 @@ ALLOWED_EXTENSIONS = {
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 MAX_BATCH_SIZE = 500 * 1024 * 1024  # 500MB
 
+# Concurrency limiter: cap simultaneous uploads to prevent starving other endpoints
+_upload_semaphore = asyncio.Semaphore(3)
+
 
 def get_file_extension(filename: str) -> str:
     """Get file extension from filename"""
@@ -211,7 +215,32 @@ async def upload_document(
     - Confidential bucket: Only Admin and Super User roles can upload
     - Bot API key validation is performed but does NOT bypass role checks
     - Returns 403 Forbidden for unauthorized confidential upload attempts
+    - Returns 503 Service Unavailable when too many uploads are in progress
     """
+    if _upload_semaphore._value == 0:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Too many uploads in progress. Please retry shortly.",
+        )
+    async with _upload_semaphore:
+        return await _do_upload_document(
+            file=file, bucket=bucket, title=title, tags=tags,
+            document_type=document_type, x_bot_api_key=x_bot_api_key,
+            current_user=current_user, db=db,
+        )
+
+
+async def _do_upload_document(
+    file: UploadFile,
+    bucket: str,
+    title: str | None,
+    tags: str | None,
+    document_type: str | None,
+    x_bot_api_key: str | None,
+    current_user: User,
+    db: AsyncSession,
+) -> DocumentUploadResponse:
+    """Internal upload handler, called under the concurrency semaphore."""
     # PRIORITY: Check user role FIRST (admin/superuser have full access)
     logger.info(f"Upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}")
     logger.info(f"x_bot_api_key present: {bool(x_bot_api_key)}, BOT_API_KEY configured: {bool(BOT_API_KEY)}")
@@ -742,9 +771,10 @@ async def upload_batch_documents(
     batch_id = str(uuid.uuid4())
 
     for file in files:
-        doc_response, error = await process_single_file_upload(
-            file=file, bucket=bucket, current_user=current_user, db=db, batch_id=batch_id
-        )
+        async with _upload_semaphore:
+            doc_response, error = await process_single_file_upload(
+                file=file, bucket=bucket, current_user=current_user, db=db, batch_id=batch_id
+            )
 
         if doc_response:
             successful_docs.append(doc_response)

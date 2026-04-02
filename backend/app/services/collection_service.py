@@ -32,6 +32,7 @@ from app.services.agent_identity import build_service_prompt
 from app.models.collection import (
     Collection,
     CollectionItem,
+    CollectionStatus,
     CollectionVisibility,
 )
 from app.models.document import Document, DocumentBucket, DocumentStatus
@@ -153,6 +154,100 @@ class CollectionService:
 
         logger.info(f"Created collection '{collection.name}' with {len(documents)} documents for user {user.email}")
         return collection
+
+    async def create_collection_shell(
+        self, collection_data: CollectionCreate, user: User, db: Session
+    ) -> Collection:
+        """Create a collection record with status=BUILDING. No LLM calls — returns instantly."""
+        collection = Collection(
+            user_id=user.id,
+            name=collection_data.name,
+            description=collection_data.description,
+            collection_type=collection_data.collection_type,
+            visibility=collection_data.visibility,
+            query=collection_data.query,
+            status=CollectionStatus.BUILDING,
+            document_count=0,
+            is_pinned=False,
+            is_favorite=False,
+        )
+        db.add(collection)
+        await db.commit()
+        await db.refresh(collection)
+        logger.info(f"Created collection shell '{collection.name}' (status=building) for user {user.email}")
+        return collection
+
+    async def build_collection_pipeline(
+        self, collection_id: uuid.UUID, user_id: uuid.UUID, db: Session
+    ) -> Collection:
+        """Run the full LLM pipeline. Updates collection to READY or FAILED."""
+        from app.models.user import User as UserModel
+
+        result = await db.execute(select(Collection).where(Collection.id == collection_id))
+        collection = result.scalar_one_or_none()
+        if not collection:
+            raise ValueError(f"Collection {collection_id} not found")
+
+        user_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            raise ValueError(f"User {user_id} not found")
+
+        try:
+            use_ollama = hasattr(user, "role") and user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+
+            # Step 1: Parse intent
+            parsed_intent = await self.intent_parser.parse_intent(
+                query=collection.query, user_language="en", use_ollama=use_ollama,
+            )
+
+            # Step 2: Gather documents
+            documents = await self._gather_documents_for_intent(intent=parsed_intent, user=user, db=db)
+
+            # Step 3: Generate summary
+            ai_summary = None
+            if documents:
+                ai_summary = await self._generate_collection_summary(
+                    collection_name=parsed_intent.collection_name or collection.name,
+                    query=collection.query,
+                    documents=documents[:10],
+                    parsed_intent=parsed_intent,
+                )
+
+            # Step 4: Add collection items
+            for idx, doc in enumerate(documents):
+                relevance = self._calculate_relevance(doc, parsed_intent)
+                item = CollectionItem(
+                    collection_id=collection.id,
+                    document_id=doc.id,
+                    relevance_score=relevance,
+                    order_index=idx,
+                    added_by="ai",
+                    added_reason=f"Matched query: {collection.query}",
+                )
+                db.add(item)
+
+            # Step 5: Update to READY
+            collection.parsed_intent = parsed_intent.to_dict()
+            collection.ai_summary = ai_summary
+            collection.ai_keywords = parsed_intent.keywords
+            collection.ai_entities = parsed_intent.entities
+            collection.filter_criteria = parsed_intent.to_search_filter()
+            collection.document_count = len(documents)
+            collection.last_refreshed_at = datetime.utcnow().isoformat()
+            collection.status = CollectionStatus.READY
+
+            await db.commit()
+            await db.refresh(collection)
+            logger.info(f"Collection '{collection.name}' built: {len(documents)} docs, status=ready")
+            return collection
+
+        except Exception as e:
+            logger.error(f"Collection build failed for {collection_id}: {e}", exc_info=True)
+            collection.status = CollectionStatus.FAILED
+            collection.build_error = str(e)[:500]
+            await db.commit()
+            raise
 
     async def preview_collection(self, query: str, user: User, db: Session) -> dict[str, Any]:
         """

@@ -221,3 +221,83 @@ class TestStage2GatherAndVerify:
         doc1_results = [r for r in results if r["document_id"] == "doc-1"]
         assert len(doc1_results) == 1
         assert doc1_results[0]["article_id"] == "art-1"
+
+
+class TestStage3Synthesize:
+    """Stage 3: Summary uses MiniMax direct, never Ollama/OpenRouter."""
+
+    @pytest.mark.asyncio
+    async def test_synthesize_uses_minimax(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        results = [{"document_id": "d1", "article_id": "a1", "article_title": "Tax 2023",
+                     "article_summary": "Annual tax filing", "document_name": "tax.pdf",
+                     "relevance_score": 0.9, "result_type": "article"}]
+        intent = ParsedIntent(query="tax", keywords=["tax"], collection_name="Tax", confidence=0.9)
+
+        with patch.object(collection_service.minimax_service, "chat_completion_non_stream",
+                          new_callable=AsyncMock, return_value="Summary of tax docs.") as mock_mm:
+            summary = await collection_service._synthesize_summary("Tax", "tax", results, intent)
+            mock_mm.assert_called_once()
+            assert "Summary of tax docs" in summary
+
+    @pytest.mark.asyncio
+    async def test_synthesize_never_calls_ollama(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        results = [{"document_id": "d1", "article_id": None, "article_title": None,
+                     "article_summary": None, "document_name": "secret.pdf",
+                     "relevance_score": 0.8, "result_type": "chunk"}]
+        intent = ParsedIntent(query="secret", keywords=["secret"], collection_name="Secrets", confidence=0.9)
+
+        with patch.object(collection_service.minimax_service, "chat_completion_non_stream",
+                          new_callable=AsyncMock, return_value="Summary."), \
+             patch.object(collection_service.ollama_service, "generate",
+                          new_callable=AsyncMock) as mock_ollama:
+            await collection_service._synthesize_summary("Secrets", "secret", results, intent)
+            mock_ollama.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_synthesize_includes_article_context(self):
+        from unittest.mock import patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        results = [{"document_id": "d1", "article_id": "a1", "article_title": "Property Deed",
+                     "article_summary": "Transfer to Ndakhte Mboup in Dakar",
+                     "document_name": "deed.pdf", "relevance_score": 0.9, "result_type": "article"}]
+        intent = ParsedIntent(query="Ndakhte", keywords=["Ndakhte"], collection_name="Ndakhte", confidence=0.9)
+
+        captured = []
+
+        async def _capture(messages, **kwargs):
+            captured.append(messages)
+            return "Summary."
+
+        with patch.object(collection_service.minimax_service, "chat_completion_non_stream", side_effect=_capture):
+            await collection_service._synthesize_summary("Ndakhte", "Ndakhte", results, intent)
+            prompt_text = str(captured[0])
+            assert "Property Deed" in prompt_text
+            assert "Transfer to Ndakhte Mboup" in prompt_text
+
+    @pytest.mark.asyncio
+    async def test_synthesize_fallback_on_error(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        results = [{"document_id": "d1", "document_name": "x.pdf", "relevance_score": 0.5, "result_type": "chunk"}]
+        intent = ParsedIntent(query="test", keywords=["test"], collection_name="Test", confidence=0.9)
+
+        with patch.object(collection_service.minimax_service, "chat_completion_non_stream",
+                          new_callable=AsyncMock, side_effect=Exception("API down")):
+            summary = await collection_service._synthesize_summary("Test", "test", results, intent)
+            assert "1 documents" in summary

@@ -33,7 +33,6 @@ export default function SmartFoldersPage() {
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("informative");
   const [length, setLength] = useState("medium");
-  const [includeConfidential, setIncludeConfidential] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GeneratedFolder | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +60,6 @@ export default function SmartFoldersPage() {
             topic,
             style,
             length,
-            include_confidential: includeConfidential,
           }),
         }
       );
@@ -259,31 +257,6 @@ export default function SmartFoldersPage() {
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* Confidential Toggle */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <div>
-                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                  {t('include_confidential')}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Only available for users with confidential access
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIncludeConfidential(!includeConfidential)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  includeConfidential ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                    includeConfidential ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
             </div>
 
             {/* Generate Button */}

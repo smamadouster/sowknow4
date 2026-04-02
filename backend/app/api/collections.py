@@ -205,7 +205,7 @@ async def get_collection_stats(
     Includes totals, counts by type, and recent activity.
     """
     try:
-        stats = collection_service.get_collection_stats(user=current_user, db=db)
+        stats = await collection_service.get_collection_stats(user=current_user, db=db)
         return CollectionStatsResponse(**stats)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get stats: {str(e)}")

@@ -220,9 +220,7 @@ class ChatService:
 
         # Batch-fetch metadata for confidential documents using a FRESH session
         # (the search session may be corrupted by asyncio.wait task cancellations)
-        confidential_doc_ids = [
-            r.document_id for r in top_results if r.document_bucket == "confidential"
-        ]
+        confidential_doc_ids = [r.document_id for r in top_results if r.document_bucket == "confidential"]
         doc_metadata: dict = {}
         if confidential_doc_ids:
             from app.models.document import Document, DocumentTag
@@ -231,9 +229,7 @@ class ChatService:
 
             async with AsyncSessionLocal() as meta_db:
                 result = await meta_db.execute(
-                    select(Document)
-                    .options(selectinload(Document.tags))
-                    .where(Document.id.in_(confidential_doc_ids))
+                    select(Document).options(selectinload(Document.tags)).where(Document.id.in_(confidential_doc_ids))
                 )
                 for doc in result.scalars().all():
                     doc_metadata[str(doc.id)] = doc
@@ -257,32 +253,36 @@ class ChatService:
                 if tags:
                     metadata_summary += f" | tags: {', '.join(tags)}"
 
-                sources.append({
-                    "document_id": r.document_id,
-                    "document_name": r.document_name,
-                    "chunk_id": r.chunk_id,
-                    "chunk_text": metadata_summary,
-                    "relevance_score": r.final_score,
-                    "bucket": "confidential",
-                    "page_count": page_count,
-                    "mime_type": mime_type,
-                    "created_at": created_at,
-                    "tags": tags,
-                })
+                sources.append(
+                    {
+                        "document_id": r.document_id,
+                        "document_name": r.document_name,
+                        "chunk_id": r.chunk_id,
+                        "chunk_text": metadata_summary,
+                        "relevance_score": r.final_score,
+                        "bucket": "confidential",
+                        "page_count": page_count,
+                        "mime_type": mime_type,
+                        "created_at": created_at,
+                        "tags": tags,
+                    }
+                )
             else:
                 # Public: full chunk text
                 chunk_text = r.chunk_text
                 if has_pii:
                     chunk_text, _ = pii_detection_service.redact_pii(chunk_text)
 
-                sources.append({
-                    "document_id": r.document_id,
-                    "document_name": r.document_name,
-                    "chunk_id": r.chunk_id,
-                    "chunk_text": chunk_text,
-                    "relevance_score": r.final_score,
-                    "bucket": "public",
-                })
+                sources.append(
+                    {
+                        "document_id": r.document_id,
+                        "document_name": r.document_name,
+                        "chunk_id": r.chunk_id,
+                        "chunk_text": chunk_text,
+                        "relevance_score": r.final_score,
+                        "bucket": "public",
+                    }
+                )
 
         return sources, has_confidential
 
@@ -314,7 +314,7 @@ If the context doesn't contain enough information, say so clearly.
 Cite specific documents when providing information.
 Be conversational and helpful.
 
-Some documents below are marked "Confidential, metadata only" \u2014 their content is kept private
+Some documents below are marked "Confidential, metadata only" — their content is kept private
 and only their name, type, and date are shown. You MUST still acknowledge these documents exist
 and list them by name. Do not say "no documents found" when confidential documents are listed.
 Instead, tell the user which confidential documents matched and suggest they review them
@@ -403,6 +403,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
         _model_name = getattr(llm_service, "model", "unknown")
         _start = _time.monotonic()
         try:
+
             async def _collect_response():
                 text = ""
                 async for chunk in llm_service.chat_completion(messages, stream=False):
@@ -548,11 +549,15 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                 async for chunk in llm_service.chat_completion(messages, stream=True):
                     yield f"data: {json.dumps({'type': 'message', 'content': chunk})}\n\n"
                 _stream_elapsed = _time.monotonic() - _stream_start
-                llm_request_duration.observe(_stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model})
+                llm_request_duration.observe(
+                    _stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model}
+                )
                 llm_request_total.inc(labels={"provider": _stream_provider, "status": "success"})
             except Exception:
                 _stream_elapsed = _time.monotonic() - _stream_start
-                llm_request_duration.observe(_stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model})
+                llm_request_duration.observe(
+                    _stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model}
+                )
                 llm_request_total.inc(labels={"provider": _stream_provider, "status": "error"})
                 raise
 

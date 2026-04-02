@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCsrfToken } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 
@@ -493,11 +493,13 @@ export default function SearchPage() {
   const t = useTranslations('search');
   const params = useParams();
   const locale = (params.locale as string) || 'fr';
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const canSeeConfidential =
     user?.role === 'admin' || user?.role === 'superuser' || user?.can_access_confidential;
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(searchParams.get('q') || '');
   const [isSearching, setIsSearching] = useState(false);
   const [showCitations, setShowCitations] = useState(false);
   const [stream, setStream] = useState<StreamState>({
@@ -516,9 +518,14 @@ export default function SearchPage() {
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const runSearch = useCallback(
-    async (searchQuery: string) => {
+  const runSearchWithQuery = useCallback(
+    async (searchQuery: string, updateUrl = true) => {
       if (!searchQuery.trim() || isSearching) return;
+
+      if (updateUrl) {
+        const newUrl = `/${locale}/search?q=${encodeURIComponent(searchQuery)}`;
+        router.push(newUrl);
+      }
 
       abortRef.current?.abort();
       abortRef.current = new AbortController();
@@ -588,62 +595,84 @@ export default function SearchPage() {
                 if (stage === 'intent') {
                   msg = t('stage.intent');
                 } else if (stage === 'retrieval') {
-                  msg = t('stage.retrieval', { count: (event.query_count as number) || 1 });
+                  msg = t('stage.retrieval');
                 } else if (stage === 'reranking') {
-                  msg = t('stage.reranking', { count: (event.chunk_count as number) || 0 });
+                  msg = t('stage.reranking');
                 } else if (stage === 'synthesis') {
                   msg = t('stage.synthesis');
                 }
-                setStream((prev) => ({ ...prev, stage, stageMessage: msg }));
-              }
-              // Intent parsed
-              else if ('intent' in event && 'confidence' in event) {
                 setStream((prev) => ({
                   ...prev,
-                  intent: {
-                    type: event.intent as string,
-                    confidence: event.confidence as number,
-                    keywords: (event.keywords as string[]) || [],
-                  },
+                  stage,
+                  stageMessage: msg,
                 }));
+                continue;
               }
-              // Results
-              else if ('results' in event) {
+
+              // Intent event
+              if ('intent' in event && event.intent) {
                 setStream((prev) => ({
                   ...prev,
-                  results: event.results as SearchResult[],
-                  totalFound: (event.total_found as number) || (event.results as SearchResult[]).length,
-                  hasConfidential: (event.has_confidential_results as boolean) || false,
+                  intent: event.intent as StreamState['intent'],
                 }));
               }
-              // Synthesis answer
-              else if ('answer' in event) {
+
+              // Results chunk
+              if (lastEventName === 'results' && 'results' in event) {
+                const newResults = event.results as SearchResult[];
                 setStream((prev) => ({
                   ...prev,
-                  synthesis: event.answer as string,
-                  modelUsed: (event.model as string) || null,
+                  results: [...prev.results, ...newResults],
                 }));
               }
-              // Suggestions
-              else if ('suggestions' in event) {
+
+              // Synthesis chunk
+              if (lastEventName === 'synthesis' && 'text' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  synthesis: (prev.synthesis || '') + (event.text as string),
+                }));
+              }
+
+              // Citation event
+              if ('citation' in event && event.citation) {
+                const cit = event.citation as Citation;
+                setStream((prev) => ({
+                  ...prev,
+                  citations: [...prev.citations, cit],
+                }));
+              }
+
+              // Suggestions event
+              if ('suggestions' in event && event.suggestions) {
                 setStream((prev) => ({
                   ...prev,
                   suggestions: event.suggestions as Suggestion[],
                 }));
               }
-              // Citations
-              else if ('citations' in event) {
+
+              // Final metadata
+              if ('total_found' in event) {
                 setStream((prev) => ({
                   ...prev,
-                  citations: event.citations as Citation[],
+                  totalFound: event.total_found as number,
                 }));
               }
-              // Done event (total_found without results)
-              else if ('total_found' in event && !('results' in event)) {
-                setStream((prev) => ({ ...prev, stage: 'done' }));
+              if ('model_used' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  modelUsed: event.model_used as string,
+                }));
               }
+              if ('has_confidential' in event) {
+                setStream((prev) => ({
+                  ...prev,
+                  hasConfidential: event.has_confidential as boolean,
+                }));
+              }
+
               // Error event
-              else if (lastEventName === 'error' || 'error' in event) {
+              if ('error' in event) {
                 setStream((prev) => ({
                   ...prev,
                   stage: 'error',
@@ -670,17 +699,27 @@ export default function SearchPage() {
         );
       }
     },
-    [isSearching, t]
+    [isSearching, t, locale, router]
   );
+
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q && q !== query) {
+      setQuery(q);
+      runSearchWithQuery(q, false);
+    } else if (q && q === query && stream.results.length === 0) {
+      runSearchWithQuery(q, false);
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    runSearch(query);
+    runSearchWithQuery(query);
   };
 
   const handleSuggestion = (text: string) => {
     setQuery(text);
-    runSearch(text);
+    runSearchWithQuery(text);
   };
 
   const handleExampleClick = (text: string) => {
@@ -717,7 +756,7 @@ export default function SearchPage() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                runSearch(query);
+                runSearchWithQuery(query);
               }
             }}
             placeholder={t('placeholder')}

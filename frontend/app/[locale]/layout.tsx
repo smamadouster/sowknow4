@@ -31,10 +31,10 @@ export default async function LocaleLayout({
       >
         {tNav('skip_to_content')}
       </a>
-      <nav aria-label={tNav('main_navigation')} style={{ background: '#1f2937', color: 'white', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <nav aria-label={tNav('main_navigation')} style={{ background: 'linear-gradient(135deg, #78350f, #92400e, #b45309)', color: 'white', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem' }}>SOWKNOW4</h1>
-          <p style={{ margin: '3px 0 0 0', opacity: 0.8, fontSize: '0.8rem' }}>Multi-Generational Legacy Knowledge System</p>
+          <h1 style={{ margin: 0, fontSize: '1.5rem', letterSpacing: '0.05em' }}>SOWKNOW</h1>
+          <p style={{ margin: '3px 0 0 0', opacity: 0.8, fontSize: '0.8rem' }}>Mon Coffre de Biens Digitaux</p>
         </div>
         <div style={{ marginTop: '0' }}>
           <LanguageSelector />
@@ -42,8 +42,8 @@ export default async function LocaleLayout({
       </nav>
       <Navigation />
       <main id="main-content">{children}</main>
-      <footer style={{ marginTop: '50px', padding: '20px', background: '#f5f5f5', textAlign: 'center' }}>
-        <p>SOWKNOW4 - Phase 3: Multi-Agent Search | Production</p>
+      <footer style={{ marginTop: '50px', padding: '20px', background: '#fffbeb', textAlign: 'center', borderTop: '1px solid #fde68a' }}>
+        <p style={{ color: '#92400e', fontSize: '0.85rem' }}>SOWKNOW - Mon Coffre de Biens Digitaux</p>
       </footer>
     </NextIntlClientProvider>
   );

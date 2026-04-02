@@ -287,8 +287,90 @@ class HybridSearchService:
 
         return search_results
 
+    async def tag_search(
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+        db: AsyncSession = None,
+        user: User = None,
+    ) -> list[SearchResult]:
+        """
+        Search for documents by tag name.
+
+        Matches documents that have a tag containing the query string
+        (case-insensitive partial match on tag_name).
+
+        Args:
+            query: Tag search string (e.g., "doa", "finance", "medical")
+            limit: Maximum number of results
+            offset: Number of results to skip
+            db: Database session
+            user: Current user for access control
+
+        Returns:
+            List of search results for documents with matching tags
+        """
+        if not query or len(query.strip()) < 2:
+            return []
+
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+        sql_query = text("""
+            SELECT DISTINCT
+                d.id as doc_id,
+                d.id as document_id,
+                COALESCE(d.original_filename, d.filename) AS document_name,
+                d.bucket AS document_bucket,
+                d.page_count,
+                dt.tag_name,
+                dt.tag_type,
+                1.0 AS similarity
+            FROM sowknow.documents d
+            JOIN sowknow.document_tags dt ON d.id = dt.document_id
+            WHERE d.bucket = ANY(:buckets)
+              AND d.status != 'error'
+              AND LOWER(dt.tag_name) LIKE LOWER(:query_pattern)
+            ORDER BY dt.tag_type, dt.tag_name
+            LIMIT :limit OFFSET :offset
+        """)
+
+        result = await db.execute(
+            sql_query,
+            {
+                "query_pattern": f"%{query}%",
+                "buckets": bucket_filter,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+
+        search_results = []
+        for row in result:
+            search_results.append(
+                SearchResult(
+                    chunk_id=str(row.doc_id),
+                    document_id=str(row.document_id),
+                    document_name=row.document_name,
+                    document_bucket=row.document_bucket,
+                    chunk_text=f"[Tag: {row.tag_name} (type: {row.tag_type})]",
+                    chunk_index=0,
+                    page_number=row.page_count,
+                    semantic_score=float(row.similarity),
+                    keyword_score=float(row.similarity),
+                    final_score=float(row.similarity),
+                    result_type="tag_match",
+                )
+            )
+
+        return search_results
+
     async def article_semantic_search(
-        self, query: str, limit: int = 30, db: AsyncSession = None, user: User = None,
+        self,
+        query: str,
+        limit: int = 30,
+        db: AsyncSession = None,
+        user: User = None,
     ) -> list[SearchResult]:
         """Semantic search over articles using pgvector."""
         if not embedding_service.can_embed:
@@ -317,9 +399,14 @@ class HybridSearchService:
             LIMIT :limit
         """)
 
-        result = await db.execute(sql_query, {
-            "embedding": embedding_array, "buckets": bucket_filter, "limit": limit,
-        })
+        result = await db.execute(
+            sql_query,
+            {
+                "embedding": embedding_array,
+                "buckets": bucket_filter,
+                "limit": limit,
+            },
+        )
 
         return [
             SearchResult(
@@ -342,7 +429,11 @@ class HybridSearchService:
         ]
 
     async def article_keyword_search(
-        self, query: str, limit: int = 30, db: AsyncSession = None, user: User = None,
+        self,
+        query: str,
+        limit: int = 30,
+        db: AsyncSession = None,
+        user: User = None,
     ) -> list[SearchResult]:
         """Full-text search over articles using tsvector."""
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
@@ -376,9 +467,14 @@ class HybridSearchService:
             LIMIT :limit
         """)
 
-        result = await db.execute(sql_query, {
-            "query": query, "buckets": bucket_filter, "limit": limit,
-        })
+        result = await db.execute(
+            sql_query,
+            {
+                "query": query,
+                "buckets": bucket_filter,
+                "limit": limit,
+            },
+        )
 
         return [
             SearchResult(
@@ -437,7 +533,7 @@ class HybridSearchService:
                 f"PII detected in search query by user {user.email if user else 'unknown'}: {pii_summary['detected_types']}"
             )
 
-        # Run chunk + article searches concurrently; return partial results on timeout
+        # Run chunk + article + tag searches concurrently; return partial results on timeout
         semantic_task = asyncio.create_task(
             self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
@@ -450,9 +546,10 @@ class HybridSearchService:
         article_keyword_task = asyncio.create_task(
             self.article_keyword_search(query=query, limit=limit, db=db, user=user)
         )
+        tag_task = asyncio.create_task(self.tag_search(query=query, limit=limit, offset=0, db=db, user=user))
 
         done, pending = await asyncio.wait(
-            {semantic_task, keyword_task, article_semantic_task, article_keyword_task},
+            {semantic_task, keyword_task, article_semantic_task, article_keyword_task, tag_task},
             timeout=timeout,
         )
 
@@ -471,8 +568,11 @@ class HybridSearchService:
 
         semantic_results: list[SearchResult] = semantic_task.result() if semantic_task in done else []
         keyword_results: list[SearchResult] = keyword_task.result() if keyword_task in done else []
-        article_sem_results: list[SearchResult] = article_semantic_task.result() if article_semantic_task in done else []
+        article_sem_results: list[SearchResult] = (
+            article_semantic_task.result() if article_semantic_task in done else []
+        )
         article_kw_results: list[SearchResult] = article_keyword_task.result() if article_keyword_task in done else []
+        tag_results: list[SearchResult] = tag_task.result() if tag_task in done else []
 
         # Merge results using RRF (Reciprocal Rank Fusion)
         merged_scores = {}
@@ -527,7 +627,8 @@ class HybridSearchService:
             else:
                 merged_scores[key]["rrf_score"] += score
                 merged_scores[key]["semantic_score"] = max(
-                    merged_scores[key]["semantic_score"], result.semantic_score,
+                    merged_scores[key]["semantic_score"],
+                    result.semantic_score,
                 )
 
         for rank, result in enumerate(article_kw_results):
@@ -543,7 +644,31 @@ class HybridSearchService:
             else:
                 merged_scores[key]["rrf_score"] += score
                 merged_scores[key]["keyword_score"] = max(
-                    merged_scores[key]["keyword_score"], result.keyword_score,
+                    merged_scores[key]["keyword_score"],
+                    result.keyword_score,
+                )
+
+        # Add tag match results with 1.5x boost (tag matches are highly relevant)
+        tag_boost = 1.5
+        for rank, result in enumerate(tag_results):
+            key = f"tag:{result.document_id}"
+            score = tag_boost / (k + rank + 1)
+            if key not in merged_scores:
+                merged_scores[key] = {
+                    "result": result,
+                    "semantic_score": result.semantic_score,
+                    "keyword_score": result.keyword_score,
+                    "rrf_score": score,
+                }
+            else:
+                merged_scores[key]["rrf_score"] += score
+                merged_scores[key]["semantic_score"] = max(
+                    merged_scores[key]["semantic_score"],
+                    result.semantic_score,
+                )
+                merged_scores[key]["keyword_score"] = max(
+                    merged_scores[key]["keyword_score"],
+                    result.keyword_score,
                 )
 
         # Calculate final scores

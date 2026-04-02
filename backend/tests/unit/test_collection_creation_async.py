@@ -174,6 +174,61 @@ class TestCreateCollectionShell:
             mock_search.assert_not_called()
 
 
+class TestHybridSearchTimeout:
+    """Collection gathering must pass a longer timeout to hybrid_search."""
+
+    @pytest.mark.asyncio
+    async def test_gather_passes_20s_timeout(self, db):
+        """_gather_documents_for_intent must call hybrid_search with timeout >= 20."""
+        from app.services.intent_parser import ParsedIntent
+        from app.models.user import User, UserRole
+        from app.services.collection_service import collection_service
+
+        user = db.query(User).first()
+        if not user:
+            user = User(
+                email="timeout_test@example.com",
+                hashed_password="hashed",  # pragma: allowlist secret
+                full_name="Timeout Test",
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        intent = ParsedIntent(
+            query="solar energy",
+            keywords=["solar", "energy"],
+            date_range={"type": "all_time"},
+            entities=[],
+            document_types=["all"],
+            collection_name="Test",
+            confidence=0.9,
+        )
+
+        # Mock async db methods since the fixture provides a sync session
+        mock_db = MagicMock(wraps=db)
+        mock_db.execute = AsyncMock(return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        ))
+
+        with patch.object(
+            collection_service.search_service,
+            "hybrid_search",
+            new_callable=AsyncMock,
+            return_value={"results": [], "total": 0, "query": "solar energy"},
+        ) as mock_search:
+            await collection_service._gather_documents_for_intent(
+                intent=intent, user=user, db=mock_db
+            )
+
+            mock_search.assert_called_once()
+            call_kwargs = mock_search.call_args.kwargs
+            assert "timeout" in call_kwargs, "hybrid_search must be called with timeout keyword"
+            assert call_kwargs["timeout"] >= 20, f"timeout must be >= 20, got {call_kwargs['timeout']}"
+
+
 class TestBuildSmartCollectionTask:
     """Celery task must call build_collection_pipeline and handle errors."""
 

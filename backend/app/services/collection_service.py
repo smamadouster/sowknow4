@@ -451,7 +451,7 @@ class CollectionService:
             # Use hybrid search for better results
             search_query = " ".join(intent.keywords)
             search_result = await self.search_service.hybrid_search(
-                query=search_query, limit=100, offset=0, db=db, user=user
+                query=search_query, limit=100, offset=0, db=db, user=user, timeout=20.0
             )
 
             # Extract unique document IDs from search results

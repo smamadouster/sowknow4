@@ -399,20 +399,26 @@ async def _queue_document_for_processing(
 
         await db.commit()
 
-        if not _verify_task_in_broker(task_id):
-            logger.error(f"Task {task_id} for document {document.id} not found in broker after dispatch")
+        # Verify task reached the broker by checking its state via AsyncResult.
+        # Previous approach used inspect.active/reserved/scheduled which queries
+        # the *worker* — with concurrency=1 and batch uploads, newly queued tasks
+        # sit in the Redis queue but aren't yet reserved by the busy worker,
+        # causing false negatives and mass 500 errors.
+        task_state = task.state  # AsyncResult.state reads from result backend + broker
+        if task_state in ("FAILURE", "REVOKED"):
+            logger.error(f"Task {task_id} for document {document.id} is in unexpected state: {task_state}")
             document.status = DocumentStatus.ERROR
             document.document_metadata = {
                 **(document.document_metadata or {}),
-                "processing_error": "Task dispatch verification failed",
+                "processing_error": f"Task dispatch failed with state: {task_state}",
             }
             await db.commit()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Document saved but task dispatch verification failed",
+                detail=f"Document saved but task dispatch failed (state: {task_state})",
             )
 
-        logger.info(f"Document {document.id} queued successfully with task {task_id}")
+        logger.info(f"Document {document.id} queued successfully with task {task_id} (state: {task_state})")
         return DocumentUploadResponse(
             document_id=document.id,
             filename=document.filename,
@@ -438,37 +444,7 @@ async def _queue_document_for_processing(
         )
 
 
-def _verify_task_in_broker(task_id: str, timeout: float = 5.0) -> bool:
-    """Verify a Celery task exists in the broker (Redis).
 
-    Returns True if task is found in active, reserved, or scheduled lists.
-    This prevents the race condition where task is queued but we assume success.
-    """
-    try:
-        from app.celery_app import celery_app
-
-        inspect = celery_app.control.inspect(timeout=timeout)
-
-        active = inspect.active() or {}
-        reserved = inspect.reserved() or {}
-        scheduled = inspect.scheduled() or {}
-
-        for worker_tasks in active.values():
-            for t in worker_tasks:
-                if t.get("id") == task_id:
-                    return True
-        for worker_tasks in reserved.values():
-            for t in worker_tasks:
-                if t.get("id") == task_id:
-                    return True
-        for worker_tasks in scheduled.values():
-            for t in worker_tasks:
-                if t.get("id") == task_id:
-                    return True
-        return False
-    except Exception as e:
-        logger.warning(f"Task verification check failed: {e}")
-        return True  # Fail open to not block processing
 
 
 class JournalEntryRequest(BaseModel):

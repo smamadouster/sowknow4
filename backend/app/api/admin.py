@@ -847,3 +847,64 @@ async def test_alert(
         "telegram_configured": alert_service.telegram_configured,
         "email_configured": alert_service.email_configured,
     }
+
+
+@router.post("/recover-failed-uploads", dependencies=[Depends(require_admin_only)])
+async def recover_failed_uploads(
+    error_substring: str = Query(
+        default="Task dispatch verification failed",
+        description="Error substring to match in document_metadata->processing_error",
+    ),
+    limit: int = Query(default=200, le=500),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Bulk-recover documents stuck in ERROR state due to task dispatch verification failures.
+
+    Resets matching documents to PENDING and re-queues them for processing.
+    """
+    from app.tasks.document_tasks import process_document
+
+    result = await db.execute(
+        select(Document)
+        .where(
+            Document.status == DocumentStatus.ERROR,
+            Document.document_metadata["processing_error"].astext.contains(error_substring),
+        )
+        .limit(limit)
+    )
+    documents = result.scalars().all()
+
+    if not documents:
+        return {"recovered": 0, "message": "No matching ERROR documents found"}
+
+    recovered = []
+    for doc in documents:
+        doc.status = DocumentStatus.PENDING
+        meta = doc.document_metadata or {}
+        meta.pop("processing_error", None)
+        meta["recovered_at"] = datetime.utcnow().isoformat()
+        meta["recovery_reason"] = "bulk_recover_dispatch_verification_bug"
+        doc.document_metadata = meta
+
+    await db.commit()
+
+    # Queue tasks after commit to avoid partial state
+    for doc in documents:
+        try:
+            task = process_document.delay(str(doc.id))
+            doc.status = DocumentStatus.PROCESSING
+            doc.document_metadata = {**(doc.document_metadata or {}), "celery_task_id": task.id}
+        except Exception as e:
+            doc.status = DocumentStatus.ERROR
+            doc.document_metadata = {**(doc.document_metadata or {}), "processing_error": str(e)}
+
+        recovered.append(str(doc.id))
+
+    await db.commit()
+
+    return {
+        "recovered": len(recovered),
+        "document_ids": recovered,
+        "message": f"Re-queued {len(recovered)} documents for processing",
+    }

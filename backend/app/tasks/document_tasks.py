@@ -882,11 +882,20 @@ def _run_build_pipeline(collection_id: str, user_id: str) -> None:
         from app.database import AsyncSessionLocal
 
         async with AsyncSessionLocal() as session:
-            await collection_service.build_collection_pipeline(
-                collection_id=UUID(collection_id),
-                user_id=UUID(user_id),
-                db=session,
-            )
+            try:
+                await collection_service.build_collection_pipeline(
+                    collection_id=UUID(collection_id),
+                    user_id=UUID(user_id),
+                    db=session,
+                )
+            except Exception:
+                # Pipeline already sets status=FAILED and commits.
+                # If that commit also failed (broken session), rollback and retry.
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+                raise
 
     loop = asyncio.new_event_loop()
     try:

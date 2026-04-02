@@ -243,9 +243,13 @@ class CollectionService:
 
         except Exception as e:
             logger.error(f"Collection build failed for {collection_id}: {e}", exc_info=True)
-            collection.status = CollectionStatus.FAILED
-            collection.build_error = str(e)[:500]
-            await db.commit()
+            try:
+                await db.rollback()
+                collection.status = CollectionStatus.FAILED
+                collection.build_error = str(e)[:500]
+                await db.commit()
+            except Exception as commit_err:
+                logger.error(f"Failed to set FAILED status: {commit_err}")
             raise
 
     async def preview_collection(self, query: str, user: User, db: Session) -> dict[str, Any]:

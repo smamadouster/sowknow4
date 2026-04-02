@@ -49,7 +49,7 @@ export default function SmartFoldersPage() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/generate`,
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/smart-folders/generate`,
         {
           method: "POST",
           credentials: "include",
@@ -94,7 +94,7 @@ export default function SmartFoldersPage() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/reports/generate`,
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/smart-folders/reports/generate`,
         {
           method: "POST",
           credentials: "include",

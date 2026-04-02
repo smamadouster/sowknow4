@@ -108,7 +108,7 @@ export default function CollectionDetailPage() {
     try {
       const locale = params.locale || 'en';
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/smart-folders/reports/generate`,
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/smart-folders/reports/generate`,
         {
           method: "POST",
           credentials: "include",

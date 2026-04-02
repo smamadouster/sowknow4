@@ -378,6 +378,44 @@ class CollectionService:
         logger.info(f"Refreshed collection '{collection.name}' with {len(documents)} documents")
         return collection
 
+    async def _understand_query(self, query: str) -> tuple[ParsedIntentModel, str]:
+        """
+        Stage 1: UNDERSTAND — Parse intent and pick search strategy.
+        Always uses MiniMax (never Ollama). Retries on low confidence.
+
+        Returns:
+            (ParsedIntent, strategy) where strategy is one of:
+            - "entity_first": query contains named entities
+            - "date_filtered": query specifies date ranges
+            - "broad_hybrid": generic query
+        """
+        # Always MiniMax — never Ollama for collections
+        intent = await self.intent_parser.parse_intent(
+            query=query, user_language="en", use_ollama=False,
+        )
+
+        # Quality gate: retry on low confidence
+        if intent.confidence < 0.5:
+            logger.info(f"Low confidence ({intent.confidence}) for '{query}', retrying")
+            retry_intent = await self.intent_parser.parse_intent(
+                query=query, user_language="en", use_ollama=False,
+            )
+            if retry_intent.confidence > intent.confidence:
+                intent = retry_intent
+
+            # If still low, fall back to rule-based parsing
+            if intent.confidence < 0.5:
+                intent = self.intent_parser._fallback_parse(query)
+
+        # Pick search strategy based on intent content
+        strategy = "broad_hybrid"
+        if intent.entities and len(intent.entities) > 0:
+            strategy = "entity_first"
+        elif intent.date_range and intent.date_range.get("type") not in (None, "all_time"):
+            strategy = "date_filtered"
+
+        return intent, strategy
+
     async def _gather_documents_for_intent(self, intent: ParsedIntentModel, user: User, db: Session) -> list[Document]:
         """
         Gather documents based on parsed intent

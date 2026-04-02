@@ -246,7 +246,7 @@ async def get_collection(
     # Get collection items with document info — selectinload avoids N+1 on item.document
     items_result = await db.execute(
         select(CollectionItem)
-        .options(selectinload(CollectionItem.document))
+        .options(selectinload(CollectionItem.document), selectinload(CollectionItem.article))
         .where(CollectionItem.collection_id == collection_id)
         .order_by(CollectionItem.order_index)
     )
@@ -281,8 +281,13 @@ async def get_collection(
             item_dict["document"] = {
                 "id": str(item.document.id),
                 "filename": item.document.filename,
+                "mime_type": getattr(item.document, "mime_type", None),
                 "created_at": item.document.created_at.isoformat(),
             }
+        if item.article:
+            item_dict["article_id"] = str(item.article.id)
+            item_dict["article_title"] = item.article.title
+            item_dict["article_summary"] = item.article.summary
         enriched_items.append(item_dict)
 
     return CollectionDetailResponse(

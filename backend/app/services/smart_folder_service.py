@@ -24,6 +24,7 @@ from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
+from app.services.openrouter_service import openrouter_service
 from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
@@ -32,8 +33,11 @@ logger = logging.getLogger(__name__)
 class SmartFolderService:
     """Service for generating AI content from document collections"""
 
+    FALLBACK_MODEL = "qwen/qwen3-235b-a22b:free"
+
     def __init__(self):
         self.minimax_service = minimax_service
+        self.openrouter_service = openrouter_service
         self.search_service = search_service
 
     async def generate_smart_folder(
@@ -80,7 +84,7 @@ class SmartFolderService:
         # Gather document context
         document_context = await self._build_document_context(documents, db)
 
-        # Generate content using MiniMax for all documents
+        # Generate content using MiniMax, fallback to OpenRouter (Qwen) on failure
         generated = await self._generate_with_minimax(
             topic=topic,
             document_context=document_context,
@@ -88,6 +92,16 @@ class SmartFolderService:
             length=length,
         )
         llm_used = "minimax"
+
+        if not generated:
+            logger.warning("MiniMax generation returned empty, falling back to OpenRouter")
+            generated = await self._generate_with_openrouter_fallback(
+                topic=topic,
+                document_context=document_context,
+                style=style,
+                length=length,
+            )
+            llm_used = "openrouter"
 
         # Create collection for the smart folder
         collection_name = f"Smart Folder: {topic[:50]}"
@@ -271,6 +285,82 @@ Generate the article now:"""
                 response_parts.append(chunk)
 
         return "".join(response_parts).strip()
+
+    async def _generate_with_openrouter_fallback(
+        self,
+        topic: str,
+        document_context: list[dict[str, Any]],
+        style: str,
+        length: str,
+    ) -> str:
+        """Fallback: generate content using OpenRouter with Qwen free model"""
+
+        # Build context text
+        context_text = "\n\n".join(
+            [
+                f"Document: {doc['filename']}\n"
+                + "\n".join([f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]])
+                for doc in document_context
+            ]
+        )
+
+        length_guide = {
+            "short": "2-3 paragraphs",
+            "medium": "4-6 paragraphs",
+            "long": "7-10 paragraphs",
+        }.get(length, "4-6 paragraphs")
+
+        style_guide = {
+            "informative": "Write in an educational, informative tone. Explain concepts clearly.",
+            "creative": "Write with creativity and engagement. Use vivid language and storytelling.",
+            "professional": "Write in a formal, professional tone suitable for business contexts.",
+            "casual": "Write in a friendly, conversational tone.",
+        }.get(style, "Write in an informative, clear tone.")
+
+        system_prompt = f"""You are a content generator for SOWKNOW, a knowledge management system.
+{style_guide}
+Base your content on the provided document context. Cite documents by filename.
+If documents don't contain sufficient information, acknowledge limitations."""
+
+        user_prompt = f"""Create a {length_guide} article about: "{topic}"
+
+Document Context:
+{context_text}
+
+Generate the article now:"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            import httpx
+
+            payload = {
+                "model": self.FALLBACK_MODEL,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 4096,
+                "stream": False,
+            }
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.openrouter_service.base_url}/chat/completions",
+                    json=payload,
+                    headers=self.openrouter_service._get_headers(),
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                if "choices" in data and len(data["choices"]) > 0:
+                    return data["choices"][0].get("message", {}).get("content", "")
+
+            return ""
+        except Exception as e:
+            logger.error(f"OpenRouter fallback generation error: {e}")
+            return f"Unable to generate content. Both MiniMax and OpenRouter failed."
 
 
 # Global smart folder service instance

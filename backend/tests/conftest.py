@@ -27,6 +27,7 @@ os.environ.setdefault("APP_ENV", "development")
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line("markers", "requires_postgres: test needs PostgreSQL (skipped on SQLite)")
+    config.addinivalue_line("markers", "sqlite_safe: test works on SQLite even in integration/ directory")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -58,6 +59,10 @@ def pytest_collection_modifyitems(config, items):
     pg_files = ("test_fulltext_search_performance.py", "test_e2e.py", "test_search_agent.py")
 
     for item in items:
+        # Never skip tests explicitly marked as sqlite_safe
+        if "sqlite_safe" in item.keywords:
+            continue
+
         # Skip if explicitly marked
         if "requires_postgres" in item.keywords:
             item.add_marker(skip_postgres)

@@ -72,24 +72,21 @@ async def generate_smart_folder(
     - **style**: Writing style (informative, creative, professional, casual)
     - **length**: Content length (short, medium, long)
     """
-    # Check confidential access
-    if request.include_confidential and not current_user.can_access_confidential:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to access confidential documents"
-        )
+    # Auto-include confidential docs based on user's RBAC role
+    include_confidential = current_user.can_access_confidential
 
     try:
         result = await smart_folder_service.generate_smart_folder(
             topic=request.topic,
             style=request.style,
             length=request.length,
-            include_confidential=request.include_confidential,
+            include_confidential=include_confidential,
             user=current_user,
             db=db,
         )
 
         # AUDIT LOG: Log confidential document access in smart folder generation
-        if request.include_confidential and result.get("documents"):
+        if include_confidential and result.get("documents"):
             confidential_docs = [
                 {"id": doc.get("id"), "filename": doc.get("filename")}
                 for doc in result["documents"]

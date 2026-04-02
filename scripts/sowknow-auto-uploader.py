@@ -84,6 +84,10 @@ class UploadState:
         self._load()
 
     def _load(self):
+        # Clean up any stale temp file from a prior crash
+        tmp = self.path + ".tmp"
+        if os.path.exists(tmp):
+            os.remove(tmp)
         if os.path.exists(self.path):
             try:
                 with open(self.path) as f:
@@ -95,12 +99,14 @@ class UploadState:
                 log.warning("Corrupt state file, starting fresh")
 
     def save(self):
-        with open(self.path, "w") as f:
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as f:
             json.dump({
                 "uploaded": self.uploaded,
                 "daily_uploads": self.daily_uploads,
                 "daily_errors": self.daily_errors,
             }, f, indent=2)
+        os.replace(tmp, self.path)  # atomic on POSIX
 
     def is_uploaded(self, sha256: str) -> bool:
         return sha256 in self.uploaded

@@ -33,6 +33,7 @@ from watchdog.observers import Observer
 SOWKNOW_URL = os.getenv("SOWKNOW_URL", "https://sowknow.gollamtech.com")
 SOWKNOW_EMAIL = os.getenv("SOWKNOW_EMAIL", "")  # your SOWKNOW login email
 SOWKNOW_PASSWORD = os.getenv("SOWKNOW_PASSWORD", "")  # your SOWKNOW password
+SOWKNOW_BOT_API_KEY = os.getenv("SOWKNOW_BOT_API_KEY", "")  # API key for login-free uploads via Tailscale
 
 PUBLIC_DIR = os.path.expanduser(os.getenv("SOWKNOW_PUBLIC_DIR", "~/Desktop/Public"))
 CONFIDENTIAL_DIR = os.path.expanduser(os.getenv("SOWKNOW_CONFIDENTIAL_DIR", "~/Desktop/Confidential"))
@@ -227,6 +228,44 @@ class SowknowClient:
         raise RuntimeError(f"Upload failed ({resp.status_code}): {resp.text[:300]}")
 
 
+class ApiKeyClient:
+    """Upload client using BOT_API_KEY — no login, no tokens, no CSRF."""
+
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": "SOWKNOW-AutoUploader/2.0",
+            "X-Bot-Api-Key": self.api_key,
+        })
+
+    def login(self) -> bool:
+        """No-op — API key mode doesn't need login."""
+        log.info("API key mode: no login required")
+        return True
+
+    def ensure_auth(self) -> bool:
+        """Always authenticated — API key is static."""
+        return True
+
+    def upload(self, filepath: str, bucket: str) -> dict:
+        filename = os.path.basename(filepath)
+        with open(filepath, "rb") as f:
+            resp = self.session.post(
+                f"{self.base_url}/api/v1/internal/upload",
+                files={"file": (filename, f)},
+                data={"bucket": bucket},
+                timeout=120,
+            )
+
+        if resp.status_code in (200, 201, 202):
+            log.info(f"Uploaded: {filename} -> {bucket}")
+            return resp.json()
+
+        raise RuntimeError(f"Upload failed ({resp.status_code}): {resp.text[:300]}")
+
+
 # =============================================================================
 # FILE HASH
 # =============================================================================
@@ -402,24 +441,31 @@ def _send_report_email(uploads: list[dict], errors: list[dict]):
 # MAIN
 # =============================================================================
 def main():
-    if not SOWKNOW_EMAIL or not SOWKNOW_PASSWORD:
-        log.error("Set SOWKNOW_EMAIL and SOWKNOW_PASSWORD (env vars or edit CONFIG section)")
-        sys.exit(1)
-
     # Ensure watch directories exist
     os.makedirs(PUBLIC_DIR, exist_ok=True)
     os.makedirs(CONFIDENTIAL_DIR, exist_ok=True)
 
     state = UploadState(STATE_FILE)
-    client = SowknowClient(SOWKNOW_URL, SOWKNOW_EMAIL, SOWKNOW_PASSWORD)
+
+    # Select auth mode: API key (Tailscale) or OAuth2 login
+    if SOWKNOW_BOT_API_KEY:
+        log.info("Using API key mode (Tailscale / no login)")
+        client = ApiKeyClient(SOWKNOW_URL, SOWKNOW_BOT_API_KEY)
+    else:
+        if not SOWKNOW_EMAIL or not SOWKNOW_PASSWORD:
+            log.error("Set SOWKNOW_BOT_API_KEY (preferred) or SOWKNOW_EMAIL + SOWKNOW_PASSWORD")
+            sys.exit(1)
+        log.info("Using OAuth2 login mode")
+        client = SowknowClient(SOWKNOW_URL, SOWKNOW_EMAIL, SOWKNOW_PASSWORD)
 
     log.info(f"SOWKNOW Auto-Uploader starting")
     log.info(f"  API:          {SOWKNOW_URL}")
+    log.info(f"  Auth mode:    {'API key' if SOWKNOW_BOT_API_KEY else 'OAuth2 login'}")
     log.info(f"  Public dir:   {PUBLIC_DIR}")
     log.info(f"  Confid. dir:  {CONFIDENTIAL_DIR}")
     log.info(f"  State file:   {STATE_FILE}")
 
-    # Initial login
+    # Initial login (no-op in API key mode)
     if not client.login():
         log.error("Initial login failed — will retry on first upload")
 

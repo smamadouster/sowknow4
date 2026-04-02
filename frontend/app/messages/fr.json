@@ -307,7 +307,9 @@
     "export_pdf": "Exporter en PDF",
     "exporting_pdf": "Génération du PDF...",
     "export_error": "Échec de la génération du rapport PDF",
-    "export_success": "Rapport PDF généré avec succès"
+    "export_success": "Rapport PDF généré avec succès",
+    "building": "Construction en cours...",
+    "build_failed": "La construction a echoue"
   },
   "smart_folders": {
     "title": "Dossiers Intelligents",

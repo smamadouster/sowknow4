@@ -40,6 +40,7 @@ export default function CollectionsPage() {
   const [total, setTotal] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newQuery, setNewQuery] = useState("");
+  const [buildingCollections, setBuildingCollections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchCollections();
@@ -81,14 +82,60 @@ export default function CollectionsPage() {
       }
 
       if (response.data) {
+        const newCollection = response.data as Collection & { status?: string };
         setShowCreateModal(false);
         setNewQuery("");
+
+        if (newCollection.id) {
+          setBuildingCollections((prev) => new Set(prev).add(newCollection.id));
+          pollCollectionStatus(newCollection.id);
+        }
+
         fetchCollections();
       }
     } catch (error) {
       console.error("Error creating collection:", error);
       setCreateError(error instanceof Error ? error.message : "Failed to create collection");
     }
+  };
+
+  const pollCollectionStatus = async (collectionId: string) => {
+    const { api } = await import("@/lib/api");
+    const maxAttempts = 60;
+    let attempts = 0;
+
+    const poll = async () => {
+      attempts++;
+      try {
+        const response = await api.getCollectionStatus(collectionId);
+        if (response.data) {
+          const status = response.data.status;
+          if (status === "ready" || status === "failed") {
+            setBuildingCollections((prev) => {
+              const next = new Set(prev);
+              next.delete(collectionId);
+              return next;
+            });
+            fetchCollections();
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error polling collection status:", error);
+      }
+
+      if (attempts < maxAttempts) {
+        setTimeout(poll, 5000);
+      } else {
+        setBuildingCollections((prev) => {
+          const next = new Set(prev);
+          next.delete(collectionId);
+          return next;
+        });
+      }
+    };
+
+    setTimeout(poll, 3000);
   };
 
   const togglePin = async (collectionId: string) => {
@@ -238,7 +285,14 @@ export default function CollectionsPage() {
 
                     <div className="mt-4 flex items-center justify-between">
                       <span className="text-sm text-gray-500 dark:text-gray-400">
-                        {collection.document_count} {t('documents')}
+                        {buildingCollections.has(collection.id) ? (
+                          <span className="flex items-center gap-1">
+                            <span className="inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>
+                            {t('building')}
+                          </span>
+                        ) : (
+                          `${collection.document_count} ${t('documents')}`
+                        )}
                       </span>
                       <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
                         {collection.collection_type}

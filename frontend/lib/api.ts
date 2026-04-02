@@ -388,6 +388,17 @@ class ApiClient {
     });
   }
 
+  async getCollectionStatus(collectionId: string): Promise<ApiResponse<{
+    id: string;
+    status: string;
+    name: string;
+    document_count: number;
+    ai_summary: string | null;
+    error?: string;
+  }>> {
+    return this.request(`/v1/collections/${collectionId}/status`);
+  }
+
   async getCollection(id: string) {
     return this.request(`/v1/collections/${id}`);
   }

@@ -307,7 +307,9 @@
     "export_pdf": "Export PDF",
     "exporting_pdf": "Generating PDF...",
     "export_error": "Failed to generate PDF report",
-    "export_success": "PDF report generated successfully"
+    "export_success": "PDF report generated successfully",
+    "building": "Building...",
+    "build_failed": "Build failed"
   },
   "smart_folders": {
     "title": "Smart Folders",

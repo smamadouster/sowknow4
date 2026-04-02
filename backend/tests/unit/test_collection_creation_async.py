@@ -172,3 +172,38 @@ class TestCreateCollectionShell:
             )
             mock_intent.assert_not_called()
             mock_search.assert_not_called()
+
+
+class TestBuildSmartCollectionTask:
+    """Celery task must call build_collection_pipeline and handle errors."""
+
+    def test_task_is_registered(self):
+        """The build_smart_collection task must be importable."""
+        from app.tasks.document_tasks import build_smart_collection
+
+        assert callable(build_smart_collection)
+
+    def test_task_calls_pipeline(self):
+        """Task must invoke _run_build_pipeline with correct args."""
+        from app.tasks.document_tasks import build_smart_collection
+
+        fake_collection_id = str(uuid4())
+        fake_user_id = str(uuid4())
+
+        with patch("app.tasks.document_tasks._run_build_pipeline") as mock_run:
+            mock_run.return_value = None
+            result = build_smart_collection(fake_collection_id, fake_user_id)
+            mock_run.assert_called_once_with(fake_collection_id, fake_user_id)
+            assert result["status"] == "ready"
+
+    def test_task_returns_failed_on_error(self):
+        """Task must return failed status when pipeline raises."""
+        from app.tasks.document_tasks import build_smart_collection
+
+        with patch(
+            "app.tasks.document_tasks._run_build_pipeline",
+            side_effect=Exception("LLM timeout"),
+        ):
+            result = build_smart_collection(str(uuid4()), str(uuid4()))
+            assert result["status"] == "failed"
+            assert "LLM timeout" in result["error"]

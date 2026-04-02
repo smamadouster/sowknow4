@@ -863,6 +863,60 @@ def batch_extract_entities(batch_size: int = 20, batch_interval: int = 60) -> di
         db.close()
 
 
+# ---------------------------------------------------------------------------
+# Smart Collection async build task
+# ---------------------------------------------------------------------------
+
+
+def _run_build_pipeline(collection_id: str, user_id: str) -> None:
+    """
+    Sync wrapper that runs the async collection build pipeline.
+    Called by the Celery task. Uses a fresh async DB session.
+    """
+    import asyncio
+    from uuid import UUID
+
+    from app.services.collection_service import collection_service
+
+    async def _inner():
+        from app.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            await collection_service.build_collection_pipeline(
+                collection_id=UUID(collection_id),
+                user_id=UUID(user_id),
+                db=session,
+            )
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_inner())
+    finally:
+        loop.close()
+
+
+@shared_task(
+    bind=True,
+    name="build_smart_collection",
+    max_retries=1,
+    soft_time_limit=240,
+    time_limit=300,
+)
+def build_smart_collection(self, collection_id: str, user_id: str) -> dict:
+    """
+    Celery task: build a Smart Collection asynchronously.
+    Runs intent parsing -> hybrid search -> AI summary -> DB update.
+    On failure, the collection is set to FAILED status by the pipeline.
+    """
+    logger.info(f"Starting build_smart_collection for collection={collection_id}")
+    try:
+        _run_build_pipeline(collection_id, user_id)
+        return {"status": "ready", "collection_id": collection_id}
+    except Exception as exc:
+        logger.error(f"build_smart_collection failed: {exc}", exc_info=True)
+        return {"status": "failed", "collection_id": collection_id, "error": str(exc)[:500]}
+
+
 @shared_task(name="app.tasks.document_tasks.reprocess_pending_documents")
 def reprocess_pending_documents() -> dict:
     """Dispatch processing for all pending documents in staggered batches."""

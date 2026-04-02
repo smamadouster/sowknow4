@@ -15,7 +15,7 @@ from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_superuser_or_admin
 from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
 from app.models.collection import (
@@ -92,7 +92,7 @@ async def create_audit_log(
 @router.post("", response_model=CollectionResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_collection(
     collection_data: CollectionCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionResponse:
     """
@@ -116,7 +116,7 @@ async def create_collection(
 @router.post("/preview", response_model=CollectionPreviewResponse)
 async def preview_collection(
     request: CollectionPreviewRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionPreviewResponse:
     """
@@ -150,7 +150,7 @@ async def list_collections(
     collection_type: CollectionType | None = None,
     pinned_only: bool = False,
     favorites_only: bool = False,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionListResponse:
     """
@@ -199,7 +199,7 @@ async def list_collections(
 
 @router.get("/stats", response_model=CollectionStatsResponse)
 async def get_collection_stats(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_superuser_or_admin), db: AsyncSession = Depends(get_db)
 ) -> CollectionStatsResponse:
     """
     Get statistics about user's collections
@@ -216,7 +216,7 @@ async def get_collection_stats(
 @router.get("/{collection_id}", response_model=CollectionDetailResponse)
 async def get_collection(
     collection_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionDetailResponse:
     """
@@ -299,7 +299,7 @@ async def get_collection(
 @router.get("/{collection_id}/status")
 async def get_collection_status(
     collection_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -342,7 +342,7 @@ async def get_collection_status(
 async def update_collection(
     collection_id: UUID,
     update_data: CollectionUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection:
     """
@@ -380,7 +380,7 @@ async def update_collection(
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_collection(
     collection_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
@@ -407,7 +407,7 @@ async def delete_collection(
 async def refresh_collection(
     collection_id: UUID,
     refresh_data: CollectionRefreshRequest | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionResponse:
     """
@@ -436,7 +436,7 @@ async def refresh_collection(
 async def add_collection_item(
     collection_id: UUID,
     item_data: CollectionItemCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionItem:
     """
@@ -507,7 +507,7 @@ async def update_collection_item(
     collection_id: UUID,
     item_id: UUID,
     update_data: CollectionItemUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionItem:
     """
@@ -558,7 +558,7 @@ async def update_collection_item(
 async def remove_collection_item(
     collection_id: UUID,
     item_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
@@ -601,7 +601,7 @@ async def remove_collection_item(
 @router.post("/{collection_id}/pin", response_model=CollectionResponse)
 async def pin_collection(
     collection_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection:
     """Toggle collection pinned status"""
@@ -623,7 +623,7 @@ async def pin_collection(
 @router.post("/{collection_id}/favorite", response_model=CollectionResponse)
 async def favorite_collection(
     collection_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Collection:
     """Toggle collection favorite status"""
@@ -646,7 +646,7 @@ async def favorite_collection(
 async def chat_with_collection(
     collection_id: UUID,
     chat_data: CollectionChatCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CollectionChatResponse:
     """
@@ -720,7 +720,7 @@ async def chat_with_collection(
 async def export_collection(
     collection_id: UUID,
     format: str = Query("json", pattern="^(pdf|json)$", description="Export format: pdf or json"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1045,7 +1045,7 @@ async def export_collection(
 @router.get("/{collection_id}/chat/sessions")
 async def get_collection_chat_sessions(
     collection_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get all chat sessions for a collection"""

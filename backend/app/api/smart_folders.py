@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_superuser_or_admin
 from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
 from app.models.user import User
@@ -58,7 +58,7 @@ async def create_audit_log(
 @router.post("/generate", response_model=SmartFolderResponse)
 async def generate_smart_folder(
     request: SmartFolderGenerateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> SmartFolderResponse:
     """
@@ -119,7 +119,7 @@ async def generate_smart_folder(
 
 @router.post("/reports/generate", response_model=CollectionReportResponse)
 async def generate_collection_report(
-    request: CollectionReportRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    request: CollectionReportRequest, current_user: User = Depends(require_superuser_or_admin), db: AsyncSession = Depends(get_db)
 ) -> CollectionReportResponse:
     """
     Generate a PDF report from a collection
@@ -192,7 +192,7 @@ from datetime import datetime
 
 
 @router.get("/reports/templates")
-async def get_report_templates(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+async def get_report_templates(current_user: User = Depends(require_superuser_or_admin)) -> dict[str, Any]:
     """Get available report templates and formats"""
     return {
         "formats": [
@@ -248,7 +248,7 @@ async def get_report_templates(current_user: User = Depends(get_current_user)) -
 
 @router.get("/reports/{report_id}")
 async def get_report(
-    report_id: UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    report_id: UUID, current_user: User = Depends(require_superuser_or_admin), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Get a previously generated report"""
     # In a real implementation, this would fetch from a reports table

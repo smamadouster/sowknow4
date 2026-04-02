@@ -109,3 +109,115 @@ class TestStage1Understand:
                           new_callable=AsyncMock, return_value=intent):
             _, strategy = await collection_service._understand_query("solar energy")
             assert strategy == "broad_hybrid"
+
+
+class TestStage2GatherAndVerify:
+    """Stage 2: Articles-first search with quality gates and retry."""
+
+    @pytest.mark.asyncio
+    async def test_gather_calls_article_searches(self):
+        """Must call both article search methods."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        intent = ParsedIntent(query="solar", keywords=["solar"], collection_name="Solar", confidence=0.9)
+
+        with patch.object(collection_service.search_service, "article_semantic_search",
+                          new_callable=AsyncMock, return_value=[]) as mock_as, \
+             patch.object(collection_service.search_service, "article_keyword_search",
+                          new_callable=AsyncMock, return_value=[]) as mock_ak, \
+             patch.object(collection_service.search_service, "semantic_search",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(collection_service.search_service, "keyword_search",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(collection_service.search_service, "tag_search",
+                          new_callable=AsyncMock, return_value=[]):
+            await collection_service._gather_and_verify(intent, "broad_hybrid", MagicMock(), MagicMock())
+            mock_as.assert_called()
+            mock_ak.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_gather_retries_on_few_results(self):
+        """If < 3 results, must retry with broader search."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        intent = ParsedIntent(query="rare topic", keywords=["rare"], collection_name="Rare", confidence=0.9)
+        call_count = [0]
+
+        async def _count(*a, **k):
+            call_count[0] += 1
+            return []
+
+        with patch.object(collection_service.search_service, "article_semantic_search",
+                          new_callable=AsyncMock, side_effect=_count), \
+             patch.object(collection_service.search_service, "article_keyword_search",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(collection_service.search_service, "semantic_search",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(collection_service.search_service, "keyword_search",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(collection_service.search_service, "tag_search",
+                          new_callable=AsyncMock, return_value=[]):
+            await collection_service._gather_and_verify(intent, "broad_hybrid", MagicMock(), MagicMock())
+            assert call_count[0] >= 2, "Should retry on few results"
+
+    @pytest.mark.asyncio
+    async def test_gather_prefers_articles_over_chunks(self):
+        """Same document: article result should win over chunk result."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
+
+        article_r = MagicMock()
+        article_r.document_id = "doc-1"
+        article_r.article_id = "art-1"
+        article_r.article_title = "Solar Report"
+        article_r.article_summary = "Analysis of solar..."
+        article_r.document_name = "solar.pdf"
+        article_r.final_score = 0.8
+        article_r.semantic_score = 0.8
+        article_r.keyword_score = 0
+        article_r.result_type = "article"
+
+        chunk_r = MagicMock()
+        chunk_r.document_id = "doc-1"
+        chunk_r.article_id = None
+        chunk_r.article_title = None
+        chunk_r.article_summary = None
+        chunk_r.document_name = "solar.pdf"
+        chunk_r.final_score = 0.9
+        chunk_r.semantic_score = 0.9
+        chunk_r.keyword_score = 0
+        chunk_r.result_type = "chunk"
+
+        extra1 = MagicMock(document_id="doc-2", article_id=None, article_title=None,
+                          article_summary=None, document_name="b.pdf", final_score=0.5,
+                          semantic_score=0.5, keyword_score=0, result_type="chunk")
+        extra2 = MagicMock(document_id="doc-3", article_id=None, article_title=None,
+                          article_summary=None, document_name="c.pdf", final_score=0.4,
+                          semantic_score=0.4, keyword_score=0, result_type="chunk")
+
+        intent = ParsedIntent(query="solar", keywords=["solar"], collection_name="Solar", confidence=0.9)
+
+        with patch.object(collection_service.search_service, "article_semantic_search",
+                          new_callable=AsyncMock, return_value=[article_r]), \
+             patch.object(collection_service.search_service, "article_keyword_search",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(collection_service.search_service, "semantic_search",
+                          new_callable=AsyncMock, return_value=[chunk_r]), \
+             patch.object(collection_service.search_service, "keyword_search",
+                          new_callable=AsyncMock, return_value=[extra1, extra2]), \
+             patch.object(collection_service.search_service, "tag_search",
+                          new_callable=AsyncMock, return_value=[]):
+            results = await collection_service._gather_and_verify(intent, "broad_hybrid", MagicMock(), MagicMock())
+
+        # doc-1 should appear once with article preferred
+        doc1_results = [r for r in results if r["document_id"] == "doc-1"]
+        assert len(doc1_results) == 1
+        assert doc1_results[0]["article_id"] == "art-1"

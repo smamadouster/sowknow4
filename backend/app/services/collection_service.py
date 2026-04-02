@@ -416,6 +416,88 @@ class CollectionService:
 
         return intent, strategy
 
+    async def _gather_and_verify(
+        self, intent: ParsedIntentModel, strategy: str, user: User, db: Session,
+    ) -> list[dict]:
+        """
+        Stage 2: GATHER + VERIFY — Articles-first hybrid search with quality gates.
+
+        Runs 5 concurrent searches, merges with RRF, groups by document_id
+        (preferring articles), retries with broader queries if results < 3.
+
+        Returns list of dicts: {document_id, article_id, article_title, article_summary,
+                                document_name, relevance_score, result_type}
+        """
+        import asyncio
+
+        search_query = " ".join(intent.keywords) if intent.keywords else intent.query
+        max_attempts = 3
+        min_results = 3
+        results = []
+
+        for attempt in range(max_attempts):
+            # Run all 5 searches concurrently
+            tasks = [
+                asyncio.create_task(self.search_service.article_semantic_search(query=search_query, limit=50, db=db, user=user)),
+                asyncio.create_task(self.search_service.article_keyword_search(query=search_query, limit=50, db=db, user=user)),
+                asyncio.create_task(self.search_service.semantic_search(query=search_query, limit=50, offset=0, db=db, user=user)),
+                asyncio.create_task(self.search_service.keyword_search(query=search_query, limit=50, offset=0, db=db, user=user)),
+                asyncio.create_task(self.search_service.tag_search(query=search_query, limit=50, offset=0, db=db, user=user)),
+            ]
+
+            done, pending = await asyncio.wait(tasks, timeout=20.0)
+            for task in pending:
+                task.cancel()
+
+            # Collect results
+            all_results = []
+            for task in done:
+                try:
+                    all_results.extend(task.result())
+                except Exception as e:
+                    logger.warning(f"Search task failed: {e}")
+
+            # Group by document_id, prefer articles
+            grouped = {}
+            for r in all_results:
+                doc_id = str(r.document_id)
+                is_article = r.result_type == "article"
+                score = r.final_score or r.semantic_score or r.keyword_score or 0
+
+                # RRF boost
+                if is_article:
+                    score *= 1.2
+                if r.result_type == "tag":
+                    score *= 1.5
+
+                existing = grouped.get(doc_id)
+                if not existing or score > existing["relevance_score"] or (is_article and existing.get("result_type") != "article"):
+                    grouped[doc_id] = {
+                        "document_id": doc_id,
+                        "article_id": getattr(r, "article_id", None),
+                        "article_title": getattr(r, "article_title", None),
+                        "article_summary": getattr(r, "article_summary", None),
+                        "document_name": getattr(r, "document_name", None),
+                        "relevance_score": score,
+                        "result_type": r.result_type,
+                    }
+
+            results = sorted(grouped.values(), key=lambda x: x["relevance_score"], reverse=True)[:100]
+
+            if len(results) >= min_results:
+                logger.info(f"Stage 2: Found {len(results)} results on attempt {attempt + 1}")
+                return results
+
+            # Broaden search for retry
+            logger.info(f"Stage 2: Only {len(results)} results on attempt {attempt + 1}, broadening")
+            if attempt == 0:
+                search_query = intent.query  # Use full query text
+            elif attempt == 1:
+                search_query = " ".join(intent.keywords[:2]) if intent.keywords else intent.query
+
+        logger.info(f"Stage 2: Returning {len(results)} results after {max_attempts} attempts")
+        return results
+
     async def _gather_documents_for_intent(self, intent: ParsedIntentModel, user: User, db: Session) -> list[Document]:
         """
         Gather documents based on parsed intent
@@ -525,6 +607,48 @@ class CollectionService:
             _openrouter_svc.invalidate_collection_cache(str(collection_id))
         except Exception as e:
             logger.warning(f"Cache invalidation failed for collection {collection_id}: {e}")
+
+    async def _synthesize_summary(
+        self, collection_name: str, query: str, results: list[dict], intent: ParsedIntentModel,
+    ) -> str:
+        """
+        Stage 3: SYNTHESIZE — Generate collection summary using MiniMax direct.
+        Uses article titles+summaries as rich context. Never uses Ollama or OpenRouter.
+        """
+        # Build rich context from results
+        context_lines = []
+        for r in results[:15]:
+            if r.get("article_title") and r.get("article_summary"):
+                context_lines.append(f'- "{r["article_title"]}" — {r["article_summary"]}')
+            elif r.get("document_name"):
+                context_lines.append(f'- {r["document_name"]}')
+
+        context = "\n".join(context_lines) if context_lines else "No documents found."
+        entities_str = ", ".join(e["name"] for e in intent.entities) if intent.entities else "None"
+
+        prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
+
+Query: "{query}"
+Documents and articles in collection:
+{context}
+
+Entities found: {entities_str}
+
+Summarize what this collection contains and its key themes. Be specific about the content, not generic."""
+
+        messages = [
+            {"role": "system", "content": "You are a document collection summarizer. Write concise, specific summaries in 2-3 sentences. Respond only with the summary text, nothing else."},
+            {"role": "user", "content": prompt},
+        ]
+
+        try:
+            summary = await self.minimax_service.chat_completion_non_stream(
+                messages=messages, temperature=0.5, max_tokens=500,
+            )
+            return summary.strip()
+        except Exception as e:
+            logger.error(f"MiniMax summary generation failed: {e}")
+            return f"Collection of {len(results)} documents related to: {query}"
 
     async def _generate_collection_summary(
         self,

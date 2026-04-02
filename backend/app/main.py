@@ -25,6 +25,7 @@ from app.api import (
     collections,
     documents,
     graph_rag,
+    internal,
     knowledge_graph,
     search_agent_router,
     smart_folders,
@@ -320,6 +321,7 @@ app.include_router(knowledge_graph.router, prefix="/api/v1")
 app.include_router(graph_rag.router, prefix="/api/v1")
 app.include_router(search_agent_router.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(internal.router, prefix="/api/v1")
 app.include_router(health_router.router, prefix="/api/v1")
 app.include_router(status_router.router, prefix="/api/v1")
 

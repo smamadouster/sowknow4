@@ -67,6 +67,7 @@ celery_app.conf.update(
     enable_utc=True,
     # Task routing
     task_routes={
+        "build_smart_collection": {"queue": "collections"},
         "app.tasks.document_tasks.*": {"queue": "document_processing"},
         "app.tasks.embedding_tasks.*": {"queue": "document_processing"},
         "app.tasks.article_tasks.*": {"queue": "document_processing"},

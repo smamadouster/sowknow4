@@ -32,6 +32,12 @@ async def create_bookmark(
         bucket=data.bucket.value,
         tags=[t.model_dump() for t in data.tags],
     )
+    # Check space rules for new bookmark
+    try:
+        from app.services.space_service import space_service
+        await space_service.check_rules_for_new_item(db, "bookmark", bookmark.id)
+    except Exception as e:
+        logger.warning(f"Space rule check failed for bookmark {bookmark.id}: {e}")
     tags = await bookmark_service.get_tags_for_bookmark(db, bookmark.id)
     return _to_response(bookmark, tags)
 

@@ -500,6 +500,157 @@ class ApiClient {
       body: JSON.stringify({ document_ids: documentIds }),
     });
   }
+
+  // --- Bookmarks ---
+
+  async getBookmarks(page: number = 1, pageSize: number = 50, tag?: string) {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (tag) params.set('tag', tag);
+    return this.request<any>(`/v1/bookmarks?${params}`);
+  }
+
+  async createBookmark(url: string, tags: Array<{ tag_name: string; tag_type?: string }>, title?: string, description?: string, bucket: string = 'public') {
+    return this.request<any>('/v1/bookmarks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, title, description, bucket, tags }),
+    });
+  }
+
+  async getBookmark(id: string) {
+    return this.request<any>(`/v1/bookmarks/${id}`);
+  }
+
+  async updateBookmark(id: string, data: { title?: string; description?: string; tags?: Array<{ tag_name: string; tag_type?: string }> }) {
+    return this.request<any>(`/v1/bookmarks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteBookmark(id: string) {
+    return this.request<any>(`/v1/bookmarks/${id}`, { method: 'DELETE' });
+  }
+
+  async searchBookmarks(query: string, page: number = 1, pageSize: number = 50) {
+    const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize) });
+    return this.request<any>(`/v1/bookmarks/search?${params}`);
+  }
+
+  // --- Notes ---
+
+  async getNotes(page: number = 1, pageSize: number = 50, tag?: string) {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (tag) params.set('tag', tag);
+    return this.request<any>(`/v1/notes?${params}`);
+  }
+
+  async createNote(title: string, content?: string, tags: Array<{ tag_name: string; tag_type?: string }> = [], bucket: string = 'public') {
+    return this.request<any>('/v1/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, content, bucket, tags }),
+    });
+  }
+
+  async getNote(id: string) {
+    return this.request<any>(`/v1/notes/${id}`);
+  }
+
+  async updateNote(id: string, data: { title?: string; content?: string; tags?: Array<{ tag_name: string; tag_type?: string }> }) {
+    return this.request<any>(`/v1/notes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteNote(id: string) {
+    return this.request<any>(`/v1/notes/${id}`, { method: 'DELETE' });
+  }
+
+  async searchNotes(query: string, page: number = 1, pageSize: number = 50) {
+    const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize) });
+    return this.request<any>(`/v1/notes/search?${params}`);
+  }
+
+  // --- Spaces ---
+
+  async getSpaces(page: number = 1, pageSize: number = 50, search?: string) {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (search) params.set('search', search);
+    return this.request<any>(`/v1/spaces?${params}`);
+  }
+
+  async createSpace(name: string, description?: string, icon?: string, bucket: string = 'public') {
+    return this.request<any>('/v1/spaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, icon, bucket }),
+    });
+  }
+
+  async getSpace(id: string, itemType?: string) {
+    const params = new URLSearchParams();
+    if (itemType) params.set('item_type', itemType);
+    const qs = params.toString();
+    return this.request<any>(`/v1/spaces/${id}${qs ? `?${qs}` : ''}`);
+  }
+
+  async updateSpace(id: string, data: { name?: string; description?: string; icon?: string; is_pinned?: boolean }) {
+    return this.request<any>(`/v1/spaces/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSpace(id: string) {
+    return this.request<any>(`/v1/spaces/${id}`, { method: 'DELETE' });
+  }
+
+  async addSpaceItem(spaceId: string, itemType: string, itemId: string, note?: string) {
+    return this.request<any>(`/v1/spaces/${spaceId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_type: itemType, item_id: itemId, note }),
+    });
+  }
+
+  async removeSpaceItem(spaceId: string, itemId: string) {
+    return this.request<any>(`/v1/spaces/${spaceId}/items/${itemId}`, { method: 'DELETE' });
+  }
+
+  async addSpaceRule(spaceId: string, ruleType: string, ruleValue: string) {
+    return this.request<any>(`/v1/spaces/${spaceId}/rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rule_type: ruleType, rule_value: ruleValue }),
+    });
+  }
+
+  async updateSpaceRule(spaceId: string, ruleId: string, data: { rule_value?: string; is_active?: boolean }) {
+    return this.request<any>(`/v1/spaces/${spaceId}/rules/${ruleId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSpaceRule(spaceId: string, ruleId: string) {
+    return this.request<any>(`/v1/spaces/${spaceId}/rules/${ruleId}`, { method: 'DELETE' });
+  }
+
+  async syncSpace(spaceId: string) {
+    return this.request<any>(`/v1/spaces/${spaceId}/sync`, { method: 'POST' });
+  }
+
+  async searchInSpace(spaceId: string, query: string, itemType?: string) {
+    const params = new URLSearchParams({ q: query });
+    if (itemType) params.set('item_type', itemType);
+    return this.request<any>(`/v1/spaces/${spaceId}/search?${params}`);
+  }
 }
 
 export const api = new ApiClient(API_BASE);

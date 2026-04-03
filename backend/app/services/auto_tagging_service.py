@@ -6,11 +6,13 @@ and language from documents during the ingestion pipeline.
 """
 
 import logging
+import uuid
 import warnings
 from datetime import datetime
 from typing import Any
 
-from app.models.document import Document, DocumentBucket, DocumentLanguage, DocumentTag
+from app.models.document import Document, DocumentBucket, DocumentLanguage
+from app.models.tag import Tag, TagType, TargetType
 from app.services.agent_identity import build_service_prompt
 from app.services.minimax_service import minimax_service
 
@@ -39,7 +41,7 @@ class AutoTaggingService:
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
-    async def tag_document(self, document: Document, extracted_text: str, db_session=None) -> list[DocumentTag]:
+    async def tag_document(self, document: Document, extracted_text: str, db_session=None) -> list[Tag]:
         """
         Auto-tag a document with topics, entities, importance, and language
 
@@ -49,7 +51,7 @@ class AutoTaggingService:
             db_session: Database session for creating tags
 
         Returns:
-            List of created DocumentTag objects
+            List of created Tag objects
         """
         try:
             # Determine LLM routing based on document bucket
@@ -68,17 +70,19 @@ class AutoTaggingService:
                 logger.warning(f"No tags extracted for document {document.id}")
                 return []
 
-            # Create DocumentTag objects
+            # Create Tag objects
             tags = []
             current_time = datetime.utcnow()
 
             # Topic tags
             for topic in tags_data.get("topics", [])[:5]:
                 tags.append(
-                    DocumentTag(
-                        document_id=document.id,
+                    Tag(
+                        id=uuid.uuid4(),
                         tag_name=topic,
-                        tag_type="topic",
+                        tag_type=TagType.TOPIC,
+                        target_type=TargetType.DOCUMENT,
+                        target_id=document.id,
                         auto_generated=True,
                         confidence_score=85,
                         created_at=current_time,
@@ -87,11 +91,18 @@ class AutoTaggingService:
 
             # Entity tags
             for entity in tags_data.get("entities", [])[:10]:
+                entity_type = entity.get("type", "entity")
+                try:
+                    tag_type = TagType(entity_type)
+                except ValueError:
+                    tag_type = TagType.ENTITY
                 tags.append(
-                    DocumentTag(
-                        document_id=document.id,
+                    Tag(
+                        id=uuid.uuid4(),
                         tag_name=entity["name"],
-                        tag_type=entity.get("type", "entity"),
+                        tag_type=tag_type,
+                        target_type=TargetType.DOCUMENT,
+                        target_id=document.id,
                         auto_generated=True,
                         confidence_score=entity.get("confidence", 75),
                         created_at=current_time,
@@ -102,10 +113,12 @@ class AutoTaggingService:
             importance = tags_data.get("importance")
             if importance:
                 tags.append(
-                    DocumentTag(
-                        document_id=document.id,
+                    Tag(
+                        id=uuid.uuid4(),
                         tag_name=importance,
-                        tag_type="importance",
+                        tag_type=TagType.IMPORTANCE,
+                        target_type=TargetType.DOCUMENT,
+                        target_id=document.id,
                         auto_generated=True,
                         confidence_score=80,
                         created_at=current_time,
@@ -391,7 +404,16 @@ Extract the tags now:"""
         from sqlalchemy import and_, func
 
         # Get tags for the reference document
-        ref_tags = db_session.query(DocumentTag.tag_name).filter(DocumentTag.document_id == document_id).all()
+        ref_tags = (
+            db_session.query(Tag.tag_name)
+            .filter(
+                and_(
+                    Tag.target_type == TargetType.DOCUMENT,
+                    Tag.target_id == document_id,
+                )
+            )
+            .all()
+        )
 
         if not ref_tags:
             return []
@@ -401,17 +423,18 @@ Extract the tags now:"""
         # Find documents with shared tags
         similar = (
             db_session.query(
-                DocumentTag.document_id,
-                func.count(DocumentTag.tag_name).label("shared_count"),
+                Tag.target_id,
+                func.count(Tag.tag_name).label("shared_count"),
             )
             .filter(
                 and_(
-                    DocumentTag.tag_name.in_(ref_tag_names),
-                    DocumentTag.document_id != document_id,
+                    Tag.target_type == TargetType.DOCUMENT,
+                    Tag.tag_name.in_(ref_tag_names),
+                    Tag.target_id != document_id,
                 )
             )
-            .group_by(DocumentTag.document_id)
-            .order_by(func.count(DocumentTag.tag_name).desc())
+            .group_by(Tag.target_id)
+            .order_by(func.count(Tag.tag_name).desc())
             .limit(limit)
             .all()
         )

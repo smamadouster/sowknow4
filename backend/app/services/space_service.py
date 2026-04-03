@@ -14,6 +14,11 @@ from app.models.user import User, UserRole
 logger = logging.getLogger(__name__)
 
 
+def _escape_like(value: str) -> str:
+    """Escape ILIKE wildcard characters in user input."""
+    return value.replace("%", r"\%").replace("_", r"\_")
+
+
 class SpaceService:
 
     # --- Space CRUD ---
@@ -41,7 +46,7 @@ class SpaceService:
         query = select(Space)
         query = self._apply_access_filter(query, user)
         if search:
-            query = query.where(Space.name.ilike(f"%{search}%"))
+            query = query.where(Space.name.ilike(f"%{_escape_like(search)}%"))
 
         count_query = select(func.count()).select_from(query.subquery())
         total = (await db.execute(count_query)).scalar() or 0
@@ -261,7 +266,7 @@ class SpaceService:
         # Bookmarks: ILIKE on title/description
         bm_results = await db.execute(
             select(Bookmark.id).where(
-                or_(Bookmark.title.ilike(f"%{keyword}%"), Bookmark.description.ilike(f"%{keyword}%"))
+                or_(Bookmark.title.ilike(f"%{_escape_like(keyword)}%"), Bookmark.description.ilike(f"%{_escape_like(keyword)}%"))
             )
         )
         for (bm_id,) in bm_results.all():
@@ -272,7 +277,7 @@ class SpaceService:
         # Notes: ILIKE on title/content
         note_results = await db.execute(
             select(Note.id).where(
-                or_(Note.title.ilike(f"%{keyword}%"), Note.content.ilike(f"%{keyword}%"))
+                or_(Note.title.ilike(f"%{_escape_like(keyword)}%"), Note.content.ilike(f"%{_escape_like(keyword)}%"))
             )
         )
         for (note_id,) in note_results.all():
@@ -352,7 +357,7 @@ class SpaceService:
             result = await db.execute(
                 select(func.count()).where(
                     Bookmark.id == target_id,
-                    or_(Bookmark.title.ilike(f"%{keyword}%"), Bookmark.description.ilike(f"%{keyword}%")),
+                    or_(Bookmark.title.ilike(f"%{_escape_like(keyword)}%"), Bookmark.description.ilike(f"%{_escape_like(keyword)}%")),
                 )
             )
             return (result.scalar() or 0) > 0
@@ -360,7 +365,7 @@ class SpaceService:
             result = await db.execute(
                 select(func.count()).where(
                     Note.id == target_id,
-                    or_(Note.title.ilike(f"%{keyword}%"), Note.content.ilike(f"%{keyword}%")),
+                    or_(Note.title.ilike(f"%{_escape_like(keyword)}%"), Note.content.ilike(f"%{_escape_like(keyword)}%")),
                 )
             )
             return (result.scalar() or 0) > 0

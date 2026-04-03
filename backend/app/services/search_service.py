@@ -327,15 +327,15 @@ class HybridSearchService:
                 COALESCE(d.original_filename, d.filename) AS document_name,
                 d.bucket AS document_bucket,
                 d.page_count,
-                dt.tag_name,
-                dt.tag_type,
+                t.tag_name,
+                t.tag_type,
                 1.0 AS similarity
             FROM sowknow.documents d
-            JOIN sowknow.document_tags dt ON d.id = dt.document_id
+            JOIN sowknow.tags t ON d.id = t.target_id AND t.target_type = 'document'
             WHERE d.bucket = ANY(:buckets)
               AND d.status != 'error'
-              AND LOWER(dt.tag_name) LIKE LOWER(:query_pattern)
-            ORDER BY dt.tag_type, dt.tag_name
+              AND LOWER(t.tag_name) LIKE LOWER(:query_pattern)
+            ORDER BY t.tag_type, t.tag_name
             LIMIT :limit OFFSET :offset
         """)
 

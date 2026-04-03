@@ -11,6 +11,11 @@ from app.models.user import User, UserRole
 logger = logging.getLogger(__name__)
 
 
+def _escape_like(value: str) -> str:
+    """Escape ILIKE wildcard characters in user input."""
+    return value.replace("%", r"\%").replace("_", r"\_")
+
+
 class NoteService:
     async def create_note(
         self, db: AsyncSession, user: User, title: str, tags: list[dict],
@@ -128,8 +133,8 @@ class NoteService:
         )
         query = query.where(
             or_(
-                Note.title.ilike(f"%{query_str}%"),
-                Note.content.ilike(f"%{query_str}%"),
+                Note.title.ilike(f"%{_escape_like(query_str)}%"),
+                Note.content.ilike(f"%{_escape_like(query_str)}%"),
                 Note.id.in_(tag_subq),
             )
         )

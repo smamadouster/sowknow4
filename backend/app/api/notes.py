@@ -23,14 +23,18 @@ async def create_note(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> NoteResponse:
-    note = await note_service.create_note(
-        db=db,
-        user=current_user,
-        title=data.title,
-        content=data.content,
-        bucket=data.bucket.value,
-        tags=[t.model_dump() for t in data.tags],
-    )
+    try:
+        note = await note_service.create_note(
+            db=db,
+            user=current_user,
+            title=data.title,
+            content=data.content,
+            bucket=data.bucket.value,
+            tags=[t.model_dump() for t in data.tags],
+        )
+    except Exception as e:
+        logger.error(f"Failed to create note: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create note")
     # Check space rules for new note
     try:
         from app.services.space_service import space_service
@@ -49,9 +53,13 @@ async def list_notes(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> NoteListResponse:
-    notes, total = await note_service.list_notes(
-        db=db, user=current_user, page=page, page_size=page_size, tag=tag,
-    )
+    try:
+        notes, total = await note_service.list_notes(
+            db=db, user=current_user, page=page, page_size=page_size, tag=tag,
+        )
+    except Exception as e:
+        logger.error(f"Failed to list notes: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list notes")
     items = []
     for n in notes:
         tags = await note_service.get_tags_for_note(db, n.id)

@@ -14,6 +14,23 @@ interface ApiResponse<T> {
   status: number;
 }
 
+// --- Bookmark types ---
+interface BookmarkTag { id: string; tag_name: string; tag_type: string; }
+interface BookmarkItem { id: string; url: string; title: string; description: string | null; favicon_url: string | null; bucket: string; tags: BookmarkTag[]; created_at: string; updated_at: string; }
+interface BookmarkListData { bookmarks: BookmarkItem[]; total: number; page: number; page_size: number; }
+
+// --- Note types ---
+interface NoteItem { id: string; title: string; content: string | null; bucket: string; tags: BookmarkTag[]; created_at: string; updated_at: string; }
+interface NoteListData { notes: NoteItem[]; total: number; page: number; page_size: number; }
+
+// --- Space types ---
+interface SpaceTagItem { id: string; tag_name: string; tag_type: string; }
+interface SpaceItemData { id: string; space_id: string; item_type: string; document_id: string | null; bookmark_id: string | null; note_id: string | null; added_by: string; added_at: string; note: string | null; is_excluded: boolean; item_title: string | null; item_url: string | null; item_tags: SpaceTagItem[]; }
+interface SpaceRuleData { id: string; space_id: string; rule_type: string; rule_value: string; is_active: boolean; match_count: number; created_at: string; }
+interface SpaceSummary { id: string; name: string; description: string | null; icon: string | null; bucket: string; is_pinned: boolean; item_count: number; created_at: string; updated_at: string; }
+interface SpaceDetailData extends SpaceSummary { items: SpaceItemData[]; rules: SpaceRuleData[]; }
+interface SpaceListData { spaces: SpaceSummary[]; total: number; page: number; page_size: number; }
+
 class ApiClient {
   private baseUrl: string;
 
@@ -506,11 +523,11 @@ class ApiClient {
   async getBookmarks(page: number = 1, pageSize: number = 50, tag?: string) {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (tag) params.set('tag', tag);
-    return this.request<any>(`/v1/bookmarks?${params}`);
+    return this.request<BookmarkListData>(`/v1/bookmarks?${params}`);
   }
 
   async createBookmark(url: string, tags: Array<{ tag_name: string; tag_type?: string }>, title?: string, description?: string, bucket: string = 'public') {
-    return this.request<any>('/v1/bookmarks', {
+    return this.request<BookmarkItem>('/v1/bookmarks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, title, description, bucket, tags }),
@@ -518,11 +535,11 @@ class ApiClient {
   }
 
   async getBookmark(id: string) {
-    return this.request<any>(`/v1/bookmarks/${id}`);
+    return this.request<BookmarkItem>(`/v1/bookmarks/${id}`);
   }
 
   async updateBookmark(id: string, data: { title?: string; description?: string; tags?: Array<{ tag_name: string; tag_type?: string }> }) {
-    return this.request<any>(`/v1/bookmarks/${id}`, {
+    return this.request<BookmarkItem>(`/v1/bookmarks/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -530,12 +547,12 @@ class ApiClient {
   }
 
   async deleteBookmark(id: string) {
-    return this.request<any>(`/v1/bookmarks/${id}`, { method: 'DELETE' });
+    return this.request<void>(`/v1/bookmarks/${id}`, { method: 'DELETE' });
   }
 
   async searchBookmarks(query: string, page: number = 1, pageSize: number = 50) {
     const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize) });
-    return this.request<any>(`/v1/bookmarks/search?${params}`);
+    return this.request<BookmarkListData>(`/v1/bookmarks/search?${params}`);
   }
 
   // --- Notes ---
@@ -543,11 +560,11 @@ class ApiClient {
   async getNotes(page: number = 1, pageSize: number = 50, tag?: string) {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (tag) params.set('tag', tag);
-    return this.request<any>(`/v1/notes?${params}`);
+    return this.request<NoteListData>(`/v1/notes?${params}`);
   }
 
   async createNote(title: string, content?: string, tags: Array<{ tag_name: string; tag_type?: string }> = [], bucket: string = 'public') {
-    return this.request<any>('/v1/notes', {
+    return this.request<NoteItem>('/v1/notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, content, bucket, tags }),
@@ -555,11 +572,11 @@ class ApiClient {
   }
 
   async getNote(id: string) {
-    return this.request<any>(`/v1/notes/${id}`);
+    return this.request<NoteItem>(`/v1/notes/${id}`);
   }
 
   async updateNote(id: string, data: { title?: string; content?: string; tags?: Array<{ tag_name: string; tag_type?: string }> }) {
-    return this.request<any>(`/v1/notes/${id}`, {
+    return this.request<NoteItem>(`/v1/notes/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -567,12 +584,12 @@ class ApiClient {
   }
 
   async deleteNote(id: string) {
-    return this.request<any>(`/v1/notes/${id}`, { method: 'DELETE' });
+    return this.request<void>(`/v1/notes/${id}`, { method: 'DELETE' });
   }
 
   async searchNotes(query: string, page: number = 1, pageSize: number = 50) {
     const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize) });
-    return this.request<any>(`/v1/notes/search?${params}`);
+    return this.request<NoteListData>(`/v1/notes/search?${params}`);
   }
 
   // --- Spaces ---
@@ -580,11 +597,11 @@ class ApiClient {
   async getSpaces(page: number = 1, pageSize: number = 50, search?: string) {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (search) params.set('search', search);
-    return this.request<any>(`/v1/spaces?${params}`);
+    return this.request<SpaceListData>(`/v1/spaces?${params}`);
   }
 
   async createSpace(name: string, description?: string, icon?: string, bucket: string = 'public') {
-    return this.request<any>('/v1/spaces', {
+    return this.request<SpaceSummary>('/v1/spaces', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description, icon, bucket }),
@@ -595,11 +612,11 @@ class ApiClient {
     const params = new URLSearchParams();
     if (itemType) params.set('item_type', itemType);
     const qs = params.toString();
-    return this.request<any>(`/v1/spaces/${id}${qs ? `?${qs}` : ''}`);
+    return this.request<SpaceDetailData>(`/v1/spaces/${id}${qs ? `?${qs}` : ''}`);
   }
 
   async updateSpace(id: string, data: { name?: string; description?: string; icon?: string; is_pinned?: boolean }) {
-    return this.request<any>(`/v1/spaces/${id}`, {
+    return this.request<SpaceSummary>(`/v1/spaces/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -607,11 +624,11 @@ class ApiClient {
   }
 
   async deleteSpace(id: string) {
-    return this.request<any>(`/v1/spaces/${id}`, { method: 'DELETE' });
+    return this.request<void>(`/v1/spaces/${id}`, { method: 'DELETE' });
   }
 
   async addSpaceItem(spaceId: string, itemType: string, itemId: string, note?: string) {
-    return this.request<any>(`/v1/spaces/${spaceId}/items`, {
+    return this.request<SpaceItemData>(`/v1/spaces/${spaceId}/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_type: itemType, item_id: itemId, note }),
@@ -619,11 +636,11 @@ class ApiClient {
   }
 
   async removeSpaceItem(spaceId: string, itemId: string) {
-    return this.request<any>(`/v1/spaces/${spaceId}/items/${itemId}`, { method: 'DELETE' });
+    return this.request<void>(`/v1/spaces/${spaceId}/items/${itemId}`, { method: 'DELETE' });
   }
 
   async addSpaceRule(spaceId: string, ruleType: string, ruleValue: string) {
-    return this.request<any>(`/v1/spaces/${spaceId}/rules`, {
+    return this.request<SpaceRuleData>(`/v1/spaces/${spaceId}/rules`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rule_type: ruleType, rule_value: ruleValue }),
@@ -631,7 +648,7 @@ class ApiClient {
   }
 
   async updateSpaceRule(spaceId: string, ruleId: string, data: { rule_value?: string; is_active?: boolean }) {
-    return this.request<any>(`/v1/spaces/${spaceId}/rules/${ruleId}`, {
+    return this.request<SpaceRuleData>(`/v1/spaces/${spaceId}/rules/${ruleId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -639,17 +656,17 @@ class ApiClient {
   }
 
   async deleteSpaceRule(spaceId: string, ruleId: string) {
-    return this.request<any>(`/v1/spaces/${spaceId}/rules/${ruleId}`, { method: 'DELETE' });
+    return this.request<void>(`/v1/spaces/${spaceId}/rules/${ruleId}`, { method: 'DELETE' });
   }
 
   async syncSpace(spaceId: string) {
-    return this.request<any>(`/v1/spaces/${spaceId}/sync`, { method: 'POST' });
+    return this.request<{ message: string }>(`/v1/spaces/${spaceId}/sync`, { method: 'POST' });
   }
 
   async searchInSpace(spaceId: string, query: string, itemType?: string) {
     const params = new URLSearchParams({ q: query });
     if (itemType) params.set('item_type', itemType);
-    return this.request<any>(`/v1/spaces/${spaceId}/search?${params}`);
+    return this.request<{ results: SpaceItemData[]; total: number }>(`/v1/spaces/${spaceId}/search?${params}`);
   }
 }
 

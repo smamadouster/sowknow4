@@ -12,6 +12,11 @@ from app.models.user import User, UserRole
 logger = logging.getLogger(__name__)
 
 
+def _escape_like(value: str) -> str:
+    """Escape ILIKE wildcard characters in user input."""
+    return value.replace("%", r"\%").replace("_", r"\_")
+
+
 class BookmarkService:
     async def create_bookmark(
         self, db: AsyncSession, user: User, url: str, tags: list[dict],
@@ -130,9 +135,9 @@ class BookmarkService:
         )
         query = query.where(
             or_(
-                Bookmark.title.ilike(f"%{query_str}%"),
-                Bookmark.description.ilike(f"%{query_str}%"),
-                Bookmark.url.ilike(f"%{query_str}%"),
+                Bookmark.title.ilike(f"%{_escape_like(query_str)}%"),
+                Bookmark.description.ilike(f"%{_escape_like(query_str)}%"),
+                Bookmark.url.ilike(f"%{_escape_like(query_str)}%"),
                 Bookmark.id.in_(tag_subq),
             )
         )

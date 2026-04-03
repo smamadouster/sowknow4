@@ -23,15 +23,19 @@ async def create_bookmark(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> BookmarkResponse:
-    bookmark = await bookmark_service.create_bookmark(
-        db=db,
-        user=current_user,
-        url=data.url,
-        title=data.title,
-        description=data.description,
-        bucket=data.bucket.value,
-        tags=[t.model_dump() for t in data.tags],
-    )
+    try:
+        bookmark = await bookmark_service.create_bookmark(
+            db=db,
+            user=current_user,
+            url=data.url,
+            title=data.title,
+            description=data.description,
+            bucket=data.bucket.value,
+            tags=[t.model_dump() for t in data.tags],
+        )
+    except Exception as e:
+        logger.error(f"Failed to create bookmark: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create bookmark")
     # Check space rules for new bookmark
     try:
         from app.services.space_service import space_service
@@ -50,9 +54,13 @@ async def list_bookmarks(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> BookmarkListResponse:
-    bookmarks, total = await bookmark_service.list_bookmarks(
-        db=db, user=current_user, page=page, page_size=page_size, tag=tag,
-    )
+    try:
+        bookmarks, total = await bookmark_service.list_bookmarks(
+            db=db, user=current_user, page=page, page_size=page_size, tag=tag,
+        )
+    except Exception as e:
+        logger.error(f"Failed to list bookmarks: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list bookmarks")
     items = []
     for b in bookmarks:
         tags = await bookmark_service.get_tags_for_bookmark(db, b.id)

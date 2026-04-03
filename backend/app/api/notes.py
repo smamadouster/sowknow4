@@ -1,0 +1,133 @@
+import logging
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.database import get_db
+from app.models.user import User
+from app.schemas.note import (
+    NoteCreate, NoteListResponse, NoteResponse, NoteUpdate,
+)
+from app.schemas.tag import TagResponse
+from app.services.note_service import note_service
+
+router = APIRouter(prefix="/notes", tags=["notes"])
+logger = logging.getLogger(__name__)
+
+
+@router.post("", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+async def create_note(
+    data: NoteCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NoteResponse:
+    note = await note_service.create_note(
+        db=db,
+        user=current_user,
+        title=data.title,
+        content=data.content,
+        bucket=data.bucket.value,
+        tags=[t.model_dump() for t in data.tags],
+    )
+    tags = await note_service.get_tags_for_note(db, note.id)
+    return _to_response(note, tags)
+
+
+@router.get("", response_model=NoteListResponse)
+async def list_notes(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    tag: str | None = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NoteListResponse:
+    notes, total = await note_service.list_notes(
+        db=db, user=current_user, page=page, page_size=page_size, tag=tag,
+    )
+    items = []
+    for n in notes:
+        tags = await note_service.get_tags_for_note(db, n.id)
+        items.append(_to_response(n, tags))
+    return NoteListResponse(notes=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/search", response_model=NoteListResponse)
+async def search_notes(
+    q: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NoteListResponse:
+    notes, total = await note_service.search_notes(
+        db=db, user=current_user, query_str=q, page=page, page_size=page_size,
+    )
+    items = []
+    for n in notes:
+        tags = await note_service.get_tags_for_note(db, n.id)
+        items.append(_to_response(n, tags))
+    return NoteListResponse(notes=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/{note_id}", response_model=NoteResponse)
+async def get_note(
+    note_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NoteResponse:
+    note = await note_service.get_note(db, note_id, current_user)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    tags = await note_service.get_tags_for_note(db, note.id)
+    return _to_response(note, tags)
+
+
+@router.put("/{note_id}", response_model=NoteResponse)
+async def update_note(
+    note_id: UUID,
+    data: NoteUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NoteResponse:
+    note = await note_service.get_note(db, note_id, current_user)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    update_dict = data.model_dump(exclude_unset=True)
+    if "tags" in update_dict and update_dict["tags"] is not None:
+        update_dict["tags"] = [t.model_dump() for t in data.tags]
+
+    note = await note_service.update_note(db, note, update_dict)
+    tags = await note_service.get_tags_for_note(db, note.id)
+    return _to_response(note, tags)
+
+
+@router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_note(
+    note_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    note = await note_service.get_note(db, note_id, current_user)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await note_service.delete_note(db, note)
+
+
+def _to_response(note, tags) -> NoteResponse:
+    return NoteResponse(
+        id=note.id,
+        user_id=note.user_id,
+        title=note.title,
+        content=note.content,
+        bucket=note.bucket,
+        tags=[TagResponse.model_validate(t) for t in tags],
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )

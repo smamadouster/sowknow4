@@ -59,7 +59,10 @@
     "main_navigation": "Main navigation",
     "close_menu": "Close menu",
     "knowledge_graph": "Knowledge Graph",
-    "monitoring": "Monitoring"
+    "monitoring": "Monitoring",
+    "bookmarks": "Bookmarks",
+    "notes": "Notes",
+    "spaces": "Spaces"
   },
   "auth": {
     "login_title": "Login to SOWKNOW",
@@ -479,5 +482,60 @@
     "layer_2_desc": "Docker container running patrols (critical/2m, standard/10m, deep/1h). Monitors app health, disk, memory, SSL, config drift.",
     "layer_3": "Layer 3 -- Pre-Flight Validator:",
     "layer_3_desc": "Run before deploy. Catches missing secrets, broken Dockerfiles, syntax errors, port conflicts."
+  },
+  "bookmarks": {
+    "title": "Bookmarks",
+    "add": "Add Bookmark",
+    "url_placeholder": "Paste URL here...",
+    "title_label": "Title",
+    "description_label": "Description",
+    "tags_label": "Tags (required)",
+    "search_placeholder": "Search bookmarks...",
+    "empty": "No bookmarks yet. Save your first link!",
+    "delete_confirm": "Delete this bookmark?",
+    "added": "Bookmark saved",
+    "deleted": "Bookmark deleted"
+  },
+  "notes": {
+    "title": "Notes",
+    "new": "New Note",
+    "title_label": "Title",
+    "content_label": "Content",
+    "tags_label": "Tags",
+    "search_placeholder": "Search notes...",
+    "empty": "No notes yet. Create your first note!",
+    "delete_confirm": "Delete this note?",
+    "saved": "Note saved",
+    "deleted": "Note deleted"
+  },
+  "spaces": {
+    "title": "Spaces",
+    "create": "Create Space",
+    "name_label": "Name",
+    "description_label": "Description",
+    "icon_label": "Icon",
+    "search_placeholder": "Search spaces...",
+    "empty": "No spaces yet. Create your first space!",
+    "delete_confirm": "Delete this space and all its contents?",
+    "items_tab": "Items",
+    "rules_tab": "Rules",
+    "add_items": "Add Items",
+    "sync_now": "Sync Now",
+    "syncing": "Syncing...",
+    "add_rule": "Add Rule",
+    "rule_tag": "Tag",
+    "rule_keyword": "Keyword",
+    "rule_value_placeholder": "Enter tag name or keyword...",
+    "items_count": "{count} items",
+    "added_by_user": "Manual",
+    "added_by_rule": "Auto",
+    "no_items": "No items in this space yet.",
+    "search_items_placeholder": "Search in this space...",
+    "filter_all": "All",
+    "filter_documents": "Documents",
+    "filter_bookmarks": "Bookmarks",
+    "filter_notes": "Notes",
+    "created": "Space created",
+    "deleted": "Space deleted"
   }
 }

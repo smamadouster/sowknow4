@@ -59,7 +59,10 @@
     "main_navigation": "Navigation principale",
     "close_menu": "Fermer le menu",
     "knowledge_graph": "Graphe de Connaissances",
-    "monitoring": "Surveillance"
+    "monitoring": "Surveillance",
+    "bookmarks": "Favoris",
+    "notes": "Notes",
+    "spaces": "Espaces"
   },
   "auth": {
     "login_title": "Connexion à SOWKNOW",
@@ -479,5 +482,60 @@
     "layer_2_desc": "Conteneur Docker executant des patrouilles (critique/2m, standard/10m, approfondie/1h). Surveille la sante applicative, disque, memoire, SSL, derive de config.",
     "layer_3": "Couche 3 -- Validateur pre-deploiement :",
     "layer_3_desc": "Execute avant le deploiement. Detecte les secrets manquants, Dockerfiles casses, erreurs de syntaxe, conflits de ports."
+  },
+  "bookmarks": {
+    "title": "Favoris",
+    "add": "Ajouter un favori",
+    "url_placeholder": "Collez l'URL ici...",
+    "title_label": "Titre",
+    "description_label": "Description",
+    "tags_label": "Tags (obligatoire)",
+    "search_placeholder": "Rechercher dans les favoris...",
+    "empty": "Aucun favori. Enregistrez votre premier lien !",
+    "delete_confirm": "Supprimer ce favori ?",
+    "added": "Favori enregistré",
+    "deleted": "Favori supprimé"
+  },
+  "notes": {
+    "title": "Notes",
+    "new": "Nouvelle note",
+    "title_label": "Titre",
+    "content_label": "Contenu",
+    "tags_label": "Tags",
+    "search_placeholder": "Rechercher dans les notes...",
+    "empty": "Aucune note. Créez votre première note !",
+    "delete_confirm": "Supprimer cette note ?",
+    "saved": "Note enregistrée",
+    "deleted": "Note supprimée"
+  },
+  "spaces": {
+    "title": "Espaces",
+    "create": "Créer un espace",
+    "name_label": "Nom",
+    "description_label": "Description",
+    "icon_label": "Icône",
+    "search_placeholder": "Rechercher dans les espaces...",
+    "empty": "Aucun espace. Créez votre premier espace !",
+    "delete_confirm": "Supprimer cet espace et tout son contenu ?",
+    "items_tab": "Éléments",
+    "rules_tab": "Règles",
+    "add_items": "Ajouter des éléments",
+    "sync_now": "Synchroniser",
+    "syncing": "Synchronisation...",
+    "add_rule": "Ajouter une règle",
+    "rule_tag": "Tag",
+    "rule_keyword": "Mot-clé",
+    "rule_value_placeholder": "Entrez un tag ou mot-clé...",
+    "items_count": "{count} éléments",
+    "added_by_user": "Manuel",
+    "added_by_rule": "Auto",
+    "no_items": "Aucun élément dans cet espace.",
+    "search_items_placeholder": "Rechercher dans cet espace...",
+    "filter_all": "Tous",
+    "filter_documents": "Documents",
+    "filter_bookmarks": "Favoris",
+    "filter_notes": "Notes",
+    "created": "Espace créé",
+    "deleted": "Espace supprimé"
   }
 }

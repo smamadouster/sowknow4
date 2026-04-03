@@ -31,6 +31,7 @@ from app.api import (
     notes,
     search_agent_router,
     smart_folders,
+    spaces,
 )
 from app.api import health as health_router
 from app.api import status as status_router
@@ -317,6 +318,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(bookmarks.router, prefix="/api/v1")
 app.include_router(notes.router, prefix="/api/v1")
+app.include_router(spaces.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(articles.router, prefix="/api/v1")
 app.include_router(collections.router, prefix="/api/v1")

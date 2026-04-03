@@ -149,6 +149,7 @@ export function Navigation() {
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = async () => {
+    setShowLogoutConfirm(false);
     await logout();
     router.push(`/${locale}/login`);
   };

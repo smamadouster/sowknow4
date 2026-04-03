@@ -51,7 +51,7 @@ export default function LoginPage() {
           const userData = await meResponse.json();
           setUser(userData);
         }
-        router.push(`/${locale}/dashboard`);
+        router.push(`/${locale}`);
       } else {
         const data = await response.json();
         setError(data.detail || t('login_error'));

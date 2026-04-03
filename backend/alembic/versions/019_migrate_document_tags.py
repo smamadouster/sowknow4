@@ -2,8 +2,8 @@
 
 from alembic import op
 
-revision = "013"
-down_revision = "012"
+revision = "migrate_document_tags_019"
+down_revision = "add_bookmarks_notes_spaces_018"
 branch_labels = None
 depends_on = None
 

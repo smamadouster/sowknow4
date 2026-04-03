@@ -117,7 +117,7 @@ export default function BatchUploader({
           id="batch-upload-input"
           type="file"
           multiple
-          accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.tiff"
+          accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.tiff,.mp4,.avi,.mov,.mkv,.mp3,.wav,.ogg,.flac,.aac,.wma,.m4a"
           onChange={handleFileChange}
           className="sr-only"
           aria-label="Select files for batch upload"

@@ -28,8 +28,8 @@ interface FileUploadItem {
   error?: string;
 }
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB per file
-const MAX_BATCH_SIZE = 500 * 1024 * 1024; // 500MB total batch
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const MAX_BATCH_SIZE = 500 * 1024 * 1024;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -50,17 +50,13 @@ export default function DocumentsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [bucketFilter, setBucketFilter] = useState<'all' | 'public' | 'confidential'>('all');
-  // R8 — search state
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  // R7 — sort state
   const [sortBy, setSortBy] = useState<'created_at' | 'original_filename' | 'file_size' | 'status'>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  // Batch upload state
   const [fileQueue, setFileQueue] = useState<FileUploadItem[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
-  // Upload bucket selector - separate from view filter
   const [uploadBucket, setUploadBucket] = useState<'public' | 'confidential'>('public');
 
   const pageSize = 50;
@@ -71,12 +67,10 @@ export default function DocumentsPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Primary load effect — reruns when page, bucket, search, or sort changes
   useEffect(() => {
     loadDocuments();
   }, [page, bucketFilter, debouncedSearch, sortBy, sortDir]);
 
-  // R8 — debounce: reset to page 1, then commit search after 400 ms
   useEffect(() => {
     setPage(1);
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
@@ -131,7 +125,6 @@ export default function DocumentsPage() {
     }
   }, [page, pageSize, bucketFilter, debouncedSearch, sortBy, sortDir]);
 
-  // R9 — real-time polling: refresh every 5 s while any doc is pending/processing
   useEffect(() => {
     const hasProcessing = documents.some(
       (d) => d.status === 'pending' || d.status === 'processing',
@@ -145,7 +138,6 @@ export default function DocumentsPage() {
     return () => clearInterval(interval);
   }, [documents, refreshDocuments]);
 
-  // R7 — sort handler
   const handleSort = (col: typeof sortBy) => {
     if (sortBy === col) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -156,15 +148,10 @@ export default function DocumentsPage() {
     setPage(1);
   };
 
-  // Generate unique ID for file items
   const generateId = () => Math.random().toString(36).substring(2, 15);
 
-  // Dropzone configuration
   const onDrop = useCallback(
     (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
-      const currentTime = Date.now();
-
-      // Add rejected files with error status
       const rejectedItems: FileUploadItem[] = rejectedFiles.map((rejection) => ({
         file: rejection.file,
         id: generateId(),
@@ -173,7 +160,6 @@ export default function DocumentsPage() {
         error: rejection.errors[0]?.message || 'File rejected',
       }));
 
-      // Validate batch size for accepted files
       const totalSize = acceptedFiles.reduce((sum, file) => sum + file.size, 0);
       const acceptedItems: FileUploadItem[] = acceptedFiles.map((file) => ({
         file,
@@ -182,7 +168,6 @@ export default function DocumentsPage() {
         progress: 0,
       }));
 
-      // Check if total batch exceeds 500MB
       let batchError: string | undefined;
       if (totalSize > MAX_BATCH_SIZE) {
         batchError = t('batch_too_large', {
@@ -195,7 +180,6 @@ export default function DocumentsPage() {
         });
       }
 
-      // Combine rejected and accepted, then sort so errors appear first
       const newItems = [...rejectedItems, ...acceptedItems].sort((a, b) => {
         if (a.status === 'rejected' && b.status !== 'rejected') return -1;
         if (a.status !== 'rejected' && b.status === 'rejected') return 1;
@@ -204,8 +188,6 @@ export default function DocumentsPage() {
 
       setFileQueue((prev) => [...prev, ...newItems]);
 
-      // Auto-start upload if there are pending files — use setTimeout so setFileQueue
-      // above has committed before we read the queue, avoiding the stale closure bug.
       const pendingFiles = newItems.filter((item) => item.status === 'pending');
       if (pendingFiles.length > 0) {
         setTimeout(() => {
@@ -261,12 +243,10 @@ export default function DocumentsPage() {
     disabled: uploading,
   });
 
-  // Update drag active state
   useEffect(() => {
     setIsDragActive(dropzoneIsDragActive);
   }, [dropzoneIsDragActive]);
 
-  // Upload a single file
   const uploadFile = async (
     item: FileUploadItem,
     bucket: string,
@@ -323,7 +303,6 @@ export default function DocumentsPage() {
     });
   };
 
-  // Upload batch of files
   const uploadBatch = async (items: FileUploadItem[]) => {
     if (items.length === 0) return;
 
@@ -333,7 +312,6 @@ export default function DocumentsPage() {
     const bucket = uploadBucket;
 
     for (const item of items) {
-      // Update status to uploading
       setFileQueue((prev) =>
         prev.map((f) => (f.id === item.id ? { ...f, status: 'uploading' } : f)),
       );
@@ -341,17 +319,14 @@ export default function DocumentsPage() {
       await uploadFile(item, bucket);
     }
 
-    // Refresh document list after all uploads
     await loadDocuments();
 
-    // Show success message for successful uploads
     const successful = fileQueue.filter((f) => f.status === 'success').length;
     if (successful > 0) {
       setSuccess(t('batch_upload_success', { count: successful }));
       setTimeout(() => setSuccess(null), 5000);
     }
 
-    // Clear completed/failed files from queue after a delay
     setTimeout(() => {
       setFileQueue((prev) =>
         prev.filter((f) => f.status === 'uploading' || f.status === 'pending'),
@@ -365,12 +340,10 @@ export default function DocumentsPage() {
     }
   };
 
-  // Remove file from queue
   const removeFromQueue = (id: string) => {
     setFileQueue((prev) => prev.filter((f) => f.id !== id));
   };
 
-  // Clear all completed/failed files
   const clearQueue = () => {
     setFileQueue((prev) =>
       prev.filter((f) => f.status === 'uploading' || f.status === 'pending'),
@@ -417,60 +390,57 @@ export default function DocumentsPage() {
     }
   };
 
-
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'indexed':
-        return 'bg-green-100 text-green-700';
+        return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
       case 'processing':
-        return 'bg-yellow-100 text-yellow-700';
+        return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
       case 'pending':
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-vault-700/50 text-text-muted border border-white/[0.06]';
       case 'error':
-        return 'bg-red-100 text-red-700';
+        return 'bg-red-500/10 text-red-400 border border-red-500/20';
       default:
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-vault-700/50 text-text-muted border border-white/[0.06]';
     }
   };
 
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t('title')}</h1>
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-text-primary font-display">{t('title')}</h1>
+          <p className="text-sm text-text-muted mt-1">{total} document{total !== 1 ? 's' : ''}</p>
+        </div>
 
-        {/* R8 — Debounced search input */}
-        <div className="flex-1 max-w-sm mx-4">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Search input */}
+          <div className="relative flex-1 sm:flex-initial sm:min-w-[200px]">
             <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted/50"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('search_placeholder')}
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-4 py-2 bg-vault-800/50 border border-white/[0.08] rounded-xl text-sm text-text-primary placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all"
             />
           </div>
-        </div>
 
-        <div className="flex items-center gap-4">
+          {/* Bucket filter */}
           <select
             value={bucketFilter}
             onChange={(e) => setBucketFilter(e.target.value as 'all' | 'public' | 'confidential')}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 bg-vault-800/50 border border-white/[0.08] rounded-xl text-sm text-text-secondary focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all appearance-none cursor-pointer"
           >
             <option value="all">{t('all_buckets')}</option>
             <option value="public">{t('bucket_public')}</option>
@@ -479,33 +449,28 @@ export default function DocumentsPage() {
             )}
           </select>
 
-          {/* Dropzone area */}
+          {/* Upload button */}
           <div {...getRootProps()} className="cursor-pointer">
             <input {...getInputProps()} />
             <button
               disabled={uploading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20 text-sm font-medium font-display"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
               {uploading ? t('uploading') : t('upload')}
             </button>
           </div>
 
-          {/* Upload bucket selector - separate from view filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">{t('upload_to') || 'Upload to:'}</span>
+          {/* Upload bucket selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-text-muted">{t('upload_to') || 'Upload to:'}</span>
             <select
               value={uploadBucket}
               onChange={(e) => setUploadBucket(e.target.value as 'public' | 'confidential')}
               disabled={uploading}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="px-2 py-1.5 bg-vault-800/50 border border-white/[0.08] rounded-lg text-xs text-text-secondary focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all"
             >
               <option value="public">{t('bucket_public')}</option>
               {canAccessConf && (
@@ -518,230 +483,10 @@ export default function DocumentsPage() {
 
       {/* Drag active overlay */}
       {isDragActive && (
-        <div className="fixed inset-0 bg-blue-500/20 backdrop-blur-sm z-40 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-2xl p-8 text-center">
+        <div className="fixed inset-0 bg-amber-500/10 backdrop-blur-sm z-40 flex items-center justify-center">
+          <div className="bg-vault-900 border border-amber-500/30 rounded-2xl shadow-glow-lg p-8 text-center">
             <svg
-              className="w-16 h-16 text-blue-600 mx-auto mb-4 animate-bounce"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-            <p className="text-lg font-medium text-gray-900">{t('drop_files_here')}</p>
-            <p className="text-sm text-gray-500 mt-1">
-              {t('max_file_size', { size: formatFileSize(MAX_FILE_SIZE) })}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Error messages */}
-      {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-6 flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          {error}
-        </div>
-      )}
-
-      {/* Success messages */}
-      {success && (
-        <div className="bg-green-50 text-green-600 px-4 py-3 rounded-lg mb-6 flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          {success}
-        </div>
-      )}
-
-      {/* File queue with per-file progress bars */}
-      {fileQueue.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h3 className="font-medium text-gray-900">
-              {t('upload_queue', { count: fileQueue.length })}
-            </h3>
-            <button onClick={clearQueue} className="text-sm text-gray-500 hover:text-gray-700">
-              {t('clear_completed')}
-            </button>
-          </div>
-          <div className="max-h-80 overflow-y-auto">
-            {fileQueue.map((item) => (
-              <div key={item.id} className="px-4 py-3 border-b border-gray-100 last:border-b-0">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {/* Status icon */}
-                    {item.status === 'pending' && (
-                      <svg
-                        className="w-5 h-5 text-gray-400 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    )}
-                    {item.status === 'uploading' && (
-                      <div className="w-5 h-5 flex-shrink-0">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                      </div>
-                    )}
-                    {item.status === 'success' && (
-                      <svg
-                        className="w-5 h-5 text-green-500 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    )}
-                    {item.status === 'error' && (
-                      <svg
-                        className="w-5 h-5 text-red-500 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    )}
-                    {item.status === 'rejected' && (
-                      <svg
-                        className="w-5 h-5 text-orange-500 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                        />
-                      </svg>
-                    )}
-
-                    {/* File info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{item.file.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(item.file.size)}
-                        {item.error && <span className="text-red-500 ml-2">{item.error}</span>}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Remove button */}
-                  <button
-                    onClick={() => removeFromQueue(item.id)}
-                    className="p-1 text-gray-400 hover:text-gray-600 ml-2"
-                    disabled={item.status === 'uploading'}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Progress bar */}
-                {(item.status === 'uploading' || item.status === 'pending') && (
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div
-                      className={`h-1.5 rounded-full transition-all duration-300 ${
-                        item.status === 'pending' ? 'bg-gray-400' : 'bg-blue-600'
-                      }`}
-                      style={{ width: item.status === 'pending' ? '0%' : `${item.progress}%` }}
-                    ></div>
-                  </div>
-                )}
-
-                {/* Success/Error/Rejected state */}
-                {item.status === 'success' && (
-                  <div className="text-xs text-green-600">{t('upload_complete')}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Dropzone area - alternative drag target */}
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-xl p-8 mb-6 text-center transition-colors cursor-pointer ${
-          isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-        }`}
-      >
-        <input {...getInputProps()} />
-        <svg
-          className="w-12 h-12 text-gray-400 mx-auto mb-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-          />
-        </svg>
-        <p className="text-gray-600 mb-2">
-          {isDragActive ? t('drop_files_here') : t('drag_drop_hint')}
-        </p>
-        <p className="text-sm text-gray-500">
-          {t('max_file_size', { size: formatFileSize(MAX_FILE_SIZE) })} •{' '}
-          {t('max_batch_size', { size: formatFileSize(MAX_BATCH_SIZE) })}
-        </p>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
-        ) : documents.length === 0 ? (
-          <div className="text-center py-12">
-            <svg
-              className="w-16 h-16 text-gray-300 mx-auto mb-4"
+              className="w-16 h-16 text-amber-400 mx-auto mb-4 animate-bounce"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -750,36 +495,193 @@ export default function DocumentsPage() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={1.5}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
               />
             </svg>
-            <p className="text-gray-600">{t('no_documents')}</p>
+            <p className="text-lg font-medium text-text-primary font-display">{t('drop_files_here')}</p>
+            <p className="text-sm text-text-muted mt-1">
+              {t('max_file_size', { size: formatFileSize(MAX_FILE_SIZE) })}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Error messages */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 rounded-xl mb-6 flex items-center gap-2">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {error}
+        </div>
+      )}
+
+      {/* Success messages */}
+      {success && (
+        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 px-4 py-3 rounded-xl mb-6 flex items-center gap-2">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {success}
+        </div>
+      )}
+
+      {/* File queue */}
+      {fileQueue.length > 0 && (
+        <div className="bg-vault-900/60 border border-white/[0.06] rounded-2xl overflow-hidden mb-6 shadow-card">
+          <div className="flex items-center justify-between px-4 py-3 bg-vault-800/30 border-b border-white/[0.06]">
+            <h3 className="font-medium text-text-primary text-sm font-display">
+              {t('upload_queue', { count: fileQueue.length })}
+            </h3>
+            <button onClick={clearQueue} className="text-xs text-text-muted hover:text-text-secondary transition-colors">
+              {t('clear_completed')}
+            </button>
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {fileQueue.map((item) => (
+              <div key={item.id} className="px-4 py-3 border-b border-white/[0.04] last:border-b-0">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {item.status === 'pending' && (
+                      <svg className="w-5 h-5 text-text-muted/50 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                    {item.status === 'uploading' && (
+                      <div className="w-5 h-5 flex-shrink-0">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-amber-400"></div>
+                      </div>
+                    )}
+                    {item.status === 'success' && (
+                      <svg className="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                    {item.status === 'error' && (
+                      <svg className="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                    {item.status === 'rejected' && (
+                      <svg className="w-5 h-5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{item.file.name}</p>
+                      <p className="text-xs text-text-muted">
+                        {formatFileSize(item.file.size)}
+                        {item.error && <span className="text-red-400 ml-2">{item.error}</span>}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => removeFromQueue(item.id)}
+                    className="p-1 text-text-muted/50 hover:text-text-secondary ml-2 transition-colors"
+                    disabled={item.status === 'uploading'}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {(item.status === 'uploading' || item.status === 'pending') && (
+                  <div className="w-full bg-vault-700/50 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className={`h-1.5 rounded-full transition-all duration-300 ${
+                        item.status === 'pending' ? 'bg-vault-600' : 'bg-gradient-to-r from-amber-500 to-amber-400'
+                      }`}
+                      style={{ width: item.status === 'pending' ? '0%' : `${item.progress}%` }}
+                    ></div>
+                  </div>
+                )}
+
+                {item.status === 'success' && (
+                  <div className="text-xs text-emerald-400">{t('upload_complete')}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Dropzone area */}
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-2xl p-8 mb-6 text-center transition-all cursor-pointer ${
+          isDragActive ? 'border-amber-500/50 bg-amber-500/5' : 'border-white/[0.08] hover:border-white/[0.15] hover:bg-white/[0.02]'
+        }`}
+      >
+        <input {...getInputProps()} />
+        <svg
+          className="w-12 h-12 text-text-muted/30 mx-auto mb-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1}
+            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <p className="text-text-muted mb-2">
+          {isDragActive ? t('drop_files_here') : t('drag_drop_hint')}
+        </p>
+        <p className="text-xs text-text-muted/50">
+          {t('max_file_size', { size: formatFileSize(MAX_FILE_SIZE) })} •{' '}
+          {t('max_batch_size', { size: formatFileSize(MAX_BATCH_SIZE) })}
+        </p>
+      </div>
+
+      {/* Documents table/cards */}
+      <div className="bg-vault-900/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-card">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-10 h-10 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin"></div>
+          </div>
+        ) : documents.length === 0 ? (
+          <div className="text-center py-12">
+            <svg
+              className="w-16 h-16 text-text-muted/20 mx-auto mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="text-text-muted">{t('no_documents')}</p>
           </div>
         ) : (
           <>
             {/* Mobile card list */}
-            <div className="block md:hidden divide-y divide-gray-100">
+            <div className="block md:hidden divide-y divide-white/[0.04]">
               {documents.map((doc) => (
                 <div key={doc.id} className="px-4 py-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate text-sm">
-                        {doc.original_filename || doc.filename}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{doc.mime_type}</p>
+                      <p className="font-medium text-text-primary truncate text-sm">{doc.original_filename || doc.filename}</p>
+                      <p className="text-xs text-text-muted/50 mt-0.5">{doc.mime_type}</p>
                     </div>
                     <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${
+                      className={`px-2 py-0.5 rounded-lg text-xs font-medium flex-shrink-0 ${
                         doc.bucket === 'confidential'
-                          ? 'bg-orange-100 text-orange-700'
-                          : 'bg-green-100 text-green-700'
+                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                       }`}
                     >
                       {doc.bucket === 'confidential' ? t('bucket_confidential') : t('bucket_public')}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
-                    <span className={`px-1.5 py-0.5 rounded font-medium ${getStatusColor(doc.status)}`}>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
+                    <span className={`px-1.5 py-0.5 rounded-lg font-medium ${getStatusColor(doc.status)}`}>
                       {t(`status_${doc.status}`)}
                     </span>
                     <span>{formatFileSize(doc.file_size)}</span>
@@ -789,40 +691,20 @@ export default function DocumentsPage() {
                   <div className="flex items-center gap-2 mt-2">
                     <button
                       onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                      className="flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-400 transition-colors"
                     >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                        />
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
                       {tCommon('download')}
                     </button>
                     {isAdmin && (
                       <button
                         onClick={() => handleDelete(doc.id)}
-                        className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800"
+                        className="flex items-center gap-1 text-xs text-red-400/80 hover:text-red-400 transition-colors"
                       >
-                        <svg
-                          className="w-3.5 h-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         {tCommon('delete')}
                       </button>
@@ -832,75 +714,73 @@ export default function DocumentsPage() {
               ))}
             </div>
 
+            {/* Desktop table */}
             <div className="hidden md:block">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    {/* R7 — sortable headers */}
+                  <tr className="border-b border-white/[0.06] bg-vault-800/20">
                     <th
-                      className="text-left py-3 px-6 text-sm font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none"
+                      className="text-left py-3 px-6 text-xs font-medium text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary select-none"
                       onClick={() => handleSort('original_filename')}
                     >
                       <span className="flex items-center gap-1">
                         {t('filename')}
                         {sortBy === 'original_filename' && (
-                          <span>{sortDir === 'asc' ? '↑' : '↓'}</span>
+                          <span className="text-amber-400">{sortDir === 'asc' ? '↑' : '↓'}</span>
                         )}
                       </span>
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-text-muted uppercase tracking-wider">
                       {t('bucket')}
                     </th>
                     <th
-                      className="text-left py-3 px-4 text-sm font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none"
+                      className="text-left py-3 px-4 text-xs font-medium text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary select-none"
                       onClick={() => handleSort('status')}
                     >
                       <span className="flex items-center gap-1">
                         {t('status')}
-                        {sortBy === 'status' && <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                        {sortBy === 'status' && <span className="text-amber-400">{sortDir === 'asc' ? '↑' : '↓'}</span>}
                       </span>
                     </th>
                     <th
-                      className="text-left py-3 px-4 text-sm font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none"
+                      className="text-left py-3 px-4 text-xs font-medium text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary select-none"
                       onClick={() => handleSort('file_size')}
                     >
                       <span className="flex items-center gap-1">
                         {t('size')}
-                        {sortBy === 'file_size' && <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                        {sortBy === 'file_size' && <span className="text-amber-400">{sortDir === 'asc' ? '↑' : '↓'}</span>}
                       </span>
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 hidden sm:table-cell">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-text-muted uppercase tracking-wider hidden sm:table-cell">
                       {t('page_count')}
                     </th>
                     <th
-                      className="text-left py-3 px-4 text-sm font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none"
+                      className="text-left py-3 px-4 text-xs font-medium text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary select-none"
                       onClick={() => handleSort('created_at')}
                     >
                       <span className="flex items-center gap-1">
                         {t('created_at')}
-                        {sortBy === 'created_at' && <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                        {sortBy === 'created_at' && <span className="text-amber-400">{sortDir === 'asc' ? '↑' : '↓'}</span>}
                       </span>
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-text-muted uppercase tracking-wider">
                       {t('actions')}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {documents.map((doc) => (
-                    <tr key={doc.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={doc.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                       <td className="py-3 px-6">
-                        <div className="font-medium text-gray-900">
-                          {doc.original_filename || doc.filename}
-                        </div>
-                        <div className="text-xs text-gray-400">{doc.mime_type}</div>
+                        <div className="font-medium text-text-primary text-sm">{doc.original_filename || doc.filename}</div>
+                        <div className="text-xs text-text-muted/50 mt-0.5">{doc.mime_type}</div>
                       </td>
                       <td className="py-3 px-4">
                         <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
+                          className={`px-2 py-1 rounded-lg text-xs font-medium ${
                             doc.bucket === 'confidential'
-                              ? 'bg-orange-100 text-orange-700'
-                              : 'bg-green-100 text-green-700'
+                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           }`}
                         >
                           {doc.bucket === 'confidential'
@@ -909,62 +789,38 @@ export default function DocumentsPage() {
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(doc.status)}`}
-                        >
+                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(doc.status)}`}>
                           {t(`status_${doc.status}`)}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
+                      <td className="py-3 px-4 text-sm text-text-secondary">
                         {formatFileSize(doc.file_size)}
                       </td>
-                      <td className="py-3 px-4 text-sm text-gray-600 hidden sm:table-cell">
+                      <td className="py-3 px-4 text-sm text-text-secondary hidden sm:table-cell">
                         {doc.page_count || '—'}
                       </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
+                      <td className="py-3 px-4 text-sm text-text-secondary">
                         {formatDate(doc.created_at)}
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <button
-                            onClick={() =>
-                              handleDownload(doc.id, doc.original_filename || doc.filename)
-                            }
-                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
+                            className="p-1.5 text-text-muted hover:text-amber-400 hover:bg-amber-500/5 rounded-lg transition-all"
                             title={tCommon('download')}
                           >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                              />
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                             </svg>
                           </button>
                           {isAdmin && (
                             <button
                               onClick={() => handleDelete(doc.id)}
-                              className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              className="p-1.5 text-text-muted hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-all"
                               title={tCommon('delete')}
                             >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                               </svg>
                             </button>
                           )}
@@ -976,8 +832,8 @@ export default function DocumentsPage() {
               </table>
 
               {totalPages > 1 && (
-                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-                  <p className="text-sm text-gray-500">
+                <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.06]">
+                  <p className="text-sm text-text-muted">
                     Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of{' '}
                     {total}
                   </p>
@@ -985,17 +841,17 @@ export default function DocumentsPage() {
                     <button
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-sm bg-vault-800/50 border border-white/[0.08] rounded-lg hover:bg-vault-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-text-secondary"
                     >
                       {tCommon('previous')}
                     </button>
-                    <span className="px-3 py-1.5 text-sm text-gray-600">
+                    <span className="px-3 py-1.5 text-sm text-text-muted">
                       {page} / {totalPages}
                     </span>
                     <button
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page === totalPages}
-                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-sm bg-vault-800/50 border border-white/[0.08] rounded-lg hover:bg-vault-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-text-secondary"
                     >
                       {tCommon('next')}
                     </button>

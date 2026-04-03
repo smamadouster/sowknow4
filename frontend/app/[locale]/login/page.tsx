@@ -64,79 +64,106 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-vault-1000 relative overflow-hidden">
+      {/* Background effects */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.015]" style={{
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
+          backgroundSize: '40px 40px',
+        }} />
+      </div>
+
+      <div className="relative w-full max-w-md mx-4">
+        {/* Logo & branding */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">SOWKNOW</h1>
-          <p className="text-gray-600 mt-2">{t('login_title')}</p>
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/20 mb-4">
+            <svg className="w-9 h-9 text-vault-1000" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+              <path d="M2 17l10 5 10-5" />
+              <path d="M2 12l10 5 10-5" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-text-primary font-display">SOWKNOW</h1>
+          <p className="text-text-muted mt-1 text-sm">{t('login_title')}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {showTimeout && (
-            <div role="status" className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded">
-              {t('session_expired')}
+        {/* Login form card */}
+        <div className="bg-vault-900/60 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 sm:p-8 shadow-card">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {showTimeout && (
+              <div role="status" className="bg-amber-500/10 border border-amber-500/20 text-amber-300 px-4 py-3 rounded-xl text-sm">
+                {t('session_expired')}
+              </div>
+            )}
+            {error && (
+              <div role="alert" id="login-error" className="bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="login-email" className="block text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">
+                {t('email')}
+              </label>
+              <input
+                id="login-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                aria-describedby={error ? 'login-error' : undefined}
+                className="w-full px-4 py-3 bg-vault-800/50 border border-white/[0.08] rounded-xl text-text-primary placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all"
+                placeholder="email@example.com"
+                autoComplete="email"
+              />
             </div>
-          )}
-          {error && (
-            <div role="alert" id="login-error" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
+
+            <div>
+              <label htmlFor="login-password" className="block text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">
+                {t('password')}
+              </label>
+              <input
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                aria-describedby={error ? 'login-error' : undefined}
+                className="w-full px-4 py-3 bg-vault-800/50 border border-white/[0.08] rounded-xl text-text-primary placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all"
+                placeholder="••••••••"
+                autoComplete="current-password"
+              />
             </div>
-          )}
 
-          <div>
-            <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-2">
-              {t('email')}
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              aria-describedby={error ? 'login-error' : undefined}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="email@example.com"
-              autoComplete="email"
-            />
-          </div>
+            <button
+              type="submit"
+              disabled={loading}
+              aria-busy={loading}
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 py-3 rounded-xl font-semibold hover:from-amber-400 hover:to-amber-500 focus:ring-2 focus:ring-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 font-display"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-vault-1000/30 border-t-vault-1000 rounded-full animate-spin" />
+                  {t('login_button')}
+                </span>
+              ) : t('login_button')}
+            </button>
 
-          <div>
-            <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-2">
-              {t('password')}
-            </label>
-            <input
-              id="login-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              aria-describedby={error ? 'login-error' : undefined}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
-          </div>
+            <div className="text-center">
+              <a href={`/${locale}/forgot-password`} className="text-sm text-amber-400/80 hover:text-amber-400 transition-colors">
+                {t('forgot_password')}
+              </a>
+            </div>
+          </form>
+        </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            aria-busy={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? t('login_button') + '...' : t('login_button')}
-          </button>
-
-          <div className="text-center">
-            <a href={`/${locale}/forgot-password`} className="text-sm text-blue-600 hover:underline">
-              {t('forgot_password')}
-            </a>
-          </div>
-        </form>
-
+        {/* Register link */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-muted">
             {t('no_account')}{' '}
-            <a href={`/${locale}/register`} className="text-blue-600 hover:underline">
+            <a href={`/${locale}/register`} className="text-amber-400 hover:text-amber-300 font-medium transition-colors">
               {t('register_button')}
             </a>
           </p>

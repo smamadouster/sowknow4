@@ -5,8 +5,8 @@ import { useRouter, usePathname } from '@/i18n/routing';
 import { useState, useEffect } from 'react';
 
 const languages = [
-  { code: 'fr', name: 'Français', flag: '🇫🇷' },
-  { code: 'en', name: 'English', flag: '🇬🇧' },
+  { code: 'fr', name: 'FR', label: 'Français' },
+  { code: 'en', name: 'EN', label: 'English' },
 ];
 
 export function LanguageSelector() {
@@ -24,12 +24,10 @@ export function LanguageSelector() {
     setCurrentLocale(newLocale);
     setIsOpen(false);
 
-    // Store preference in localStorage
     if (typeof window !== 'undefined') {
       localStorage.setItem('preferred-locale', newLocale);
     }
 
-    // Navigate to the new locale
     router.replace(pathname, { locale: newLocale });
   };
 
@@ -37,28 +35,26 @@ export function LanguageSelector() {
 
   return (
     <div className="relative inline-block text-left">
-      <div>
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-text-muted bg-vault-800/50 border border-white/[0.08] rounded-lg hover:text-text-secondary hover:border-white/[0.12] focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all font-display"
+      >
+        <span>{currentLanguage?.name}</span>
+        <svg
+          className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
         >
-          {currentLanguage?.flag} {currentLanguage?.name}
-          <svg
-            className={`-mr-1 ml-2 h-5 w-5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </button>
-      </div>
+          <path
+            fillRule="evenodd"
+            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
 
       {isOpen && (
         <>
@@ -66,7 +62,7 @@ export function LanguageSelector() {
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute right-0 z-20 mt-2 w-56 origin-top-right rounded-md bg-white dark:bg-gray-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+          <div className="absolute right-0 z-20 mt-2 w-40 origin-top-right rounded-xl bg-vault-900 border border-white/[0.08] shadow-xl focus:outline-none">
             <div className="py-1">
               {languages.map((language) => (
                 <button
@@ -74,15 +70,15 @@ export function LanguageSelector() {
                   onClick={() => handleLanguageChange(language.code)}
                   className={`${
                     currentLocale === language.code
-                      ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
-                      : 'text-gray-700 dark:text-gray-300'
-                  } group flex items-center w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700`}
+                      ? 'bg-amber-500/10 text-amber-400'
+                      : 'text-text-secondary hover:bg-white/[0.04]'
+                  } group flex items-center w-full px-3 py-2 text-sm transition-colors`}
                 >
-                  <span className="mr-3 text-lg">{language.flag}</span>
-                  {language.name}
+                  <span className="font-medium">{language.name}</span>
+                  <span className="ml-1 text-xs text-text-muted/50">{language.label}</span>
                   {currentLocale === language.code && (
                     <svg
-                      className="ml-auto h-5 w-5 text-blue-600 dark:text-blue-400"
+                      className="ml-auto h-4 w-4 text-amber-400"
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
                       fill="currentColor"

@@ -258,6 +258,40 @@ async def search_stream(
     )
 
 
+@router.get("/global")
+async def search_global(
+    q: str = Query(..., min_length=1, max_length=500, description="Search query"),
+    types: str = Query(
+        default="document,bookmark,note,space",
+        description="Comma-separated list of types to search: document,bookmark,note,space",
+    ),
+    page: int = Query(default=1, ge=1, le=100),
+    page_size: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Multi-type global search across documents, bookmarks, notes, and spaces.
+    Returns unified results with result_type, id, title, description, tags, score.
+    """
+    type_list = [t.strip() for t in types.split(",") if t.strip()]
+    valid_types = {"document", "bookmark", "note", "space"}
+    type_list = [t for t in type_list if t in valid_types]
+    if not type_list:
+        type_list = list(valid_types)
+
+    search_svc = HybridSearchService()
+    result = await search_svc.search_all_types(
+        query=q,
+        types=type_list,
+        user=current_user,
+        db=db,
+        page=page,
+        page_size=page_size,
+    )
+    return result
+
+
 @router.post("/intent")
 async def get_intent(
     payload: dict,

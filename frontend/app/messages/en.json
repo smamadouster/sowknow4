@@ -236,7 +236,15 @@
       "3": "All documents related to my family",
       "4": "What insights do I have about leadership?"
     },
-    "error": "Search encountered an error. Please try again."
+    "error": "Search encountered an error. Please try again.",
+    "typeFilter": {
+      "all": "All",
+      "documents": "Documents",
+      "bookmarks": "Bookmarks",
+      "notes": "Notes",
+      "spaces": "Spaces",
+      "otherResults": "Other results"
+    }
   },
   "chat": {
     "title": "AI Assistant",

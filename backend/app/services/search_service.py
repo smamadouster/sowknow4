@@ -11,6 +11,10 @@ from sqlalchemy import desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document, DocumentBucket, DocumentChunk
+from app.models.bookmark import Bookmark, BookmarkBucket
+from app.models.note import Note, NoteBucket
+from app.models.space import Space, SpaceBucket
+from app.models.tag import Tag, TargetType
 from app.models.user import User, UserRole
 from app.services.embedding_service import embedding_service
 from app.services.pii_detection_service import pii_detection_service
@@ -872,6 +876,282 @@ class HybridSearchService:
             return result.scalar() or chunk_text
         except Exception:
             return chunk_text
+
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Multi-type global search (documents + bookmarks + notes + spaces)
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _get_bucket_filter_for_role(self, user: User | None) -> list[str]:
+        """Return allowed bucket values based on user role."""
+        if not user:
+            return ["public"]
+        if user.role in (UserRole.ADMIN, UserRole.SUPERUSER):
+            return ["public", "confidential"]
+        return ["public"]
+
+    async def _search_bookmarks(
+        self,
+        query: str,
+        user: User,
+        db: AsyncSession,
+        limit: int = 20,
+    ) -> list[dict]:
+        """ILIKE search on bookmarks (title, description, url) + tag name match."""
+        buckets = self._get_bucket_filter_for_role(user)
+        pattern = f"%{query}%"
+
+        sql = text("""
+            SELECT DISTINCT b.id, b.title, b.description, b.url, b.bucket,
+                   b.created_at
+            FROM sowknow.bookmarks b
+            WHERE b.user_id = :user_id
+              AND b.bucket = ANY(:buckets)
+              AND (
+                  b.title ILIKE :pattern
+                  OR b.description ILIKE :pattern
+                  OR b.url ILIKE :pattern
+                  OR EXISTS (
+                      SELECT 1 FROM sowknow.tags t
+                      WHERE t.target_type = 'bookmark'
+                        AND t.target_id = b.id
+                        AND t.tag_name ILIKE :pattern
+                  )
+              )
+            ORDER BY b.created_at DESC
+            LIMIT :limit
+        """)
+
+        rows = await db.execute(sql, {
+            "user_id": str(user.id),
+            "buckets": buckets,
+            "pattern": pattern,
+            "limit": limit,
+        })
+
+        results = []
+        for row in rows:
+            # Fetch tags for this bookmark
+            tag_rows = await db.execute(
+                text("SELECT tag_name FROM sowknow.tags WHERE target_type = 'bookmark' AND target_id = :tid"),
+                {"tid": str(row.id)},
+            )
+            tags = [tr.tag_name for tr in tag_rows]
+
+            results.append({
+                "result_type": "bookmark",
+                "id": str(row.id),
+                "title": row.title,
+                "description": (row.description or row.url or "")[:200],
+                "tags": tags,
+                "score": 0.8,
+                "bucket": row.bucket,
+                "url": row.url,
+            })
+        return results
+
+    async def _search_notes(
+        self,
+        query: str,
+        user: User,
+        db: AsyncSession,
+        limit: int = 20,
+    ) -> list[dict]:
+        """ILIKE search on notes (title, content) + tag name match."""
+        buckets = self._get_bucket_filter_for_role(user)
+        pattern = f"%{query}%"
+
+        sql = text("""
+            SELECT DISTINCT n.id, n.title, n.content, n.bucket, n.created_at
+            FROM sowknow.notes n
+            WHERE n.user_id = :user_id
+              AND n.bucket = ANY(:buckets)
+              AND (
+                  n.title ILIKE :pattern
+                  OR n.content ILIKE :pattern
+                  OR EXISTS (
+                      SELECT 1 FROM sowknow.tags t
+                      WHERE t.target_type = 'note'
+                        AND t.target_id = n.id
+                        AND t.tag_name ILIKE :pattern
+                  )
+              )
+            ORDER BY n.created_at DESC
+            LIMIT :limit
+        """)
+
+        rows = await db.execute(sql, {
+            "user_id": str(user.id),
+            "buckets": buckets,
+            "pattern": pattern,
+            "limit": limit,
+        })
+
+        results = []
+        for row in rows:
+            tag_rows = await db.execute(
+                text("SELECT tag_name FROM sowknow.tags WHERE target_type = 'note' AND target_id = :tid"),
+                {"tid": str(row.id)},
+            )
+            tags = [tr.tag_name for tr in tag_rows]
+
+            results.append({
+                "result_type": "note",
+                "id": str(row.id),
+                "title": row.title,
+                "description": (row.content or "")[:200],
+                "tags": tags,
+                "score": 0.8,
+                "bucket": row.bucket,
+            })
+        return results
+
+    async def _search_spaces(
+        self,
+        query: str,
+        user: User,
+        db: AsyncSession,
+        limit: int = 20,
+    ) -> list[dict]:
+        """ILIKE search on spaces (name, description)."""
+        buckets = self._get_bucket_filter_for_role(user)
+        pattern = f"%{query}%"
+
+        sql = text("""
+            SELECT s.id, s.name, s.description, s.icon, s.bucket, s.created_at
+            FROM sowknow.spaces s
+            WHERE s.user_id = :user_id
+              AND s.bucket = ANY(:buckets)
+              AND (
+                  s.name ILIKE :pattern
+                  OR s.description ILIKE :pattern
+              )
+            ORDER BY s.created_at DESC
+            LIMIT :limit
+        """)
+
+        rows = await db.execute(sql, {
+            "user_id": str(user.id),
+            "buckets": buckets,
+            "pattern": pattern,
+            "limit": limit,
+        })
+
+        results = []
+        for row in rows:
+            results.append({
+                "result_type": "space",
+                "id": str(row.id),
+                "title": row.name,
+                "description": (row.description or "")[:200],
+                "tags": [],
+                "score": 0.7,
+                "bucket": row.bucket,
+                "icon": row.icon,
+            })
+        return results
+
+    async def search_all_types(
+        self,
+        query: str,
+        types: list[str] | None = None,
+        user: User = None,
+        db: AsyncSession = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """
+        Multi-type search across documents, bookmarks, notes, and spaces.
+
+        Args:
+            query: Search query text
+            types: List of types to search (default: all). Values: document, bookmark, note, space
+            user: Current user for access control
+            db: Database session
+            page: Page number (1-based)
+            page_size: Results per page
+
+        Returns:
+            Dictionary with results grouped by type, total counts, and pagination info
+        """
+        if not types:
+            types = ["document", "bookmark", "note", "space"]
+
+        all_results: list[dict] = []
+        tasks = []
+
+        # Document search uses existing hybrid search
+        if "document" in types:
+            tasks.append(("document", self._search_documents_simple(query, user, db, page_size)))
+
+        if "bookmark" in types:
+            tasks.append(("bookmark", self._search_bookmarks(query, user, db, page_size)))
+
+        if "note" in types:
+            tasks.append(("note", self._search_notes(query, user, db, page_size)))
+
+        if "space" in types:
+            tasks.append(("space", self._search_spaces(query, user, db, page_size)))
+
+        # Run all searches concurrently
+        if tasks:
+            coros = [t[1] for t in tasks]
+            results = await asyncio.gather(*coros, return_exceptions=True)
+            for (type_name, _), result in zip(tasks, results):
+                if isinstance(result, Exception):
+                    logger.warning("search_all_types: %s search failed: %s", type_name, result)
+                    continue
+                all_results.extend(result)
+
+        # Sort by score descending
+        all_results.sort(key=lambda r: r.get("score", 0), reverse=True)
+
+        # Paginate
+        offset = (page - 1) * page_size
+        paginated = all_results[offset : offset + page_size]
+
+        return {
+            "query": query,
+            "results": paginated,
+            "total": len(all_results),
+            "page": page,
+            "page_size": page_size,
+            "types_searched": types,
+        }
+
+    async def _search_documents_simple(
+        self,
+        query: str,
+        user: User,
+        db: AsyncSession,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Convert hybrid search results to the unified dict format."""
+        try:
+            hybrid_result = await self.hybrid_search(
+                query=query, limit=limit, offset=0, db=db, user=user, timeout=5.0,
+            )
+        except Exception as e:
+            logger.warning("Document search failed in search_all_types: %s", e)
+            return []
+
+        results = []
+        seen_docs: set[str] = set()
+        for sr in hybrid_result.get("results", []):
+            doc_id = str(sr.document_id)
+            if doc_id in seen_docs:
+                continue
+            seen_docs.add(doc_id)
+            results.append({
+                "result_type": "document",
+                "id": doc_id,
+                "title": sr.document_name,
+                "description": (sr.chunk_text or "")[:200],
+                "tags": [],
+                "score": sr.final_score,
+                "bucket": sr.document_bucket,
+            })
+        return results
 
 
 # Global search service instance

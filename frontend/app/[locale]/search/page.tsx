@@ -15,6 +15,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 type PipelineStage = 'idle' | 'intent' | 'retrieval' | 'reranking' | 'synthesis' | 'done' | 'error';
 
+type ResultTypeFilter = 'all' | 'document' | 'bookmark' | 'note' | 'space';
+
 interface StreamState {
   stage: PipelineStage;
   stageMessage: string;
@@ -26,6 +28,7 @@ interface StreamState {
   hasConfidential: boolean;
   totalFound: number;
   modelUsed: string | null;
+  globalResults: GlobalSearchResult[];
 }
 
 interface SearchResult {
@@ -45,6 +48,18 @@ interface SearchResult {
   tags?: string[];
   rank?: number;
   is_confidential?: boolean;
+}
+
+interface GlobalSearchResult {
+  result_type: 'document' | 'bookmark' | 'note' | 'space';
+  id: string;
+  title: string;
+  description: string;
+  tags: string[];
+  score: number;
+  bucket?: string;
+  url?: string;
+  icon?: string;
 }
 
 interface Citation {
@@ -93,6 +108,13 @@ const INTENT_ICONS: Record<string, string> = {
   entity_search:   '◈',
   procedural:      '▷',
   unknown:         '○',
+};
+
+const TYPE_BADGE_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
+  document: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '□' },
+  bookmark: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '★' },
+  note:     { bg: 'bg-green-100', text: 'text-green-700', icon: '✎' },
+  space:    { bg: 'bg-amber-100', text: 'text-amber-700', icon: '◈' },
 };
 
 const SUGGESTION_ICONS: Record<string, string> = {
@@ -487,6 +509,135 @@ function CitationsPanel({
   );
 }
 
+// ─── TypeFilterChips ─────────────────────────────────────────────────────────
+
+function TypeFilterChips({
+  active,
+  onChange,
+  counts,
+  labels,
+}: {
+  active: ResultTypeFilter;
+  onChange: (filter: ResultTypeFilter) => void;
+  counts: Record<string, number>;
+  labels: Record<string, string>;
+}) {
+  const filters: ResultTypeFilter[] = ['all', 'document', 'bookmark', 'note', 'space'];
+
+  return (
+    <div className="flex flex-wrap gap-2 mb-4">
+      {filters.map((f) => {
+        const isActive = active === f;
+        const count = f === 'all'
+          ? Object.values(counts).reduce((a, b) => a + b, 0)
+          : (counts[f] || 0);
+        const style = f !== 'all' ? TYPE_BADGE_STYLES[f] : null;
+
+        return (
+          <button
+            key={f}
+            onClick={() => onChange(f)}
+            className={[
+              'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all border-2',
+              isActive
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400',
+            ].join(' ')}
+          >
+            {style && <span className="text-xs">{style.icon}</span>}
+            {labels[f] || f}
+            {count > 0 && (
+              <span
+                className={[
+                  'rounded-full px-1.5 py-0 text-xs font-bold',
+                  isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500',
+                ].join(' ')}
+              >
+                {count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── GlobalResultCard ────────────────────────────────────────────────────────
+
+function GlobalResultCard({
+  result,
+  locale,
+  labels,
+}: {
+  result: GlobalSearchResult;
+  locale: string;
+  labels: Record<string, string>;
+}) {
+  const style = TYPE_BADGE_STYLES[result.result_type] || TYPE_BADGE_STYLES.document;
+  const linkHref = result.result_type === 'document'
+    ? `/${locale}/documents/${result.id}`
+    : result.result_type === 'bookmark' && result.url
+    ? result.url
+    : result.result_type === 'note'
+    ? `/${locale}/notes`
+    : result.result_type === 'space'
+    ? `/${locale}/spaces/${result.id}`
+    : '#';
+  const isExternal = result.result_type === 'bookmark' && result.url;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4 mb-2 transition-shadow hover:shadow-md">
+      <div className="flex items-start gap-2.5 mb-2">
+        {/* Type badge */}
+        <span
+          className={`${style.bg} ${style.text} rounded px-2 py-0.5 text-xs font-bold flex-shrink-0 mt-0.5 uppercase`}
+        >
+          {style.icon} {labels[result.result_type] || result.result_type}
+        </span>
+        <div className="flex-1 min-w-0">
+          {isExternal ? (
+            <a
+              href={result.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-sm font-semibold text-gray-900 truncate hover:text-blue-600 hover:underline"
+            >
+              {result.title}
+            </a>
+          ) : (
+            <Link
+              href={linkHref}
+              className="block text-sm font-semibold text-gray-900 truncate hover:text-blue-600 hover:underline"
+            >
+              {result.title}
+            </Link>
+          )}
+        </div>
+        {result.bucket === 'confidential' && (
+          <span className="bg-gray-900 text-yellow-300 rounded px-1.5 py-0.5 text-xs font-semibold flex-shrink-0">
+            {'\uD83D\uDD12'}
+          </span>
+        )}
+      </div>
+      {result.description && (
+        <p className="text-sm text-gray-600 leading-relaxed mb-1.5 line-clamp-2">
+          {result.description}
+        </p>
+      )}
+      {result.tags && result.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {result.tags.slice(0, 5).map((tag) => (
+            <span key={tag} className="bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 text-xs">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN SEARCH PAGE ─────────────────────────────────────────────────────────
 
 export default function SearchPage() {
@@ -502,6 +653,7 @@ export default function SearchPage() {
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [isSearching, setIsSearching] = useState(false);
   const [showCitations, setShowCitations] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<ResultTypeFilter>('all');
   const [stream, setStream] = useState<StreamState>({
     stage: 'idle',
     stageMessage: '',
@@ -513,6 +665,7 @@ export default function SearchPage() {
     hasConfidential: false,
     totalFound: 0,
     modelUsed: null,
+    globalResults: [],
   });
 
   const abortRef = useRef<AbortController | null>(null);
@@ -543,7 +696,25 @@ export default function SearchPage() {
         hasConfidential: false,
         totalFound: 0,
         modelUsed: null,
+        globalResults: [],
       });
+
+      // Fire global multi-type search in parallel (non-blocking)
+      fetch(`${API_BASE}/v1/search/global?q=${encodeURIComponent(searchQuery)}&types=bookmark,note,space`, {
+        credentials: 'include',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+        signal: abortRef.current.signal,
+      })
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then((data) => {
+          setStream((prev) => ({
+            ...prev,
+            globalResults: (data.results || []) as GlobalSearchResult[],
+          }));
+        })
+        .catch(() => {
+          // Non-critical — document search is the primary path
+        });
 
       try {
         const response = await fetch(`${API_BASE}/v1/search/stream`, {
@@ -727,7 +898,28 @@ export default function SearchPage() {
     inputRef.current?.focus();
   };
 
-  const hasResults = stream.results.length > 0;
+  const hasResults = stream.results.length > 0 || stream.globalResults.length > 0;
+
+  // Compute type counts for filter chips
+  const typeCounts: Record<string, number> = { document: stream.results.length };
+  for (const gr of stream.globalResults) {
+    typeCounts[gr.result_type] = (typeCounts[gr.result_type] || 0) + 1;
+  }
+
+  // Filter global results by selected type
+  const filteredGlobalResults = typeFilter === 'all' || typeFilter === 'document'
+    ? stream.globalResults
+    : stream.globalResults.filter((r) => r.result_type === typeFilter);
+
+  const showDocumentResults = typeFilter === 'all' || typeFilter === 'document';
+
+  const typeLabels: Record<string, string> = {
+    all: t('typeFilter.all' as Parameters<typeof t>[0]),
+    document: t('typeFilter.documents' as Parameters<typeof t>[0]),
+    bookmark: t('typeFilter.bookmarks' as Parameters<typeof t>[0]),
+    note: t('typeFilter.notes' as Parameters<typeof t>[0]),
+    space: t('typeFilter.spaces' as Parameters<typeof t>[0]),
+  };
 
   return (
     <div className="p-6 max-w-5xl mx-auto pb-20">
@@ -808,10 +1000,19 @@ export default function SearchPage() {
       {/* ── Results area ───────────────────────────────────────────── */}
       {(hasResults || stream.synthesis) && (
         <div className="mt-2">
+          {/* Type filter chips */}
+          <TypeFilterChips
+            active={typeFilter}
+            onChange={setTypeFilter}
+            counts={typeCounts}
+            labels={typeLabels}
+          />
+
           {/* Results header */}
           <div className="flex items-center gap-3 mb-4">
             <span className="text-sm text-gray-500 font-medium">
-              {stream.totalFound} {stream.totalFound === 1 ? t('result') : t('resultsPlural')}
+              {stream.totalFound + stream.globalResults.length}{' '}
+              {stream.totalFound + stream.globalResults.length === 1 ? t('result') : t('resultsPlural')}
             </span>
             {stream.citations.length > 0 && (
               <button
@@ -838,8 +1039,8 @@ export default function SearchPage() {
                 />
               )}
 
-              {/* Tiered results */}
-              {RELEVANCE_TIERS.map((tier) => {
+              {/* Tiered document results */}
+              {showDocumentResults && RELEVANCE_TIERS.map((tier) => {
                 const tierResults = stream.results.filter((r) => r.relevance_label === tier);
                 if (!tierResults.length) return null;
                 const colors = RELEVANCE_COLOR[tier];
@@ -867,6 +1068,37 @@ export default function SearchPage() {
                   </div>
                 );
               })}
+
+              {/* Global results (bookmarks, notes, spaces) */}
+              {filteredGlobalResults.length > 0 && (
+                <div className="mb-5">
+                  {!showDocumentResults && (
+                    <div className="flex items-center mb-2 text-xs uppercase tracking-widest">
+                      <span className="font-semibold text-gray-600">
+                        {typeLabels[typeFilter] || typeFilter}
+                      </span>
+                      <span className="ml-1.5 bg-gray-100 rounded-full px-1.5 py-0.5 text-gray-500">
+                        {filteredGlobalResults.length}
+                      </span>
+                    </div>
+                  )}
+                  {typeFilter === 'all' && filteredGlobalResults.length > 0 && (
+                    <div className="flex items-center mb-2 text-xs uppercase tracking-widest">
+                      <span className="font-semibold text-gray-500">
+                        {t('typeFilter.otherResults' as Parameters<typeof t>[0])}
+                      </span>
+                    </div>
+                  )}
+                  {filteredGlobalResults.map((result) => (
+                    <GlobalResultCard
+                      key={`${result.result_type}-${result.id}`}
+                      result={result}
+                      locale={locale}
+                      labels={typeLabels}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Suggestions */}
               <Suggestions

@@ -236,7 +236,15 @@
       "3": "Tous les documents lies a ma famille",
       "4": "Quels enseignements ai-je sur le leadership ?"
     },
-    "error": "La recherche a rencontre une erreur. Veuillez reessayer."
+    "error": "La recherche a rencontre une erreur. Veuillez reessayer.",
+    "typeFilter": {
+      "all": "Tout",
+      "documents": "Documents",
+      "bookmarks": "Signets",
+      "notes": "Notes",
+      "spaces": "Espaces",
+      "otherResults": "Autres resultats"
+    }
   },
   "chat": {
     "title": "Assistant IA",

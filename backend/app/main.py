@@ -21,6 +21,7 @@ from app.api import (
     admin,
     articles,
     auth,
+    bookmarks,
     chat,
     collections,
     documents,
@@ -313,6 +314,7 @@ app.add_middleware(ErrorRateMiddleware)
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(bookmarks.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(articles.router, prefix="/api/v1")
 app.include_router(collections.router, prefix="/api/v1")

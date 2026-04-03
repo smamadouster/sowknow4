@@ -22,6 +22,7 @@ from app.models.knowledge_graph import (
 )
 from app.models.processing import ProcessingQueue, TaskStatus, TaskType
 from app.models.tag import Tag, TagType, TargetType  # noqa: F401
+from app.models.bookmark import Bookmark, BookmarkBucket  # noqa: F401
 from app.models.user import User
 
 __all__ = [
@@ -56,4 +57,6 @@ __all__ = [
     "Tag",
     "TagType",
     "TargetType",
+    "Bookmark",
+    "BookmarkBucket",
 ]

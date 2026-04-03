@@ -2,6 +2,7 @@
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
 
 revision = "add_bookmarks_notes_spaces_018"
 down_revision = "add_tags_017"
@@ -13,8 +14,8 @@ def upgrade() -> None:
     # Bookmarks
     op.create_table(
         "bookmarks",
-        sa.Column("id", sa.CHAR(36), primary_key=True),
-        sa.Column("user_id", sa.CHAR(36), sa.ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("url", sa.String(2048), nullable=False),
         sa.Column("title", sa.String(512), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
@@ -29,8 +30,8 @@ def upgrade() -> None:
     # Notes
     op.create_table(
         "notes",
-        sa.Column("id", sa.CHAR(36), primary_key=True),
-        sa.Column("user_id", sa.CHAR(36), sa.ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("title", sa.String(512), nullable=False),
         sa.Column("content", sa.Text(), nullable=True),
         sa.Column("bucket", sa.Enum("public", "confidential", name="notebucket", schema="sowknow"), nullable=False, server_default="public"),
@@ -43,8 +44,8 @@ def upgrade() -> None:
     # Spaces
     op.create_table(
         "spaces",
-        sa.Column("id", sa.CHAR(36), primary_key=True),
-        sa.Column("user_id", sa.CHAR(36), sa.ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(512), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("icon", sa.String(64), nullable=True),
@@ -59,12 +60,12 @@ def upgrade() -> None:
     # Space Items
     op.create_table(
         "space_items",
-        sa.Column("id", sa.CHAR(36), primary_key=True),
-        sa.Column("space_id", sa.CHAR(36), sa.ForeignKey("sowknow.spaces.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("space_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.spaces.id", ondelete="CASCADE"), nullable=False),
         sa.Column("item_type", sa.Enum("document", "bookmark", "note", name="spaceitemtype", schema="sowknow"), nullable=False),
-        sa.Column("document_id", sa.CHAR(36), sa.ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=True),
-        sa.Column("bookmark_id", sa.CHAR(36), sa.ForeignKey("sowknow.bookmarks.id", ondelete="CASCADE"), nullable=True),
-        sa.Column("note_id", sa.CHAR(36), sa.ForeignKey("sowknow.notes.id", ondelete="CASCADE"), nullable=True),
+        sa.Column("document_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.documents.id", ondelete="CASCADE"), nullable=True),
+        sa.Column("bookmark_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.bookmarks.id", ondelete="CASCADE"), nullable=True),
+        sa.Column("note_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.notes.id", ondelete="CASCADE"), nullable=True),
         sa.Column("added_by", sa.String(16), nullable=False, server_default="user"),
         sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("note", sa.Text(), nullable=True),
@@ -76,8 +77,8 @@ def upgrade() -> None:
     # Space Rules
     op.create_table(
         "space_rules",
-        sa.Column("id", sa.CHAR(36), primary_key=True),
-        sa.Column("space_id", sa.CHAR(36), sa.ForeignKey("sowknow.spaces.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("space_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.spaces.id", ondelete="CASCADE"), nullable=False),
         sa.Column("rule_type", sa.Enum("tag", "keyword", name="spaceruletype", schema="sowknow"), nullable=False),
         sa.Column("rule_value", sa.String(512), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),

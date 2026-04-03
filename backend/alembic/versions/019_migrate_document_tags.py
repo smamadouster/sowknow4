@@ -14,8 +14,11 @@ def upgrade() -> None:
         SELECT
             id,
             tag_name,
-            COALESCE(tag_type, 'custom'),
-            'document',
+            CASE
+                WHEN tag_type IN ('topic', 'entity', 'project', 'importance', 'custom') THEN tag_type::sowknow.tagtype
+                ELSE 'custom'::sowknow.tagtype
+            END,
+            'document'::sowknow.targettype,
             document_id,
             COALESCE(auto_generated, false),
             confidence_score,

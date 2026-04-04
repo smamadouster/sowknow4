@@ -60,30 +60,34 @@ export default async function LocaleLayout({
         </div>
       </header>
 
-      <Navigation />
+      <div className="flex min-h-[calc(100vh-3.5rem)]">
+        <Navigation />
 
-      <main id="main-content" className="min-h-[calc(100vh-8rem)]">
-        {children}
-      </main>
+        <div className="flex-1 flex flex-col min-w-0">
+          <main id="main-content" className="flex-1">
+            {children}
+          </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/[0.06] bg-vault-950/50 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
-                <svg className="w-3 h-3 text-vault-1000" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
+          {/* Footer */}
+          <footer className="border-t border-white/[0.06] bg-vault-950/50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                    <svg className="w-3 h-3 text-vault-1000" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                      <path d="M2 17l10 5 10-5" />
+                      <path d="M2 12l10 5 10-5" />
+                    </svg>
+                  </div>
+                  <span className="text-xs text-text-muted">SOWKNOW — Your Digital Legacy Vault</span>
+                </div>
+                <p className="text-xs text-text-muted/60">Privacy-first. Zero cloud PII. Always encrypted.</p>
               </div>
-              <span className="text-xs text-text-muted">SOWKNOW — Your Digital Legacy Vault</span>
             </div>
-            <p className="text-xs text-text-muted/60">Privacy-first. Zero cloud PII. Always encrypted.</p>
-          </div>
+          </footer>
         </div>
-      </footer>
+      </div>
     </NextIntlClientProvider>
   );
 }

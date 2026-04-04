@@ -58,11 +58,12 @@ export default async function middleware(request: NextRequest) {
   const hasValidSession = await verifySession(request);
   
   if (!hasValidSession) {
-    let locale = request.nextUrl.locale;
-    if (!locale || locale === 'undefined') {
-      locale = 'fr';
-    }
-    const loginUrl = new URL(`/${locale}/login`, request.url);
+    // With localePrefix: 'as-needed', default locale (fr) has no prefix.
+    // Extract locale from the path; only prefix non-default locales.
+    const segments = pathname.split('/').filter(Boolean);
+    const pathLocale = ['en'].includes(segments[0]) ? segments[0] : '';
+    const loginPath = pathLocale ? `/${pathLocale}/login` : '/login';
+    const loginUrl = new URL(loginPath, request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return Response.redirect(loginUrl);
   }

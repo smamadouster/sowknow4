@@ -51,7 +51,10 @@ export default function LoginPage() {
           const userData = await meResponse.json();
           setUser(userData);
         }
-        router.push(`/${locale}`);
+        // With localePrefix: 'as-needed', default locale (fr) has no prefix
+        const params = new URLSearchParams(window.location.search);
+        const redirectTo = params.get('redirect') || (locale === 'fr' ? '/' : `/${locale}`);
+        router.push(redirectTo);
       } else {
         const data = await response.json();
         setError(data.detail || t('login_error'));

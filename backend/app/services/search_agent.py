@@ -73,14 +73,18 @@ def rerank_and_build_results(
     max_rrf = max((c.rrf_score for c in chunks), default=1.0) or 1.0
 
     for doc_id, doc_chunks in doc_map.items():
-        best = max(doc_chunks, key=lambda c: c.rrf_score)
+        sorted_chunks = sorted(doc_chunks, key=lambda c: c.rrf_score, reverse=True)
+        best = sorted_chunks[0]
 
         if best.document_bucket == DocumentBucket.CONFIDENTIAL:
             if user_role == UserRole.USER:
                 continue
             has_confidential = True
 
-        normalized_score = min(best.rrf_score / max_rrf, 1.0)
+        # Top-2 average: documents with multiple relevant chunks rank higher
+        top_chunks = sorted_chunks[:2]
+        doc_score = sum(c.rrf_score for c in top_chunks) / len(top_chunks)
+        normalized_score = min(doc_score / max_rrf, 1.0)
         label = _score_to_label(normalized_score)
         excerpt = _build_excerpt(best.text, intent.keywords)
         highlights = _extract_highlights(doc_chunks, intent.keywords)

@@ -177,12 +177,40 @@ class EmbeddingService:
             raise
 
     def encode_single(self, text: str) -> list[float]:
-        """Generate embedding for a single text"""
+        """Generate embedding for a single text (uses 'passage:' prefix)."""
         if not text or not text.strip():
             return [0.0] * self.embedding_dim
 
         result = self.encode([text])
         return result[0] if result else [0.0] * self.embedding_dim
+
+    def encode_query(self, text: str) -> list[float]:
+        """Generate embedding for a search query (uses 'query:' prefix).
+
+        The e5 model requires 'query:' prefix for queries and 'passage:' for
+        documents.  encode() / encode_single() apply the passage prefix and are
+        used at indexing time.  This method applies the query prefix and should
+        be used at search time.
+        """
+        if not text or not text.strip():
+            return [0.0] * self.embedding_dim
+
+        if self._model is None and self._load_error is None:
+            self._load_model()
+
+        if not self.can_embed:
+            return [0.0] * self.embedding_dim
+
+        try:
+            embeddings = self.model.encode(
+                [f"query: {text}"],
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+            )
+            return embeddings[0].tolist()
+        except Exception as e:
+            logger.error(f"Error generating query embedding: {e}")
+            raise
 
     async def encode_async(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """Async wrapper for encoding (runs in thread pool)"""

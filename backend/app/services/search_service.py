@@ -147,7 +147,7 @@ class HybridSearchService:
             return []
 
         # Generate query embedding
-        query_embedding = embedding_service.encode_single(query)
+        query_embedding = embedding_service.encode_query(query)
         embedding_array = ",".join(map(str, query_embedding))
 
         # Get user bucket filter
@@ -380,7 +380,7 @@ class HybridSearchService:
         if not embedding_service.can_embed:
             return []
 
-        query_embedding = embedding_service.encode_single(query)
+        query_embedding = embedding_service.encode_query(query)
         embedding_array = ",".join(map(str, query_embedding))
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
@@ -675,6 +675,13 @@ class HybridSearchService:
                     result.keyword_score,
                 )
 
+        # Adaptive weights: short queries (<=3 words) benefit more from keyword match
+        word_count = len(query.split())
+        if word_count <= 3:
+            sem_w, kw_w = 0.4, 0.6
+        else:
+            sem_w, kw_w = self.semantic_weight, self.keyword_weight
+
         # Calculate final scores
         for _chunk_id, data in merged_scores.items():
             result = data["result"]
@@ -682,11 +689,14 @@ class HybridSearchService:
             keyword = data["keyword_score"]
 
             # Combined score using weights
-            final_score = self.semantic_weight * semantic + self.keyword_weight * keyword
+            final_score = sem_w * semantic + kw_w * keyword
             result.final_score = final_score
 
+        # Filter out low-relevance results
+        filtered = {k: v for k, v in merged_scores.items() if v["result"].final_score >= self.min_score_threshold}
+
         # Sort by final score and apply pagination
-        sorted_results = sorted(merged_scores.values(), key=lambda x: x["result"].final_score, reverse=True)
+        sorted_results = sorted(filtered.values(), key=lambda x: x["result"].final_score, reverse=True)
 
         paginated_results = sorted_results[offset : offset + limit]
 

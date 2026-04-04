@@ -86,6 +86,8 @@ const INTENT_ICONS: Record<string, string> = {
   cross_reference: '⊗', exploratory: '◉', entity_search: '◈', procedural: '▷', unknown: '○',
 };
 
+const INTENT_TYPES = Object.keys(INTENT_ICONS);
+
 const TYPE_BADGE_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
   document: { bg: 'bg-blue-500/10 text-blue-400', text: 'text-blue-400', icon: '□' },
   bookmark: { bg: 'bg-purple-500/10 text-purple-400', text: 'text-purple-400', icon: '★' },
@@ -133,6 +135,7 @@ function PipelineProgress({ stage, message }: { stage: PipelineStage; message: s
 function IntentBadge({ intent, confidenceLabel, intentLabel }: { intent: StreamState['intent']; confidenceLabel: string; intentLabel: string }) {
   if (!intent) return null;
   const icon = INTENT_ICONS[intent.type] || INTENT_ICONS.unknown;
+  const keywords = intent.keywords ?? [];
 
   return (
     <div className="flex items-center flex-wrap gap-1.5 mt-2.5 px-1">
@@ -142,7 +145,7 @@ function IntentBadge({ intent, confidenceLabel, intentLabel }: { intent: StreamS
       <span className="bg-vault-800 text-text-muted rounded-full px-2 py-0.5 text-xs">
         {Math.round(intent.confidence * 100)}% {confidenceLabel}
       </span>
-      {intent.keywords.map((kw) => (
+      {keywords.map((kw) => (
         <span key={kw} className="bg-blue-500/10 text-blue-400 rounded px-1.5 py-0.5 text-xs font-mono">{kw}</span>
       ))}
     </div>
@@ -418,8 +421,8 @@ export default function SearchPage() {
               const stage = event.stage as PipelineStage;
               let msg = (event.message as string) || '';
               if (stage === 'intent') msg = t('stage.intent');
-              else if (stage === 'retrieval') msg = t('stage.retrieval');
-              else if (stage === 'reranking') msg = t('stage.reranking');
+              else if (stage === 'retrieval') msg = t('stage.retrieval', { count: stream.totalFound || 0 });
+              else if (stage === 'reranking') msg = t('stage.reranking', { count: stream.results.length || 0 });
               else if (stage === 'synthesis') msg = t('stage.synthesis');
               setStream((prev) => ({ ...prev, stage, stageMessage: msg }));
               continue;
@@ -489,7 +492,7 @@ export default function SearchPage() {
           )}
         </div>
         {stream.intent && (
-          <IntentBadge intent={stream.intent} confidenceLabel={t('confidence')} intentLabel={t((`intent.${stream.intent.type}`) as Parameters<typeof t>[0])} />
+          <IntentBadge intent={stream.intent} confidenceLabel={t('confidence')} intentLabel={t((`intent.${INTENT_TYPES.includes(stream.intent.type) ? stream.intent.type : 'unknown'}`) as Parameters<typeof t>[0])} />
         )}
       </form>
 

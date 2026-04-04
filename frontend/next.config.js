@@ -51,14 +51,6 @@ const nextConfig = {
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://backend:8000/api/:path*',
-      },
-    ]
-  },
   async headers() {
     return [
       {

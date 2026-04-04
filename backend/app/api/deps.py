@@ -21,11 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.utils.security import TokenExpiredError, TokenInvalidError, decode_token
+from app.api.auth import COOKIE_ACCESS_TOKEN_NAME
 
 logger = logging.getLogger(__name__)
-
-# Cookie names (must match auth.py)
-COOKIE_ACCESS_TOKEN_NAME = "access_token"
 
 # Support both Authorization header (for backward compatibility) and cookies
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)

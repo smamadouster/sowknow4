@@ -1,6 +1,9 @@
 import createMiddleware from 'next-intl/middleware';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
 import { routing } from './i18n/routing';
+
+const ACCESS_TOKEN_COOKIE = 'access_token';
 
 const t = createMiddleware({
   ...routing,
@@ -24,50 +27,59 @@ const authPaths = [
   '/verify-email',
 ];
 
+/**
+ * Verify the access_token JWT locally using HS256.
+ * No backend HTTP call needed — just cryptographic signature check.
+ */
 async function verifySession(request: NextRequest): Promise<boolean> {
-  // Use internal Docker URL to avoid hairpin NAT / Cloudflare loop.
-  // The server-side fetch must go directly to the backend container,
-  // not through the public domain (which routes through Cloudflare/nginx).
-  const internalBackend = process.env.INTERNAL_BACKEND_URL || 'http://sowknow4-backend:8000';
+  const token = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+  if (!token) return false;
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return false;
+
   try {
-    const response = await fetch(`${internalBackend}/api/v1/auth/me`, {
-      headers: {
-        cookie: request.headers.get('cookie') || '',
-        host: request.headers.get('host') || '',
-      },
-    });
-    return response.ok;
+    const { payload } = await jwtVerify(
+      token,
+      new TextEncoder().encode(secret),
+      { algorithms: ['HS256'] }
+    );
+    return payload.type === 'access' && typeof payload.sub === 'string';
   } catch {
+    // Expired, tampered, or malformed token
     return false;
   }
 }
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
-  const isPublicPath = publicPaths.some(path => 
+
+  const isPublicPath = publicPaths.some(path =>
     pathname === path || pathname.startsWith(path + '/')
   );
-  
+
   const isAuthPage = authPaths.some(path => pathname.includes(path));
-  
+
   if (isPublicPath || isAuthPage) {
     return t(request);
   }
-  
+
   const hasValidSession = await verifySession(request);
-  
+
   if (!hasValidSession) {
-    // With localePrefix: 'as-needed', default locale (fr) has no prefix.
-    // Extract locale from the path; only prefix non-default locales.
+    // Extract locale from path using routing config (not hardcoded list).
+    // With localePrefix: 'as-needed', default locale has no prefix.
     const segments = pathname.split('/').filter(Boolean);
-    const pathLocale = ['en'].includes(segments[0]) ? segments[0] : '';
+    const nonDefaultLocales = routing.locales.filter(l => l !== routing.defaultLocale);
+    const pathLocale = nonDefaultLocales.includes(segments[0] as typeof routing.locales[number])
+      ? segments[0]
+      : '';
     const loginPath = pathLocale ? `/${pathLocale}/login` : '/login';
     const loginUrl = new URL(loginPath, request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return Response.redirect(loginUrl);
   }
-  
+
   return t(request);
 }
 

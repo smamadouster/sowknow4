@@ -416,26 +416,67 @@ export default function SearchPage() {
           if (!raw || raw === '[DONE]') continue;
 
           try {
-            const event = JSON.parse(raw) as Record<string, unknown>;
-            if ('stage' in event) {
-              const stage = event.stage as PipelineStage;
-              let msg = (event.message as string) || '';
-              if (stage === 'intent') msg = t('stage.intent');
-              else if (stage === 'retrieval') msg = t('stage.retrieval', { count: stream.totalFound || 0 });
-              else if (stage === 'reranking') msg = t('stage.reranking', { count: stream.results.length || 0 });
-              else if (stage === 'synthesis') msg = t('stage.synthesis');
-              setStream((prev) => ({ ...prev, stage, stageMessage: msg }));
+            const evt = JSON.parse(raw) as Record<string, unknown>;
+
+            // --- Stage progress events ---
+            if ('stage' in evt) {
+              const stage = evt.stage as PipelineStage;
+              setStream((prev) => {
+                let msg = (evt.message as string) || '';
+                if (stage === 'intent') msg = t('stage.intent');
+                else if (stage === 'retrieval') msg = t('stage.retrieval', { count: prev.totalFound || 0 });
+                else if (stage === 'reranking') msg = t('stage.reranking', { count: prev.results.length || 0 });
+                else if (stage === 'synthesis') msg = t('stage.synthesis');
+                return { ...prev, stage, stageMessage: msg };
+              });
               continue;
             }
-            if ('intent' in event && event.intent) { setStream((prev) => ({ ...prev, intent: event.intent as StreamState['intent'] })); }
-            if (lastEventName === 'results' && 'results' in event) { setStream((prev) => ({ ...prev, results: [...prev.results, ...(event.results as SearchResult[])] })); }
-            if (lastEventName === 'synthesis' && 'text' in event) { setStream((prev) => ({ ...prev, synthesis: (prev.synthesis || '') + (event.text as string) })); }
-            if ('citation' in event && event.citation) { setStream((prev) => ({ ...prev, citations: [...prev.citations, event.citation as Citation] })); }
-            if ('suggestions' in event && event.suggestions) { setStream((prev) => ({ ...prev, suggestions: event.suggestions as Suggestion[] })); }
-            if ('total_found' in event) { setStream((prev) => ({ ...prev, totalFound: event.total_found as number })); }
-            if ('model_used' in event) { setStream((prev) => ({ ...prev, modelUsed: event.model_used as string })); }
-            if ('has_confidential' in event) { setStream((prev) => ({ ...prev, hasConfidential: event.has_confidential as boolean })); }
-            if ('error' in event) { setStream((prev) => ({ ...prev, stage: 'error', stageMessage: (event.error as string) || t('error') })); }
+
+            // --- Intent: backend sends flat {intent, confidence, keywords, ...} ---
+            if ('intent' in evt && evt.intent) {
+              setStream((prev) => ({ ...prev, intent: {
+                type: evt.intent as string,
+                confidence: (evt.confidence as number) ?? 0,
+                keywords: (evt.keywords as string[]) ?? [],
+              }}));
+            }
+
+            // --- Results ---
+            if (lastEventName === 'results' && 'results' in evt && Array.isArray(evt.results)) {
+              setStream((prev) => ({ ...prev, results: [...prev.results, ...(evt.results as SearchResult[])] }));
+            }
+
+            // --- Synthesis: backend sends "answer" and "model" ---
+            if (lastEventName === 'synthesis' && 'answer' in evt) {
+              setStream((prev) => ({
+                ...prev,
+                synthesis: (prev.synthesis || '') + (evt.answer as string),
+                modelUsed: (evt.model as string) ?? prev.modelUsed,
+              }));
+            }
+
+            // --- Citations: backend sends "citations" (plural, array) ---
+            if ('citations' in evt && Array.isArray(evt.citations)) {
+              setStream((prev) => ({ ...prev, citations: evt.citations as Citation[] }));
+            }
+
+            // --- Suggestions ---
+            if ('suggestions' in evt && evt.suggestions) {
+              setStream((prev) => ({ ...prev, suggestions: evt.suggestions as Suggestion[] }));
+            }
+
+            // --- Scalar fields from results/done events ---
+            if ('total_found' in evt) { setStream((prev) => ({ ...prev, totalFound: evt.total_found as number })); }
+            if ('model' in evt && lastEventName === 'done') { setStream((prev) => ({ ...prev, modelUsed: evt.model as string })); }
+            if ('has_confidential' in evt || 'has_confidential_results' in evt) {
+              setStream((prev) => ({ ...prev, hasConfidential: ((evt.has_confidential ?? evt.has_confidential_results) as boolean) }));
+            }
+
+            // --- Error: backend sends "message" field in error events ---
+            if (lastEventName === 'error') {
+              const errMsg = (evt.message as string) || (evt.error as string) || t('error');
+              setStream((prev) => ({ ...prev, stage: 'error', stageMessage: errMsg }));
+            }
           } catch {}
         }
       }

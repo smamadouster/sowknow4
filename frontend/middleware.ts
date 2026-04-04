@@ -25,12 +25,16 @@ const authPaths = [
 ];
 
 async function verifySession(request: NextRequest): Promise<boolean> {
+  // Use internal Docker URL to avoid hairpin NAT / Cloudflare loop.
+  // The server-side fetch must go directly to the backend container,
+  // not through the public domain (which routes through Cloudflare/nginx).
+  const internalBackend = process.env.INTERNAL_BACKEND_URL || 'http://sowknow4-backend:8000';
   try {
-    const response = await fetch(new URL('/api/v1/auth/me', request.url), {
+    const response = await fetch(`${internalBackend}/api/v1/auth/me`, {
       headers: {
         cookie: request.headers.get('cookie') || '',
+        host: request.headers.get('host') || '',
       },
-      credentials: 'include',
     });
     return response.ok;
   } catch {

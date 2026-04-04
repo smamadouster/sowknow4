@@ -38,6 +38,7 @@ from app.models.user import User
 from app.schemas.auth import ForgotPasswordRequest, ResendVerificationRequest, TelegramAuthRequest
 from app.schemas.token import LoginResponse
 from app.schemas.user import UserCreate, UserPublic
+from app.utils.constants import COOKIE_ACCESS_TOKEN_NAME, COOKIE_REFRESH_TOKEN_NAME
 from app.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -59,9 +60,7 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 # =============================================================================
 # COOKIE CONFIGURATION
 # =============================================================================
-# Cookie names - MUST match deps.py
-COOKIE_ACCESS_TOKEN_NAME = "access_token"
-COOKIE_REFRESH_TOKEN_NAME = "refresh_token"
+# Cookie names imported from app.utils.security (single source of truth)
 
 # Environment-based configuration
 ENVIRONMENT = os.getenv("APP_ENV", "development").lower()

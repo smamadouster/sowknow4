@@ -20,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.utils.constants import COOKIE_ACCESS_TOKEN_NAME
 from app.utils.security import TokenExpiredError, TokenInvalidError, decode_token
-from app.api.auth import COOKIE_ACCESS_TOKEN_NAME
 
 logger = logging.getLogger(__name__)
 

@@ -13,6 +13,147 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
+@shared_task(name="app.tasks.backfill_tasks.classify_and_recover_errors")
+def classify_and_recover_errors(
+    batch_size: int = 50,
+    delay_seconds: int = 10,
+    dry_run: bool = True,
+) -> dict:
+    """
+    Classify all ERROR documents by what work was already completed,
+    then recover them with the minimum work needed.
+
+    Phase A: Fix status-only (have chunks+embeddings, just stuck in error)
+    Phase B: Queue embedding-only (have chunks, missing embeddings)
+    Phase C: Queue full reprocessing (no progress at all)
+
+    Args:
+        batch_size: Max documents to process per phase
+        delay_seconds: Stagger delay between queued tasks
+        dry_run: If True, only classify — don't actually recover
+    """
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentChunk, DocumentStatus
+
+    db = SessionLocal()
+    try:
+        # Classify all error documents
+        error_docs = (
+            db.query(Document)
+            .filter(Document.status == DocumentStatus.ERROR)
+            .all()
+        )
+
+        # Classification buckets
+        status_fix_only = []  # Have chunks with embeddings — just fix status
+        embed_only = []       # Have chunks, missing embeddings
+        full_reprocess = []   # No progress at all
+
+        for doc in error_docs:
+            chunk_count = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == doc.id)
+                .count()
+            )
+            if chunk_count > 0:
+                # Check if embeddings exist
+                embedded_count = (
+                    db.query(DocumentChunk)
+                    .filter(
+                        DocumentChunk.document_id == doc.id,
+                        DocumentChunk.embedding_vector != None,  # noqa: E711
+                    )
+                    .count()
+                )
+                if embedded_count > 0:
+                    status_fix_only.append(doc)
+                else:
+                    embed_only.append(doc)
+            else:
+                full_reprocess.append(doc)
+
+        classification = {
+            "total_errors": len(error_docs),
+            "status_fix_only": len(status_fix_only),
+            "embed_only": len(embed_only),
+            "full_reprocess": len(full_reprocess),
+        }
+        logger.info(f"Error classification: {classification}")
+
+        if dry_run:
+            return {"status": "dry_run", "classification": classification}
+
+        # Phase A: Fix status-only documents immediately
+        fixed = 0
+        for doc in status_fix_only[:batch_size]:
+            doc.status = DocumentStatus.INDEXED
+            doc.pipeline_stage = "indexed"
+            doc.pipeline_error = None
+            meta = doc.document_metadata or {}
+            meta["auto_recovered_at"] = datetime.now(timezone.utc).isoformat()
+            meta["recovery_type"] = "status_fix"
+            doc.document_metadata = meta
+            fixed += 1
+        db.commit()
+
+        # Phase B: Queue embedding-only recovery
+        embed_queued = 0
+        from app.tasks.embedding_tasks import recompute_embeddings_for_document
+
+        for i, doc in enumerate(embed_only[:batch_size]):
+            doc.status = DocumentStatus.INDEXED
+            doc.pipeline_stage = "embedding"
+            meta = doc.document_metadata or {}
+            meta["recovery_type"] = "embed_only"
+            doc.document_metadata = meta
+            db.commit()
+            recompute_embeddings_for_document.apply_async(
+                args=(str(doc.id),),
+                countdown=i * delay_seconds,
+            )
+            embed_queued += 1
+
+        # Phase C: Queue full reprocessing (smallest batches, highest cost)
+        reprocess_queued = 0
+        from app.tasks.document_tasks import process_document
+
+        reprocess_batch = min(batch_size // 2, 25)  # Smaller batches for full reprocess
+        for i, doc in enumerate(full_reprocess[:reprocess_batch]):
+            doc.status = DocumentStatus.PENDING
+            doc.pipeline_stage = "uploaded"
+            doc.pipeline_error = None
+            doc.pipeline_retry_count = 0
+            meta = doc.document_metadata or {}
+            meta["recovery_type"] = "full_reprocess"
+            meta["backfill_reset_at"] = datetime.now(timezone.utc).isoformat()
+            meta["original_error"] = meta.get("processing_error", "unknown")
+            doc.document_metadata = meta
+            db.commit()
+            process_document.apply_async(
+                args=(str(doc.id),),
+                countdown=i * delay_seconds * 2,  # Double stagger for full pipeline
+            )
+            reprocess_queued += 1
+
+        return {
+            "status": "success",
+            "classification": classification,
+            "actions": {
+                "status_fixed": fixed,
+                "embed_queued": embed_queued,
+                "reprocess_queued": reprocess_queued,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error in classify_and_recover_errors: {e}")
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+
 @shared_task(name="app.tasks.backfill_tasks.reprocess_failed_documents")
 def reprocess_failed_documents(
     date_from: str,

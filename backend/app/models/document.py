@@ -2,6 +2,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    DateTime,
     Enum,
     ForeignKey,
     Index,
@@ -104,6 +105,12 @@ class Document(Base, TimestampMixin):
     # Batch upload tracking — groups documents uploaded together
     batch_id = Column(String(64), nullable=True, index=True)
 
+    # Pipeline state machine — granular processing stage tracking
+    pipeline_stage = Column(String(30), default="uploaded")
+    pipeline_error = Column(Text, nullable=True)
+    pipeline_retry_count = Column(Integer, default=0)
+    pipeline_last_attempt = Column(DateTime, nullable=True)
+
     # Additional metadata stored as JSON
     document_metadata = Column("metadata", JSONB, default=dict)
 
@@ -117,6 +124,7 @@ class Document(Base, TimestampMixin):
         Index("ix_documents_bucket_status", "bucket", "status"),
         Index("ix_documents_created_at", "created_at"),
         Index("ix_documents_language", "language"),
+        Index("ix_documents_pipeline_stage", "pipeline_stage", "pipeline_retry_count"),
         {"schema": "sowknow"},
     )
 

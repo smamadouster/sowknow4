@@ -520,6 +520,9 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
     Find and recover documents stuck in 'processing' state for too long.
     This handles cases where a Celery worker crashed or was killed.
 
+    THROTTLED: Recovers at most MAX_RECOVERY_PER_RUN documents per invocation
+    to prevent queue flooding that starves new uploads.
+
     Args:
         max_processing_minutes: Maximum time a document should be in processing state
 
@@ -531,6 +534,8 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
     from app.models.processing import ProcessingQueue, TaskStatus
     from app.tasks.document_tasks import process_document
 
+    MAX_RECOVERY_PER_RUN = 10  # Never flood the queue
+
     db = SessionLocal()
     recovered = []
     failed = []
@@ -538,13 +543,15 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
     try:
         cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=max_processing_minutes)
 
-        # Find documents stuck in processing state
+        # Find documents stuck in processing state — LIMIT to prevent queue bombs
         stuck_documents = (
             db.query(Document)
             .filter(
                 Document.status == DocumentStatus.PROCESSING,
                 Document.updated_at < cutoff_time,
             )
+            .order_by(Document.updated_at.asc())  # Oldest first
+            .limit(MAX_RECOVERY_PER_RUN)
             .all()
         )
 
@@ -693,6 +700,8 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
     already_queued = []
 
     try:
+        MAX_RECOVERY_PER_RUN = 10  # Never flood the queue
+
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=pending_threshold_minutes)
 
         pending_docs = (
@@ -701,6 +710,8 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
                 Document.status == DocumentStatus.PENDING,
                 Document.created_at < cutoff,
             )
+            .order_by(Document.created_at.asc())  # Oldest first
+            .limit(MAX_RECOVERY_PER_RUN)
             .all()
         )
 

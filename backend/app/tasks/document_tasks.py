@@ -143,6 +143,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
         document.document_metadata = document.document_metadata or {}
         document.document_metadata["processing_started_at"] = datetime.utcnow().isoformat()
         document.document_metadata["celery_task_id"] = self.request.id
+        document.pipeline_last_attempt = datetime.utcnow()
         db.commit()
 
         logger.info(f"Processing document {document_id}: {document.filename}")
@@ -150,6 +151,8 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 
         # Step 1: OCR / Text Extraction
         if task_type in ["ocr", "full_pipeline"]:
+            document.pipeline_stage = "ocr_pending"
+            db.commit()
             self.update_state(state="PROGRESS", meta={"step": "ocr", "progress": 10})
 
             import asyncio
@@ -208,6 +211,9 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                 logger.debug(f"OCR skipped for {document_id}: {ocr_reason}")
 
             if extracted_text:
+                # Sanitize NUL bytes — OCR/text extraction can produce \x00
+                # which PostgreSQL rejects in text columns
+                extracted_text = extracted_text.replace("\x00", "")
                 document.ocr_processed = True
                 # Save extracted text to a file for later chunking
                 text_file_path = f"{document.file_path}.txt"
@@ -223,12 +229,16 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                 document.document_metadata = metadata
                 db.commit()
 
+            document.pipeline_stage = "ocr_complete"
+            db.commit()
             logger.info(f"OCR/Text extraction completed for {document_id}")
             log_task_memory("process_document", "after_ocr")
 
         # Step 2: Chunking
         chunks = []
         if task_type in ["chunking", "full_pipeline"]:
+            document.pipeline_stage = "chunking"
+            db.commit()
             self.update_state(state="PROGRESS", meta={"step": "chunking", "progress": 40})
 
             from app.services.chunking_service import chunking_service
@@ -243,6 +253,10 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                 logger.warning(f"No extracted text file found for document {document_id}")
 
             if extracted_text:
+                # Sanitize NUL bytes from text files that may have been
+                # written before the extraction-stage sanitization was added
+                extracted_text = extracted_text.replace("\x00", "")
+
                 # Detect language for full-text search stemming
                 detected_language = detect_text_language(extracted_text)
                 logger.info(f"Detected language for document {document_id}: {detected_language}")
@@ -274,6 +288,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
                         db.add(chunk)
 
                     document.chunk_count = len(chunks)
+                    document.pipeline_stage = "chunked"
                     processing_task.progress_percentage = 50
                     db.commit()
                     logger.info(f"Successfully stored {len(chunks)} chunks for document {document_id}")
@@ -295,6 +310,8 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             try:
                 from app.tasks.embedding_tasks import recompute_embeddings_for_document
 
+                document.pipeline_stage = "embedding"
+                db.commit()
                 recompute_embeddings_for_document.delay(str(document.id))
                 logger.info(f"Embedding generation dispatched for document {document_id}")
             except Exception as embed_err:
@@ -305,10 +322,15 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
         # Step 4: Update document status
         if document.chunk_count and document.chunk_count > 0:
             document.status = DocumentStatus.INDEXED
+            document.pipeline_stage = "indexed"
+            document.pipeline_error = None
+            document.pipeline_retry_count = 0
             processing_task.status = TaskStatus.COMPLETED
             processing_task.progress_percentage = 100
         else:
             document.status = DocumentStatus.ERROR
+            document.pipeline_stage = "failed"
+            document.pipeline_error = "No chunks generated — text extraction or chunking failed"
             processing_task.status = TaskStatus.FAILED
             processing_task.error_message = "No chunks generated — text extraction or chunking failed"
             logger.error(f"Document {document_id} produced 0 chunks, marking as ERROR")
@@ -366,8 +388,13 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             metadata["last_error_at"] = datetime.utcnow().isoformat()
             document.document_metadata = metadata
 
+            # Track pipeline failure at current stage
+            document.pipeline_error = str(e)[:500]
+            document.pipeline_retry_count = (document.pipeline_retry_count or 0) + 1
+
             if current_retry >= 3:
                 document.status = DocumentStatus.ERROR
+                document.pipeline_stage = "failed"
                 logger.error(f"Document {document_id} failed permanently after {current_retry} retries: {str(e)}")
                 db.commit()
                 # Store in Dead Letter Queue for admin inspection
@@ -668,61 +695,66 @@ def extract_entities_for_document(self, document_id: str) -> dict:
     """
     import asyncio
 
-    from app.database import SessionLocal
-
-    db = SessionLocal()
-    try:
+    async def _inner():
+        from app.database import AsyncSessionLocal
         from app.models.document import Document, DocumentChunk
         from app.services.entity_extraction_service import entity_extraction_service
 
-        document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
-        if not document:
-            return {"status": "error", "message": f"Document {document_id} not found"}
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import select
 
-        chunks = (
-            db.query(DocumentChunk)
-            .filter(DocumentChunk.document_id == document.id)
-            .order_by(DocumentChunk.chunk_index)
-            .all()
-        )
-        if not chunks:
-            return {"status": "skipped", "message": "No chunks to extract entities from"}
+            result = await db.execute(
+                select(Document).where(Document.id == uuid.UUID(document_id))
+            )
+            document = result.scalar_one_or_none()
+            if not document:
+                return {"status": "error", "message": f"Document {document_id} not found"}
 
-        result = asyncio.run(
-            entity_extraction_service.extract_entities_from_document(
+            chunk_result = await db.execute(
+                select(DocumentChunk)
+                .where(DocumentChunk.document_id == document.id)
+                .order_by(DocumentChunk.chunk_index)
+            )
+            chunks = chunk_result.scalars().all()
+            if not chunks:
+                return {"status": "skipped", "message": "No chunks to extract entities from"}
+
+            extraction_result = await entity_extraction_service.extract_entities_from_document(
                 document=document, chunks=chunks, db=db
             )
-        )
 
-        entity_count = result.get("entities_count", 0) if isinstance(result, dict) else 0
-        relationship_count = result.get("relationships_count", 0) if isinstance(result, dict) else 0
+            entity_count = extraction_result.get("entities_count", 0) if isinstance(extraction_result, dict) else 0
+            relationship_count = extraction_result.get("relationships_count", 0) if isinstance(extraction_result, dict) else 0
 
-        logger.info(
-            f"Entity extraction completed for document {document_id}: "
-            f"{entity_count} entities, {relationship_count} relationships"
-        )
+            logger.info(
+                f"Entity extraction completed for document {document_id}: "
+                f"{entity_count} entities, {relationship_count} relationships"
+            )
 
-        # Invalidate the context block cache so it picks up new entity data
+            # Invalidate the context block cache so it picks up new entity data
+            try:
+                from app.services.context_block_service import invalidate_context_block
+
+                invalidate_context_block()
+            except Exception:
+                pass  # context_block_service may not exist yet
+
+            return {
+                "status": "success",
+                "document_id": document_id,
+                "entities_count": entity_count,
+                "relationships_count": relationship_count,
+            }
+
+    try:
+        loop = asyncio.new_event_loop()
         try:
-            from app.services.context_block_service import invalidate_context_block
-
-            invalidate_context_block()
-        except Exception:
-            pass  # context_block_service may not exist yet
-
-        return {
-            "status": "success",
-            "document_id": document_id,
-            "entities_count": entity_count,
-            "relationships_count": relationship_count,
-        }
-
+            return loop.run_until_complete(_inner())
+        finally:
+            loop.close()
     except Exception as e:
-        logger.error(f"Entity extraction error for document {document_id}: {e}")
+        logger.error(f"Entity extraction error for {document_id}: {e}")
         raise
-
-    finally:
-        db.close()
 
 
 @shared_task(name="app.tasks.document_tasks.batch_extract_entities")

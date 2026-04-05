@@ -57,7 +57,7 @@ celery_app.conf.update(
     # Memory optimisation — concurrency MUST stay at 1 to prevent OOM from
     # fork-duplicating the 1.3 GB embedding model.  Matches docker-compose --concurrency=1.
     worker_concurrency=1,
-    worker_max_tasks_per_child=30,
+    worker_max_tasks_per_child=10,  # Lowered from 30 — forces child recycling sooner to release embedding model memory
     worker_prefetch_multiplier=1,
     # Serialisation — JSON only; no binary serializers permitted
     task_serializer="json",
@@ -100,12 +100,12 @@ celery_app.conf.update(
         "recover-stuck-documents": {
             "task": "app.tasks.anomaly_tasks.recover_stuck_documents",
             "schedule": 600,  # Every 10 minutes (600 seconds)
-            "args": (5,),  # Max 5 minutes in processing state before recovery
+            "args": (15,),  # Max 15 minutes in processing state before recovery (large docs take 10+ min)
         },
         "recover-pending-documents": {
             "task": "app.tasks.anomaly_tasks.recover_pending_documents",
-            "schedule": 300,  # Every 5 minutes (300 seconds)
-            "args": (5,),  # Max 5 minutes in PENDING state before recovery
+            "schedule": 600,  # Every 10 minutes (was 5 — too aggressive)
+            "args": (10,),  # Max 10 minutes in PENDING state before recovery
         },
         "fail-stuck-processing": {
             "task": "app.tasks.anomaly_tasks.fail_stuck_processing_documents",

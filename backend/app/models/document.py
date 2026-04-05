@@ -4,6 +4,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -113,6 +114,11 @@ class Document(Base, TimestampMixin):
 
     # Additional metadata stored as JSON
     document_metadata = Column("metadata", JSONB, default=dict)
+
+    # Audio/voice note metadata
+    audio_file_path = Column(Text, nullable=True)
+    audio_duration_seconds = Column(Float, nullable=True)
+    detected_language = Column(String(5), nullable=True)
 
     # Relationships
     tags = relationship("DocumentTag", back_populates="document", cascade="all, delete-orphan")

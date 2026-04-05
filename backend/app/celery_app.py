@@ -39,6 +39,7 @@ celery_app = Celery(
         "app.tasks.report_tasks",
         "app.tasks.monitoring_tasks",
         "app.tasks.article_tasks",
+        "app.tasks.voice_tasks",
     ],
 )
 
@@ -71,6 +72,7 @@ celery_app.conf.update(
         "app.tasks.document_tasks.*": {"queue": "document_processing"},
         "app.tasks.embedding_tasks.*": {"queue": "document_processing"},
         "app.tasks.article_tasks.*": {"queue": "document_processing"},
+        "app.tasks.voice_tasks.*": {"queue": "document_processing"},
         "app.tasks.anomaly_tasks.*": {"queue": "scheduled"},
         "app.tasks.report_tasks.*": {"queue": "celery"},
     },

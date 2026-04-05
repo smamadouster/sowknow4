@@ -1,14 +1,14 @@
 """Add voice/audio support columns and note_audio table
 
-Revision ID: 021
-Revises: 020
+Revision ID: add_voice_audio_support_021
+Revises: add_pipeline_stage_020
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = "021"
-down_revision = "020"
+revision = "add_voice_audio_support_021"
+down_revision = "add_pipeline_stage_020"
 branch_labels = None
 depends_on = None
 
@@ -22,7 +22,7 @@ def upgrade() -> None:
     # Create note_audio table
     op.create_table(
         "note_audio",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("note_id", UUID(as_uuid=True), sa.ForeignKey("sowknow.notes.id", ondelete="CASCADE"), nullable=False),
         sa.Column("file_path", sa.Text(), nullable=False),
         sa.Column("duration_seconds", sa.Float(), nullable=True),

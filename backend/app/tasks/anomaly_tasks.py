@@ -677,7 +677,7 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
     db = SessionLocal()
     recovered = []
     failed = []
-    checked = []
+    already_queued = []
 
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=pending_threshold_minutes)

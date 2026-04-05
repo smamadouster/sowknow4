@@ -25,6 +25,22 @@ RUN apt-get update && apt-get install -y \
     antiword \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Whisper.cpp for voice note transcription
+RUN apt-get update && apt-get install -y \
+    git \
+    cmake \
+    make \
+    && cd /tmp \
+    && git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git \
+    && cd whisper.cpp \
+    && cmake -B build \
+    && cmake --build build --config Release -j$(nproc) \
+    && cp build/bin/whisper-cli /usr/local/bin/whisper-cpp \
+    && cd / && rm -rf /tmp/whisper.cpp \
+    && apt-get purge -y git cmake make \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user with home directory (PaddleOCR needs a writable HOME)
 # NOTE: Do NOT use -r (system user) with -m — system users skip home creation on some distros
 RUN groupadd -g 1001 appuser && useradd -g appuser -u 1001 -m appuser
@@ -42,9 +58,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Docker preserves ownership from image when creating new named volumes
 RUN mkdir -p /models && chown appuser:appuser /models
 
+# Download Whisper small model for voice transcription (~466MB)
+RUN curl -L -o /models/ggml-small.bin \
+    https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
+
 # Create directories for file storage with proper permissions
 # NOTE: COPY . . is intentionally omitted — bind mount ./backend:/app overrides it
-RUN mkdir -p /data/public /data/confidential && \
+RUN mkdir -p /data/public /data/confidential /data/audio && \
     chown -R appuser:appuser /app /data
 
 # Set Python path and PaddleOCR cache directory

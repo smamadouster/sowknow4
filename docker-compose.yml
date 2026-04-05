@@ -176,6 +176,7 @@ services:
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
+      - sowknow-audio-data:/data/audio
       - sowknow-backups:/app/backups
       - ./backend:/app
     ports:
@@ -231,6 +232,7 @@ services:
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
+      - sowknow-audio-data:/data/audio
       - sowknow-model-cache:/models
       - ./backend:/app
     depends_on:
@@ -539,4 +541,5 @@ volumes:
   sowknow-vault-data:
   sowknow-certbot-webroot:
   sowknow-model-cache:
+  sowknow-audio-data:
   sowknow-prometheus-data:

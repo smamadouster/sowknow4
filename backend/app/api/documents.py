@@ -120,6 +120,7 @@ ALLOWED_EXTENSIONS = {
     ".aac",
     ".wma",
     ".m4a",
+    ".webm",
     ".epub",
     ".csv",
     ".xml",
@@ -180,6 +181,7 @@ _EXTENSION_MIME_PREFIXES: dict = {
     ".aac": ["audio/aac", "audio/x-aac"],
     ".wma": ["audio/x-ms-wma", "video/x-ms-asf"],
     ".m4a": ["audio/mp4", "audio/x-m4a", "audio/m4a"],
+    ".webm": ["audio/webm", "video/webm"],
     ".epub": ["application/epub+zip", "application/zip"],
     ".csv": ["text/csv", "text/", "application/csv"],
     ".xml": ["text/xml", "application/xml", "text/"],
@@ -380,6 +382,14 @@ async def _do_upload_document(
     if transcript:
         document.document_metadata = {**(document.document_metadata or {}), "extracted_text": transcript}
         document.ocr_processed = True  # Skip OCR pipeline for audio with transcript
+        # Write transcript to .txt file so the chunking/embedding pipeline can index it
+        txt_path = save_result["file_path"] + ".txt"
+        try:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(transcript)
+            logger.info(f"Wrote voice transcript to {txt_path}")
+        except Exception as e:
+            logger.warning(f"Failed to write transcript file: {e}")
 
     db.add(document)
     await db.commit()
@@ -420,6 +430,20 @@ async def _do_upload_document(
             resource_id=str(document.id),
             details={"filename": document.filename, "original_filename": file.filename},
         )
+
+    # Dispatch Whisper transcription for audio uploads without a transcript (e.g. Telegram voice notes)
+    audio_extensions = {".ogg", ".webm", ".wav", ".mp3", ".m4a", ".flac", ".aac"}
+    file_ext = get_file_extension(file.filename)
+    if file_ext in audio_extensions and not transcript:
+        try:
+            from app.tasks.voice_tasks import transcribe_voice_note
+            transcribe_voice_note.delay(
+                audio_file_path=document.file_path,
+                document_id=str(document.id),
+            )
+            logger.info(f"Dispatched voice transcription for document {document.id}")
+        except Exception as e:
+            logger.warning(f"Failed to dispatch voice transcription: {e}")
 
     return await _queue_document_for_processing(document, db)
 

@@ -71,9 +71,14 @@ async def stream_audio(
     Checks both document audio and note audio tables.
     RBAC enforced: same rules as parent document/note.
     """
+    try:
+        audio_uuid = audio_uuid
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid audio ID")
+
     # Check document audio first
     result = await db.execute(
-        select(Document).where(Document.id == uuid.UUID(audio_id))
+        select(Document).where(Document.id == audio_uuid)
     )
     doc = result.scalar_one_or_none()
 
@@ -87,7 +92,7 @@ async def stream_audio(
 
     # Check note audio
     result = await db.execute(
-        select(NoteAudio).where(NoteAudio.id == uuid.UUID(audio_id))
+        select(NoteAudio).where(NoteAudio.id == audio_uuid)
     )
     note_audio = result.scalar_one_or_none()
 

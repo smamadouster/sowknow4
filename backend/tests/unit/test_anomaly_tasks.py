@@ -74,3 +74,79 @@ class TestRecoverPendingDocuments:
         doc = _make_pending_doc(db, created_minutes_ago=2)
         result = _run_pending_recovery(db, threshold=5)
         assert len(result["recovered"]) == 0
+
+
+from app.tasks.anomaly_tasks import recover_stuck_documents
+
+
+def _make_processing_doc(db: Session, updated_minutes_ago: int = 30, recovery_count: int = 4) -> Document:
+    """Create a PROCESSING document that has exceeded max recovery attempts."""
+    doc = Document(
+        id=uuid.uuid4(),
+        filename="stuck_doc.pdf",
+        original_filename="stuck_doc.pdf",
+        file_path="/data/public/stuck_doc.pdf",
+        size=1024,
+        mime_type="application/pdf",
+        bucket=DocumentBucket.PUBLIC,
+        status=DocumentStatus.PROCESSING,
+        created_at=datetime.utcnow() - timedelta(hours=2),
+        updated_at=datetime.utcnow() - timedelta(minutes=updated_minutes_ago),
+        document_metadata={"recovery_count": recovery_count, "celery_task_id": "old-task-id"},
+    )
+    db.add(doc)
+    db.commit()
+    return doc
+
+
+def _run_stuck_recovery(db: Session, max_minutes: int = 5) -> dict:
+    """Run recover_stuck_documents with the test db session.
+
+    SQLite returns timezone-naive datetimes, but the production code uses
+    ``datetime.now(timezone.utc)`` which is timezone-aware.  We patch the
+    ``datetime`` class inside anomaly_tasks so that ``.now()`` always returns
+    a naive UTC datetime, avoiding the "can't subtract offset-naive and
+    offset-aware datetimes" error that only appears in the SQLite test env.
+    """
+    mock_pd = Mock()
+    mock_pd.delay = Mock(return_value=None)
+
+    # Build a thin datetime wrapper that forces .now() to return naive UTC
+    import app.tasks.anomaly_tasks as _mod
+
+    _real_datetime = datetime
+
+    class _NaiveDatetime(_real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return _real_datetime.utcnow()
+
+    with patch("app.database.SessionLocal", return_value=db), \
+         patch("app.tasks.document_tasks.process_document", mock_pd), \
+         patch.object(_mod, "datetime", _NaiveDatetime):
+        original_close = db.close
+        db.close = Mock()
+        try:
+            result = recover_stuck_documents(max_processing_minutes=max_minutes)
+        finally:
+            db.close = original_close
+
+    return result
+
+
+class TestRecoverStuckDocumentsErrorCapture:
+    def test_permanently_failed_doc_captures_celery_traceback(self, db: Session):
+        """When marking a doc as permanently failed, attempt to capture Celery task traceback."""
+        doc = _make_processing_doc(db, updated_minutes_ago=30, recovery_count=4)
+
+        mock_async_result = Mock()
+        mock_async_result.traceback = "Traceback: OOM killed during OCR"
+
+        with patch("celery.result.AsyncResult", return_value=mock_async_result):
+            result = _run_stuck_recovery(db, max_minutes=5)
+
+        db.refresh(doc)
+        assert doc.status == DocumentStatus.ERROR
+        meta = doc.document_metadata
+        assert "actual_error" in meta
+        assert "OOM killed" in meta["actual_error"]

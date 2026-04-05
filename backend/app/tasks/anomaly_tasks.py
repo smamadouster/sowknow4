@@ -569,6 +569,18 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                 # After 3 recovery attempts, mark as permanently failed
                 MAX_RECOVERY_ATTEMPTS = 3
                 if recovery_count > MAX_RECOVERY_ATTEMPTS:
+                    # Attempt to retrieve the actual Celery task error
+                    actual_error = None
+                    celery_task_id = existing_meta.get("celery_task_id")
+                    if celery_task_id:
+                        try:
+                            from celery.result import AsyncResult
+                            task_result = AsyncResult(celery_task_id)
+                            if task_result.traceback:
+                                actual_error = str(task_result.traceback)[:1000]
+                        except Exception:
+                            pass
+
                     doc.status = DocumentStatus.ERROR
                     doc.document_metadata = {
                         **existing_meta,
@@ -579,6 +591,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                         "processing_error": (
                             f"Permanently failed: stuck in processing after {recovery_count} recovery attempts"
                         ),
+                        "actual_error": actual_error or "No traceback available (task result expired or not found)",
                     }
 
                     if processing_task:
@@ -701,11 +714,24 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
                 # After 3 recovery attempts, mark as permanently failed
                 MAX_RECOVERY_ATTEMPTS = 3
                 if recovery_count > MAX_RECOVERY_ATTEMPTS:
+                    # Attempt to retrieve the actual Celery task error
+                    actual_error = None
+                    celery_task_id = existing_meta.get("celery_task_id")
+                    if celery_task_id:
+                        try:
+                            from celery.result import AsyncResult
+                            task_result = AsyncResult(celery_task_id)
+                            if task_result.traceback:
+                                actual_error = str(task_result.traceback)[:1000]
+                        except Exception:
+                            pass
+
                     doc.status = DocumentStatus.ERROR
                     doc.document_metadata = {
                         **existing_meta,
                         "pending_recovery_count": recovery_count,
                         "recovery_error": f"Failed to queue after {MAX_RECOVERY_ATTEMPTS} attempts",
+                        "actual_error": actual_error or "No traceback available",
                     }
                     db.commit()
                     logger.error(
@@ -899,12 +925,24 @@ def fail_stuck_processing_documents(max_processing_minutes: int = 30) -> dict:
                 ok.append({"document_id": str(doc.id), "task_id": celery_task_id})
                 continue
 
+            # Try to capture actual Celery error
+            actual_error = None
+            if celery_task_id:
+                try:
+                    from celery.result import AsyncResult
+                    task_result = AsyncResult(celery_task_id)
+                    if task_result.traceback:
+                        actual_error = str(task_result.traceback)[:1000]
+                except Exception:
+                    pass
+
             existing_meta = doc.document_metadata or {}
             doc.status = DocumentStatus.ERROR
             doc.document_metadata = {
                 **existing_meta,
                 "failure_reason": f"Processing stuck > {max_processing_minutes} minutes, task {'not found in broker' if celery_task_id else 'never queued'}",
                 "failed_at": datetime.now(timezone.utc).isoformat(),
+                "actual_error": actual_error or "No traceback available",
             }
             failed.append(
                 {

@@ -195,6 +195,48 @@ class ApiClient {
     });
   }
 
+  async uploadAudioDocument(audioBlob: Blob, bucket: string, transcript: string, documentType: string = 'journal', tags: string = '') {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'voice-note.webm');
+    formData.append('bucket', bucket);
+    formData.append('document_type', documentType);
+    formData.append('transcript', transcript);
+    if (tags) formData.append('tags', tags);
+
+    return this.request<{ document_id: string; filename: string; status: string; message: string }>('/v1/documents/upload', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  }
+
+  async uploadNoteAudio(noteId: string, audioBlob: Blob, transcript: string) {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'voice-note.webm');
+    if (transcript) formData.append('transcript', transcript);
+
+    return this.request<{ audio_id: string; url: string; transcript: string }>(`/v1/notes/${noteId}/audio`, {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  }
+
+  async transcribeAudio(audioBlob: Blob) {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'voice.webm');
+
+    return this.request<{ transcript: string; detected_language: string }>('/v1/voice/transcribe', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  }
+
+  getAudioStreamUrl(audioId: string): string {
+    return `${this.baseUrl}/v1/voice/audio/${audioId}/stream`;
+  }
+
   async getDocuments(page: number = 1, pageSize: number = 50, bucket?: string, search?: string, sortBy?: string, sortDir?: string, documentType?: string, tag?: string) {
     interface DocumentsResponse {
       documents: Array<{

@@ -1,7 +1,8 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -132,6 +133,59 @@ async def delete_note(
     if note.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     await note_service.delete_note(db, note)
+
+
+@router.post("/{note_id}/audio")
+async def upload_note_audio(
+    note_id: str,
+    file: UploadFile = File(...),
+    transcript: str | None = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload an audio attachment to a note."""
+    import os
+    import uuid as uuid_mod
+    from datetime import datetime
+    from app.models.note import Note
+    from app.models.note_audio import NoteAudio
+
+    ALLOWED_AUDIO = {"audio/webm", "audio/ogg", "audio/wav", "audio/mpeg"}
+    if file.content_type not in ALLOWED_AUDIO:
+        raise HTTPException(status_code=400, detail="Invalid audio format")
+
+    # Verify note exists and belongs to user
+    result = await db.execute(select(Note).where(Note.id == uuid_mod.UUID(note_id), Note.user_id == current_user.id))
+    note = result.scalar_one_or_none()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    # Save audio file
+    now = datetime.utcnow()
+    audio_dir = f"/data/audio/{now.year}/{now.month:02d}"
+    os.makedirs(audio_dir, exist_ok=True)
+    ext = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
+    audio_id = uuid_mod.uuid4()
+    file_path = f"{audio_dir}/{audio_id}{ext}"
+
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    note_audio = NoteAudio(
+        id=audio_id,
+        note_id=uuid_mod.UUID(note_id),
+        file_path=file_path,
+        transcript=transcript,
+    )
+    db.add(note_audio)
+    await db.commit()
+
+    return {
+        "audio_id": str(audio_id),
+        "url": f"/api/v1/voice/audio/{audio_id}/stream",
+        "transcript": transcript,
+    }
 
 
 def _to_response(note, tags) -> NoteResponse:

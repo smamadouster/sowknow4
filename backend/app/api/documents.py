@@ -212,6 +212,7 @@ async def upload_document(
     title: str | None = Form(None),
     tags: str | None = Form(None),
     document_type: str | None = Form(None),
+    transcript: str | None = Form(None),
     x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -239,8 +240,8 @@ async def upload_document(
     async with _upload_semaphore:
         return await _do_upload_document(
             file=file, bucket=bucket, title=title, tags=tags,
-            document_type=document_type, x_bot_api_key=x_bot_api_key,
-            current_user=current_user, db=db,
+            document_type=document_type, transcript=transcript,
+            x_bot_api_key=x_bot_api_key, current_user=current_user, db=db,
         )
 
 
@@ -250,6 +251,7 @@ async def _do_upload_document(
     title: str | None,
     tags: str | None,
     document_type: str | None,
+    transcript: str | None,
     x_bot_api_key: str | None,
     current_user: User,
     db: AsyncSession,
@@ -373,6 +375,11 @@ async def _do_upload_document(
 
             metadata["journal_timestamp"] = dt.now(timezone.utc).isoformat()
         document.document_metadata = metadata
+
+    # Store voice transcript if provided (skips OCR pipeline for audio with transcript)
+    if transcript:
+        document.document_metadata = {**(document.document_metadata or {}), "extracted_text": transcript}
+        document.ocr_processed = True  # Skip OCR pipeline for audio with transcript
 
     db.add(document)
     await db.commit()

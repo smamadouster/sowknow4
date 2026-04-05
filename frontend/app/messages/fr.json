@@ -545,5 +545,21 @@
     "filter_notes": "Notes",
     "created": "Espace créé",
     "deleted": "Espace supprimé"
+  },
+  "search_modal": {
+    "placeholder": "Rechercher dans votre coffre...",
+    "navigate": "Naviguer",
+    "quick_search": "Recherche avancée",
+    "quick_documents": "Documents",
+    "quick_chat": "Assistant IA",
+    "quick_collections": "Collections",
+    "enter": "\u23ce",
+    "to_search": "rechercher",
+    "to_close": "fermer",
+    "search_hint": "Rechercher ou naviguer..."
+  },
+  "privacy_badge": {
+    "local_processing": "Traitement local",
+    "confidential_active": "Mode confidentiel"
   }
 }

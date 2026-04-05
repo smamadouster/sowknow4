@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import Navigation from '@/components/Navigation';
+import CommandPalette from '@/components/CommandPalette';
+import PrivacyBadge from '@/components/PrivacyBadge';
 
 export default async function LocaleLayout({
   children,
@@ -52,8 +54,14 @@ export default async function LocaleLayout({
               </div>
             </div>
 
+            {/* Center - Command Palette */}
+            <div className="flex-1 flex justify-center max-w-md mx-4">
+              <CommandPalette />
+            </div>
+
             {/* Right side */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <PrivacyBadge />
               <LanguageSelector />
             </div>
           </div>

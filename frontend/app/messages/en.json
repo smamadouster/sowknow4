@@ -545,5 +545,21 @@
     "filter_notes": "Notes",
     "created": "Space created",
     "deleted": "Space deleted"
+  },
+  "search_modal": {
+    "placeholder": "Search your vault...",
+    "navigate": "Navigate",
+    "quick_search": "Advanced Search",
+    "quick_documents": "Documents",
+    "quick_chat": "AI Assistant",
+    "quick_collections": "Collections",
+    "enter": "\u23ce",
+    "to_search": "search",
+    "to_close": "close",
+    "search_hint": "Search or jump to..."
+  },
+  "privacy_badge": {
+    "local_processing": "Local Processing",
+    "confidential_active": "Confidential Mode"
   }
 }

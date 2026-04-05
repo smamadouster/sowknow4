@@ -114,10 +114,10 @@ export default function Home() {
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl" />
         <div className="absolute top-1/2 -left-40 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-violet-500/5 rounded-full blur-3xl" />
-        {/* Grid pattern overlay */}
-        <div className="absolute inset-0 opacity-[0.015]" style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)',
-          backgroundSize: '40px 40px',
+        {/* Dashed grid pattern overlay */}
+        <div className="absolute inset-0 bg-grid-dashed" style={{
+          maskImage: 'radial-gradient(ellipse at center, white 30%, transparent 70%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at center, white 30%, transparent 70%)',
         }} />
       </div>
 
@@ -129,7 +129,7 @@ export default function Home() {
               {t('hello', { name: userName })}
             </p>
           )}
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-text-primary mb-4 leading-tight font-display">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-text-primary mb-4 leading-tight font-display tracking-heading">
             {t('welcome_title')}
           </h1>
           <div className="max-w-xl mx-auto bg-vault-900/50 backdrop-blur-sm rounded-2xl border border-white/[0.06] px-6 py-5 shadow-card">
@@ -160,16 +160,18 @@ export default function Home() {
                 className="group"
               >
                 <div
-                  className={`relative bg-gradient-to-br ${service.color} rounded-2xl border border-white/[0.06] p-5 sm:p-6 h-full flex flex-col items-center text-center transition-all duration-300 hover:border-white/[0.12] hover:shadow-lg ${service.glowColor} hover:-translate-y-1`}
+                  className={`relative bg-gradient-to-br ${service.color} backdrop-blur-sm rounded-2xl border border-white/[0.06] p-5 sm:p-6 h-full flex flex-col items-center text-center transition-all duration-350 hover:border-white/[0.14] hover:shadow-xl ${service.glowColor} hover:-translate-y-1.5 group-hover:bg-gradient-to-br`}
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
+                  {/* Subtle inner glow on hover */}
+                  <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }} />
                   {/* Icon container */}
-                  <div className="w-12 h-12 rounded-xl bg-vault-800/80 border border-white/[0.06] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+                  <div className="w-12 h-12 rounded-xl bg-vault-800/60 backdrop-blur-sm border border-white/[0.06] flex items-center justify-center mb-3 group-hover:scale-110 group-hover:border-white/[0.1] transition-all duration-300">
                     <span className="text-text-secondary group-hover:text-amber-400 transition-colors duration-300">
                       {service.icon}
                     </span>
                   </div>
-                  <h3 className="font-semibold text-text-primary mb-1 text-sm sm:text-base font-display">{tNav(service.titleKey)}</h3>
+                  <h3 className="font-semibold text-text-primary mb-1 text-sm sm:text-base font-display tracking-tight">{tNav(service.titleKey)}</h3>
                   <p className="text-text-muted text-xs leading-relaxed">{t(service.descKey)}</p>
                 </div>
               </IntlLink>

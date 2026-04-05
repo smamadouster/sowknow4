@@ -36,8 +36,11 @@ module.exports = {
       },
       fontFamily: {
         display: ['Outfit', 'system-ui', 'sans-serif'],
-        sans: ['Source Sans 3', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'Source Sans 3', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
+      },
+      letterSpacing: {
+        'heading': '-0.03em',
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

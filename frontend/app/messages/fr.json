@@ -561,5 +561,23 @@
   "privacy_badge": {
     "local_processing": "Traitement local",
     "confidential_active": "Mode confidentiel"
+  },
+  "voice": {
+    "record": "Enregistrer une note vocale",
+    "send": "Envoyer",
+    "cancel": "Annuler",
+    "reRecord": "Recommencer",
+    "slideToCancel": "\u2190 Glissez pour annuler",
+    "releaseToCancel": "Rel\u00e2chez pour annuler",
+    "transcribing": "Transcription en cours...",
+    "privateTranscription": "Transcription priv\u00e9e",
+    "cloudTranscription": "Transcription rapide",
+    "privateOn": "Transcription locale activ\u00e9e \u2014 aucune donn\u00e9e envoy\u00e9e au cloud",
+    "privateOff": "Transcription via le navigateur \u2014 plus rapide mais les donn\u00e9es transitent par le cloud",
+    "privateHint": "Transcription locale \u2014 sera disponible apr\u00e8s l\u2019envoi",
+    "micNotSupported": "Le micro n\u2019est pas disponible dans ce navigateur",
+    "micPermission": "Acc\u00e8s au microphone requis",
+    "addVoiceEntry": "Ajouter une note vocale",
+    "voiceSearch": "Recherche vocale"
   }
 }

@@ -561,5 +561,23 @@
   "privacy_badge": {
     "local_processing": "Local Processing",
     "confidential_active": "Confidential Mode"
+  },
+  "voice": {
+    "record": "Record a voice note",
+    "send": "Send",
+    "cancel": "Cancel",
+    "reRecord": "Re-record",
+    "slideToCancel": "\u2190 Slide to cancel",
+    "releaseToCancel": "Release to cancel",
+    "transcribing": "Transcribing...",
+    "privateTranscription": "Private transcription",
+    "cloudTranscription": "Fast transcription",
+    "privateOn": "Local transcription enabled \u2014 no data sent to cloud",
+    "privateOff": "Browser transcription \u2014 faster but data passes through cloud",
+    "privateHint": "Local transcription \u2014 will be available after sending",
+    "micNotSupported": "Microphone not available in this browser",
+    "micPermission": "Microphone access required",
+    "addVoiceEntry": "Add voice entry",
+    "voiceSearch": "Voice search"
   }
 }

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.document import Document
+from app.models.note import Note
 from app.models.note_audio import NoteAudio
 from app.models.user import User
 from app.services.whisper_service import whisper_service
@@ -91,6 +92,13 @@ async def stream_audio(
     note_audio = result.scalar_one_or_none()
 
     if note_audio:
+        # RBAC: check parent note's bucket
+        note_result = await db.execute(
+            select(Note).where(Note.id == note_audio.note_id)
+        )
+        parent_note = note_result.scalar_one_or_none()
+        if parent_note and parent_note.bucket.value == "confidential" and current_user.role.value not in ["admin", "superuser"]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         if not os.path.exists(note_audio.file_path):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
         content_type = "audio/webm" if note_audio.file_path.endswith(".webm") else "audio/ogg"

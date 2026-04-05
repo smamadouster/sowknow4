@@ -442,6 +442,36 @@ class TelegramBotClient:
             logger.error(f"Journal entry error: {str(e)}")
             return {"error": str(e)}
 
+    async def upload_voice_journal(
+        self, audio_bytes: bytes, filename: str, access_token: str, transcript: str | None = None
+    ) -> dict:
+        """Upload a voice note as a journal entry with optional transcript."""
+        try:
+            form_data = {
+                "bucket": "confidential",
+                "document_type": "journal",
+                "tags": "voice-note",
+            }
+            if transcript:
+                form_data["transcript"] = transcript
+            files = {"file": (filename, audio_bytes, "audio/ogg")}
+            response = await self._client.post(
+                "/api/v1/documents/upload",
+                data=form_data,
+                files=files,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "X-Bot-Api-Key": BOT_API_KEY,
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+        except CircuitBreakerOpenError as e:
+            return self._circuit_breaker_error(e, "voice_upload")
+        except Exception as e:
+            logger.error(f"Voice upload error: {str(e)}")
+            return {"error": str(e)}
+
     async def search_journal(self, query: str, access_token: str) -> dict:
         """Search only journal entries."""
         try:
@@ -502,6 +532,56 @@ class TelegramBotClient:
 
 
 bot_client = TelegramBotClient()
+
+
+async def handle_voice_message(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle voice messages — download, upload as journal entry, trigger Whisper transcription."""
+    user = update.effective_user
+    voice = update.message.voice or update.message.audio
+
+    if not voice:
+        return
+
+    session = await session_manager.get_session(user.id)
+    if not session:
+        await update.message.reply_text("❌ Please use /start first.")
+        return
+
+    access_token = session.get("access_token")
+    if not access_token:
+        await update.message.reply_text("❌ Session expired. Use /start to reconnect.")
+        return
+
+    # Show processing indicator
+    status_msg = await update.message.reply_text("🎙️ Transcription en cours...")
+
+    try:
+        # Download voice file from Telegram
+        file = await context.bot.get_file(voice.file_id)
+        audio_bytes = await file.download_as_bytearray()
+
+        # Upload to backend — backend will queue Celery transcription task
+        result = await bot_client.upload_voice_journal(
+            audio_bytes=bytes(audio_bytes),
+            filename=f"voice_{user.id}_{voice.file_unique_id}.ogg",
+            access_token=access_token,
+        )
+
+        if "error" in result:
+            await status_msg.edit_text(f"❌ Erreur: {result['error']}")
+            return
+
+        duration = voice.duration or 0
+        await status_msg.edit_text(
+            f"✅ Note vocale sauvegardée ({duration}s)\n"
+            f"📝 Transcription en cours — disponible sous peu."
+        )
+
+    except Exception as e:
+        logger.error(f"Voice handler error for user {user.id}: {e}", exc_info=True)
+        await status_msg.edit_text("❌ Erreur lors du traitement de la note vocale.")
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1582,6 +1662,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(journal_exit_callback, pattern="^journal_exit"))
     application.add_handler(CallbackQueryHandler(journal_search_callback, pattern="^journal_search"))
 
+    application.add_handler(
+        MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message)
+    )
     application.add_handler(
         MessageHandler(filters.Document.ALL | filters.PHOTO, handle_document_upload)
     )

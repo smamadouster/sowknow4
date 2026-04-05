@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCsrfToken } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
+import VoiceRecorder from '@/components/VoiceRecorder';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -368,6 +369,7 @@ export default function SearchPage() {
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [isSearching, setIsSearching] = useState(false);
   const [showCitations, setShowCitations] = useState(false);
+  const [showVoiceSearch, setShowVoiceSearch] = useState(false);
   const [typeFilter, setTypeFilter] = useState<ResultTypeFilter>('all');
   const [stream, setStream] = useState<StreamState>({
     stage: 'idle', stageMessage: '', intent: null, results: [], synthesis: null, citations: [], suggestions: [], hasConfidential: false, totalFound: 0, modelUsed: null, globalResults: [],
@@ -524,6 +526,21 @@ export default function SearchPage() {
         <div className="flex items-center bg-vault-800/50 border border-white/[0.08] rounded-xl px-4 shadow-card focus-within:border-amber-400/30 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all">
           <span className="text-lg text-text-muted/40 mr-2 flex-shrink-0">⌕</span>
           <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearchWithQuery(query); } }} placeholder={t('placeholder')} disabled={isSearching} autoFocus className="flex-1 border-none outline-none bg-transparent text-sm text-text-primary py-3.5 placeholder:text-text-muted/40" />
+          <button
+            type="button"
+            onClick={() => setShowVoiceSearch((v) => !v)}
+            className={`flex-shrink-0 p-2 rounded-lg mr-1 transition-colors ${
+              showVoiceSearch
+                ? 'bg-amber-500/20 text-amber-400'
+                : 'text-text-muted/40 hover:text-amber-400 hover:bg-amber-500/10'
+            }`}
+            title={t('voiceSearch')}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+            </svg>
+          </button>
           {isSearching ? (
             <button type="button" onClick={() => abortRef.current?.abort()} className="bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg px-3.5 py-2 text-xs font-bold cursor-pointer flex-shrink-0 hover:bg-red-500/30 transition-colors">■ {t('stop')}</button>
           ) : (
@@ -536,6 +553,22 @@ export default function SearchPage() {
           <IntentBadge intent={stream.intent} confidenceLabel={t('confidence')} intentLabel={t((`intent.${INTENT_TYPES.includes(stream.intent.type) ? stream.intent.type : 'unknown'}`) as Parameters<typeof t>[0])} />
         )}
       </form>
+
+      {showVoiceSearch && (
+        <div className="mb-2 p-3 bg-vault-800/50 border border-white/[0.06] rounded-xl">
+          <VoiceRecorder
+            mode="search"
+            onTranscript={(text) => {
+              if (text.trim()) {
+                setQuery(text);
+                setShowVoiceSearch(false);
+                runSearchWithQuery(text);
+              }
+            }}
+            onCancel={() => setShowVoiceSearch(false)}
+          />
+        </div>
+      )}
 
       <PipelineProgress stage={stream.stage} message={stream.stageMessage} />
 

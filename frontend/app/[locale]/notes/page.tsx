@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import TagSelector from '@/components/TagSelector';
+import VoiceRecorder from '@/components/VoiceRecorder';
 
 interface TagItem {
   id: string;
@@ -47,6 +48,7 @@ export default function NotesPage() {
   const [editContent, setEditContent] = useState('');
   const [editTags, setEditTags] = useState<Array<{ tag_name: string; tag_type?: string }>>([]);
   const [saving, setSaving] = useState(false);
+  const [pendingAudio, setPendingAudio] = useState<{ blob: Blob; transcript: string } | null>(null);
 
   const fetchNotes = useCallback(async () => {
     try {
@@ -81,6 +83,7 @@ export default function NotesPage() {
       setEditContent('');
       setEditTags([]);
     }
+    setPendingAudio(null);
     setShowEditor(true);
   };
 
@@ -89,10 +92,21 @@ export default function NotesPage() {
     setSaving(true);
     try {
       const { api } = await import('@/lib/api');
+      let savedNoteId: string | null = null;
       if (editingNote) {
         await api.updateNote(editingNote.id, { title: editTitle, content: editContent, tags: editTags });
+        savedNoteId = editingNote.id;
       } else {
-        await api.createNote(editTitle, editContent || undefined, editTags);
+        const res = await api.createNote(editTitle, editContent || undefined, editTags);
+        savedNoteId = (res.data as { id?: string })?.id ?? null;
+      }
+      if (savedNoteId && pendingAudio) {
+        try {
+          await api.uploadNoteAudio(savedNoteId, pendingAudio.blob, pendingAudio.transcript);
+        } catch (audioError) {
+          console.error('Error uploading note audio:', audioError);
+        }
+        setPendingAudio(null);
       }
       setShowEditor(false);
       fetchNotes();
@@ -225,6 +239,20 @@ export default function NotesPage() {
                   rows={8}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm"
                 />
+                <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+                  <VoiceRecorder
+                    mode="note"
+                    onAudioReady={(blob, transcript) => {
+                      setEditContent(prev => prev ? `${prev}\n\n${transcript}` : transcript);
+                      setPendingAudio({ blob, transcript });
+                    }}
+                  />
+                </div>
+                {pendingAudio && (
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    {t('audio_pending')}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('tags_label')}</label>

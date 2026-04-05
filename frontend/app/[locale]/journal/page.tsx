@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/formatDate';
 import api from '@/lib/api';
+import VoiceRecorder from '@/components/VoiceRecorder';
 
 interface JournalTag {
   id: string;
@@ -29,7 +30,9 @@ interface EntryContent {
 
 export default function JournalPage() {
   const t = useTranslations('journal');
+  const voiceT = useTranslations('voice');
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [showRecorder, setShowRecorder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -92,6 +95,9 @@ export default function JournalPage() {
   const isImage = (mimeType: string) =>
     mimeType.startsWith('image/');
 
+  const isAudio = (mimeType: string) =>
+    mimeType.startsWith('audio/');
+
   const hasMore = page * PAGE_SIZE < total;
 
   const fetchEntryContent = useCallback(async (entryId: string) => {
@@ -114,7 +120,7 @@ export default function JournalPage() {
 
   const handleEntryClick = useCallback((entry: JournalEntry) => {
     const expanded = expandedEntry === entry.id;
-    if (!expanded && !isImage(entry.mime_type) && !entryContents[entry.id]) {
+    if (!expanded && !isImage(entry.mime_type) && !isAudio(entry.mime_type) && !entryContents[entry.id]) {
       fetchEntryContent(entry.id);
     }
     setExpandedEntry(expanded ? null : entry.id);
@@ -170,10 +176,47 @@ export default function JournalPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">{t('title')}</h1>
-        <p className="text-gray-500 mt-1">{t('subtitle')}</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">{t('title')}</h1>
+          <p className="text-gray-500 mt-1">{t('subtitle')}</p>
+        </div>
+        <button
+          onClick={() => setShowRecorder((v) => !v)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            showRecorder
+              ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+              : 'bg-amber-500 text-white hover:bg-amber-600'
+          }`}
+          title={voiceT('addVoiceEntry')}
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+          </svg>
+          {voiceT('addVoiceEntry')}
+        </button>
       </div>
+
+      {/* Voice recorder */}
+      {showRecorder && (
+        <div className="mb-6 p-4 bg-vault-900/50 border border-vault-700 rounded-xl">
+          <VoiceRecorder
+            mode="journal"
+            onAudioReady={async (blob, transcript) => {
+              try {
+                await api.uploadAudioDocument(blob, 'confidential', transcript, 'journal', 'voice-note');
+                setShowRecorder(false);
+                setPage(1);
+                fetchEntries();
+              } catch (e) {
+                console.error('Error uploading voice entry:', e);
+              }
+            }}
+            onCancel={() => setShowRecorder(false)}
+          />
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -267,7 +310,7 @@ export default function JournalPage() {
                     {formatJournalDate(journalTimestamp)}
                   </time>
                   <span className="text-xs text-gray-400 uppercase">
-                    {isImage(entry.mime_type) ? t('entry_photo') : t('entry_text')}
+                    {isImage(entry.mime_type) ? t('entry_photo') : isAudio(entry.mime_type) ? t('entry_audio') : t('entry_text')}
                   </span>
                 </div>
 
@@ -286,7 +329,20 @@ export default function JournalPage() {
                   />
                 )}
 
-                {expanded && !isImage(entry.mime_type) && (
+                {expanded && isAudio(entry.mime_type) && (
+                  <div className="mt-2">
+                    <audio
+                      src={api.getAudioStreamUrl(entry.id)}
+                      controls
+                      className="w-full"
+                    />
+                    {entry.metadata?.transcript && (
+                      <p className="mt-2 text-sm text-gray-600 italic">{entry.metadata.transcript}</p>
+                    )}
+                  </div>
+                )}
+
+                {expanded && !isImage(entry.mime_type) && !isAudio(entry.mime_type) && (
                   <div>
                     {isLoadingContent ? (
                       <div className="flex items-center gap-2 text-gray-400 py-4">

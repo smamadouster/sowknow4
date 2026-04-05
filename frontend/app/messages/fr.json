@@ -182,6 +182,7 @@
     "placeholder": "Posez votre question en langage naturel...",
     "searching": "Recherche en cours...",
     "searchButton": "Rechercher",
+    "voiceSearch": "Recherche vocale",
     "stop": "Arreter",
     "results": "Resultats",
     "result": "resultat",
@@ -277,6 +278,7 @@
     "load_more": "Charger plus",
     "entry_text": "Texte",
     "entry_photo": "Photo",
+    "entry_audio": "Audio",
     "entry_schema": "Schéma",
     "tags": "Tags",
     "no_results": "Aucun résultat trouvé"
@@ -514,7 +516,8 @@
     "empty": "Aucune note. Créez votre première note !",
     "delete_confirm": "Supprimer cette note ?",
     "saved": "Note enregistrée",
-    "deleted": "Note supprimée"
+    "deleted": "Note supprimée",
+    "audio_pending": "Note vocale jointe — sera enregistrée avec la note"
   },
   "spaces": {
     "title": "Espaces",

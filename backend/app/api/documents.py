@@ -453,65 +453,56 @@ async def _queue_document_for_processing(
     db: AsyncSession,
     success_message: str = "Document uploaded successfully and queued for processing",
 ) -> DocumentUploadResponse:
-    """Queue a persisted document for Celery processing and return the response.
+    """Queue a persisted document for pipeline processing and return the response.
 
+    Uses the new pipeline orchestrator with Celery chains and backpressure.
     Expects the document to already be committed (has a valid ``id``).
-    Updates status to PROCESSING on success or ERROR on failure.
-
-    HARDENING: Verifies task is in Redis broker before returning success.
-    If task dispatch fails, marks document as ERROR immediately (not PENDING).
     """
     try:
-        from app.tasks.document_tasks import process_document
-        from app.celery_app import celery_app
+        from app.models.pipeline import StageEnum, StageStatus
+        from app.tasks.pipeline_orchestrator import dispatch_document
+        from app.tasks.pipeline_tasks import update_stage
 
-        task = process_document.delay(str(document.id))
+        # Mark UPLOADED stage as completed
+        update_stage(str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED)
 
-        task_id = task.id
-        document.status = DocumentStatus.PROCESSING
-        document.document_metadata = {**(document.document_metadata or {}), "celery_task_id": task_id}
+        # Dispatch the pipeline chain
+        result = dispatch_document(str(document.id))
+
+        if result == "dispatched":
+            document.status = DocumentStatus.PROCESSING
+            document.pipeline_stage = "ocr"
+        else:
+            # Backpressure — leave as PENDING, sweeper picks it up
+            document.status = DocumentStatus.PENDING
+            document.pipeline_stage = "uploaded"
+            document.document_metadata = {
+                **(document.document_metadata or {}),
+                "backpressure": result,
+            }
 
         await db.commit()
 
-        # Verify task reached the broker by checking its state via AsyncResult.
-        # Previous approach used inspect.active/reserved/scheduled which queries
-        # the *worker* — with concurrency=1 and batch uploads, newly queued tasks
-        # sit in the Redis queue but aren't yet reserved by the busy worker,
-        # causing false negatives and mass 500 errors.
-        task_state = task.state  # AsyncResult.state reads from result backend + broker
-        if task_state in ("FAILURE", "REVOKED"):
-            logger.error(f"Task {task_id} for document {document.id} is in unexpected state: {task_state}")
-            document.status = DocumentStatus.ERROR
-            document.document_metadata = {
-                **(document.document_metadata or {}),
-                "processing_error": f"Task dispatch failed with state: {task_state}",
-            }
-            await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Document saved but task dispatch failed (state: {task_state})",
-            )
-
-        logger.info(f"Document {document.id} queued successfully with task {task_id} (state: {task_state})")
+        logger.info(f"Document {document.id} pipeline {'dispatched' if result == 'dispatched' else 'deferred'}: {result}")
         return DocumentUploadResponse(
             document_id=document.id,
             filename=document.filename,
             status=document.status,
-            message=success_message,
+            message=success_message if result == "dispatched" else "Document queued, processing will start when capacity is available",
         )
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Failed to queue document {document.id} for processing: {e}")
         try:
             document.status = DocumentStatus.ERROR
+            document.pipeline_stage = "failed"
+            document.pipeline_error = str(e)[:500]
             document.document_metadata = {
                 **(document.document_metadata or {}),
                 "processing_error": f"Failed to queue for processing: {str(e)}",
             }
             await db.commit()
         except Exception:
-            db.rollback()
+            await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document saved but failed to queue for processing: {str(e)}",

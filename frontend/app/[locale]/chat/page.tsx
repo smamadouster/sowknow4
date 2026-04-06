@@ -7,6 +7,8 @@ import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize from 'rehype-sanitize';
 import { getCsrfToken } from '@/lib/api';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import MobileBottomSheet from '@/components/mobile/MobileBottomSheet';
 
 interface Message {
   id: string;
@@ -40,10 +42,16 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingLlm, setStreamingLlm] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
+  const isMobile = useIsMobile();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!isMobile) setSidebarOpen(true);
+  }, [isMobile]);
 
   useEffect(() => {
     loadSessions();
@@ -252,7 +260,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] bg-vault-1000">
+    <div className="flex bg-vault-1000" style={{ height: 'calc(100dvh - 3.5rem)', minHeight: 'calc(100vh - 8rem)' }}>
       {/* Sidebar toggle button (mobile) */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -331,6 +339,19 @@ export default function ChatPage() {
 
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
+        {/* Mobile chat header */}
+        {isMobile && (
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06] bg-vault-950/80 backdrop-blur-sm md:hidden">
+            <button onClick={() => setSessionSheetOpen(true)} className="flex items-center gap-2 text-sm text-text-secondary min-h-[44px]">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
+              <span className="truncate max-w-[200px]">{currentSession?.title || 'New Chat'}</span>
+            </button>
+            <button onClick={createSession} className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 min-w-[44px] min-h-[44px] flex items-center justify-center">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            </button>
+          </div>
+        )}
+
         {/* Messages */}
         <div
           className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4"
@@ -482,7 +503,7 @@ export default function ChatPage() {
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-white/[0.06] p-4 bg-vault-950/50">
+        <div className="border-t border-white/[0.06] p-4 bg-vault-950/50 pb-safe">
           <div className="max-w-3xl mx-auto flex gap-2">
             <textarea
               ref={inputRef}
@@ -501,7 +522,7 @@ export default function ChatPage() {
               disabled={!input.trim() || !currentSession || isStreaming}
               aria-label={t('send')}
               aria-busy={isLoading}
-              className="px-5 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 font-medium font-display"
+              className="px-5 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 font-medium font-display min-w-[44px] min-h-[44px]"
             >
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-vault-1000/30 border-t-vault-1000 rounded-full animate-spin" />
@@ -514,6 +535,20 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* Session switcher bottom sheet (mobile) */}
+      <MobileBottomSheet open={sessionSheetOpen} onClose={() => setSessionSheetOpen(false)} title="Sessions" heightPercent={60}>
+        <button onClick={() => { createSession(); setSessionSheetOpen(false); }} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl font-medium text-sm mb-3 min-h-[44px]">
+          + New Chat
+        </button>
+        <div className="space-y-1">
+          {sessions.map(session => (
+            <button key={session.id} onClick={() => { setCurrentSession(session); setSessionSheetOpen(false); }} className={`w-full flex items-center justify-between p-3 rounded-xl text-left transition-all min-h-[44px] ${currentSession?.id === session.id ? 'bg-amber-500/10 text-amber-400' : 'text-text-secondary hover:bg-white/[0.04]'}`}>
+              <span className="truncate text-sm">{session.title}</span>
+            </button>
+          ))}
+        </div>
+      </MobileBottomSheet>
     </div>
   );
 }

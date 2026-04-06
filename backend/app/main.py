@@ -32,6 +32,7 @@ from app.api import (
     search_agent_router,
     smart_folders,
     spaces,
+    tags,
     voice,
 )
 from app.api import health as health_router
@@ -329,6 +330,7 @@ app.include_router(graph_rag.router, prefix="/api/v1")
 app.include_router(search_agent_router.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/api/v1")
+app.include_router(tags.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
 app.include_router(health_router.router, prefix="/api/v1")
 app.include_router(status_router.router, prefix="/api/v1")

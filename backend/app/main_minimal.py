@@ -159,6 +159,7 @@ from app.api import (
     pipeline_admin,
     search,
     smart_folders,
+    tags,
 )
 
 app.include_router(auth.router, prefix="/api/v1")
@@ -173,6 +174,7 @@ app.include_router(multi_agent.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/api/v1")
 app.include_router(pipeline_admin.router, prefix="/api/v1")
+app.include_router(tags.router, prefix="/api/v1")
 
 
 @app.get("/")

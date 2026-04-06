@@ -6,6 +6,10 @@ import { useTranslations } from 'next-intl';
 import { useAuthStore, useUploadStore, canAccessConfidential } from '@/lib/store';
 import api, { getCsrfToken } from '@/lib/api';
 import { formatDate } from '@/lib/formatDate';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import FAB from '@/components/mobile/FAB';
+import MobileBottomSheet from '@/components/mobile/MobileBottomSheet';
+import PullToRefresh from '@/components/mobile/PullToRefresh';
 
 interface Document {
   id: string;
@@ -58,6 +62,8 @@ export default function DocumentsPage() {
   const [fileQueue, setFileQueue] = useState<FileUploadItem[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
   const [uploadBucket, setUploadBucket] = useState<'public' | 'confidential'>('public');
+  const isMobile = useIsMobile();
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
 
   const pageSize = 50;
 
@@ -204,7 +210,9 @@ export default function DocumentsPage() {
     [t],
   );
 
-  const { getRootProps, getInputProps, isDragActive: dropzoneIsDragActive } = useDropzone({
+  const dropzoneInputRef = useRef<HTMLInputElement | null>(null);
+
+  const { getRootProps, getInputProps, isDragActive: dropzoneIsDragActive, open: openDropzone } = useDropzone({
     onDrop,
     accept: {
       'application/pdf': ['.pdf'],
@@ -408,7 +416,7 @@ export default function DocumentsPage() {
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto pb-24 md:pb-8">
       {/* Page header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
@@ -436,11 +444,11 @@ export default function DocumentsPage() {
             />
           </div>
 
-          {/* Bucket filter */}
+          {/* Bucket filter — hidden on mobile (use filter bottom sheet instead) */}
           <select
             value={bucketFilter}
             onChange={(e) => setBucketFilter(e.target.value as 'all' | 'public' | 'confidential')}
-            className="px-3 py-2 bg-vault-800/50 border border-white/[0.08] rounded-xl text-sm text-text-secondary focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all appearance-none cursor-pointer"
+            className="hidden md:block px-3 py-2 bg-vault-800/50 border border-white/[0.08] rounded-xl text-sm text-text-secondary focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all appearance-none cursor-pointer"
           >
             <option value="all">{t('all_buckets')}</option>
             <option value="public">{t('bucket_public')}</option>
@@ -449,9 +457,22 @@ export default function DocumentsPage() {
             )}
           </select>
 
-          {/* Upload button */}
-          <div {...getRootProps()} className="cursor-pointer">
-            <input {...getInputProps()} />
+          {/* Mobile filter button */}
+          <button
+            onClick={() => setShowFilterSheet(true)}
+            className="p-2 rounded-lg bg-vault-800 border border-white/[0.06] text-text-muted hover:text-amber-400 min-w-[44px] min-h-[44px] flex items-center justify-center md:hidden"
+            aria-label="Filters"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+          </button>
+
+          {/* Always-present dropzone input (used by FAB on mobile via openDropzone()) */}
+          <input {...getInputProps()} className="sr-only" />
+
+          {/* Upload button — hidden on mobile (FAB handles it) */}
+          <div {...getRootProps()} className="hidden md:block cursor-pointer">
             <button
               disabled={uploading}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20 text-sm font-medium font-display"
@@ -608,7 +629,8 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {/* Dropzone area */}
+      {/* Dropzone area — hidden on mobile (FAB handles upload) */}
+      {!isMobile && (
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-2xl p-8 mb-6 text-center transition-all cursor-pointer ${
@@ -636,9 +658,10 @@ export default function DocumentsPage() {
           {t('max_batch_size', { size: formatFileSize(MAX_BATCH_SIZE) })}
         </p>
       </div>
+      )}
 
       {/* Documents table/cards */}
-      <div className="bg-vault-900/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-card">
+      <div className="bg-vault-900/60 border border-white/[0.06] rounded-2xl overflow-hidden shadow-card" id="documents-list-container">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="w-10 h-10 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin"></div>
@@ -662,6 +685,7 @@ export default function DocumentsPage() {
         ) : (
           <>
             {/* Mobile card list */}
+            <PullToRefresh onRefresh={refreshDocuments}>
             <div className="block md:hidden divide-y divide-white/[0.04]">
               {documents.map((doc) => (
                 <div key={doc.id} className="px-4 py-4">
@@ -713,6 +737,7 @@ export default function DocumentsPage() {
                 </div>
               ))}
             </div>
+            </PullToRefresh>
 
             {/* Desktop table */}
             <div className="hidden md:block">
@@ -862,6 +887,69 @@ export default function DocumentsPage() {
           </>
         )}
       </div>
+
+      {/* FAB — mobile upload trigger */}
+      <FAB onClick={() => openDropzone()} label={t('upload')} />
+
+      {/* Filter bottom sheet — mobile only */}
+      <MobileBottomSheet
+        open={showFilterSheet}
+        onClose={() => setShowFilterSheet(false)}
+        title="Filtres"
+        heightPercent={55}
+      >
+        <div className="space-y-5">
+          {/* Bucket filter */}
+          <div>
+            <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">{t('bucket')}</p>
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'public', ...(canAccessConf ? ['confidential'] : [])] as const).map((b) => (
+                <button
+                  key={b}
+                  onClick={() => { setBucketFilter(b as typeof bucketFilter); setShowFilterSheet(false); }}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all min-h-[44px] ${
+                    bucketFilter === b
+                      ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                      : 'bg-vault-800 border-white/[0.06] text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  {b === 'all' ? t('all_buckets') : b === 'public' ? t('bucket_public') : t('bucket_confidential')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Sort options */}
+          <div>
+            <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">{t('sort_by') || 'Sort'}</p>
+            <div className="flex flex-col gap-2">
+              {(
+                [
+                  { key: 'created_at', label: t('created_at') },
+                  { key: 'original_filename', label: t('filename') },
+                  { key: 'file_size', label: t('size') },
+                  { key: 'status', label: t('status') },
+                ] as { key: typeof sortBy; label: string }[]
+              ).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => { handleSort(key); setShowFilterSheet(false); }}
+                  className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm border transition-all min-h-[44px] ${
+                    sortBy === key
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                      : 'bg-vault-800 border-white/[0.06] text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <span>{label}</span>
+                  {sortBy === key && (
+                    <span className="text-amber-400 text-xs">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </MobileBottomSheet>
     </div>
   );
 }

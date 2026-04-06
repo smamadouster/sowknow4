@@ -156,6 +156,7 @@ from app.api import (
     internal,
     knowledge_graph,
     multi_agent,
+    pipeline_admin,
     search,
     smart_folders,
 )
@@ -171,6 +172,7 @@ app.include_router(graph_rag.router, prefix="/api/v1")
 app.include_router(multi_agent.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/api/v1")
+app.include_router(pipeline_admin.router, prefix="/api/v1")
 
 
 @app.get("/")

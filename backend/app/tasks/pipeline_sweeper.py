@@ -98,7 +98,7 @@ def pipeline_sweeper() -> dict:
                         )
                     ),
                 )
-                .limit(200)  # cap per sweep to avoid overloading
+                .limit(500)  # temporarily raised for backlog catchup
                 .all()
             )
 

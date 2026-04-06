@@ -13,9 +13,9 @@ from app.tasks.pipeline_tasks import (
 logger = logging.getLogger(__name__)
 
 MAX_QUEUE_DEPTH = {
-    "pipeline.embed": 20,
-    "pipeline.ocr": 40,
-    "pipeline.articles": 30,
+    "pipeline.embed": 300,
+    "pipeline.ocr": 500,
+    "pipeline.articles": 300,
 }
 
 # Mapping from StageEnum to Celery task (for building partial chains)
@@ -37,15 +37,33 @@ except Exception:
     redis_client = None
 
 
-def _check_backpressure() -> str | None:
-    """Check all queue depths. Returns queue name if over limit, None if OK."""
+# Map from StageEnum to the Redis queue name the task lands on
+_STAGE_QUEUE = {
+    StageEnum.OCR: "pipeline.ocr",
+    StageEnum.EMBEDDED: "pipeline.embed",
+    StageEnum.ARTICLES: "pipeline.articles",
+}
+
+
+def _check_backpressure(from_stage: StageEnum = StageEnum.OCR) -> str | None:
+    """Check the entry queue depth for the given stage.
+
+    Only blocks dispatch if the queue that the *first* task in the chain
+    lands on is over its limit.  Downstream queues are not checked —
+    tasks will naturally queue up as upstream stages complete.
+    """
     if redis_client is None:
         return None
-    for queue_name, max_depth in MAX_QUEUE_DEPTH.items():
-        depth = redis_client.llen(queue_name)
-        if depth > max_depth:
-            logger.warning(f"Backpressure on {queue_name}: depth={depth} max={max_depth}")
-            return queue_name
+    queue_name = _STAGE_QUEUE.get(from_stage)
+    if queue_name is None:
+        return None
+    max_depth = MAX_QUEUE_DEPTH.get(queue_name)
+    if max_depth is None:
+        return None
+    depth = redis_client.llen(queue_name)
+    if depth > max_depth:
+        logger.warning(f"Backpressure on {queue_name}: depth={depth} max={max_depth}")
+        return queue_name
     return None
 
 
@@ -80,7 +98,7 @@ def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -
     Returns:
         'dispatched' on success, 'backpressure:<queue>' if queues are full.
     """
-    blocked_queue = _check_backpressure()
+    blocked_queue = _check_backpressure(from_stage)
     if blocked_queue:
         return f"backpressure:{blocked_queue}"
 

@@ -347,18 +347,46 @@ def _run_index(document_id: str) -> None:
 
 
 def _run_articles(document_id: str) -> None:
-    """Generate knowledge articles from document chunks."""
-    from app.services.article_generation_service import article_generation_service
+    """Generate knowledge articles from document chunks.
 
-    asyncio.run(article_generation_service.generate_articles_for_document(document_id))
-    logger.info("Articles generated for doc %s", document_id)
+    Delegates to the fully-featured generate_articles_for_document task which
+    handles DB loading, LLM routing, article storage, and embedding dispatch.
+    """
+    from app.tasks.article_tasks import generate_articles_for_document
+
+    # Call the task synchronously — __call__ handles bind=True self injection
+    result = generate_articles_for_document(document_id)
+    logger.info("Articles generated for doc %s: %s", document_id, result.get("status", "unknown"))
 
 
 def _run_entities(document_id: str) -> None:
     """Extract entities from document for knowledge graph."""
+    from sqlalchemy import select
+
+    from app.database import AsyncSessionLocal
+    from app.models.document import Document, DocumentChunk
     from app.services.entity_extraction_service import entity_extraction_service
 
-    asyncio.run(entity_extraction_service.extract_entities_from_document(document_id))
+    async def _extract():
+        async with AsyncSessionLocal() as db:
+            doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+            result = await db.execute(
+                select(Document).where(Document.id == doc_uuid)
+            )
+            doc = result.scalar_one_or_none()
+            if not doc:
+                raise ValueError(f"Document {document_id} not found")
+
+            chunk_result = await db.execute(
+                select(DocumentChunk)
+                .where(DocumentChunk.document_id == doc_uuid)
+                .order_by(DocumentChunk.chunk_index)
+            )
+            chunks = chunk_result.scalars().all()
+
+            await entity_extraction_service.extract_entities_from_document(doc, chunks, db)
+
+    asyncio.run(_extract())
     logger.info("Entities extracted for doc %s", document_id)
 
 

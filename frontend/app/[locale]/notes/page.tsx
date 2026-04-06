@@ -6,6 +6,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import TagSelector from '@/components/TagSelector';
 import VoiceRecorder from '@/components/VoiceRecorder';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import MobileSheet from '@/components/mobile/MobileSheet';
+import FAB from '@/components/mobile/FAB';
+import SwipeableRow from '@/components/mobile/SwipeableRow';
+import PullToRefresh from '@/components/mobile/PullToRefresh';
 
 interface TagItem {
   id: string;
@@ -34,6 +39,7 @@ export default function NotesPage() {
   const t = useTranslations('notes');
   const tCommon = useTranslations('common');
   const locale = useLocale();
+  const isMobile = useIsMobile();
 
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +93,15 @@ export default function NotesPage() {
     setShowEditor(true);
   };
 
+  const resetAndNewNote = () => {
+    setEditingNote(null);
+    setEditTitle('');
+    setEditContent('');
+    setEditTags([]);
+    setPendingAudio(null);
+    setShowEditor(true);
+  };
+
   const handleSave = async () => {
     if (!editTitle) return;
     setSaving(true);
@@ -134,15 +149,111 @@ export default function NotesPage() {
     fetchNotes();
   };
 
+  // Editor content shared between mobile sheet and desktop modal
+  const editorContent = (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-1">{t('title_label')} *</label>
+        <input
+          type="text"
+          value={editTitle}
+          onChange={e => setEditTitle(e.target.value)}
+          autoFocus
+          className="w-full px-3 py-2 rounded-lg border border-white/[0.08] bg-vault-800/50 text-text-primary placeholder-text-muted/50 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none"
+          required
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-1">{t('content_label')}</label>
+        <textarea
+          value={editContent}
+          onChange={e => setEditContent(e.target.value)}
+          rows={10}
+          className="w-full px-3 py-2 rounded-lg border border-white/[0.08] bg-vault-800/50 text-text-primary placeholder-text-muted/50 font-mono text-sm focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none"
+        />
+        <div className="mt-2 p-3 bg-vault-800/30 rounded-lg border border-white/[0.06]">
+          <VoiceRecorder
+            mode="note"
+            onAudioReady={(blob, transcript) => {
+              setEditContent(prev => prev ? `${prev}\n\n${transcript}` : transcript);
+              setPendingAudio({ blob, transcript });
+            }}
+          />
+        </div>
+        {pendingAudio && (
+          <p className="mt-1 text-xs text-amber-400">
+            {t('audio_pending')}
+          </p>
+        )}
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-1">{t('tags_label')}</label>
+        <TagSelector tags={editTags} onChange={setEditTags} />
+      </div>
+    </div>
+  );
+
+  const notesList = (
+    <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+      {notes.map(note => {
+        const card = (
+          <div
+            className="p-4 bg-vault-900/60 rounded-lg border border-white/[0.06] cursor-pointer hover:border-white/[0.12] hover:bg-vault-900/80 transition-all"
+            onClick={() => openEditor(note)}
+          >
+            <div className="flex items-start justify-between">
+              <h3 className="font-medium text-text-primary truncate flex-1">{note.title}</h3>
+              {/* Trash button: hidden on mobile (replaced by swipe) */}
+              <button
+                onClick={e => { e.stopPropagation(); handleDelete(note.id); }}
+                className="hidden md:flex ml-2 text-text-muted hover:text-red-400 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+            {note.content && (
+              <p className="text-sm text-text-secondary mt-2 line-clamp-3">{note.content}</p>
+            )}
+            <div className="flex flex-wrap gap-1 mt-3">
+              {note.tags.map(tag => (
+                <span key={tag.id} className="px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  {tag.tag_name}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-text-muted mt-2">
+              {new Date(note.created_at).toLocaleDateString(locale)}
+            </p>
+          </div>
+        );
+
+        return isMobile ? (
+          <SwipeableRow
+            key={note.id}
+            onSwipeAction={() => handleDelete(note.id)}
+            actionLabel={tCommon('delete')}
+            actionColor="bg-red-600"
+          >
+            {card}
+          </SwipeableRow>
+        ) : (
+          <div key={note.id}>{card}</div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="min-h-screen bg-vault-950">
+      <div className="max-w-6xl mx-auto px-4 py-8 pb-20 md:pb-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('title')}</h1>
+          <h1 className="text-2xl font-bold text-text-primary font-display">{t('title')}</h1>
           <button
             onClick={() => openEditor()}
-            className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+            className="hidden md:inline-flex px-4 py-2 bg-amber-500 text-vault-1000 rounded-lg hover:bg-amber-400 transition-colors font-medium"
           >
             {t('new')}
           </button>
@@ -155,7 +266,7 @@ export default function NotesPage() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder={t('search_placeholder')}
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-amber-500"
+            className="w-full px-4 py-3 rounded-lg border border-white/[0.08] bg-vault-800/50 text-text-primary placeholder-text-muted/50 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none"
           />
         </form>
 
@@ -165,111 +276,99 @@ export default function NotesPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
           </div>
         ) : notes.length === 0 ? (
-          <p className="text-center text-gray-500 dark:text-gray-400 py-12">{t('empty')}</p>
+          <p className="text-center text-text-muted py-12">{t('empty')}</p>
+        ) : isMobile ? (
+          <PullToRefresh onRefresh={fetchNotes}>
+            {notesList}
+          </PullToRefresh>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {notes.map(note => (
-              <div
-                key={note.id}
-                className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => openEditor(note)}
-              >
-                <div className="flex items-start justify-between">
-                  <h3 className="font-medium text-gray-900 dark:text-white truncate flex-1">{note.title}</h3>
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDelete(note.id); }}
-                    className="ml-2 text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-                {note.content && (
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 line-clamp-3">{note.content}</p>
-                )}
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {note.tags.map(tag => (
-                    <span key={tag.id} className="px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300">
-                      {tag.tag_name}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  {new Date(note.created_at).toLocaleDateString(locale)}
-                </p>
-              </div>
-            ))}
-          </div>
+          notesList
         )}
 
         {/* Pagination */}
         {total > 50 && (
           <div className="flex justify-center gap-2 mt-6">
-            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 disabled:opacity-50">&laquo;</button>
-            <span className="px-3 py-1 text-gray-600 dark:text-gray-300">{page} / {Math.ceil(total / 50)}</span>
-            <button disabled={page >= Math.ceil(total / 50)} onClick={() => setPage(p => p + 1)} className="px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 disabled:opacity-50">&raquo;</button>
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+              className="px-3 py-1 rounded bg-vault-800/60 border border-white/[0.08] text-text-secondary disabled:opacity-50"
+            >
+              &laquo;
+            </button>
+            <span className="px-3 py-1 text-text-secondary">{page} / {Math.ceil(total / 50)}</span>
+            <button
+              disabled={page >= Math.ceil(total / 50)}
+              onClick={() => setPage(p => p + 1)}
+              className="px-3 py-1 rounded bg-vault-800/60 border border-white/[0.08] text-text-secondary disabled:opacity-50"
+            >
+              &raquo;
+            </button>
           </div>
         )}
       </div>
 
-      {/* Editor Modal */}
-      {showEditor && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-              {editingNote ? editingNote.title : t('new')}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('title_label')} *</label>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={e => setEditTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('content_label')}</label>
-                <textarea
-                  value={editContent}
-                  onChange={e => setEditContent(e.target.value)}
-                  rows={8}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm"
-                />
-                <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
-                  <VoiceRecorder
-                    mode="note"
-                    onAudioReady={(blob, transcript) => {
-                      setEditContent(prev => prev ? `${prev}\n\n${transcript}` : transcript);
-                      setPendingAudio({ blob, transcript });
-                    }}
-                  />
-                </div>
-                {pendingAudio && (
-                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                    {t('audio_pending')}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('tags_label')}</label>
-                <TagSelector tags={editTags} onChange={setEditTags} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
+      {/* FAB — mobile only */}
+      <FAB onClick={resetAndNewNote} label={t('new')} />
+
+      {/* Editor — Mobile: MobileSheet */}
+      {isMobile && (
+        <MobileSheet
+          open={showEditor}
+          onClose={() => setShowEditor(false)}
+          title={editingNote ? editingNote.title : t('new')}
+          headerActions={
+            editingNote ? (
+              <button
+                onClick={resetAndNewNote}
+                className="text-xs text-amber-400 hover:text-amber-300 transition-colors px-2 py-1 rounded"
+              >
+                {t('new')}
+              </button>
+            ) : undefined
+          }
+          footer={
+            <div className="flex gap-3">
               <button
                 onClick={() => setShowEditor(false)}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex-1 rounded-lg border border-white/[0.08] text-text-secondary hover:bg-white/[0.04] transition-colors font-medium"
+                style={{ minHeight: '44px' }}
               >
                 {tCommon('cancel')}
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving || !editTitle}
-                className="px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                className="flex-1 rounded-lg bg-amber-500 text-vault-1000 hover:bg-amber-400 disabled:opacity-50 font-medium transition-colors"
+                style={{ minHeight: '44px' }}
+              >
+                {saving ? tCommon('loading') : tCommon('save')}
+              </button>
+            </div>
+          }
+        >
+          {editorContent}
+        </MobileSheet>
+      )}
+
+      {/* Editor — Desktop: Modal */}
+      {!isMobile && showEditor && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-vault-900 border border-white/[0.08] rounded-xl shadow-2xl max-w-lg w-full p-6">
+            <h2 className="text-xl font-bold text-text-primary font-display mb-4">
+              {editingNote ? editingNote.title : t('new')}
+            </h2>
+            {editorContent}
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowEditor(false)}
+                className="px-4 py-2 rounded-lg border border-white/[0.08] text-text-secondary hover:bg-white/[0.04] transition-colors"
+              >
+                {tCommon('cancel')}
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !editTitle}
+                className="px-4 py-2 rounded-lg bg-amber-500 text-vault-1000 hover:bg-amber-400 disabled:opacity-50 font-medium transition-colors"
               >
                 {saving ? tCommon('loading') : tCommon('save')}
               </button>

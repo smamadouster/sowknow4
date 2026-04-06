@@ -4,6 +4,7 @@ import logging
 import redis
 from celery import chain
 
+from app.models.pipeline import StageEnum
 from app.tasks.pipeline_tasks import (
     article_stage, chunk_stage, embed_stage, entity_stage,
     finalize_stage, index_stage, ocr_stage,
@@ -15,6 +16,17 @@ MAX_QUEUE_DEPTH = {
     "pipeline.embed": 20,
     "pipeline.ocr": 40,
     "pipeline.articles": 30,
+}
+
+# Mapping from StageEnum to Celery task (for building partial chains)
+_STAGE_TASKS = {
+    StageEnum.OCR: ocr_stage,
+    StageEnum.CHUNKED: chunk_stage,
+    StageEnum.EMBEDDED: embed_stage,
+    StageEnum.INDEXED: index_stage,
+    StageEnum.ARTICLES: article_stage,
+    StageEnum.ENTITIES: entity_stage,
+    StageEnum.ENRICHED: finalize_stage,
 }
 
 # Redis client for queue depth checks
@@ -37,25 +49,48 @@ def _check_backpressure() -> str | None:
     return None
 
 
-def dispatch_document(document_id: str) -> str:
+def _build_chain(document_id: str, from_stage: StageEnum = StageEnum.OCR):
+    """Build a Celery chain starting from the given stage.
+
+    The first task in the chain receives document_id as an argument.
+    Subsequent tasks receive it as the return value of the previous task.
+    """
+    stages = list(StageEnum)
+    start_idx = stages.index(from_stage)
+    task_stages = [s for s in stages[start_idx:] if s in _STAGE_TASKS]
+
+    if not task_stages:
+        return None
+
+    # First task gets document_id explicitly, rest get it from chain
+    tasks = [_STAGE_TASKS[task_stages[0]].s(document_id)]
+    for s in task_stages[1:]:
+        tasks.append(_STAGE_TASKS[s].s())
+
+    return chain(*tasks)
+
+
+def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -> str:
     """Build and dispatch the processing chain for a document.
-    Returns 'dispatched' on success, 'backpressure:<queue>' if queues are full.
+
+    Args:
+        document_id: UUID of the document to process.
+        from_stage: Stage to start the chain from (default: OCR for new documents).
+
+    Returns:
+        'dispatched' on success, 'backpressure:<queue>' if queues are full.
     """
     blocked_queue = _check_backpressure()
     if blocked_queue:
         return f"backpressure:{blocked_queue}"
 
-    pipeline = chain(
-        ocr_stage.s(document_id),
-        chunk_stage.s(),
-        embed_stage.s(),
-        index_stage.s(),
-        article_stage.s(),
-        entity_stage.s(),
-        finalize_stage.s(),
-    )
+    pipeline = _build_chain(document_id, from_stage)
+    if pipeline is None:
+        logger.warning(f"No tasks to dispatch for document {document_id} from stage {from_stage}")
+        return "dispatched"
+
     pipeline.apply_async()
-    logger.info(f"Pipeline chain dispatched for document {document_id}")
+    logger.info(f"Pipeline chain dispatched for document {document_id} from stage {from_stage.name}")
     return "dispatched"
 
 

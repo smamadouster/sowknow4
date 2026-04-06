@@ -62,7 +62,8 @@ def pipeline_sweeper() -> dict:
                     ps.error_message = f"Sweeper: reset from stuck RUNNING (attempt {ps.attempt})"
                     db.commit()
 
-                    result = dispatch_document(str(ps.document_id))
+                    # Resume from the stuck stage, not from OCR
+                    result = dispatch_document(str(ps.document_id), from_stage=stage)
                     if result == "dispatched":
                         stuck_resumed += 1
                     # else: deferred, sweeper picks up next run

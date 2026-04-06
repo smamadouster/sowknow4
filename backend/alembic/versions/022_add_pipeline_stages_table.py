@@ -18,7 +18,7 @@ def upgrade() -> None:
     op.execute(sa.text("""
         DO $$ BEGIN
             CREATE TYPE sowknow.stageenum AS ENUM (
-                'uploaded', 'ocr', 'chunked', 'embedded', 'indexed', 'articles', 'entities'
+                'uploaded', 'ocr', 'chunked', 'embedded', 'indexed', 'articles', 'entities', 'enriched'
             );
         EXCEPTION WHEN duplicate_object THEN NULL;
         END $$;
@@ -43,7 +43,7 @@ def upgrade() -> None:
             sa.ForeignKey("sowknow.documents.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("stage", sa.Enum("uploaded", "ocr", "chunked", "embedded", "indexed", "articles", "entities", name="stageenum", schema="sowknow"), nullable=False),
+        sa.Column("stage", sa.Enum("uploaded", "ocr", "chunked", "embedded", "indexed", "articles", "entities", "enriched", name="stageenum", schema="sowknow"), nullable=False),
         sa.Column("status", sa.Enum("pending", "running", "completed", "failed", "skipped", name="stagestatus", schema="sowknow"), nullable=False, server_default="pending"),
         sa.Column("attempt", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("max_attempts", sa.Integer(), nullable=False, server_default="3"),

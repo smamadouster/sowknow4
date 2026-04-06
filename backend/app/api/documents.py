@@ -459,15 +459,23 @@ async def _queue_document_for_processing(
     Expects the document to already be committed (has a valid ``id``).
     """
     try:
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
         from app.models.pipeline import StageEnum, StageStatus
         from app.tasks.pipeline_orchestrator import dispatch_document
         from app.tasks.pipeline_tasks import update_stage
 
-        # Mark UPLOADED stage as completed
-        update_stage(str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED)
+        # Mark UPLOADED stage as completed (sync DB call — run in thread to avoid blocking event loop)
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            await loop.run_in_executor(
+                pool, update_stage, str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED
+            )
 
-        # Dispatch the pipeline chain
-        result = dispatch_document(str(document.id))
+        # Dispatch the pipeline chain (also sync — Redis llen + Celery apply_async)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = await loop.run_in_executor(pool, dispatch_document, str(document.id))
 
         if result == "dispatched":
             document.status = DocumentStatus.PROCESSING

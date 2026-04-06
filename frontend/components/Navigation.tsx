@@ -6,6 +6,8 @@ import { useTranslations, useLocale } from 'next-intl';
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore, useChatStore, useUploadStore } from '@/lib/store';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
+import { useScrollDirection } from '@/hooks/useScrollDirection';
+import MobileBottomSheet from '@/components/mobile/MobileBottomSheet';
 
 type NavLabelKey =
   | 'home' | 'search' | 'documents' | 'chat' | 'collections' | 'smart_folders'
@@ -170,10 +172,11 @@ export function Navigation() {
   const isUploading = useUploadStore((s) => s.isUploading);
   const userRole = user?.role || 'user';
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  const scrollDirection = useScrollDirection();
 
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
@@ -182,53 +185,8 @@ export function Navigation() {
   };
 
   useEffect(() => {
-    setIsMobileOpen(false);
+    setMoreSheetOpen(false);
   }, [pathname]);
-
-  useEffect(() => {
-    if (!isMobileOpen) return;
-
-    const firstLink = mobileMenuRef.current?.querySelector<HTMLElement>('a, button');
-    firstLink?.focus();
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsMobileOpen(false);
-        return;
-      }
-      if (e.key === 'Tab') {
-        const focusable = mobileMenuRef.current?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled])'
-        );
-        if (!focusable?.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isMobileOpen]);
-
-  useEffect(() => {
-    if (isMobileOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [isMobileOpen]);
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
@@ -243,6 +201,12 @@ export function Navigation() {
 
   const mainItems = navItems.filter(item => !item.roles || item.roles.includes(userRole));
   const visibleAdminItems = adminItems.filter(item => !item.roles || item.roles.includes(userRole));
+
+  const mobileTabHrefs = ['/search', '/notes', '/documents', '/chat'];
+  const mobileTabItems = mobileTabHrefs
+    .map(href => navItems.find(item => item.href === href))
+    .filter((item): item is NavItem => item !== undefined);
+  const moreItems = mainItems.filter(item => !mobileTabHrefs.includes(item.href));
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === `/${locale}` || pathname === `/${locale}/` || pathname === '/';
@@ -363,99 +327,83 @@ export function Navigation() {
       </aside>
 
       {/* Mobile bottom navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl" aria-label={t('main_navigation')}>
-        <div className="flex items-center justify-around h-14 px-2">
-          {navItems.slice(0, 5).map((item) => {
+      <nav
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl pb-safe transition-transform duration-300 ${
+          scrollDirection === 'down' ? 'translate-y-full' : 'translate-y-0'
+        }`}
+        aria-label={t('main_navigation')}
+      >
+        <div className="flex items-stretch justify-around h-14 px-1">
+          {mobileTabItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[56px] transition-all ${
-                  active
-                    ? 'text-amber-400'
-                    : 'text-text-muted'
+                className={`relative flex flex-col items-center justify-center gap-0.5 min-w-[64px] min-h-[44px] px-2 py-1 rounded-lg transition-all ${
+                  active ? 'text-amber-400' : 'text-text-muted hover:text-text-secondary'
                 }`}
               >
-                <span aria-hidden="true">{item.icon}</span>
-                <span className="text-[10px] font-medium truncate max-w-[64px]">{t(item.labelKey)}</span>
+                {active && (
+                  <span className="absolute top-1.5 left-1/2 -translate-x-1/2 w-6 h-1 rounded-full bg-amber-400/80" aria-hidden="true" />
+                )}
+                <span aria-hidden="true" className="mt-2">{item.icon}</span>
+                <span className="text-[10px] font-medium truncate max-w-[60px]">{t(item.labelKey)}</span>
               </Link>
             );
           })}
+
           {/* More button */}
           <button
-            onClick={() => setIsMobileOpen(true)}
+            onClick={() => setMoreSheetOpen(true)}
             aria-label={t('toggle_navigation')}
-            className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[56px] text-text-muted"
+            aria-expanded={moreSheetOpen}
+            className="relative flex flex-col items-center justify-center gap-0.5 min-w-[64px] min-h-[44px] px-2 py-1 rounded-lg text-text-muted hover:text-text-secondary transition-all"
           >
-            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-[18px] h-[18px] mt-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
-            <span className="text-[10px] font-medium">Menu</span>
+            <span className="text-[10px] font-medium">Plus</span>
           </button>
         </div>
       </nav>
 
-      {/* Mobile slide-in drawer */}
-      <div
-        className={`fixed inset-0 z-50 bg-black/60 backdrop-blur-sm md:hidden transition-opacity duration-300 ${
-          isMobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={() => setIsMobileOpen(false)}
-        aria-hidden="true"
-      />
-
-      <div
-        id="mobile-menu"
-        ref={mobileMenuRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('main_navigation')}
-        aria-hidden={!isMobileOpen}
-        className={`fixed inset-y-0 right-0 z-50 w-72 bg-vault-950 border-l border-white/[0.06] shadow-2xl transform transition-transform duration-300 ease-in-out md:hidden ${
-          isMobileOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+      {/* Mobile More — bottom sheet */}
+      <MobileBottomSheet
+        open={moreSheetOpen}
+        onClose={() => setMoreSheetOpen(false)}
+        title="Navigation"
+        heightPercent={65}
       >
-        {/* Drawer header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-white/[0.06]">
-          <span className="text-base font-semibold text-text-primary font-display">Navigation</span>
-          <button
-            onClick={() => setIsMobileOpen(false)}
-            aria-label={t('close_menu')}
-            className="p-2 rounded-lg text-text-muted hover:text-text-secondary hover:bg-white/[0.04] transition-all"
-          >
-            <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Mobile nav links */}
-        <nav className="py-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 140px)' }}>
-          {mainItems.map((item) => {
+        <nav aria-label={t('main_navigation')}>
+          {moreItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all ${
+                onClick={() => setMoreSheetOpen(false)}
+                className={`flex items-center gap-3 px-2 py-3 rounded-xl text-sm font-medium transition-all ${
                   active
-                    ? 'bg-amber-500/10 text-amber-400 border-r-2 border-amber-400'
+                    ? 'bg-amber-500/10 text-amber-400'
                     : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
                 }`}
               >
+                {active && (
+                  <span className="w-1 h-5 rounded-full bg-amber-400 shrink-0" aria-hidden="true" />
+                )}
                 <span aria-hidden="true">{item.icon}</span>
                 <span>{t(item.labelKey)}</span>
               </Link>
             );
           })}
 
-          {/* Admin section in mobile */}
+          {/* Admin section in More sheet */}
           {visibleAdminItems.length > 0 && (
             <>
-              <div className="px-4 pt-3 pb-1">
+              <div className="px-2 pt-3 pb-1">
                 <div className="border-t border-white/[0.06]" />
                 <p className="text-[10px] font-semibold text-text-muted/60 uppercase tracking-widest mt-2">
                   Admin
@@ -468,12 +416,16 @@ export function Navigation() {
                     key={item.href}
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
-                    className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all ${
+                    onClick={() => setMoreSheetOpen(false)}
+                    className={`flex items-center gap-3 px-2 py-3 rounded-xl text-sm font-medium transition-all ${
                       active
-                        ? 'bg-amber-500/10 text-amber-400 border-r-2 border-amber-400'
+                        ? 'bg-amber-500/10 text-amber-400'
                         : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
                     }`}
                   >
+                    {active && (
+                      <span className="w-1 h-5 rounded-full bg-amber-400 shrink-0" aria-hidden="true" />
+                    )}
                     <span aria-hidden="true">{item.icon}</span>
                     <span>{t(item.labelKey)}</span>
                   </Link>
@@ -483,19 +435,19 @@ export function Navigation() {
           )}
         </nav>
 
-        {/* Mobile logout button */}
-        <div className="border-t border-white/[0.06] p-4">
+        {/* Logout in More sheet */}
+        <div className="border-t border-white/[0.06] pt-3 mt-1">
           <button
-            onClick={() => { setIsMobileOpen(false); setShowLogoutConfirm(true); }}
-            className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-text-muted hover:text-red-400 hover:bg-red-500/5 transition-all"
+            onClick={() => { setMoreSheetOpen(false); setShowLogoutConfirm(true); }}
+            className="flex items-center gap-3 w-full px-2 py-3 rounded-xl text-sm font-medium text-text-muted hover:text-red-400 hover:bg-red-500/5 transition-all"
           >
-            <svg className="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-[18px] h-[18px] shrink-0" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             <span>{t('logout')}</span>
           </button>
         </div>
-      </div>
+      </MobileBottomSheet>
 
       {/* Logout confirmation modal */}
       {showLogoutConfirm && (

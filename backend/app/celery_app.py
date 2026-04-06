@@ -69,8 +69,18 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # Task routing
+    # Task routing — pipeline stage tasks get per-stage queues
     task_routes={
+        # Pipeline stage tasks
+        "pipeline.ocr_stage": {"queue": "pipeline.ocr"},
+        "pipeline.chunk_stage": {"queue": "pipeline.chunk"},
+        "pipeline.embed_stage": {"queue": "pipeline.embed"},
+        "pipeline.index_stage": {"queue": "pipeline.index"},
+        "pipeline.article_stage": {"queue": "pipeline.articles"},
+        "pipeline.entity_stage": {"queue": "pipeline.entities"},
+        "pipeline.finalize_stage": {"queue": "pipeline.index"},
+        "pipeline.sweeper": {"queue": "scheduled"},
+        # Existing routes
         "build_smart_collection": {"queue": "collections"},
         "app.tasks.document_tasks.*": {"queue": "document_processing"},
         "app.tasks.embedding_tasks.*": {"queue": "document_processing"},

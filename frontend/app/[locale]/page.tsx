@@ -108,7 +108,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] bg-vault-1000 relative overflow-hidden">
+    <div className="bg-vault-1000 relative overflow-hidden" style={{ minHeight: 'calc(100dvh - 8rem)' }}>
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl" />

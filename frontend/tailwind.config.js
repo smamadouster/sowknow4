@@ -6,6 +6,11 @@ module.exports = {
   ],
   theme: {
     extend: {
+      spacing: {
+        'safe-bottom': 'env(safe-area-inset-bottom, 0px)',
+        'safe-top': 'env(safe-area-inset-top, 0px)',
+        'bottom-bar': 'var(--bottom-bar-total)',
+      },
       colors: {
         vault: {
           50: '#f8f9fb',

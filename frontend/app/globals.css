@@ -311,7 +311,7 @@ a {
 /* Responsive */
 @media (max-width: 768px) {
   .chat-message {
-    max-width: 90%;
+    max-width: 95%;
   }
 }
 
@@ -376,4 +376,80 @@ a {
 .bg-grid-dashed {
   background-image: url("data:image/svg+xml,%3Csvg width='48' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h48M0 0v48' fill='none' stroke='rgba(255,255,255,0.03)' stroke-dasharray='4 4'/%3E%3C/svg%3E");
   background-size: 48px 48px;
+}
+
+/* === Mobile Foundation === */
+
+/* Dynamic viewport height — handles Safari address bar */
+.h-dvh {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.min-h-dvh {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Safe area utilities */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Bottom bar height variable (tab bar + safe area) */
+:root {
+  --bottom-bar-height: 3.5rem;
+  --bottom-bar-total: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Mobile sheet animations */
+@keyframes sheet-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes sheet-slide-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+.animate-sheet-up {
+  animation: sheet-slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.animate-sheet-down {
+  animation: sheet-slide-down 0.2s ease-out forwards;
+}
+
+/* FAB positioning — above bottom bar */
+.fab-position {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(var(--bottom-bar-total) + 1rem);
+  z-index: 35;
+}
+
+/* Touch target enforcement */
+@media (max-width: 768px) {
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Hide scrollbar for horizontal scroll containers */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

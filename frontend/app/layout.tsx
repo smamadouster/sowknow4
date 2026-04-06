@@ -1,6 +1,12 @@
 import './globals.css';
 import { getLocale } from 'next-intl/server';
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover' as const,
+};
+
 export const metadata = {
   manifest: '/manifest.json',
   appleWebApp: {

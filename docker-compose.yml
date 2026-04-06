@@ -208,7 +208,7 @@ services:
     networks:
       - sowknow-net
 
-  celery-worker:
+  celery-light:
     <<: *common-env
     init: true
     security_opt:
@@ -216,7 +216,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
-    container_name: sowknow4-celery-worker
+    container_name: sowknow4-celery-light
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -229,6 +229,55 @@ services:
       - HF_HOME=/models
       - TRANSFORMERS_CACHE=/models
       - PADDLEOCR_HOME=/tmp/paddleocr
+      - SKIP_MODEL_DOWNLOAD=1
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+      - sowknow-audio-data:/data/audio
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: '1.0'
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
+      -Q celery,document_processing,scheduled,pipeline.ocr,pipeline.chunk,pipeline.index,pipeline.articles,pipeline.entities
+      --max-tasks-per-child=50 --prefetch-multiplier=2
+      -n light@%h
+    networks:
+      - sowknow-net
+
+  celery-heavy:
+    <<: *common-env
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: sowknow4-celery-heavy
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_HOST=redis
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -240,10 +289,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
-      # No pgrep/ps in slim image — check PID 1 is celery via /proc
       test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
       interval: 60s
       timeout: 10s
@@ -253,10 +299,13 @@ services:
       resources:
         limits:
           # CRITICAL: concurrency MUST stay at 1. Model ~1.3GB + encoding batch RAM.
-          # Increased from 4608M: entity extraction + article gen need headroom
-          memory: 5632M
+          memory: 4096M
           cpus: '1.5'
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=1 -Q celery,document_processing,scheduled
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=1
+      -Q pipeline.embed
+      --max-tasks-per-child=20 --prefetch-multiplier=1
+      -n heavy@%h
     networks:
       - sowknow-net
 

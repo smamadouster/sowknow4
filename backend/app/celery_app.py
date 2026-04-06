@@ -40,6 +40,7 @@ celery_app = Celery(
         "app.tasks.monitoring_tasks",
         "app.tasks.article_tasks",
         "app.tasks.voice_tasks",
+        "app.tasks.pipeline_tasks",
     ],
 )
 

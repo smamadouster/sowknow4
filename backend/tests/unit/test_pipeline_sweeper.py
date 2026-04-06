@@ -163,10 +163,11 @@ class TestDispatchesBackpressuredDocuments:
 
         def query_side_effect(model):
             call_count[0] += 1
-            # STAGE_RETRY_CONFIG has 6 stages; each gets one query → first 6 are stuck checks
-            if call_count[0] <= 6:
+            # Step 1: 6 stuck-stage queries; Step 2: 7 pairs × 2 queries = 14
+            # Total before step 3: 20 queries
+            if call_count[0] <= 20:
                 return stuck_query
-            if call_count[0] == 7:
+            if call_count[0] == 21:
                 return uploaded_query
             return ocr_check_query
 
@@ -214,9 +215,10 @@ class TestDispatchesBackpressuredDocuments:
 
         def query_side_effect(model):
             call_count[0] += 1
-            if call_count[0] <= 6:
+            # Step 1: 6 queries; Step 2: 14 queries; Step 3 starts at 21
+            if call_count[0] <= 20:
                 return stuck_query
-            if call_count[0] == 7:
+            if call_count[0] == 21:
                 return uploaded_query
             return ocr_check_query
 

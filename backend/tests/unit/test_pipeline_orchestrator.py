@@ -18,21 +18,16 @@ class TestDispatchDocument:
 
     @patch("app.tasks.pipeline_orchestrator.redis_client")
     def test_returns_backpressure_when_embed_queue_full(self, mock_redis):
+        from app.models.pipeline import StageEnum
         from app.tasks.pipeline_orchestrator import dispatch_document
-        mock_redis.llen.return_value = 25
-        result = dispatch_document(str(uuid.uuid4()))
+        mock_redis.llen.return_value = 101  # embed max is 100
+        result = dispatch_document(str(uuid.uuid4()), from_stage=StageEnum.EMBEDDED)
         assert result == "backpressure:pipeline.embed"
 
     @patch("app.tasks.pipeline_orchestrator.redis_client")
     def test_returns_backpressure_when_ocr_queue_full(self, mock_redis):
         from app.tasks.pipeline_orchestrator import dispatch_document
-        def llen_side_effect(key):
-            if key == "pipeline.embed":
-                return 5
-            if key == "pipeline.ocr":
-                return 45
-            return 0
-        mock_redis.llen.side_effect = llen_side_effect
+        mock_redis.llen.return_value = 201  # ocr max is 200
         result = dispatch_document(str(uuid.uuid4()))
         assert result == "backpressure:pipeline.ocr"
 

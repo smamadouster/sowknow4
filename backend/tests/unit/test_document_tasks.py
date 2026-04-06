@@ -1,33 +1,32 @@
 """
 Unit tests for document processing Celery tasks.
 Tests stuck document handling, embedding error recovery, and chunk storage transactions.
+
+NOTE: TestStuckDocumentRecovery and TestRecoveryAttemptCap test the LEGACY
+recover_stuck_documents task which has been replaced by the pipeline sweeper.
+These tests are skipped — the sweeper is tested in test_pipeline_sweeper.py.
 """
 
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.processing import ProcessingQueue, TaskStatus, TaskType
-from app.tasks.anomaly_tasks import recover_stuck_documents
 
 
 def _run_recovery(db: Session, max_processing_minutes: int = 5) -> dict:
-    """
-    Run recover_stuck_documents using the provided test db session.
+    """Legacy helper — kept for reference but no longer used in active tests."""
+    from app.tasks.anomaly_tasks import recover_stuck_documents
 
-    The task internally calls SessionLocal() which would try to connect to
-    the real database.  We patch it to return the test fixture's session so
-    tests operate on the same SQLite database that the fixtures populate.
-    """
     mock_pd = Mock()
     mock_pd.delay = Mock(return_value=None)
 
     with patch("app.database.SessionLocal", return_value=db), \
          patch("app.tasks.document_tasks.process_document", mock_pd):
-        # Prevent the task from closing the shared test session
         original_close = db.close
         db.close = Mock()
         try:
@@ -38,6 +37,7 @@ def _run_recovery(db: Session, max_processing_minutes: int = 5) -> dict:
     return result
 
 
+@pytest.mark.skip(reason="Legacy recovery tests — replaced by pipeline sweeper (test_pipeline_sweeper.py)")
 class TestStuckDocumentRecovery:
     """Tests for the periodic stuck document recovery task"""
 
@@ -394,24 +394,16 @@ class TestDocumentStatusTransitions:
 class TestCeleryBeatSchedule:
     """Tests for Celery beat schedule configuration"""
 
-    def test_beat_schedule_has_stuck_document_task(self):
-        """Test that beat schedule includes stuck document recovery"""
+    def test_beat_schedule_has_pipeline_sweeper(self):
+        """Test that beat schedule includes the pipeline sweeper (replaces old recovery tasks)"""
         from app.celery_app import celery_app
 
         beat_schedule = celery_app.conf.beat_schedule
 
-        assert "recover-stuck-documents" in beat_schedule
-
-    def test_beat_schedule_timing(self):
-        """Test that beat schedule runs every 10 minutes with 5 min threshold"""
-        from app.celery_app import celery_app
-
-        beat_schedule = celery_app.conf.beat_schedule
-        stuck_task = beat_schedule.get("recover-stuck-documents")
-
-        assert stuck_task is not None
-        assert stuck_task["schedule"] == 600
-        assert stuck_task["args"] == (5,)
+        assert "pipeline-sweeper" in beat_schedule
+        sweeper = beat_schedule["pipeline-sweeper"]
+        assert sweeper["task"] == "pipeline.sweeper"
+        assert sweeper["schedule"] == 300  # Every 5 minutes
 
     def test_beat_schedule_has_daily_anomaly_report(self):
         """Test that beat schedule includes daily anomaly report"""
@@ -422,6 +414,7 @@ class TestCeleryBeatSchedule:
         assert "daily-anomaly-report" in beat_schedule
 
 
+@pytest.mark.skip(reason="Legacy recovery tests — replaced by pipeline sweeper (test_pipeline_sweeper.py)")
 class TestRecoveryAttemptCap:
     """Tests for the recovery attempt cap that prevents infinite requeue loops"""
 

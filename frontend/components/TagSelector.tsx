@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import TagAutocomplete from '@/components/TagAutocomplete';
 
 interface TagItem {
   tag_name: string;
@@ -17,6 +19,7 @@ interface TagSelectorProps {
 
 export default function TagSelector({ tags, onChange, required = false, placeholder }: TagSelectorProps) {
   const tCommon = useTranslations('common');
+  const isMobile = useIsMobile();
   const [input, setInput] = useState('');
 
   const addTag = useCallback(() => {
@@ -44,19 +47,31 @@ export default function TagSelector({ tags, onChange, required = false, placehol
     }
   }, [addTag, input, tags, removeTag]);
 
+  if (isMobile) {
+    return (
+      <TagAutocomplete
+        tags={tags}
+        onChange={onChange}
+        required={required}
+        placeholder={placeholder}
+      />
+    );
+  }
+
+  // Desktop: original inline tag input, vault-themed
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2 min-h-[32px]">
         {tags.map(tag => (
           <span
             key={tag.tag_name}
-            className="inline-flex items-center gap-1 px-2 py-1 text-sm rounded-full bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200"
+            className="inline-flex items-center gap-1 px-2 py-1 text-sm rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20"
           >
             {tag.tag_name}
             <button
               type="button"
               onClick={() => removeTag(tag.tag_name)}
-              className="ml-1 text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200"
+              className="ml-1 text-amber-400/70 hover:text-amber-300 transition-colors"
             >
               &times;
             </button>
@@ -70,19 +85,19 @@ export default function TagSelector({ tags, onChange, required = false, placehol
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || 'Add tag...'}
-          className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+          className="flex-1 px-3 py-2 rounded-lg border border-white/[0.08] bg-vault-800/50 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/30 text-sm"
         />
         <button
           type="button"
           onClick={addTag}
           disabled={!input.trim()}
-          className="px-3 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           +
         </button>
       </div>
       {required && tags.length === 0 && (
-        <p className="text-sm text-red-500">At least one tag is required</p>
+        <p className="text-sm text-red-400">At least one tag is required</p>
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getCsrfToken } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import VoiceRecorder from '@/components/VoiceRecorder';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -306,13 +307,13 @@ function CitationsPanel({ citations, open, onClose, sourcesLabel, relevanceLabel
 function TypeFilterChips({ active, onChange, counts, labels }: { active: ResultTypeFilter; onChange: (filter: ResultTypeFilter) => void; counts: Record<string, number>; labels: Record<string, string> }) {
   const filters: ResultTypeFilter[] = ['all', 'document', 'bookmark', 'note', 'space'];
   return (
-    <div className="flex flex-wrap gap-2 mb-4">
+    <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide md:flex-wrap">
       {filters.map((f) => {
         const isActive = active === f;
         const count = f === 'all' ? Object.values(counts).reduce((a, b) => a + b, 0) : (counts[f] || 0);
         const style = f !== 'all' ? TYPE_BADGE_STYLES[f] : null;
         return (
-          <button key={f} onClick={() => onChange(f)} className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all border ${
+          <button key={f} onClick={() => onChange(f)} className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all border flex-shrink-0 min-h-[44px] md:min-h-0 ${
             isActive ? 'bg-vault-800 text-amber-400 border-amber-400/30' : 'bg-vault-900/60 text-text-muted border-white/[0.06] hover:border-white/[0.12]'
           }`}>
             {style && <span className="text-xs">{style.icon}</span>}
@@ -374,6 +375,8 @@ export default function SearchPage() {
   const [stream, setStream] = useState<StreamState>({
     stage: 'idle', stageMessage: '', intent: null, results: [], synthesis: null, citations: [], suggestions: [], hasConfidential: false, totalFound: 0, modelUsed: null, globalResults: [],
   });
+
+  const isMobile = useIsMobile();
 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -507,68 +510,70 @@ export default function SearchPage() {
   const typeLabels: Record<string, string> = { all: t('typeFilter.all' as Parameters<typeof t>[0]), document: t('typeFilter.documents' as Parameters<typeof t>[0]), bookmark: t('typeFilter.bookmarks' as Parameters<typeof t>[0]), note: t('typeFilter.notes' as Parameters<typeof t>[0]), space: t('typeFilter.spaces' as Parameters<typeof t>[0]) };
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto pb-20">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400/20 to-amber-600/5 border border-amber-400/20 flex items-center justify-center">
-          <span className="text-amber-400 text-lg">⊛</span>
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-text-primary tracking-tight font-display">{t('title')}</h1>
-        </div>
-        {stream.hasConfidential && canSeeConfidential && (
-          <div className="ml-auto bg-vault-1000 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border border-amber-400/20">🔒 {t('confidentialNotice')}</div>
-        )}
-      </div>
-
-      {/* Search form */}
-      <form onSubmit={handleSubmit} className="mb-2">
-        <div className="flex items-center bg-vault-800/50 border border-white/[0.08] rounded-xl px-4 shadow-card focus-within:border-amber-400/30 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all">
-          <span className="text-lg text-text-muted/40 mr-2 flex-shrink-0">⌕</span>
-          <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearchWithQuery(query); } }} placeholder={t('placeholder')} disabled={isSearching} autoFocus className="flex-1 border-none outline-none bg-transparent text-sm text-text-primary py-3.5 placeholder:text-text-muted/40" />
-          <button
-            type="button"
-            onClick={() => setShowVoiceSearch((v) => !v)}
-            className={`flex-shrink-0 p-2 rounded-lg mr-1 transition-colors ${
-              showVoiceSearch
-                ? 'bg-amber-500/20 text-amber-400'
-                : 'text-text-muted/40 hover:text-amber-400 hover:bg-amber-500/10'
-            }`}
-            title={t('voiceSearch')}
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-            </svg>
-          </button>
-          {isSearching ? (
-            <button type="button" onClick={() => abortRef.current?.abort()} className="bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg px-3.5 py-2 text-xs font-bold cursor-pointer flex-shrink-0 hover:bg-red-500/30 transition-colors">■ {t('stop')}</button>
-          ) : (
-            <button type="submit" disabled={!query.trim()} className="bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 border-none rounded-lg px-4 py-2 text-xs font-bold cursor-pointer flex-shrink-0 disabled:opacity-40 hover:from-amber-400 hover:to-amber-500 transition-all shadow-lg shadow-amber-500/20">
-              {t('searchButton')} →
-            </button>
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto pb-24 md:pb-20">
+      <div className={isMobile ? 'sticky top-14 z-30 bg-vault-1000/95 backdrop-blur-xl -mx-4 px-4 pt-4 pb-2 border-b border-white/[0.04]' : ''}>
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400/20 to-amber-600/5 border border-amber-400/20 flex items-center justify-center">
+            <span className="text-amber-400 text-lg">⊛</span>
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-text-primary tracking-tight font-display">{t('title')}</h1>
+          </div>
+          {stream.hasConfidential && canSeeConfidential && (
+            <div className="ml-auto bg-vault-1000 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border border-amber-400/20">🔒 {t('confidentialNotice')}</div>
           )}
         </div>
-        {stream.intent && (
-          <IntentBadge intent={stream.intent} confidenceLabel={t('confidence')} intentLabel={t((`intent.${INTENT_TYPES.includes(stream.intent.type) ? stream.intent.type : 'unknown'}`) as Parameters<typeof t>[0])} />
-        )}
-      </form>
 
-      {showVoiceSearch && (
-        <div className="mb-2 p-3 bg-vault-800/50 border border-white/[0.06] rounded-xl">
-          <VoiceRecorder
-            mode="search"
-            onTranscript={(text) => {
-              if (text.trim()) {
-                setQuery(text);
-                setShowVoiceSearch(false);
-                runSearchWithQuery(text);
-              }
-            }}
-            onCancel={() => setShowVoiceSearch(false)}
-          />
-        </div>
-      )}
+        {/* Search form */}
+        <form onSubmit={handleSubmit} className="mb-2">
+          <div className="flex items-center bg-vault-800/50 border border-white/[0.08] rounded-xl px-4 shadow-card focus-within:border-amber-400/30 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all">
+            <span className="text-lg text-text-muted/40 mr-2 flex-shrink-0">⌕</span>
+            <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearchWithQuery(query); } }} placeholder={t('placeholder')} disabled={isSearching} autoFocus className="flex-1 border-none outline-none bg-transparent text-sm text-text-primary py-3.5 placeholder:text-text-muted/40" />
+            <button
+              type="button"
+              onClick={() => setShowVoiceSearch((v) => !v)}
+              className={`flex-shrink-0 min-h-[44px] min-w-[44px] p-2 rounded-lg mr-1 transition-colors ${
+                showVoiceSearch
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'text-text-muted/40 hover:text-amber-400 hover:bg-amber-500/10'
+              }`}
+              title={t('voiceSearch')}
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+              </svg>
+            </button>
+            {isSearching ? (
+              <button type="button" onClick={() => abortRef.current?.abort()} className="bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg px-3.5 py-2 text-xs font-bold cursor-pointer flex-shrink-0 min-h-[44px] hover:bg-red-500/30 transition-colors">■ {t('stop')}</button>
+            ) : (
+              <button type="submit" disabled={!query.trim()} className="bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 border-none rounded-lg px-4 py-2 text-xs font-bold cursor-pointer flex-shrink-0 min-h-[44px] disabled:opacity-40 hover:from-amber-400 hover:to-amber-500 transition-all shadow-lg shadow-amber-500/20">
+                {t('searchButton')} →
+              </button>
+            )}
+          </div>
+          {stream.intent && (
+            <IntentBadge intent={stream.intent} confidenceLabel={t('confidence')} intentLabel={t((`intent.${INTENT_TYPES.includes(stream.intent.type) ? stream.intent.type : 'unknown'}`) as Parameters<typeof t>[0])} />
+          )}
+        </form>
+
+        {showVoiceSearch && (
+          <div className="mb-2 p-3 bg-vault-800/50 border border-white/[0.06] rounded-xl">
+            <VoiceRecorder
+              mode="search"
+              onTranscript={(text) => {
+                if (text.trim()) {
+                  setQuery(text);
+                  setShowVoiceSearch(false);
+                  runSearchWithQuery(text);
+                }
+              }}
+              onCancel={() => setShowVoiceSearch(false)}
+            />
+          </div>
+        )}
+      </div>
 
       <PipelineProgress stage={stream.stage} message={stream.stageMessage} />
 

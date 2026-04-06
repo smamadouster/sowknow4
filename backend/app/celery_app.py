@@ -42,6 +42,7 @@ celery_app = Celery(
         "app.tasks.voice_tasks",
         "app.tasks.pipeline_tasks",
         "app.tasks.pipeline_orchestrator",
+        "app.tasks.pipeline_sweeper",
     ],
 )
 
@@ -101,20 +102,10 @@ celery_app.conf.update(
             "schedule": crontab(hour=9, minute=0),  # 09:00 AM daily
             "args": (),
         },
-        "recover-stuck-documents": {
-            "task": "app.tasks.anomaly_tasks.recover_stuck_documents",
-            "schedule": 600,  # Every 10 minutes (600 seconds)
-            "args": (15,),  # Max 15 minutes in processing state before recovery (large docs take 10+ min)
-        },
-        "recover-pending-documents": {
-            "task": "app.tasks.anomaly_tasks.recover_pending_documents",
-            "schedule": 600,  # Every 10 minutes (was 5 — too aggressive)
-            "args": (10,),  # Max 10 minutes in PENDING state before recovery
-        },
-        "fail-stuck-processing": {
-            "task": "app.tasks.anomaly_tasks.fail_stuck_processing_documents",
-            "schedule": 900,  # Every 15 minutes
-            "args": (30,),  # Max 30 minutes in PROCESSING before auto-fail
+        "pipeline-sweeper": {
+            "task": "pipeline.sweeper",
+            "schedule": 300,  # Every 5 minutes — replaces recover_stuck/recover_pending/fail_stuck
+            "args": (),
         },
         "cleanup-old-reports": {
             "task": "app.tasks.report_tasks.cleanup_old_reports",

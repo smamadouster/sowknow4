@@ -33,28 +33,24 @@ def upgrade() -> None:
         END $$;
     """))
 
-    # Create pipeline_stages table
-    op.create_table(
-        "pipeline_stages",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column(
-            "document_id",
-            UUID(as_uuid=True),
-            sa.ForeignKey("sowknow.documents.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("stage", sa.Enum("uploaded", "ocr", "chunked", "embedded", "indexed", "articles", "entities", "enriched", name="stageenum", schema="sowknow"), nullable=False),
-        sa.Column("status", sa.Enum("pending", "running", "completed", "failed", "skipped", name="stagestatus", schema="sowknow"), nullable=False, server_default="pending"),
-        sa.Column("attempt", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("max_attempts", sa.Integer(), nullable=False, server_default="3"),
-        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("worker_id", sa.String(255), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        schema="sowknow",
-    )
+    # Create pipeline_stages table using raw SQL to avoid SQLAlchemy's
+    # enum creation issues with schema-qualified types
+    op.execute(sa.text("""
+        CREATE TABLE sowknow.pipeline_stages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            document_id UUID NOT NULL REFERENCES sowknow.documents(id) ON DELETE CASCADE,
+            stage sowknow.stageenum NOT NULL,
+            status sowknow.stagestatus NOT NULL DEFAULT 'pending',
+            attempt INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            error_message TEXT,
+            worker_id VARCHAR(255),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """))
 
     # Indexes
     op.create_index(

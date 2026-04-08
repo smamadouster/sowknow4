@@ -4,7 +4,8 @@ RUN rm -rf /usr/local/lib/python3.12/site-packages/pip* && \
     python -m ensurepip --default-pip && \
     python -m pip install --no-cache-dir --upgrade pip
 
-RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser && \
+    groupadd -g 988 docker && usermod -aG docker appuser
 
 WORKDIR /app
 COPY . .

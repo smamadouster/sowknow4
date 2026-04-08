@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import smtplib
 from email.mime.text import MIMEText
@@ -8,6 +9,13 @@ import httpx
 import structlog
 
 logger = structlog.get_logger()
+
+
+def _resolve_env(value: str) -> str:
+    """Resolve ${VAR} patterns in config values to environment variables."""
+    if not isinstance(value, str):
+        return value
+    return re.sub(r'\$\{(\w+)\}', lambda m: os.getenv(m.group(1), m.group(0)), value)
 
 
 class AlertManager:
@@ -22,19 +30,19 @@ class AlertManager:
         if tf and os.path.exists(tf):
             self.telegram_token = open(tf).read().strip()
         if not self.telegram_token:
-            self.telegram_token = str(tg.get("token", os.getenv("TELEGRAM_BOT_TOKEN", "")))
-        self.telegram_chat_id = str(tg.get("chat_id", os.getenv("TELEGRAM_CHAT_ID", "")))
+            self.telegram_token = _resolve_env(str(tg.get("token", "")))
+        self.telegram_chat_id = _resolve_env(str(tg.get("chat_id", "")))
 
         self.slack_url = config.get("slack", {}).get("webhook_url", os.getenv("SLACK_WEBHOOK_URL", ""))
 
         # Email (Gmail SMTP)
         em = config.get("email", {})
-        self.smtp_host = em.get("smtp_host", os.getenv("GMAIL_SMTP_HOST", "smtp.gmail.com"))
-        self.smtp_port = int(em.get("smtp_port", os.getenv("GMAIL_SMTP_PORT", "587")))
-        self.smtp_user = str(em.get("smtp_user", os.getenv("GMAIL_SMTP_USER", "")))
-        self.smtp_password = str(em.get("smtp_password", os.getenv("GMAIL_SMTP_PASSWORD", "")))
-        self.email_from = str(em.get("from", self.smtp_user))
-        self.email_to = str(em.get("to", ""))
+        self.smtp_host = _resolve_env(em.get("smtp_host", "smtp.gmail.com"))
+        self.smtp_port = int(_resolve_env(em.get("smtp_port", "587")))
+        self.smtp_user = _resolve_env(em.get("smtp_user", ""))
+        self.smtp_password = _resolve_env(em.get("smtp_password", ""))
+        self.email_from = _resolve_env(em.get("from", self.smtp_user))
+        self.email_to = _resolve_env(em.get("to", ""))
 
     @property
     def email_configured(self) -> bool:

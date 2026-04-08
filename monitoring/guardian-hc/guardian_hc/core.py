@@ -5,7 +5,7 @@ Guardian HC Core -- Configuration-driven health check and self-healing.
 import yaml
 import asyncio
 import structlog
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
 from guardian_hc.checks.containers import ContainerChecker
@@ -260,7 +260,7 @@ class GuardianHC:
             now = datetime.now(timezone.utc)
             target = now.replace(hour=6, minute=0, second=0, microsecond=0)
             if now >= target:
-                target = target.replace(day=target.day + 1)
+                target += timedelta(days=1)
             wait = (target - now).total_seconds()
             logger.info("daily_report.scheduled", next_run=target.isoformat(), wait_hours=round(wait / 3600, 1))
             await asyncio.sleep(wait)

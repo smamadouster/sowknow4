@@ -254,11 +254,11 @@ class GuardianHC:
         await asyncio.gather(*tasks)
 
     async def _daily_report_loop(self):
-        """Send daily report at 7:00 AM UTC."""
+        """Send daily report at 6:00 AM UTC."""
         from guardian_hc.daily_report import send_report
         while True:
             now = datetime.now(timezone.utc)
-            target = now.replace(hour=7, minute=0, second=0, microsecond=0)
+            target = now.replace(hour=6, minute=0, second=0, microsecond=0)
             if now >= target:
                 target = target.replace(day=target.day + 1)
             wait = (target - now).total_seconds()

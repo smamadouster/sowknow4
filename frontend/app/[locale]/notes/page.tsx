@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import TagSelector from '@/components/TagSelector';
 import VoiceRecorder from '@/components/VoiceRecorder';
@@ -151,14 +151,43 @@ export default function NotesPage() {
     fetchNotes();
   };
 
+  const activeFieldRef = useRef(activeField);
+  useEffect(() => { activeFieldRef.current = activeField; }, [activeField]);
+
   const handleVoiceTranscript = useCallback((blob: Blob, transcript: string) => {
-    if (activeField === 'title') {
+    if (activeFieldRef.current === 'title') {
       setEditTitle(prev => prev ? `${prev} ${transcript}` : transcript);
     } else {
       setEditContent(prev => prev ? `${prev}\n\n${transcript}` : transcript);
     }
     setPendingAudio({ blob, transcript });
-  }, [activeField]);
+  }, []);
+
+  // Read-only viewer body shared between mobile sheet and desktop modal
+  const noteViewerBody = viewingNote && (
+    <div className="space-y-4">
+      {viewingNote.content ? (
+        <p className="text-text-primary whitespace-pre-wrap text-sm leading-relaxed">{viewingNote.content}</p>
+      ) : (
+        <p className="text-text-muted italic text-sm">{t('no_content')}</p>
+      )}
+      {viewingNote.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-2 border-t border-white/[0.06]">
+          {viewingNote.tags.map(tag => (
+            <span key={tag.id} className="px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              {tag.tag_name}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-text-muted">
+        {new Date(viewingNote.created_at).toLocaleDateString(locale)}
+        {viewingNote.updated_at !== viewingNote.created_at && (
+          <> · {t('updated')} {new Date(viewingNote.updated_at).toLocaleDateString(locale)}</>
+        )}
+      </p>
+    </div>
+  );
 
   // Editor content shared between mobile sheet and desktop modal
   const editorContent = (
@@ -194,7 +223,7 @@ export default function NotesPage() {
           <span className="text-xs text-text-muted">
             {activeField === 'title' ? t('title_label') : t('content_label')}
           </span>
-          <span className="text-xs text-amber-400/60">&#8592; dictation target</span>
+          <span className="text-xs text-amber-400/60">{t('dictation_target')}</span>
         </div>
         <VoiceRecorder
           mode="note"
@@ -361,28 +390,7 @@ export default function NotesPage() {
             </div>
           }
         >
-          <div className="space-y-4">
-            {viewingNote.content ? (
-              <p className="text-text-primary whitespace-pre-wrap text-sm leading-relaxed">{viewingNote.content}</p>
-            ) : (
-              <p className="text-text-muted italic text-sm">{t('no_content')}</p>
-            )}
-            {viewingNote.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 pt-2 border-t border-white/[0.06]">
-                {viewingNote.tags.map(tag => (
-                  <span key={tag.id} className="px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    {tag.tag_name}
-                  </span>
-                ))}
-              </div>
-            )}
-            <p className="text-xs text-text-muted">
-              {new Date(viewingNote.created_at).toLocaleDateString(locale)}
-              {viewingNote.updated_at !== viewingNote.created_at && (
-                <> · {t('updated')} {new Date(viewingNote.updated_at).toLocaleDateString(locale)}</>
-              )}
-            </p>
-          </div>
+          {noteViewerBody}
         </MobileSheet>
       )}
 
@@ -401,28 +409,7 @@ export default function NotesPage() {
                 </svg>
               </button>
             </div>
-            <div className="space-y-4">
-              {viewingNote.content ? (
-                <p className="text-text-primary whitespace-pre-wrap text-sm leading-relaxed">{viewingNote.content}</p>
-              ) : (
-                <p className="text-text-muted italic text-sm">{t('no_content')}</p>
-              )}
-              {viewingNote.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-3 border-t border-white/[0.06]">
-                  {viewingNote.tags.map(tag => (
-                    <span key={tag.id} className="px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                      {tag.tag_name}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <p className="text-xs text-text-muted">
-                {new Date(viewingNote.created_at).toLocaleDateString(locale)}
-                {viewingNote.updated_at !== viewingNote.created_at && (
-                  <> · {t('updated')} {new Date(viewingNote.updated_at).toLocaleDateString(locale)}</>
-                )}
-              </p>
-            </div>
+            {noteViewerBody}
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setViewingNote(null)}

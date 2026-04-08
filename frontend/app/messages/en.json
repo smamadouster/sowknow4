@@ -519,7 +519,8 @@
     "deleted": "Note deleted",
     "audio_pending": "Voice note attached — will be saved with the note",
     "no_content": "No content",
-    "updated": "Updated"
+    "updated": "Updated",
+    "dictation_target": "← dictation target"
   },
   "spaces": {
     "title": "Spaces",

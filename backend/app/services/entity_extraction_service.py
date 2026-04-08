@@ -278,13 +278,8 @@ class EntityExtractionService:
         except ValueError:
             relation_type = RelationType.RELATED_TO
 
-        source_entity = None
-        target_entity = None
-        for entity in entity_map.values():
-            if entity.name == source_name:
-                source_entity = entity
-            if entity.name == target_name:
-                target_entity = entity
+        source_entity = entity_map.get(source_name)
+        target_entity = entity_map.get(target_name)
 
         if not source_entity or not target_entity:
             return
@@ -558,16 +553,8 @@ Extract all entities, relationships, and dated events now:"""
         except ValueError:
             relation_type = RelationType.RELATED_TO
 
-        # Find entities
-        source_entity = None
-        target_entity = None
-
-        # Try exact match first
-        for entity in entity_map.values():
-            if entity.name == source_name:
-                source_entity = entity
-            if entity.name == target_name:
-                target_entity = entity
+        source_entity = entity_map.get(source_name)
+        target_entity = entity_map.get(target_name)
 
         if not source_entity or not target_entity:
             return

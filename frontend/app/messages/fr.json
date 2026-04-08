@@ -519,7 +519,8 @@
     "deleted": "Note supprimée",
     "audio_pending": "Note vocale jointe — sera enregistrée avec la note",
     "no_content": "Aucun contenu",
-    "updated": "Modifié"
+    "updated": "Modifié",
+    "dictation_target": "← cible de dictée"
   },
   "spaces": {
     "title": "Espaces",

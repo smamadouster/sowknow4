@@ -10,12 +10,6 @@ class DiskHealer:
     async def heal(self) -> dict:
         cleaned = []
         try:
-            vacuum = self.config.get("auto_clean", {}).get("journal_vacuum", "100M")
-            await (await asyncio.create_subprocess_shell(
-                f"journalctl --vacuum-size={vacuum}", stdout=asyncio.subprocess.PIPE
-            )).communicate()
-            cleaned.append(f"journald vacuumed to {vacuum}")
-
             if self.config.get("auto_clean", {}).get("docker_prune", True):
                 transport = httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")
                 async with httpx.AsyncClient(transport=transport, base_url="http://docker", timeout=30) as client:

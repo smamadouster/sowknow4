@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="guardian-hc",
-    version="1.1.0",
+    version="1.2.0",
     description="Self-Healing Health Check System for Docker Applications",
     author="GollamTech",
     author_email="contact@gollamtech.com",

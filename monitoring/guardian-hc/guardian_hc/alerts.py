@@ -1,4 +1,9 @@
 import os
+import asyncio
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 import httpx
 import structlog
 
@@ -22,6 +27,19 @@ class AlertManager:
 
         self.slack_url = config.get("slack", {}).get("webhook_url", os.getenv("SLACK_WEBHOOK_URL", ""))
 
+        # Email (Gmail SMTP)
+        em = config.get("email", {})
+        self.smtp_host = em.get("smtp_host", os.getenv("GMAIL_SMTP_HOST", "smtp.gmail.com"))
+        self.smtp_port = int(em.get("smtp_port", os.getenv("GMAIL_SMTP_PORT", "587")))
+        self.smtp_user = str(em.get("smtp_user", os.getenv("GMAIL_SMTP_USER", "")))
+        self.smtp_password = str(em.get("smtp_password", os.getenv("GMAIL_SMTP_PASSWORD", "")))
+        self.email_from = str(em.get("from", self.smtp_user))
+        self.email_to = str(em.get("to", ""))
+
+    @property
+    def email_configured(self) -> bool:
+        return bool(self.smtp_user and self.smtp_password and self.email_to)
+
     async def send(self, message: str):
         if self.telegram_token and self.telegram_chat_id:
             try:
@@ -44,3 +62,30 @@ class AlertManager:
                     await client.post(self.slack_url, json={"text": f"Guardian HC | SOWKNOW4: {message}"})
             except Exception:
                 pass
+
+    async def send_email(self, subject: str, html_body: str, plain_body: str = ""):
+        """Send HTML email via Gmail SMTP with STARTTLS. Runs in executor to avoid blocking."""
+        if not self.email_configured:
+            logger.warning("alert.email.not_configured")
+            return
+
+        def _send():
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = self.email_from
+            msg["To"] = self.email_to
+
+            if plain_body:
+                msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30) as server:
+                server.starttls()
+                server.login(self.smtp_user, self.smtp_password)
+                server.sendmail(self.email_from, [self.email_to], msg.as_string())
+
+        try:
+            await asyncio.to_thread(_send)
+            logger.info("alert.email.sent", to=self.email_to)
+        except Exception as e:
+            logger.warning("alert.email.failed", error=str(e)[:200])

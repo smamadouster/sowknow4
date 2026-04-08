@@ -517,7 +517,9 @@
     "delete_confirm": "Supprimer cette note ?",
     "saved": "Note enregistrée",
     "deleted": "Note supprimée",
-    "audio_pending": "Note vocale jointe — sera enregistrée avec la note"
+    "audio_pending": "Note vocale jointe — sera enregistrée avec la note",
+    "no_content": "Aucun contenu",
+    "updated": "Modifié"
   },
   "spaces": {
     "title": "Espaces",

@@ -517,7 +517,9 @@
     "delete_confirm": "Delete this note?",
     "saved": "Note saved",
     "deleted": "Note deleted",
-    "audio_pending": "Voice note attached — will be saved with the note"
+    "audio_pending": "Voice note attached — will be saved with the note",
+    "no_content": "No content",
+    "updated": "Updated"
   },
   "spaces": {
     "title": "Spaces",

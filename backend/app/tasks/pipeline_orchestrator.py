@@ -16,6 +16,7 @@ MAX_QUEUE_DEPTH = {
     "pipeline.embed": 300,
     "pipeline.ocr": 500,
     "pipeline.articles": 300,
+    "pipeline.entities": 200,
 }
 
 # Mapping from StageEnum to Celery task (for building partial chains)
@@ -42,6 +43,7 @@ _STAGE_QUEUE = {
     StageEnum.OCR: "pipeline.ocr",
     StageEnum.EMBEDDED: "pipeline.embed",
     StageEnum.ARTICLES: "pipeline.articles",
+    StageEnum.ENTITIES: "pipeline.entities",
 }
 
 

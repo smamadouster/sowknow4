@@ -202,7 +202,7 @@ export function Navigation() {
   const mainItems = navItems.filter(item => !item.roles || item.roles.includes(userRole));
   const visibleAdminItems = adminItems.filter(item => !item.roles || item.roles.includes(userRole));
 
-  const mobileTabHrefs = ['/search', '/notes', '/documents', '/chat'];
+  const mobileTabHrefs = ['/search', '/documents', '/chat'];
   const mobileTabItems = mobileTabHrefs
     .map(href => navItems.find(item => item.href === href))
     .filter((item): item is NavItem => item !== undefined);
@@ -328,7 +328,7 @@ export function Navigation() {
 
       {/* Mobile bottom navigation */}
       <nav
-        className={`md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl pb-safe transition-transform duration-300 ${
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl pb-safe px-safe transition-transform duration-300 ${
           scrollDirection === 'down' ? 'translate-y-full' : 'translate-y-0'
         }`}
         aria-label={t('main_navigation')}
@@ -349,7 +349,7 @@ export function Navigation() {
                   <span className="absolute top-1.5 left-1/2 -translate-x-1/2 w-6 h-1 rounded-full bg-amber-400/80" aria-hidden="true" />
                 )}
                 <span aria-hidden="true" className="mt-2">{item.icon}</span>
-                <span className="text-[10px] font-medium truncate max-w-[60px]">{t(item.labelKey)}</span>
+                <span className="text-[10px] font-medium whitespace-nowrap">{t(item.labelKey)}</span>
               </Link>
             );
           })}

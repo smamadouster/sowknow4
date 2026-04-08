@@ -562,6 +562,7 @@ export default function SearchPage() {
           <div className="mb-2 p-3 bg-vault-800/50 border border-white/[0.06] rounded-xl">
             <VoiceRecorder
               mode="search"
+              lang={locale}
               onTranscript={(text) => {
                 if (text.trim()) {
                   setQuery(text);

@@ -55,6 +55,7 @@ export default function NotesPage() {
   const [editTags, setEditTags] = useState<Array<{ tag_name: string; tag_type?: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [pendingAudio, setPendingAudio] = useState<{ blob: Blob; transcript: string } | null>(null);
+  const [activeField, setActiveField] = useState<'title' | 'content'>('content');
 
   const fetchNotes = useCallback(async () => {
     try {
@@ -149,6 +150,15 @@ export default function NotesPage() {
     fetchNotes();
   };
 
+  const handleVoiceTranscript = useCallback((blob: Blob, transcript: string) => {
+    if (activeField === 'title') {
+      setEditTitle(prev => prev ? `${prev} ${transcript}` : transcript);
+    } else {
+      setEditContent(prev => prev ? `${prev}\n\n${transcript}` : transcript);
+    }
+    setPendingAudio({ blob, transcript });
+  }, [activeField]);
+
   // Editor content shared between mobile sheet and desktop modal
   const editorContent = (
     <div className="space-y-4">
@@ -158,8 +168,11 @@ export default function NotesPage() {
           type="text"
           value={editTitle}
           onChange={e => setEditTitle(e.target.value)}
+          onFocus={() => setActiveField('title')}
           autoFocus
-          className="w-full px-3 py-2 rounded-lg border border-white/[0.08] bg-vault-800/50 text-text-primary placeholder-text-muted/50 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none"
+          className={`w-full px-3 py-2 rounded-lg border bg-vault-800/50 text-text-primary placeholder-text-muted/50 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none ${
+            activeField === 'title' ? 'border-amber-500/30' : 'border-white/[0.08]'
+          }`}
           required
         />
       </div>
@@ -168,24 +181,31 @@ export default function NotesPage() {
         <textarea
           value={editContent}
           onChange={e => setEditContent(e.target.value)}
+          onFocus={() => setActiveField('content')}
           rows={10}
-          className="w-full px-3 py-2 rounded-lg border border-white/[0.08] bg-vault-800/50 text-text-primary placeholder-text-muted/50 font-mono text-sm focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none"
+          className={`w-full px-3 py-2 rounded-lg border bg-vault-800/50 text-text-primary placeholder-text-muted/50 font-mono text-sm focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none ${
+            activeField === 'content' ? 'border-amber-500/30' : 'border-white/[0.08]'
+          }`}
         />
-        <div className="mt-2 p-3 bg-vault-800/30 rounded-lg border border-white/[0.06]">
-          <VoiceRecorder
-            mode="note"
-            onAudioReady={(blob, transcript) => {
-              setEditContent(prev => prev ? `${prev}\n\n${transcript}` : transcript);
-              setPendingAudio({ blob, transcript });
-            }}
-          />
-        </div>
-        {pendingAudio && (
-          <p className="mt-1 text-xs text-amber-400">
-            {t('audio_pending')}
-          </p>
-        )}
       </div>
+      <div className="p-3 bg-vault-800/30 rounded-lg border border-white/[0.06]">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-text-muted">
+            {activeField === 'title' ? t('title_label') : t('content_label')}
+          </span>
+          <span className="text-xs text-amber-400/60">&#8592; dictation target</span>
+        </div>
+        <VoiceRecorder
+          mode="note"
+          lang={locale}
+          onAudioReady={handleVoiceTranscript}
+        />
+      </div>
+      {pendingAudio && (
+        <p className="text-xs text-amber-400">
+          {t('audio_pending')}
+        </p>
+      )}
       <div>
         <label className="block text-sm font-medium text-text-secondary mb-1">{t('tags_label')}</label>
         <TagSelector tags={editTags} onChange={setEditTags} />

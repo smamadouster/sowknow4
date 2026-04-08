@@ -7,6 +7,7 @@ interface UseVoiceRecorderOptions {
   onAudioReady?: (blob: Blob, transcript: string) => void;
   privateMode?: boolean;
   apiBaseUrl?: string;
+  lang?: string;
 }
 
 interface UseVoiceRecorderReturn {
@@ -27,7 +28,7 @@ interface UseVoiceRecorderReturn {
 }
 
 export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoiceRecorderReturn {
-  const { onTranscript, onAudioReady, privateMode = false, apiBaseUrl = '' } = options;
+  const { onTranscript, onAudioReady, privateMode = false, apiBaseUrl = '', lang } = options;
 
   const [state, setState] = useState<RecordingState>('idle');
   const [transcript, setTranscript] = useState('');
@@ -86,13 +87,18 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
       audioContextRef.current = audioCtx;
       setAnalyserNode(analyser);
 
-      // MediaRecorder
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      // MediaRecorder — Safari/iOS doesn't support webm, so pick a supported mimeType
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : undefined;
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach(t => t.stop());
@@ -106,7 +112,10 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
         const recognition = new SpeechRecognitionCtor!();
         recognition.continuous = true;
         recognition.interimResults = true;
-        // Leave lang unset for auto-detect FR/EN
+        // Set language from app locale for accurate recognition
+        if (lang) {
+          recognition.lang = lang === 'fr' ? 'fr-FR' : lang === 'en' ? 'en-US' : lang;
+        }
         recognition.onresult = (event: SpeechRecognitionEvent) => {
           let interim = '';
           let final_ = '';
@@ -170,7 +179,8 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
       setState('transcribing');
       try {
         const formData = new FormData();
-        formData.append('file', audioBlob, 'voice.webm');
+        const ext = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+        formData.append('file', audioBlob, `voice.${ext}`);
         const res = await fetch(`${apiBaseUrl}/api/v1/voice/transcribe`, {
           method: 'POST',
           body: formData,

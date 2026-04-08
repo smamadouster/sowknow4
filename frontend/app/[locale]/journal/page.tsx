@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { formatDate } from '@/lib/formatDate';
 import api from '@/lib/api';
 import VoiceRecorder from '@/components/VoiceRecorder';
@@ -31,6 +31,7 @@ interface EntryContent {
 export default function JournalPage() {
   const t = useTranslations('journal');
   const voiceT = useTranslations('voice');
+  const locale = useLocale();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [showRecorder, setShowRecorder] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -203,6 +204,7 @@ export default function JournalPage() {
         <div className="mb-6 p-4 bg-vault-900/50 border border-vault-700 rounded-xl">
           <VoiceRecorder
             mode="journal"
+            lang={locale}
             onAudioReady={async (blob, transcript) => {
               try {
                 await api.uploadAudioDocument(blob, 'confidential', transcript, 'journal', 'voice-note');

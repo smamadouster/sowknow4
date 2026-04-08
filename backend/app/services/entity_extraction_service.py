@@ -167,6 +167,180 @@ class EntityExtractionService:
             logger.error(f"Entity extraction error for {document.filename}: {e}")
             return {"entities": [], "relationships": [], "events": []}
 
+    def extract_entities_from_document_sync(
+        self, document: Document, chunks: list[DocumentChunk], db: Session
+    ) -> dict[str, Any]:
+        """Sync wrapper for Celery workers.
+
+        Uses a sync DB session for all reads/writes and only calls the async
+        LLM extraction via asyncio.run() to avoid event-loop conflicts with
+        the module-level async engine.
+        """
+        import asyncio
+
+        try:
+            document_text = self._prepare_document_text(chunks)
+
+            # Only the LLM call needs async (HTTP)
+            extracted = asyncio.run(
+                self._extract_with_llm(
+                    filename=str(document.filename),
+                    text=document_text,
+                    metadata={
+                        "created_at": document.created_at.isoformat(),
+                        "mime_type": document.mime_type,
+                    },
+                    use_ollama=False,
+                )
+            )
+
+            if not extracted:
+                return {"entities": [], "relationships": [], "events": []}
+
+            # Store entities (sync DB operations)
+            entity_map = {}
+            for entity_data in extracted.get("entities", []):
+                entity = self._get_or_create_entity_sync(entity_data=entity_data, db=db)
+                if entity:
+                    entity_map[entity.name] = entity
+                    mention = EntityMention(
+                        entity_id=entity.id,
+                        document_id=document.id,
+                        context_text=entity_data.get("context", "")[:500],
+                        confidence_score=entity_data.get("confidence", 50),
+                    )
+                    db.add(mention)
+
+            # Store relationships
+            for rel_data in extracted.get("relationships", []):
+                self._create_relationship_sync(
+                    rel_data=rel_data,
+                    entity_map=entity_map,
+                    document_id=document.id,
+                    db=db,
+                )
+
+            # Extract timeline events
+            for event_data in extracted.get("events", []):
+                self._create_timeline_event_sync(event_data=event_data, document_id=document.id, db=db)
+
+            db.commit()
+
+            logger.info(f"Extracted {len(extracted.get('entities', []))} entities from {document.filename}")
+            return extracted
+
+        except Exception as e:
+            logger.error(f"Entity extraction error for {document.filename}: {e}")
+            db.rollback()
+            return {"entities": [], "relationships": [], "events": []}
+
+    def _get_or_create_entity_sync(self, entity_data: dict[str, Any], db: Session) -> Entity | None:
+        """Sync version of _get_or_create_entity for Celery workers."""
+        entity_type = EntityType(entity_data.get("type", "other"))
+        name = entity_data.get("name", "")
+        if not name:
+            return None
+
+        entity = db.query(Entity).filter(
+            and_(Entity.name == name, Entity.entity_type == entity_type)
+        ).first()
+
+        if not entity:
+            entity = Entity(
+                name=name,
+                entity_type=entity_type,
+                canonical_id=entity_data.get("canonical_id"),
+                aliases=entity_data.get("aliases", []),
+                attributes=entity_data.get("attributes", {}),
+                confidence_score=entity_data.get("confidence", 50),
+                first_seen_at=date.today(),
+                last_seen_at=date.today(),
+            )
+            db.add(entity)
+            db.flush()
+
+        entity.document_count = (entity.document_count or 0) + 1
+        entity.last_seen_at = date.today()
+        return entity
+
+    def _create_relationship_sync(
+        self,
+        rel_data: dict[str, Any],
+        entity_map: dict[str, Entity],
+        document_id: str,
+        db: Session,
+    ):
+        """Sync version of _create_relationship for Celery workers."""
+        source_name = rel_data.get("source", "")
+        target_name = rel_data.get("target", "")
+        try:
+            relation_type = RelationType(rel_data.get("type", "related_to"))
+        except ValueError:
+            relation_type = RelationType.RELATED_TO
+
+        source_entity = None
+        target_entity = None
+        for entity in entity_map.values():
+            if entity.name == source_name:
+                source_entity = entity
+            if entity.name == target_name:
+                target_entity = entity
+
+        if not source_entity or not target_entity:
+            return
+
+        existing = db.query(EntityRelationship).filter(
+            and_(
+                EntityRelationship.source_id == source_entity.id,
+                EntityRelationship.target_id == target_entity.id,
+                EntityRelationship.relation_type == relation_type,
+            )
+        ).first()
+
+        if existing:
+            existing.document_count = (existing.document_count or 0) + 1
+            existing.last_seen_at = date.today()
+        else:
+            relationship = EntityRelationship(
+                source_id=source_entity.id,
+                target_id=target_entity.id,
+                relation_type=relation_type,
+                confidence_score=rel_data.get("confidence", 50),
+                attributes=rel_data.get("attributes", {}),
+                document_count=1,
+                first_seen_at=date.today(),
+                last_seen_at=date.today(),
+            )
+            db.add(relationship)
+
+        source_entity.relationship_count = (source_entity.relationship_count or 0) + 1
+        target_entity.relationship_count = (target_entity.relationship_count or 0) + 1
+
+    def _create_timeline_event_sync(self, event_data: dict[str, Any], document_id: str, db: Session):
+        """Sync version of _create_timeline_event for Celery workers."""
+        try:
+            event_date_str = event_data.get("date")
+            if not event_date_str:
+                return
+            try:
+                event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return
+
+            event = TimelineEvent(
+                title=event_data.get("title", "Untitled Event"),
+                description=event_data.get("description", ""),
+                event_date=event_date,
+                event_date_precision=event_data.get("precision", "exact"),
+                entity_ids=event_data.get("entity_ids", []),
+                document_id=document_id,
+                event_type=event_data.get("type", "milestone"),
+                importance=event_data.get("importance", 50),
+            )
+            db.add(event)
+        except Exception as e:
+            logger.error(f"Error creating timeline event: {e}")
+
     def _prepare_document_text(self, chunks: list[DocumentChunk]) -> str:
         """Prepare document text for entity extraction"""
         # Combine chunks with page references
@@ -361,10 +535,10 @@ Extract all entities, relationships, and dated events now:"""
                 last_seen_at=date.today(),
             )
             db.add(entity)
-            db.flush()
+            await db.flush()
 
         # Update document count
-        entity.document_count += 1
+        entity.document_count = (entity.document_count or 0) + 1
         entity.last_seen_at = date.today()
 
         return entity
@@ -379,7 +553,10 @@ Extract all entities, relationships, and dated events now:"""
         """Create relationship between entities"""
         source_name = rel_data.get("source", "")
         target_name = rel_data.get("target", "")
-        relation_type = RelationType(rel_data.get("type", "related_to"))
+        try:
+            relation_type = RelationType(rel_data.get("type", "related_to"))
+        except ValueError:
+            relation_type = RelationType.RELATED_TO
 
         # Find entities
         source_entity = None
@@ -408,7 +585,7 @@ Extract all entities, relationships, and dated events now:"""
         existing = result.scalar_one_or_none()
 
         if existing:
-            existing.document_count += 1
+            existing.document_count = (existing.document_count or 0) + 1
             existing.last_seen_at = date.today()
         else:
             # Create new relationship
@@ -425,8 +602,8 @@ Extract all entities, relationships, and dated events now:"""
             db.add(relationship)
 
         # Update relationship counts
-        source_entity.relationship_count += 1
-        target_entity.relationship_count += 1
+        source_entity.relationship_count = (source_entity.relationship_count or 0) + 1
+        target_entity.relationship_count = (target_entity.relationship_count or 0) + 1
 
     async def _create_timeline_event(self, event_data: dict[str, Any], document_id: str, db: Session):
         """Create timeline event from extracted data"""

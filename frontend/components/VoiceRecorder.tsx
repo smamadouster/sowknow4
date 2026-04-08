@@ -10,6 +10,7 @@ interface VoiceRecorderProps {
   onAudioReady?: (blob: Blob, transcript: string) => void;
   onCancel?: () => void;
   className?: string;
+  lang?: string;
 }
 
 function WaveformBars({ analyserNode }: { analyserNode: AnalyserNode | null }) {
@@ -54,7 +55,7 @@ function WaveformBars({ analyserNode }: { analyserNode: AnalyserNode | null }) {
   );
 }
 
-export default function VoiceRecorder({ mode, onTranscript, onAudioReady, onCancel, className = '' }: VoiceRecorderProps) {
+export default function VoiceRecorder({ mode, onTranscript, onAudioReady, onCancel, className = '', lang }: VoiceRecorderProps) {
   const t = useTranslations('voice');
   const [privateMode, setPrivateMode] = useState(mode === 'journal');
   const [isHolding, setIsHolding] = useState(false);
@@ -70,6 +71,7 @@ export default function VoiceRecorder({ mode, onTranscript, onAudioReady, onCanc
     privateMode,
     onTranscript: mode === 'search' ? onTranscript : undefined,
     onAudioReady: mode !== 'search' ? onAudioReady : undefined,
+    lang,
   });
 
   const handleStopForSearch = useCallback(() => {

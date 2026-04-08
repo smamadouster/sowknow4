@@ -118,7 +118,7 @@ export default function MobileSheet({ open, onClose, title, headerActions, foote
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
           {children}
         </div>
 

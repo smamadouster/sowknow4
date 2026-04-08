@@ -360,33 +360,33 @@ def _run_articles(document_id: str) -> None:
 
 
 def _run_entities(document_id: str) -> None:
-    """Extract entities from document for knowledge graph."""
-    from sqlalchemy import select
+    """Extract entities from document for knowledge graph.
 
-    from app.database import AsyncSessionLocal
+    Uses sync SessionLocal for all DB operations (safe in Celery workers)
+    and only runs the LLM call via asyncio.run() to avoid event-loop conflicts
+    with the module-level async engine/connection pool.
+    """
+    from app.database import SessionLocal
     from app.models.document import Document, DocumentChunk
     from app.services.entity_extraction_service import entity_extraction_service
 
-    async def _extract():
-        async with AsyncSessionLocal() as db:
-            doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
-            result = await db.execute(
-                select(Document).where(Document.id == doc_uuid)
-            )
-            doc = result.scalar_one_or_none()
-            if not doc:
-                raise ValueError(f"Document {document_id} not found")
+    db = SessionLocal()
+    try:
+        doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+        doc = db.query(Document).filter(Document.id == doc_uuid).first()
+        if doc is None:
+            raise ValueError(f"Document {document_id} not found")
 
-            chunk_result = await db.execute(
-                select(DocumentChunk)
-                .where(DocumentChunk.document_id == doc_uuid)
-                .order_by(DocumentChunk.chunk_index)
-            )
-            chunks = chunk_result.scalars().all()
+        chunks = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == doc_uuid)
+            .order_by(DocumentChunk.chunk_index)
+            .all()
+        )
 
-            await entity_extraction_service.extract_entities_from_document(doc, chunks, db)
-
-    asyncio.run(_extract())
+        entity_extraction_service.extract_entities_from_document_sync(doc, chunks, db)
+    finally:
+        db.close()
     logger.info("Entities extracted for doc %s", document_id)
 
 

@@ -85,7 +85,7 @@ export default function TagAutocomplete({
   const showCreate = showDropdown && input.trim() && !hasExactMatch && !loading;
 
   return (
-    <div ref={containerRef} className="relative space-y-2">
+    <div ref={containerRef} className="relative space-y-2 min-w-0">
       {/* Selected tag pills */}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -110,7 +110,7 @@ export default function TagAutocomplete({
 
       {/* Top tag chips (shown when focused, no query) — ABOVE input via flex-col-reverse */}
       {showTopChips && (
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none max-w-full">
           {topTags
             .filter(t => !isAlreadyAdded(t.tag_name))
             .map((t: TagSuggestion) => (

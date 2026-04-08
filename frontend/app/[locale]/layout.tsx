@@ -33,7 +33,7 @@ export default async function LocaleLayout({
       </a>
 
       {/* Top header bar */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-vault-1000/80 backdrop-blur-xl pt-safe">
+      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-vault-1000/80 backdrop-blur-xl pt-safe px-safe">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14">
             {/* Logo & branding */}
@@ -71,7 +71,7 @@ export default async function LocaleLayout({
       <div className="flex" style={{ minHeight: 'calc(100dvh - 3.5rem)' }}>
         <Navigation />
 
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 px-safe">
           <main id="main-content" className="flex-1">
             {children}
           </main>

@@ -59,13 +59,27 @@ services:
       restart: true
       rebuild_on_failure: true
 
-  - name: "celery-worker"
-    container: "sowknow4-celery-worker"
+  - name: "celery-light"
+    container: "sowknow4-celery-light"
+    health_check:
+      type: container
+    auto_heal:
+      restart: true
+
+  - name: "celery-heavy"
+    container: "sowknow4-celery-heavy"
     health_check:
       type: container
     auto_heal:
       restart: true
       rebuild_on_failure: true
+
+  - name: "celery-collections"
+    container: "sowknow4-celery-collections"
+    health_check:
+      type: container
+    auto_heal:
+      restart: true
 
   - name: "celery-beat"
     container: "sowknow4-celery-beat"
@@ -95,6 +109,13 @@ alerts:
   telegram:
     token: "${TELEGRAM_BOT_TOKEN}"
     chat_id: "${TELEGRAM_CHAT_ID}"
+  email:
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_user: "${GMAIL_SMTP_USER}"
+    smtp_password: "${GMAIL_SMTP_PASSWORD}"
+    from: "${GMAIL_SMTP_USER}"
+    to: "smamadouster@gmail.com"
 
 patrols:
   critical:
@@ -112,7 +133,6 @@ disk:
   critical_threshold: 85
   emergency_threshold: 90
   auto_clean:
-    journal_vacuum: "100M"
     docker_prune: true
     log_max_size: "50M"
 

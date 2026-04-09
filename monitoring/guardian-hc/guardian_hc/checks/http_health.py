@@ -9,6 +9,7 @@ class HttpHealthChecker:
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(url)
-                return {"healthy": resp.status_code == 200, "status_code": resp.status_code, "url": url}
+                healthy = resp.status_code < 400  # 2xx and 3xx (redirects) are healthy
+                return {"healthy": healthy, "status_code": resp.status_code, "url": url}
         except Exception as e:
             return {"healthy": False, "url": url, "error": str(e)[:200]}

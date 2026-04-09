@@ -107,22 +107,41 @@ class NetworkHealthChecker:
         return stale
 
     async def _tcp_probe(self, container: str, host: str, port: int) -> dict:
-        """Test TCP connectivity from one container to another via Docker exec."""
+        """Test TCP connectivity from one container to another via Docker API exec."""
         result = {"from": container, "to": f"{host}:{port}", "ok": False}
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "docker", "exec", container,
-                "python", "-c",
-                f"import socket; s=socket.socket(); s.settimeout(3); s.connect(('{host}',{port})); s.close(); print('OK')",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
-            result["ok"] = b"OK" in stdout
-            if not result["ok"]:
-                result["error"] = stderr.decode()[:100] or "timeout"
-        except asyncio.TimeoutError:
-            result["error"] = "probe timed out"
+            transport = httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")
+            async with httpx.AsyncClient(transport=transport, base_url="http://docker", timeout=10) as client:
+                # Find container ID
+                resp = await client.get("/containers/json")
+                cid = None
+                for c in resp.json():
+                    if any(container in n for n in c.get("Names", [])):
+                        cid = c["Id"]
+                        break
+                if not cid:
+                    result["error"] = f"container {container} not found"
+                    return result
+
+                # Create exec instance
+                cmd = f"import socket; s=socket.socket(); s.settimeout(3); s.connect(('{host}',{port})); s.close(); print('OK')"
+                exec_resp = await client.post(
+                    f"/containers/{cid}/exec",
+                    json={"Cmd": ["python", "-c", cmd], "AttachStdout": True, "AttachStderr": True},
+                )
+                exec_id = exec_resp.json().get("Id")
+                if not exec_id:
+                    result["error"] = "exec create failed"
+                    return result
+
+                # Start exec and read output
+                start_resp = await client.post(
+                    f"/exec/{exec_id}/start",
+                    json={"Detach": False},
+                )
+                result["ok"] = b"OK" in start_resp.content
+                if not result["ok"]:
+                    result["error"] = start_resp.text[:100] or "no OK in output"
         except Exception as e:
             result["error"] = str(e)[:100]
         return result

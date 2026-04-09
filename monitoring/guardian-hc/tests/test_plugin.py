@@ -282,12 +282,12 @@ class TestGuardianPlugin:
         insights = asyncio.run(p.analyze(ctx))
         assert insights == []
 
-    def test_base_class_abstract_methods_raise(self):
-        """Direct instantiation of GuardianPlugin should raise on abstract methods."""
+    def test_base_class_check_returns_empty(self):
+        """Base GuardianPlugin.check() returns empty list."""
         p = GuardianPlugin()
         ctx = CheckContext(patrol_level="quick", config={}, services=[])
-        with pytest.raises(NotImplementedError):
-            asyncio.run(p.check(ctx))
+        results = asyncio.run(p.check(ctx))
+        assert results == []
 
     def test_base_heal_returns_none(self):
         p = GuardianPlugin()

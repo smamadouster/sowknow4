@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS guardian_patterns (
 
 
 def _now_iso() -> str:
-    return datetime.datetime.utcnow().isoformat()
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 class MetricsDB:
@@ -127,7 +127,7 @@ class MetricsDB:
     # ------------------------------------------------------------------
 
     def _cutoff_iso(self, hours: int) -> str:
-        cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
         return cutoff.isoformat()
 
     # ------------------------------------------------------------------
@@ -265,7 +265,7 @@ class MetricsDB:
         if len(rows) < 2:
             return None
 
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         xs: list[float] = []
         ys: list[float] = []
         for row in rows:

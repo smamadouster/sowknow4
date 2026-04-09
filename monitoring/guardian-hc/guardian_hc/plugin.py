@@ -113,12 +113,8 @@ class GuardianPlugin:
     enabled: bool = True
 
     async def check(self, context: CheckContext) -> list[CheckResult]:
-        """Run health checks and return results.
-
-        Raises:
-            NotImplementedError: Subclasses must implement this method.
-        """
-        raise NotImplementedError(f"{self.__class__.__name__} must implement check()")
+        """Run health checks. Called every patrol cycle."""
+        return []
 
     async def heal(self, result: CheckResult) -> HealResult | None:
         """Attempt to heal a failing check.

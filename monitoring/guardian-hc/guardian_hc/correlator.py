@@ -202,3 +202,123 @@ class IncidentCorrelator:
                 json.dump(data, f)
         except Exception as e:
             logger.warning("correlator.state_save_failed", error=str(e)[:200])
+
+    async def process(self, results: dict):
+        """Process patrol results: correlate, dedup, alert, log."""
+        events: list[AlertEvent] = results.get("events", [])
+        level = results.get("level", "standard")
+
+        groups = self._group_events(events)
+        current_root_services = set()
+
+        for root_service, root_event, related in groups:
+            current_root_services.add(root_service)
+            severity = self._highest_severity([root_event] + related)
+
+            if root_service in self.active_incidents:
+                # Ongoing — suppress or escalate
+                incident = self.active_incidents[root_service]
+                incident.patrol_count += 1
+                incident.last_seen_at = datetime.now(timezone.utc)
+                incident.suppressed_count += 1
+                incident.root_cause = root_event
+                incident.related_events = related
+                incident.severity = severity
+
+                should_escalate = (
+                    incident.status != "escalated"
+                    and (
+                        incident.patrol_count >= ESCALATION_PATROL_THRESHOLD
+                        or root_event.restart_suppressed
+                    )
+                )
+                if should_escalate:
+                    incident.status = "escalated"
+                    incident.escalated_at = datetime.now(timezone.utc)
+                    msg = self._format_escalation(incident)
+                    await self.alert_manager.send(msg)
+                    self._append_jsonl(incident, "escalated")
+                    logger.warning("correlator.escalated", incident=incident.incident_id,
+                                   service=root_service, patrol_count=incident.patrol_count)
+            else:
+                # New incident
+                should_escalate_immediately = root_event.restart_suppressed
+                incident = Incident(
+                    incident_id=self._next_incident_id(),
+                    severity=severity,
+                    root_cause=root_event,
+                    related_events=related,
+                    status="escalated" if should_escalate_immediately else "open",
+                    opened_at=datetime.now(timezone.utc),
+                    last_seen_at=datetime.now(timezone.utc),
+                    escalated_at=datetime.now(timezone.utc) if should_escalate_immediately else None,
+                )
+                self.active_incidents[root_service] = incident
+
+                if should_escalate_immediately:
+                    msg = self._format_escalation(incident)
+                    await self.alert_manager.send(msg)
+                    self._append_jsonl(incident, "escalated")
+                    logger.warning("correlator.immediate_escalation", incident=incident.incident_id,
+                                   service=root_service)
+                else:
+                    msg = self._format_open(incident)
+                    await self.alert_manager.send(msg)
+                    self._append_jsonl(incident, "open")
+                    logger.info("correlator.opened", incident=incident.incident_id,
+                                service=root_service, severity=severity)
+
+        # Resolution: active incidents whose root cause is no longer failing
+        resolved_keys = []
+        for root_service, incident in self.active_incidents.items():
+            if root_service not in current_root_services:
+                incident.status = "resolved"
+                incident.resolved_at = datetime.now(timezone.utc)
+                msg = self._format_resolved(incident)
+                await self.alert_manager.send(msg)
+                self._append_jsonl(incident, "resolved")
+                resolved_keys.append(root_service)
+                logger.info("correlator.resolved", incident=incident.incident_id,
+                            service=root_service, patrols=incident.patrol_count)
+
+        for key in resolved_keys:
+            del self.active_incidents[key]
+
+        # Expire stale incidents (>24h with no activity)
+        self._expire_stale()
+        self._save_state()
+
+    @staticmethod
+    def _highest_severity(events: list[AlertEvent]) -> str:
+        order = {"CRITICAL": 0, "HIGH": 1, "WARNING": 2, "INFO": 3}
+        return min(events, key=lambda e: order.get(e.severity, 99)).severity
+
+    def _expire_stale(self):
+        now = datetime.now(timezone.utc)
+        expired = [
+            k for k, v in self.active_incidents.items()
+            if (now - v.last_seen_at).total_seconds() > INCIDENT_EXPIRY_HOURS * 3600
+        ]
+        for k in expired:
+            logger.info("correlator.expired", incident=self.active_incidents[k].incident_id)
+            del self.active_incidents[k]
+
+    def _append_jsonl(self, incident: Incident, event_type: str):
+        try:
+            Path(JSONL_FILE).parent.mkdir(parents=True, exist_ok=True)
+            with open(JSONL_FILE, "a") as f:
+                f.write(json.dumps(incident.to_jsonl_dict(event_type)) + "\n")
+        except Exception as e:
+            logger.warning("correlator.jsonl_write_failed", error=str(e)[:200])
+
+    @staticmethod
+    def _format_open(incident: Incident) -> str:
+        return f"INCIDENT OPEN — {incident.incident_id}\n{incident.root_cause.summary}"
+
+    @staticmethod
+    def _format_escalation(incident: Incident) -> str:
+        return f"ESCALATION — {incident.incident_id}\n{incident.root_cause.summary}"
+
+    @staticmethod
+    def _format_resolved(incident: Incident) -> str:
+        return f"RESOLVED — {incident.incident_id}\n{incident.root_cause.summary}"

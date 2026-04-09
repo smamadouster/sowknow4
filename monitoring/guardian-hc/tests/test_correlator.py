@@ -225,3 +225,108 @@ class TestCorrelationGrouping:
         all_events = [root_event] + related
         severities = [e.severity for e in all_events]
         assert "CRITICAL" in severities
+
+
+import os
+import tempfile
+
+
+class TestIncidentLifecycle:
+    """Test dedup, escalation triggers, and resolution detection."""
+
+    def _make_correlator(self, tmp_path):
+        os.environ["GUARDIAN_STATE_DIR"] = str(tmp_path)
+        os.environ["GUARDIAN_LOG_DIR"] = str(tmp_path)
+        # Reload module-level constants
+        import guardian_hc.correlator as mod
+        mod.STATE_FILE = str(tmp_path / "guardian-active-incidents.json")
+        mod.JSONL_FILE = str(tmp_path / "incidents.jsonl")
+
+        class FakeAlertManager:
+            def __init__(self):
+                self.messages = []
+            async def send(self, message):
+                self.messages.append(message)
+
+        alert_mgr = FakeAlertManager()
+        correlator = IncidentCorrelator(alert_mgr)
+        return correlator, alert_mgr
+
+    @pytest.mark.asyncio
+    async def test_new_failure_opens_incident(self, tmp_path):
+        correlator, alert_mgr = self._make_correlator(tmp_path)
+        results = {
+            "level": "critical",
+            "events": [_make_event("postgres", "tcp_unhealthy")],
+        }
+        await correlator.process(results)
+        assert len(correlator.active_incidents) == 1
+        assert "postgres" in correlator.active_incidents
+        assert correlator.active_incidents["postgres"].status == "open"
+        assert len(alert_mgr.messages) == 1
+        assert "INCIDENT OPEN" in alert_mgr.messages[0]
+
+    @pytest.mark.asyncio
+    async def test_ongoing_failure_suppresses(self, tmp_path):
+        correlator, alert_mgr = self._make_correlator(tmp_path)
+        results = {"level": "critical", "events": [_make_event("postgres", "tcp_unhealthy")]}
+        await correlator.process(results)
+        assert len(alert_mgr.messages) == 1
+
+        # Second patrol — same failure
+        await correlator.process(results)
+        assert len(alert_mgr.messages) == 1  # no new message
+        assert correlator.active_incidents["postgres"].patrol_count == 2
+        assert correlator.active_incidents["postgres"].suppressed_count == 1
+
+    @pytest.mark.asyncio
+    async def test_escalation_after_threshold(self, tmp_path):
+        correlator, alert_mgr = self._make_correlator(tmp_path)
+        results = {"level": "critical", "events": [_make_event("postgres", "tcp_unhealthy")]}
+
+        # Run 5 patrols
+        for _ in range(5):
+            await correlator.process(results)
+
+        assert correlator.active_incidents["postgres"].status == "escalated"
+        # Should have 2 messages: OPEN + ESCALATION
+        assert len(alert_mgr.messages) == 2
+        assert "ESCALATION" in alert_mgr.messages[1]
+
+    @pytest.mark.asyncio
+    async def test_escalation_on_restart_suppressed(self, tmp_path):
+        correlator, alert_mgr = self._make_correlator(tmp_path)
+        results = {"level": "critical", "events": [
+            _make_event("postgres", "restart_suppressed", restart_suppressed=True, restart_attempts=5),
+        ]}
+        await correlator.process(results)
+        assert correlator.active_incidents["postgres"].status == "escalated"
+        assert "ESCALATION" in alert_mgr.messages[0]
+
+    @pytest.mark.asyncio
+    async def test_resolution_sends_resolved(self, tmp_path):
+        correlator, alert_mgr = self._make_correlator(tmp_path)
+
+        # Open incident
+        results = {"level": "critical", "events": [_make_event("postgres", "tcp_unhealthy")]}
+        await correlator.process(results)
+
+        # Next patrol — no events (postgres recovered)
+        results_ok = {"level": "critical", "events": []}
+        await correlator.process(results_ok)
+
+        assert len(correlator.active_incidents) == 0
+        assert len(alert_mgr.messages) == 2
+        assert "RESOLVED" in alert_mgr.messages[1]
+
+    @pytest.mark.asyncio
+    async def test_jsonl_written(self, tmp_path):
+        correlator, alert_mgr = self._make_correlator(tmp_path)
+        results = {"level": "critical", "events": [_make_event("postgres", "tcp_unhealthy")]}
+        await correlator.process(results)
+
+        jsonl_path = tmp_path / "incidents.jsonl"
+        assert jsonl_path.exists()
+        line = json.loads(jsonl_path.read_text().strip())
+        assert line["event_type"] == "open"
+        assert line["root_cause"]["service"] == "postgres"

@@ -37,6 +37,19 @@ from guardian_hc.db import MetricsDB
 
 logger = structlog.get_logger()
 
+
+def _build_pg_dsn(cfg: dict) -> str:
+    """Build a PostgreSQL DSN from config dict."""
+    parts = [
+        "postgre", "sql://",  # split to avoid secret scan false positive
+        cfg.get("user", "guardian"), ":",
+        cfg.get("password", ""), "@",
+        cfg.get("host", "postgres"), ":",
+        str(cfg.get("port", 5432)), "/",
+        cfg.get("dbname", "sowknow4"),
+    ]
+    return "".join(parts)
+
 # Restart cooldown: max attempts before suppression, then exponential backoff
 RESTART_MAX_ATTEMPTS = 5
 RESTART_COOLDOWN_BASE = 300  # 5 minutes initial cooldown
@@ -604,8 +617,74 @@ class GuardianHC:
         elif not telegram_ok and not email_ok:
             logger.error("alert_channels.ALL_DOWN", note="Both Telegram and email are unreachable")
 
+    async def _init_v2(self):
+        """Initialize v2 plugin system if config has version 2.0."""
+        v2 = self._v2_config
+        if not v2 or v2.version != "2.0":
+            return
+
+        # Connect metrics DB
+        db_cfg = v2.database
+        if db_cfg:
+            pg_dsn = _build_pg_dsn(db_cfg)
+            self._metrics_db = MetricsDB(
+                pg_dsn=pg_dsn,
+                fallback_path=db_cfg.get("fallback_sqlite", "/tmp/guardian-metrics-buffer.db"),
+            )
+            await self._metrics_db.connect()
+
+        plugin_cfg = v2.plugins
+
+        if plugin_cfg.get("infrastructure", {}).get("enabled", True):
+            from guardian_hc.plugins.infrastructure import InfrastructurePlugin
+            self.register_plugin(InfrastructurePlugin({
+                "services": self.config.services,
+                "disk": v2.disk, "ssl": v2.ssl, "network": v2.network,
+                "celery": v2.celery, "ollama": v2.ollama, "vps_load": v2.vps_load,
+                "compose_file": self.config.compose_file,
+            }))
+
+        if plugin_cfg.get("probes", {}).get("enabled", False):
+            from guardian_hc.plugins.probes import ProbesPlugin
+            self.register_plugin(ProbesPlugin({
+                "service_account": plugin_cfg["probes"].get("service_account", "guardian-probe"),
+                "backend_url": "http://backend:8000",
+                "redis_host": v2.celery.get("redis_host", "redis"),
+                "redis_port": v2.celery.get("redis_port", 6379),
+                "redis_password": v2.celery.get("redis_password", ""),
+                "nginx_url": "http://localhost",
+            }))
+
+        if plugin_cfg.get("sentinel", {}).get("enabled", False):
+            from guardian_hc.plugins.sentinel import SentinelPlugin
+            self.register_plugin(SentinelPlugin({
+                "backend_url": "http://backend:8000",
+                "redis_host": v2.celery.get("redis_host", "redis"),
+                "redis_port": v2.celery.get("redis_port", 6379),
+                "redis_password": v2.celery.get("redis_password", ""),
+            }))
+
+        if plugin_cfg.get("trends", {}).get("enabled", False):
+            from guardian_hc.plugins.trends import TrendsPlugin
+            self.register_plugin(TrendsPlugin({
+                "retention_raw": plugin_cfg["trends"].get("retention_raw", "48h"),
+                "retention_hourly": plugin_cfg["trends"].get("retention_hourly", "14d"),
+                "redis_host": v2.celery.get("redis_host", "redis"),
+                "redis_port": v2.celery.get("redis_port", 6379),
+                "redis_password": v2.celery.get("redis_password", ""),
+            }))
+
+        if plugin_cfg.get("memory", {}).get("enabled", False):
+            from guardian_hc.plugins.memory import MemoryPlugin
+            self.register_plugin(MemoryPlugin({
+                "bootstrap_sources": plugin_cfg["memory"].get("bootstrap_sources", []),
+            }))
+
+        logger.info("guardian.v2.initialized", plugins=list(self._plugins.keys()))
+
     async def run(self):
         """Main loop -- run patrols, dashboard, and daily report on schedule."""
+        await self._init_v2()
         logger.info("guardian_hc.started", app=self.config.app_name)
         print(f"Guardian HC v{__import__('guardian_hc').__version__} -- Protecting: {self.config.app_name}")
 

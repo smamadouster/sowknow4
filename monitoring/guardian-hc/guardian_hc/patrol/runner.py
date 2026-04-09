@@ -22,7 +22,26 @@ class PatrolRunner:
         logger.info(f"patrol.{name}.started", interval=interval_sec)
         while True:
             try:
+                # v1 check cycle (existing behavior)
                 result = await self.guardian.run_check_cycle(level)
+
+                # v2 plugin checks
+                if self.guardian._plugins:
+                    plugin_results = await self.guardian.run_plugin_checks(level)
+                    heal_results = await self.guardian.run_plugin_heals(plugin_results)
+                    result["plugin_checks"] = len(plugin_results)
+                    result["plugin_heals"] = len(heal_results)
+
+                    # Run analysis on deep patrol
+                    if level == "deep":
+                        insights = await self.guardian.run_plugin_analysis()
+                        result["insights"] = len(insights)
+                        for insight in insights:
+                            if insight.recommended_action and insight.recommended_action != "alert_only":
+                                logger.info("guardian.preventive_action",
+                                            insight=insight.summary,
+                                            action=insight.recommended_action)
+
                 healed = result.get("healed", 0)
                 failed = result.get("failed", 0)
                 if healed > 0 or failed > 0:

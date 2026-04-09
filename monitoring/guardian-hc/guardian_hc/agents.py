@@ -49,9 +49,9 @@ class AgentRegistry:
         self._agents: dict[str, Agent] = {}
         for entry in config:
             agent = Agent(
-                agent_id=entry["agent_id"],
+                agent_id=entry.get("id", entry.get("agent_id", "")),
                 name=entry["name"],
-                role=entry["role"],
+                role=entry.get("role", ""),
                 plugins=entry.get("plugins", []),
             )
             self._agents[agent.agent_id] = agent

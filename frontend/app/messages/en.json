@@ -15,7 +15,8 @@
     "admin_section_title": "Administration & Monitoring",
     "dashboard_desc": "System statistics and status",
     "monitoring_desc": "Real-time service health",
-    "settings_desc": "User management and configuration"
+    "settings_desc": "User management and configuration",
+    "quick_actions": "Quick Actions"
   },
   "common": {
     "loading": "Loading...",

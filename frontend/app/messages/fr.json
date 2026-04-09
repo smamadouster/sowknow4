@@ -15,7 +15,8 @@
     "admin_section_title": "Administration & Surveillance",
     "dashboard_desc": "Statistiques et \u00e9tat du syst\u00e8me",
     "monitoring_desc": "Sant\u00e9 des services en temps r\u00e9el",
-    "settings_desc": "Gestion des utilisateurs et configuration"
+    "settings_desc": "Gestion des utilisateurs et configuration",
+    "quick_actions": "Actions rapides"
   },
   "common": {
     "loading": "Chargement...",

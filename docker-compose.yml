@@ -187,8 +187,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      vault:
-        condition: service_healthy
+      # vault: temporarily removed — unseal key mismatch, not needed for auth
+      #   condition: service_healthy
       nats:
         condition: service_healthy
     extra_hosts:

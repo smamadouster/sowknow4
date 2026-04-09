@@ -30,6 +30,10 @@ from guardian_hc.healers.network_healer import NetworkHealer
 from guardian_hc.patrol.runner import PatrolRunner
 from guardian_hc.alerts import AlertManager
 from guardian_hc.correlator import AlertEvent, IncidentCorrelator
+from guardian_hc.plugin import GuardianPlugin, CheckResult, HealResult, Insight, CheckContext, AnalysisContext
+from guardian_hc.config import GuardianV2Config, load_config as load_v2_config
+from guardian_hc.agents import AgentRegistry
+from guardian_hc.db import MetricsDB
 
 logger = structlog.get_logger()
 
@@ -143,6 +147,12 @@ class GuardianHC:
         self.last_patrol_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
         self._load_tracker_state()
 
+        # v2 plugin system
+        self._plugins: dict[str, GuardianPlugin] = {}
+        self._metrics_db: MetricsDB | None = None
+        self._agent_registry: AgentRegistry | None = None
+        self._v2_config: GuardianV2Config | None = None
+
     @classmethod
     def from_config(cls, config_path: str) -> "GuardianHC":
         """Load from guardian-hc.yml config file."""
@@ -172,7 +182,16 @@ class GuardianHC:
             celery=raw.get("celery", {}),
             dashboard_port=raw.get("dashboard", {}).get("port", 9090),
         )
-        return cls(config)
+        instance = cls(config)
+
+        # v2 config detection: presence of a "version" key signals v2 format
+        if raw.get("version"):
+            v2_config = load_v2_config(raw)
+            instance._v2_config = v2_config
+            if v2_config.agents:
+                instance._agent_registry = AgentRegistry(v2_config.agents)
+
+        return instance
 
     def log_action(self, action: dict):
         action["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -182,6 +201,76 @@ class GuardianHC:
 
     def get_history(self, limit: int = 50) -> list[dict]:
         return self._history[-limit:]
+
+    # ------------------------------------------------------------------
+    # v2 Plugin system
+    # ------------------------------------------------------------------
+
+    def register_plugin(self, plugin: GuardianPlugin) -> None:
+        """Register a v2 plugin by its name attribute."""
+        self._plugins[plugin.name] = plugin
+        logger.info("plugin.registered", name=plugin.name, enabled=plugin.enabled)
+
+    async def run_plugin_checks(self, level: str) -> list[CheckResult]:
+        """Run check() on all enabled registered plugins and collect results."""
+        context = CheckContext(
+            patrol_level=level,
+            config={},
+            services=self.config.services,
+            metrics_db=self._metrics_db,
+        )
+        results: list[CheckResult] = []
+        for plugin in self._plugins.values():
+            if not plugin.enabled:
+                continue
+            try:
+                plugin_results = await plugin.check(context)
+                results.extend(plugin_results)
+            except Exception as e:
+                logger.error("plugin.check_failed", name=plugin.name, error=str(e)[:200])
+        return results
+
+    async def run_plugin_heals(self, check_results: list[CheckResult]) -> list[HealResult]:
+        """Call heal() on plugins for each CheckResult with needs_healing=True."""
+        heal_results: list[HealResult] = []
+        for result in check_results:
+            if not result.needs_healing:
+                continue
+            plugin = self._plugins.get(result.plugin)
+            if plugin is None:
+                logger.warning("plugin.heal_skipped_not_found", plugin=result.plugin)
+                continue
+            try:
+                heal_result = await plugin.heal(result)
+                if heal_result is not None:
+                    self.log_action({
+                        "target": result.check_name,
+                        "action": f"plugin_heal:{heal_result.action}",
+                        "plugin": plugin.name,
+                        "success": heal_result.success,
+                        "details": heal_result.details,
+                    })
+                    heal_results.append(heal_result)
+            except Exception as e:
+                logger.error("plugin.heal_failed", name=plugin.name, error=str(e)[:200])
+        return heal_results
+
+    async def run_plugin_analysis(self) -> list[Insight]:
+        """Run analyze() on all enabled registered plugins and collect insights."""
+        context = AnalysisContext(
+            config={},
+            metrics_db=self._metrics_db,
+        )
+        insights: list[Insight] = []
+        for plugin in self._plugins.values():
+            if not plugin.enabled:
+                continue
+            try:
+                plugin_insights = await plugin.analyze(context)
+                insights.extend(plugin_insights)
+            except Exception as e:
+                logger.error("plugin.analyze_failed", name=plugin.name, error=str(e)[:200])
+        return insights
 
     def _get_tracker(self, container: str) -> RestartTracker:
         if container not in self._restart_trackers:

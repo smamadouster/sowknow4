@@ -130,3 +130,98 @@ class TestDependencyMap:
         assert "postgres" in DEPENDENCY_MAP["network"]
         assert "backend" in DEPENDENCY_MAP["network"]
         assert "frontend" in DEPENDENCY_MAP["network"]
+
+
+from guardian_hc.correlator import IncidentCorrelator
+
+
+def _make_event(service, check_type="container_down", severity="CRITICAL", **overrides):
+    defaults = {
+        "event_id": f"critical-{service}-{check_type}-1712678528",
+        "severity": severity,
+        "service": service,
+        "container": f"sowknow4-{service}" if service not in ("disk", "network", "vps_load") else None,
+        "check_type": check_type,
+        "patrol_level": "critical",
+        "timestamp": datetime(2026, 4, 9, 14, 22, 8, tzinfo=timezone.utc),
+        "summary": f"{service} check failed",
+        "details": "details",
+        "heal_attempted": False,
+        "heal_success": None,
+        "heal_action": None,
+        "restart_attempts": 0,
+        "restart_suppressed": False,
+    }
+    defaults.update(overrides)
+    return AlertEvent(**defaults)
+
+
+class TestCorrelationGrouping:
+    """Test DEPENDENCY_MAP-based grouping of AlertEvents into incident groups."""
+
+    def test_single_event_becomes_single_group(self):
+        events = [_make_event("disk", "disk_warning", severity="WARNING")]
+        groups = IncidentCorrelator._group_events(events)
+        assert len(groups) == 1
+        root_service, root_event, related = groups[0]
+        assert root_service == "disk"
+        assert related == []
+
+    def test_postgres_groups_backend_and_celery(self):
+        events = [
+            _make_event("postgres", "tcp_unhealthy"),
+            _make_event("backend", "http_unhealthy"),
+            _make_event("celery-heavy", "container_down"),
+        ]
+        groups = IncidentCorrelator._group_events(events)
+        assert len(groups) == 1
+        root_service, root_event, related = groups[0]
+        assert root_service == "postgres"
+        assert {e.service for e in related} == {"backend", "celery-heavy"}
+
+    def test_two_independent_failures(self):
+        events = [
+            _make_event("disk", "disk_warning", severity="WARNING"),
+            _make_event("postgres", "tcp_unhealthy"),
+        ]
+        groups = IncidentCorrelator._group_events(events)
+        assert len(groups) == 2
+        root_services = {g[0] for g in groups}
+        assert root_services == {"disk", "postgres"}
+
+    def test_network_overrides_all(self):
+        events = [
+            _make_event("network", "network_broken"),
+            _make_event("postgres", "tcp_unhealthy"),
+            _make_event("backend", "http_unhealthy"),
+            _make_event("redis", "tcp_unhealthy"),
+        ]
+        groups = IncidentCorrelator._group_events(events)
+        assert len(groups) == 1
+        root_service, _, related = groups[0]
+        assert root_service == "network"
+        assert len(related) == 3
+
+    def test_transitive_grouping(self):
+        """postgres -> backend -> frontend should all be one group."""
+        events = [
+            _make_event("postgres", "tcp_unhealthy"),
+            _make_event("backend", "http_unhealthy"),
+            _make_event("frontend", "http_unhealthy"),
+        ]
+        groups = IncidentCorrelator._group_events(events)
+        assert len(groups) == 1
+        root_service, _, related = groups[0]
+        assert root_service == "postgres"
+        assert {e.service for e in related} == {"backend", "frontend"}
+
+    def test_highest_severity_in_group(self):
+        events = [
+            _make_event("postgres", "tcp_unhealthy", severity="CRITICAL"),
+            _make_event("backend", "http_unhealthy", severity="HIGH"),
+        ]
+        groups = IncidentCorrelator._group_events(events)
+        root_service, root_event, related = groups[0]
+        all_events = [root_event] + related
+        severities = [e.severity for e in all_events]
+        assert "CRITICAL" in severities

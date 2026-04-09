@@ -412,3 +412,79 @@ class TestTelegramFormatters:
                           IncidentCorrelator._format_resolved]:
             msg = formatter(incident)
             assert "|" not in msg, f"Found table pipe character in: {msg[:100]}"
+
+
+class TestStatePersistence:
+    def _make_correlator(self, tmp_path):
+        import guardian_hc.correlator as mod
+        mod.STATE_FILE = str(tmp_path / "guardian-active-incidents.json")
+        mod.JSONL_FILE = str(tmp_path / "incidents.jsonl")
+
+        class FakeAlertManager:
+            def __init__(self):
+                self.messages = []
+            async def send(self, message):
+                self.messages.append(message)
+
+        return IncidentCorrelator(FakeAlertManager())
+
+    def test_sequence_resets_daily(self, tmp_path):
+        correlator = self._make_correlator(tmp_path)
+        correlator._sequence = {"date": "20260408", "counter": 5}
+        new_id = correlator._next_incident_id()
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
+        assert new_id == f"INC-{today}-001"
+        assert correlator._sequence["counter"] == 1
+
+    def test_sequence_increments(self, tmp_path):
+        correlator = self._make_correlator(tmp_path)
+        id1 = correlator._next_incident_id()
+        id2 = correlator._next_incident_id()
+        assert id1.endswith("-001")
+        assert id2.endswith("-002")
+
+    @pytest.mark.asyncio
+    async def test_state_survives_restart(self, tmp_path):
+        import guardian_hc.correlator as mod
+        mod.STATE_FILE = str(tmp_path / "guardian-active-incidents.json")
+        mod.JSONL_FILE = str(tmp_path / "incidents.jsonl")
+
+        class FakeAlertManager:
+            def __init__(self):
+                self.messages = []
+            async def send(self, message):
+                self.messages.append(message)
+
+        c1 = IncidentCorrelator(FakeAlertManager())
+        id1 = c1._next_incident_id()
+        c1._save_state()
+
+        c2 = IncidentCorrelator(FakeAlertManager())
+        id2 = c2._next_incident_id()
+        assert id1.endswith("-001")
+        assert id2.endswith("-002")
+
+    @pytest.mark.asyncio
+    async def test_jsonl_appends_multiple_events(self, tmp_path):
+        import guardian_hc.correlator as mod
+        mod.STATE_FILE = str(tmp_path / "guardian-active-incidents.json")
+        mod.JSONL_FILE = str(tmp_path / "incidents.jsonl")
+
+        class FakeAlertManager:
+            def __init__(self):
+                self.messages = []
+            async def send(self, message):
+                self.messages.append(message)
+
+        correlator = IncidentCorrelator(FakeAlertManager())
+
+        results = {"level": "critical", "events": [_make_event("postgres", "tcp_unhealthy")]}
+        await correlator.process(results)
+
+        await correlator.process({"level": "critical", "events": []})
+
+        jsonl_path = tmp_path / "incidents.jsonl"
+        lines = jsonl_path.read_text().strip().split("\n")
+        assert len(lines) == 2
+        assert json.loads(lines[0])["event_type"] == "open"
+        assert json.loads(lines[1])["event_type"] == "resolved"

@@ -188,6 +188,14 @@ class GuardianHC:
             self._restart_trackers[container] = RestartTracker()
         return self._restart_trackers[container]
 
+    def _clear_tracker_if_stale(self, container: str):
+        """Reset tracker when a previously-failed container passes health checks."""
+        tracker = self._restart_trackers.get(container)
+        if tracker and tracker.attempts > 0:
+            logger.info("tracker.auto_reset", container=container, prev_attempts=tracker.attempts)
+            tracker.record_attempt(True)
+            self._save_tracker_state()
+
     def _load_tracker_state(self):
         """Load restart tracker state from disk (survives guardian restarts)."""
         try:
@@ -318,12 +326,16 @@ class GuardianHC:
                 results["checks"].append({"service": svc.name, "type": "http", **http_status})
                 if not http_status.get("healthy") and svc.auto_heal.get("restart", False):
                     await self._try_heal_container(svc, "http_unhealthy", results)
+                elif http_status.get("healthy"):
+                    self._clear_tracker_if_stale(svc.container)
 
             elif hc.get("type") == "tcp" and status["status"] == "running":
                 tcp_status = await TcpHealthChecker.check(hc.get("host", "localhost"), hc.get("port", 0))
                 results["checks"].append({"service": svc.name, "type": "tcp", **tcp_status})
                 if not tcp_status.get("healthy") and svc.auto_heal.get("restart", False):
                     await self._try_heal_container(svc, "tcp_unhealthy", results)
+                elif tcp_status.get("healthy"):
+                    self._clear_tracker_if_stale(svc.container)
 
         if level in ("standard", "deep"):
             disk_status = await self.disk_checker.check()

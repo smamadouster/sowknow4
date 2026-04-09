@@ -143,6 +143,14 @@ ssl:
   warning_days: 14
   critical_days: 3
 
+celery:
+  redis_host: "redis"
+  redis_port: 6379
+  redis_password: "${REDIS_PASSWORD}"
+  max_queue_depth: 200
+  worker_container: "sowknow4-celery-light"
+  beat_container: "sowknow4-celery-beat"
+
 ollama:
   enabled: false  # Ollama removed from project -- confidential routing uses metadata-only approach
   url: "http://host.docker.internal:11434"

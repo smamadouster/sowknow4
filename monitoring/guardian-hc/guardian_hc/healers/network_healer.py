@@ -67,20 +67,23 @@ class NetworkHealer:
                 return {"healed": False, "error": f"docker restart failed: {err[:200]}", "actions": actions}
 
             # Step 3: Wait for Docker to be ready, then restart compose stack
+            # IMPORTANT: Do NOT use `compose down/up` -- that kills guardian-hc itself.
+            # Instead, restart all services except guardian-hc.
             await asyncio.sleep(5)
             compose_dir = self.compose_file.rsplit("/", 1)[0]
-            logger.warning("network_healer.restarting_compose", dir=compose_dir)
+            logger.warning("network_healer.restarting_services", dir=compose_dir)
             rc, _, err = await _host_exec(
                 "bash", "-c",
-                f"cd {compose_dir} && docker compose --profile monitoring down && docker compose --profile monitoring up -d",
+                f"cd {compose_dir} && docker compose up -d --force-recreate "
+                f"postgres redis vault nats backend celery-light celery-heavy "
+                f"celery-collections celery-beat frontend telegram-bot nginx",
                 timeout=180,
             )
             if rc == 0:
-                actions.append("Compose stack restarted")
+                actions.append("Services restarted (guardian-hc excluded)")
             else:
-                # Partial success -- Docker was restarted, compose may need manual help
-                actions.append(f"Compose restart failed: {err[:200]}")
-                logger.error("network_healer.compose_restart_failed", error=err[:200])
+                actions.append(f"Service restart partial: {err[:200]}")
+                logger.error("network_healer.service_restart_failed", error=err[:200])
 
             healed = len(actions) >= 2  # At minimum nft flush + docker restart
             logger.info("network_healer.complete", healed=healed, actions=actions)

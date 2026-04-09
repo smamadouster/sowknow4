@@ -29,7 +29,7 @@ if [ -z "$TELEGRAM_CHAT_ID" ] && [ -f "$PROJECT_DIR/.env" ]; then
 fi
 
 # All SOWKNOW4 containers (sowknow4- prefix per naming convention)
-EXPECTED_CONTAINERS="sowknow4-backend sowknow4-postgres sowknow4-redis sowknow4-vault sowknow4-nats sowknow4-celery-worker sowknow4-celery-beat sowknow4-frontend sowknow4-telegram-bot"
+EXPECTED_CONTAINERS="sowknow4-backend sowknow4-postgres sowknow4-redis sowknow4-vault sowknow4-nats sowknow4-celery-light sowknow4-celery-heavy sowknow4-celery-collections sowknow4-celery-beat sowknow4-frontend sowknow4-telegram-bot"
 
 # -- Helpers --
 timestamp() { date '+%Y-%m-%d %H:%M:%S'; }
@@ -143,7 +143,7 @@ Check logs: docker compose logs --tail=50 backend"
 
 # -- Check 3: Is the Celery worker healthy? --
 check_worker() {
-    local worker_running=$(docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep "sowknow4-celery-worker")
+    local worker_running=$(docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep "sowknow4-celery-")
 
     if [ -z "$worker_running" ]; then
         log "Celery worker not running (handled by check_containers)"
@@ -153,9 +153,10 @@ check_worker() {
     if echo "$worker_running" | grep -qi "restarting"; then
         log "Celery worker is in restart loop"
 
-        local last_log=$(docker compose -f "$COMPOSE_FILE" logs --tail=20 celery-worker 2>/dev/null | tail -10)
+        local looping_name=$(echo "$worker_running" | grep -i "restarting" | awk '{print $1}')
+        local last_log=$(docker logs --tail=20 "$looping_name" 2>/dev/null | tail -10)
 
-        alert "Celery worker in restart loop.
+        alert "Celery worker in restart loop: $looping_name
 
 Last logs:
 $(echo "$last_log" | head -5)
@@ -165,7 +166,7 @@ Common causes:
 - Embedding model download failure
 - Database connection error
 
-Fix: docker compose build --no-cache celery-worker && docker compose up -d celery-worker"
+Fix: docker compose build --no-cache <service> && docker compose up -d <service>"
     fi
 }
 

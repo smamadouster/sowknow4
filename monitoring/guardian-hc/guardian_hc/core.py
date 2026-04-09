@@ -2,11 +2,14 @@
 Guardian HC Core -- Configuration-driven health check and self-healing.
 """
 
+import json
+import os
 import yaml
 import asyncio
 import structlog
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from guardian_hc.checks.containers import ContainerChecker
 from guardian_hc.checks.http_health import HttpHealthChecker
@@ -18,6 +21,7 @@ from guardian_hc.checks.config_drift import ConfigDriftChecker
 from guardian_hc.checks.ollama_health import OllamaChecker
 from guardian_hc.checks.vps_load import VpsLoadChecker
 from guardian_hc.checks.network_health import NetworkHealthChecker
+from guardian_hc.checks.celery_health import CeleryHealthChecker
 from guardian_hc.healers.container_healer import ContainerHealer
 from guardian_hc.healers.disk_healer import DiskHealer
 from guardian_hc.healers.ssl_healer import SslHealer
@@ -32,6 +36,9 @@ logger = structlog.get_logger()
 RESTART_MAX_ATTEMPTS = 5
 RESTART_COOLDOWN_BASE = 300  # 5 minutes initial cooldown
 RESTART_COOLDOWN_MAX = 3600  # 1 hour max cooldown
+TRACKER_STATE_FILE = os.environ.get("GUARDIAN_STATE_DIR", "/tmp") + "/guardian-restart-trackers.json"
+HEAL_VERIFY_DELAY = 12  # seconds to wait after restart before verifying health
+HEAL_VERIFY_TIMEOUT = 5  # seconds for the verification check itself
 
 
 @dataclass
@@ -67,6 +74,21 @@ class RestartTracker:
                 )
                 self.suppressed_until = now + timedelta(seconds=cooldown)
 
+    def to_dict(self) -> dict:
+        return {
+            "attempts": self.attempts,
+            "last_attempt": self.last_attempt.isoformat(),
+            "suppressed_until": self.suppressed_until.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "RestartTracker":
+        return cls(
+            attempts=d.get("attempts", 0),
+            last_attempt=datetime.fromisoformat(d["last_attempt"]) if d.get("last_attempt") else datetime.min.replace(tzinfo=timezone.utc),
+            suppressed_until=datetime.fromisoformat(d["suppressed_until"]) if d.get("suppressed_until") else datetime.min.replace(tzinfo=timezone.utc),
+        )
+
 
 @dataclass
 class ServiceConfig:
@@ -88,6 +110,7 @@ class GuardianConfig:
     ollama: dict = field(default_factory=dict)
     vps_load: dict = field(default_factory=dict)
     network: dict = field(default_factory=dict)
+    celery: dict = field(default_factory=dict)
     dashboard_port: int = 9090
 
 
@@ -110,10 +133,13 @@ class GuardianHC:
         self.vps_load_checker = VpsLoadChecker(config.vps_load)
         self.network_checker = NetworkHealthChecker(config.network)
         self.network_healer = NetworkHealer({"compose_file": config.compose_file})
+        self.celery_checker = CeleryHealthChecker(config.celery)
         self.patrol_runner = PatrolRunner(self)
         self._shutdown = False
         self._history: list[dict] = []
         self._restart_trackers: dict[str, RestartTracker] = {}
+        self.last_patrol_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
+        self._load_tracker_state()
 
     @classmethod
     def from_config(cls, config_path: str) -> "GuardianHC":
@@ -141,6 +167,7 @@ class GuardianHC:
             ollama=raw.get("ollama", {}),
             vps_load=raw.get("vps_load", {}),
             network=raw.get("network", {}),
+            celery=raw.get("celery", {}),
             dashboard_port=raw.get("dashboard", {}).get("port", 9090),
         )
         return cls(config)
@@ -159,8 +186,45 @@ class GuardianHC:
             self._restart_trackers[container] = RestartTracker()
         return self._restart_trackers[container]
 
+    def _load_tracker_state(self):
+        """Load restart tracker state from disk (survives guardian restarts)."""
+        try:
+            if os.path.exists(TRACKER_STATE_FILE):
+                with open(TRACKER_STATE_FILE) as f:
+                    data = json.load(f)
+                for name, state in data.items():
+                    self._restart_trackers[name] = RestartTracker.from_dict(state)
+                logger.info("tracker_state.loaded", containers=len(data))
+        except Exception as e:
+            logger.warning("tracker_state.load_failed", error=str(e)[:200])
+
+    def _save_tracker_state(self):
+        """Persist restart tracker state to disk."""
+        try:
+            data = {k: v.to_dict() for k, v in self._restart_trackers.items()}
+            Path(TRACKER_STATE_FILE).parent.mkdir(parents=True, exist_ok=True)
+            with open(TRACKER_STATE_FILE, "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.warning("tracker_state.save_failed", error=str(e)[:200])
+
+    async def _verify_container_health(self, svc: ServiceConfig) -> bool:
+        """After restart, verify the container is actually healthy."""
+        await asyncio.sleep(HEAL_VERIFY_DELAY)
+        status = await self.container_checker.check(svc.container)
+        if status["status"] != "running":
+            return False
+        hc = svc.health_check
+        if hc.get("type") == "http":
+            check = await HttpHealthChecker.check(hc.get("url", ""), timeout=HEAL_VERIFY_TIMEOUT)
+            return check.get("healthy", False)
+        elif hc.get("type") == "tcp":
+            check = await TcpHealthChecker.check(hc.get("host", "localhost"), hc.get("port", 0))
+            return check.get("healthy", False)
+        return status["status"] == "running"
+
     async def _try_heal_container(self, svc: ServiceConfig, reason: str, results: dict) -> bool:
-        """Attempt container restart with cooldown. Returns True if healed."""
+        """Attempt container restart with cooldown + post-heal verification."""
         tracker = self._get_tracker(svc.container)
         can, msg = tracker.can_restart()
         if not can:
@@ -168,6 +232,7 @@ class GuardianHC:
             await self.alert_manager.send(
                 f"*{svc.name}* is running but failing health checks | RESTART SUPPRESSED: {msg}")
             self.log_action({"target": svc.name, "action": "restart_suppressed", "reason": msg})
+            self._save_tracker_state()
             return False
 
         heal = await self.container_healer.heal(
@@ -175,16 +240,39 @@ class GuardianHC:
             rebuild=svc.auto_heal.get("rebuild_on_failure", False),
             compose_file=self.config.compose_file,
         )
-        tracker.record_attempt(heal.get("healed", False))
-        self.log_action({"target": svc.name, "action": f"restart_{reason}", **heal})
+
         if heal.get("healed"):
-            results["healed"] += 1
-            return True
+            verified = await self._verify_container_health(svc)
+            if verified:
+                tracker.record_attempt(True)
+                self.log_action({"target": svc.name, "action": f"restart_{reason}", "verified": True, **heal})
+                results["healed"] += 1
+                self._save_tracker_state()
+                return True
+            else:
+                tracker.record_attempt(False)
+                self.log_action({"target": svc.name, "action": f"restart_{reason}", "verified": False, **heal})
+                results["failed"] += 1
+                await self.alert_manager.send(
+                    f"Container *{svc.name}* restarted for {reason} but FAILED post-heal verification. "
+                    f"Container may be crash-looping.")
+                self._save_tracker_state()
+                return False
         else:
+            tracker.record_attempt(False)
+            self.log_action({"target": svc.name, "action": f"restart_{reason}", **heal})
             results["failed"] += 1
             await self.alert_manager.send(
                 f"Container *{svc.name}* failed {reason} and auto-restart failed.\n{heal.get('error', '')}")
+            self._save_tracker_state()
             return False
+
+    def _find_svc_for_container(self, container_name: str) -> ServiceConfig | None:
+        """Find ServiceConfig by container name."""
+        for svc in self.config.services:
+            if svc.container == container_name:
+                return svc
+        return None
 
     async def run_check_cycle(self, level: str = "standard") -> dict:
         """Run a complete check + heal cycle."""
@@ -220,14 +308,46 @@ class GuardianHC:
                 if heal.get("healed"):
                     results["healed"] += 1
 
+            # Memory checks -- route through RestartTracker to prevent flapping
             mem_status = await self.memory_checker.check(self.config.services)
             for ms in mem_status:
                 results["checks"].append({"type": "memory", **ms})
                 if ms.get("needs_healing"):
-                    heal = await self.memory_healer.heal(ms["container"])
-                    self.log_action({"target": ms["container"], "action": "memory_restart", **heal})
-                    if heal.get("healed"):
-                        results["healed"] += 1
+                    svc = self._find_svc_for_container(ms["container"])
+                    if svc and svc.auto_heal.get("restart", False):
+                        await self._try_heal_container(svc, "memory_critical", results)
+                    elif svc:
+                        await self.alert_manager.send(
+                            f"*{svc.name}* memory at {ms.get('mem_pct')}% but auto-heal disabled.")
+                        results["failed"] += 1
+                    else:
+                        heal = await self.memory_healer.heal(ms["container"])
+                        self.log_action({"target": ms["container"], "action": "memory_restart", **heal})
+                        if heal.get("healed"):
+                            results["healed"] += 1
+
+            # Celery health -- queue depth + worker responsiveness
+            celery_results = await self.celery_checker.check()
+            for cr in celery_results:
+                results["checks"].append({"type": "celery", **cr})
+                if cr.get("needs_healing"):
+                    if cr.get("check") == "celery_queue" and cr.get("severity") == "critical":
+                        await self.alert_manager.send(
+                            f"Celery queue depth CRITICAL: {cr.get('total_depth')} tasks backlogged.\n"
+                            f"Queues: {cr.get('queues', {})}")
+                        results["failed"] += 1
+                    elif cr.get("restart_loop"):
+                        container = cr.get("container", "")
+                        svc = self._find_svc_for_container(container)
+                        if svc:
+                            await self.alert_manager.send(
+                                f"*{svc.name}* is in a restart loop. Likely a CODE BUG.")
+                            results["failed"] += 1
+                    elif cr.get("status") in ("not_found", "exited"):
+                        container = cr.get("container", "")
+                        svc = self._find_svc_for_container(container)
+                        if svc and svc.auto_heal.get("restart", False):
+                            await self._try_heal_container(svc, "celery_down", results)
 
             # Network health -- CRITICAL: detect stale nftables + broken connectivity
             net_status = await self.network_checker.check()
@@ -290,7 +410,34 @@ class GuardianHC:
             drift = await self.drift_checker.check()
             results["checks"].append({"type": "config_drift", **drift})
 
+            # Alert channel verification on deep patrol
+            await self._verify_alert_channels(results)
+
+        self.last_patrol_time = datetime.now(timezone.utc)
+        # Write heartbeat file for Docker healthcheck to verify patrol loop is alive
+        try:
+            Path("/tmp/guardian-heartbeat").write_text(self.last_patrol_time.isoformat())
+        except Exception:
+            pass
         return results
+
+    async def _verify_alert_channels(self, results: dict):
+        """Test that alert channels are functional. Cross-alert if one fails."""
+        telegram_ok = await self.alert_manager.test_telegram()
+        email_ok = await self.alert_manager.test_email()
+        results["checks"].append({
+            "type": "alert_channels",
+            "telegram": telegram_ok,
+            "email": email_ok,
+        })
+        if not telegram_ok and email_ok:
+            await self.alert_manager.send_email_only(
+                "Guardian HC: Telegram alerting is DOWN. Check bot token/chat_id.")
+        elif telegram_ok and not email_ok:
+            await self.alert_manager.send(
+                "Guardian HC: Email alerting is DOWN. Check SMTP credentials.")
+        elif not telegram_ok and not email_ok:
+            logger.error("alert_channels.ALL_DOWN", note="Both Telegram and email are unreachable")
 
     async def run(self):
         """Main loop -- run patrols, dashboard, and daily report on schedule."""

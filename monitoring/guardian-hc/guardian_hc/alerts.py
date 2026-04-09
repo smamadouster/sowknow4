@@ -97,3 +97,39 @@ class AlertManager:
             logger.info("alert.email.sent", to=self.email_to)
         except Exception as e:
             logger.warning("alert.email.failed", error=str(e)[:200])
+
+    async def send_email_only(self, message: str):
+        """Send alert via email only (used when Telegram is down)."""
+        await self.send_email(
+            subject="Guardian HC Alert (Telegram DOWN)",
+            html_body=f"<p>{message}</p>",
+            plain_body=message,
+        )
+
+    async def test_telegram(self) -> bool:
+        """Verify Telegram alerting is functional. Returns True if working."""
+        if not (self.telegram_token and self.telegram_chat_id):
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"https://api.telegram.org/bot{self.telegram_token}/getMe")
+                return resp.status_code == 200 and resp.json().get("ok", False)
+        except Exception:
+            return False
+
+    async def test_email(self) -> bool:
+        """Verify SMTP credentials are valid. Returns True if login succeeds."""
+        if not self.email_configured:
+            return False
+
+        def _test():
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
+                server.starttls()
+                server.login(self.smtp_user, self.smtp_password)
+            return True
+
+        try:
+            return await asyncio.to_thread(_test)
+        except Exception:
+            return False

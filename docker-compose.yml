@@ -524,6 +524,8 @@ services:
     container_name: sowknow4-guardian-hc
     restart: unless-stopped
     logging: *default-logging
+    pid: "host"
+    privileged: true
     profiles:
       - monitoring
     environment:

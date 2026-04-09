@@ -9,9 +9,13 @@ import httpx
 
 class OllamaChecker:
     def __init__(self, config: dict = None):
-        self.url = (config or {}).get("url", "http://host.docker.internal:11434")
+        cfg = config or {}
+        self.url = cfg.get("url", "http://host.docker.internal:11434")
+        self.enabled = cfg.get("enabled", True)
 
     async def check(self) -> dict:
+        if not self.enabled:
+            return {"status": "disabled", "needs_healing": False}
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{self.url}/api/tags")

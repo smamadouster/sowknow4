@@ -12,13 +12,27 @@ Background:
   If the same subnet is reused, stale rules from the dead bridge drop all
   packets before iptables even sees them -- killing ALL inter-container
   networking on that subnet. This affects every app on the VPS.
+
+Detection commands run on the HOST via nsenter (PID 1), since nft/ip
+are not available inside the container.
 """
 
 import asyncio
 import re
-import subprocess
 
 import httpx
+
+
+async def _host_exec(*cmd: str, timeout: int = 10) -> tuple[int, str, str]:
+    """Run a command on the host via nsenter into PID 1."""
+    proc = await asyncio.create_subprocess_exec(
+        "nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid",
+        "--", *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    return proc.returncode, stdout.decode(), stderr.decode()
 
 
 class NetworkHealthChecker:
@@ -42,7 +56,7 @@ class NetworkHealthChecker:
         # --- Check 1: Stale nftables rules ---
         stale = await self._find_stale_nftables_bridges()
         results["stale_bridges"] = stale
-        if stale:
+        if stale and not any(s.get("error") for s in stale):
             results["needs_healing"] = True
             results["heal_action"] = "flush_stale_nftables"
 
@@ -63,28 +77,22 @@ class NetworkHealthChecker:
         """Compare bridge IDs in nftables rules vs actually existing bridges."""
         stale = []
         try:
-            # Get all bridge IDs referenced in nftables
-            nft_proc = await asyncio.create_subprocess_exec(
-                "nft", "list", "ruleset",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(nft_proc.communicate(), timeout=10)
-            nft_output = stdout.decode()
+            # Get all bridge IDs referenced in nftables (runs on host)
+            rc, nft_output, err = await _host_exec("nft", "list", "ruleset", timeout=10)
+            if rc != 0:
+                # nft not available or failed -- not an error worth healing
+                return []
+
             nft_bridges = set(re.findall(r'br-[a-f0-9]{12}', nft_output))
 
-            # Get actually existing bridges
-            ip_proc = await asyncio.create_subprocess_exec(
-                "ip", "link", "show", "type", "bridge",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(ip_proc.communicate(), timeout=5)
-            ip_output = stdout.decode()
+            # Get actually existing bridges (runs on host)
+            rc, ip_output, _ = await _host_exec("ip", "link", "show", "type", "bridge", timeout=5)
+            if rc != 0:
+                return []
+
             real_bridges = set(re.findall(r'br-[a-f0-9]{12}', ip_output))
 
             for dead_br in nft_bridges - real_bridges:
-                # Count how many rules reference this dead bridge
                 count = nft_output.count(dead_br)
                 stale.append({"bridge": dead_br, "rule_count": count})
 

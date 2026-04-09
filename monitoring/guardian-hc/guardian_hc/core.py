@@ -28,6 +28,45 @@ from guardian_hc.alerts import AlertManager
 
 logger = structlog.get_logger()
 
+# Restart cooldown: max attempts before suppression, then exponential backoff
+RESTART_MAX_ATTEMPTS = 5
+RESTART_COOLDOWN_BASE = 300  # 5 minutes initial cooldown
+RESTART_COOLDOWN_MAX = 3600  # 1 hour max cooldown
+
+
+@dataclass
+class RestartTracker:
+    """Tracks restart attempts per container to prevent flapping."""
+    attempts: int = 0
+    last_attempt: datetime = field(default_factory=lambda: datetime.min.replace(tzinfo=timezone.utc))
+    suppressed_until: datetime = field(default_factory=lambda: datetime.min.replace(tzinfo=timezone.utc))
+
+    def can_restart(self) -> tuple[bool, str]:
+        now = datetime.now(timezone.utc)
+        if now < self.suppressed_until:
+            remaining = int((self.suppressed_until - now).total_seconds())
+            return False, (
+                f"Restart suppressed: {self.attempts} attempts in "
+                f"{int((now - self.last_attempt).total_seconds()) + remaining}s. "
+                f"Next retry in {remaining}s. Container likely has a CODE BUG -- restarting won't fix it."
+            )
+        return True, ""
+
+    def record_attempt(self, success: bool):
+        now = datetime.now(timezone.utc)
+        self.last_attempt = now
+        if success:
+            self.attempts = 0
+            self.suppressed_until = datetime.min.replace(tzinfo=timezone.utc)
+        else:
+            self.attempts += 1
+            if self.attempts >= RESTART_MAX_ATTEMPTS:
+                cooldown = min(
+                    RESTART_COOLDOWN_BASE * (2 ** (self.attempts - RESTART_MAX_ATTEMPTS)),
+                    RESTART_COOLDOWN_MAX,
+                )
+                self.suppressed_until = now + timedelta(seconds=cooldown)
+
 
 @dataclass
 class ServiceConfig:
@@ -74,6 +113,7 @@ class GuardianHC:
         self.patrol_runner = PatrolRunner(self)
         self._shutdown = False
         self._history: list[dict] = []
+        self._restart_trackers: dict[str, RestartTracker] = {}
 
     @classmethod
     def from_config(cls, config_path: str) -> "GuardianHC":
@@ -114,6 +154,38 @@ class GuardianHC:
     def get_history(self, limit: int = 50) -> list[dict]:
         return self._history[-limit:]
 
+    def _get_tracker(self, container: str) -> RestartTracker:
+        if container not in self._restart_trackers:
+            self._restart_trackers[container] = RestartTracker()
+        return self._restart_trackers[container]
+
+    async def _try_heal_container(self, svc: ServiceConfig, reason: str, results: dict) -> bool:
+        """Attempt container restart with cooldown. Returns True if healed."""
+        tracker = self._get_tracker(svc.container)
+        can, msg = tracker.can_restart()
+        if not can:
+            results["failed"] += 1
+            await self.alert_manager.send(
+                f"*{svc.name}* is running but failing health checks | RESTART SUPPRESSED: {msg}")
+            self.log_action({"target": svc.name, "action": "restart_suppressed", "reason": msg})
+            return False
+
+        heal = await self.container_healer.heal(
+            svc.container,
+            rebuild=svc.auto_heal.get("rebuild_on_failure", False),
+            compose_file=self.config.compose_file,
+        )
+        tracker.record_attempt(heal.get("healed", False))
+        self.log_action({"target": svc.name, "action": f"restart_{reason}", **heal})
+        if heal.get("healed"):
+            results["healed"] += 1
+            return True
+        else:
+            results["failed"] += 1
+            await self.alert_manager.send(
+                f"Container *{svc.name}* failed {reason} and auto-restart failed.\n{heal.get('error', '')}")
+            return False
+
     async def run_check_cycle(self, level: str = "standard") -> dict:
         """Run a complete check + heal cycle."""
         results = {"level": level, "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -124,34 +196,20 @@ class GuardianHC:
             results["checks"].append({"service": svc.name, "type": "container", **status})
 
             if status["status"] != "running" and svc.auto_heal.get("restart", False):
-                heal = await self.container_healer.heal(
-                    svc.container,
-                    rebuild=svc.auto_heal.get("rebuild_on_failure", False),
-                    compose_file=self.config.compose_file,
-                )
-                self.log_action({"target": svc.name, "action": "restart", **heal})
-                if heal.get("healed"):
-                    results["healed"] += 1
-                else:
-                    results["failed"] += 1
-                    await self.alert_manager.send(
-                        f"Container *{svc.name}* is DOWN and auto-restart failed.\n{heal.get('error', '')}")
+                await self._try_heal_container(svc, "container_down", results)
 
             hc = svc.health_check
             if hc.get("type") == "http" and status["status"] == "running":
                 http_status = await HttpHealthChecker.check(hc.get("url", ""), timeout=hc.get("timeout", 10))
                 results["checks"].append({"service": svc.name, "type": "http", **http_status})
                 if not http_status.get("healthy") and svc.auto_heal.get("restart", False):
-                    heal = await self.container_healer.heal(svc.container, compose_file=self.config.compose_file)
-                    self.log_action({"target": svc.name, "action": "restart_unhealthy", **heal})
-                    if heal.get("healed"):
-                        results["healed"] += 1
-                    else:
-                        results["failed"] += 1
+                    await self._try_heal_container(svc, "http_unhealthy", results)
 
             elif hc.get("type") == "tcp" and status["status"] == "running":
                 tcp_status = await TcpHealthChecker.check(hc.get("host", "localhost"), hc.get("port", 0))
                 results["checks"].append({"service": svc.name, "type": "tcp", **tcp_status})
+                if not tcp_status.get("healthy") and svc.auto_heal.get("restart", False):
+                    await self._try_heal_container(svc, "tcp_unhealthy", results)
 
         if level in ("standard", "deep"):
             disk_status = await self.disk_checker.check()

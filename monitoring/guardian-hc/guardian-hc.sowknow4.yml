@@ -144,6 +144,7 @@ ssl:
   critical_days: 3
 
 ollama:
+  enabled: false  # Ollama removed from project -- confidential routing uses metadata-only approach
   url: "http://host.docker.internal:11434"
 
 vps_load:

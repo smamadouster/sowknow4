@@ -5,7 +5,7 @@ import asyncio
 
 def main():
     if len(sys.argv) < 2:
-        print("Guardian HC v1.1.0 -- Self-Healing Health Check for SOWKNOW4")
+        print("Guardian HC v1.3.0 -- Self-Healing Health Check for SOWKNOW4")
         print("\nUsage:")
         print("  guardian-hc run [config.yml]     Start monitoring")
         print("  guardian-hc check [config.yml]   Run one check cycle")

@@ -226,7 +226,7 @@ def _generate_html(metrics: dict, containers: list[dict], history: list[dict], n
 </div>
 
 <!-- Footer -->
-<div style="background:#f9fafb;padding:16px 32px;text-align:center;font-size:11px;color:#9CA3AF;border-top:1px solid #eee">Guardian HC v1.2.0 &mdash; SOWKNOW4 Legacy Knowledge Vault &mdash; GollamTech</div>
+<div style="background:#f9fafb;padding:16px 32px;text-align:center;font-size:11px;color:#9CA3AF;border-top:1px solid #eee">Guardian HC v1.3.0 &mdash; SOWKNOW4 Legacy Knowledge Vault &mdash; GollamTech</div>
 
 </div></body></html>"""
 

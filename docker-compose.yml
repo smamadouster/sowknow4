@@ -527,6 +527,8 @@ services:
     logging: *default-logging
     pid: "host"
     privileged: true
+    security_opt:
+      - apparmor:unconfined
     profiles:
       - monitoring
     environment:

@@ -61,15 +61,20 @@ class NetworkHealthChecker:
             results["heal_action"] = "flush_stale_nftables"
 
         # --- Check 2: Inter-container TCP probes ---
+        probes_failed = 0
         for pair in self.probe_pairs:
             probe = await self._tcp_probe(
                 pair["from"], pair["to_host"], pair["to_port"],
             )
             results["probe_results"].append(probe)
             if not probe["ok"]:
-                results["needs_healing"] = True
-                if not results["heal_action"]:
-                    results["heal_action"] = "flush_stale_nftables"
+                probes_failed += 1
+
+        # Only trigger healing if stale nftables bridges were found.
+        # Probe-only failures are reported but NOT auto-healed — they're
+        # usually transient (container restarting) not nftables bugs.
+        if probes_failed > 0 and not stale:
+            results["probes_degraded"] = True
 
         return results
 

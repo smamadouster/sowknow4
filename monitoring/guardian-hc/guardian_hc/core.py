@@ -37,8 +37,8 @@ RESTART_MAX_ATTEMPTS = 5
 RESTART_COOLDOWN_BASE = 300  # 5 minutes initial cooldown
 RESTART_COOLDOWN_MAX = 3600  # 1 hour max cooldown
 TRACKER_STATE_FILE = os.environ.get("GUARDIAN_STATE_DIR", "/tmp") + "/guardian-restart-trackers.json"
-HEAL_VERIFY_DELAY = 12  # seconds to wait after restart before verifying health
-HEAL_VERIFY_TIMEOUT = 5  # seconds for the verification check itself
+HEAL_VERIFY_DELAY = 20  # seconds to wait after restart before verifying health
+HEAL_VERIFY_TIMEOUT = 10  # seconds for the verification check itself
 
 
 @dataclass
@@ -352,6 +352,13 @@ class GuardianHC:
             # Network health -- CRITICAL: detect stale nftables + broken connectivity
             net_status = await self.network_checker.check()
             results["checks"].append({"type": "network_health", **net_status})
+
+            if net_status.get("probes_degraded"):
+                # Probes failed but no stale nftables — alert only, don't heal
+                probes_failed = [p for p in net_status.get("probe_results", []) if not p.get("ok")]
+                probe_summary = ", ".join(p.get("to", "?") for p in probes_failed)
+                logger.warning("network.probes_degraded", failed=probe_summary)
+
             if net_status.get("needs_healing"):
                 stale = net_status.get("stale_bridges", [])
                 probes_failed = [p for p in net_status.get("probe_results", []) if not p.get("ok")]

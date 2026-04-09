@@ -224,7 +224,7 @@ modules:
 database:
   host: "postgres"
   port: 5432
-  dbname: "sowknow4"
+  dbname: "sowknow"
   user: "guardian"
   password: "${GUARDIAN_DB_PASSWORD}"
   fallback_sqlite: "/tmp/guardian-metrics-buffer.db"

@@ -46,7 +46,7 @@ def _build_pg_dsn(cfg: dict) -> str:
         cfg.get("password", ""), "@",
         cfg.get("host", "postgres"), ":",
         str(cfg.get("port", 5432)), "/",
-        cfg.get("dbname", "sowknow4"),
+        cfg.get("dbname", "sowknow"),
     ]
     return "".join(parts)
 

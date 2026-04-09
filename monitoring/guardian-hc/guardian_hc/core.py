@@ -29,6 +29,7 @@ from guardian_hc.healers.memory_healer import MemoryHealer
 from guardian_hc.healers.network_healer import NetworkHealer
 from guardian_hc.patrol.runner import PatrolRunner
 from guardian_hc.alerts import AlertManager
+from guardian_hc.correlator import AlertEvent
 
 logger = structlog.get_logger()
 
@@ -229,8 +230,15 @@ class GuardianHC:
         can, msg = tracker.can_restart()
         if not can:
             results["failed"] += 1
-            await self.alert_manager.send(
-                f"*{svc.name}* is running but failing health checks | RESTART SUPPRESSED: {msg}")
+            results["events"].append(AlertEvent(
+                event_id=f"{results['level']}-{svc.name}-restart_suppressed-{int(datetime.now(timezone.utc).timestamp())}",
+                severity="CRITICAL", service=svc.name, container=svc.container,
+                check_type="restart_suppressed", patrol_level=results["level"],
+                timestamp=datetime.now(timezone.utc),
+                summary=f"{svc.name} restart suppressed after {tracker.attempts} attempts",
+                details=msg, heal_attempted=True, heal_success=False, heal_action=None,
+                restart_attempts=tracker.attempts, restart_suppressed=True,
+            ))
             self.log_action({"target": svc.name, "action": "restart_suppressed", "reason": msg})
             self._save_tracker_state()
             return False
@@ -253,17 +261,34 @@ class GuardianHC:
                 tracker.record_attempt(False)
                 self.log_action({"target": svc.name, "action": f"restart_{reason}", "verified": False, **heal})
                 results["failed"] += 1
-                await self.alert_manager.send(
-                    f"Container *{svc.name}* restarted for {reason} but FAILED post-heal verification. "
-                    f"Container may be crash-looping.")
+                results["events"].append(AlertEvent(
+                    event_id=f"{results['level']}-{svc.name}-{reason}-{int(datetime.now(timezone.utc).timestamp())}",
+                    severity="CRITICAL", service=svc.name, container=svc.container,
+                    check_type=reason, patrol_level=results["level"],
+                    timestamp=datetime.now(timezone.utc),
+                    summary=f"{svc.name} restarted but failed post-heal verification",
+                    details=f"Container restarted for {reason} but FAILED post-heal verification. May be crash-looping.",
+                    heal_attempted=True, heal_success=False,
+                    heal_action=f"docker restart {svc.container}",
+                    restart_attempts=tracker.attempts, restart_suppressed=False,
+                ))
                 self._save_tracker_state()
                 return False
         else:
             tracker.record_attempt(False)
             self.log_action({"target": svc.name, "action": f"restart_{reason}", **heal})
             results["failed"] += 1
-            await self.alert_manager.send(
-                f"Container *{svc.name}* failed {reason} and auto-restart failed.\n{heal.get('error', '')}")
+            results["events"].append(AlertEvent(
+                event_id=f"{results['level']}-{svc.name}-{reason}-{int(datetime.now(timezone.utc).timestamp())}",
+                severity="CRITICAL", service=svc.name, container=svc.container,
+                check_type=reason, patrol_level=results["level"],
+                timestamp=datetime.now(timezone.utc),
+                summary=f"{svc.name} failed {reason} and auto-restart failed",
+                details=f"Auto-restart failed: {heal.get('error', '')}",
+                heal_attempted=True, heal_success=False,
+                heal_action=f"docker restart {svc.container}",
+                restart_attempts=tracker.attempts, restart_suppressed=False,
+            ))
             self._save_tracker_state()
             return False
 
@@ -277,7 +302,7 @@ class GuardianHC:
     async def run_check_cycle(self, level: str = "standard") -> dict:
         """Run a complete check + heal cycle."""
         results = {"level": level, "timestamp": datetime.now(timezone.utc).isoformat(),
-                   "checks": [], "healed": 0, "failed": 0}
+                   "checks": [], "healed": 0, "failed": 0, "events": []}
 
         for svc in self.config.services:
             status = await self.container_checker.check(svc.container)
@@ -317,8 +342,16 @@ class GuardianHC:
                     if svc and svc.auto_heal.get("restart", False):
                         await self._try_heal_container(svc, "memory_critical", results)
                     elif svc:
-                        await self.alert_manager.send(
-                            f"*{svc.name}* memory at {ms.get('mem_pct')}% but auto-heal disabled.")
+                        results["events"].append(AlertEvent(
+                            event_id=f"{level}-{svc.name}-memory_critical-{int(datetime.now(timezone.utc).timestamp())}",
+                            severity="HIGH", service=svc.name, container=svc.container,
+                            check_type="memory_critical", patrol_level=level,
+                            timestamp=datetime.now(timezone.utc),
+                            summary=f"{svc.name} memory at {ms.get('mem_pct')}% (auto-heal disabled)",
+                            details=f"Container memory usage at {ms.get('mem_pct')}% but auto-heal is disabled in config.",
+                            heal_attempted=False, heal_success=None, heal_action=None,
+                            restart_attempts=0, restart_suppressed=False,
+                        ))
                         results["failed"] += 1
                     else:
                         heal = await self.memory_healer.heal(ms["container"])
@@ -332,16 +365,31 @@ class GuardianHC:
                 results["checks"].append({"type": "celery", **cr})
                 if cr.get("needs_healing"):
                     if cr.get("check") == "celery_queue" and cr.get("severity") == "critical":
-                        await self.alert_manager.send(
-                            f"Celery queue depth CRITICAL: {cr.get('total_depth')} tasks backlogged.\n"
-                            f"Queues: {cr.get('queues', {})}")
+                        results["events"].append(AlertEvent(
+                            event_id=f"{level}-celery-celery_queue_critical-{int(datetime.now(timezone.utc).timestamp())}",
+                            severity="CRITICAL", service="celery-light", container="sowknow4-celery-light",
+                            check_type="celery_queue_critical", patrol_level=level,
+                            timestamp=datetime.now(timezone.utc),
+                            summary=f"Celery queue depth critical: {cr.get('total_depth')} tasks",
+                            details=f"Queue depth: {cr.get('total_depth')}. Queues: {cr.get('queues', {})}",
+                            heal_attempted=False, heal_success=None, heal_action=None,
+                            restart_attempts=0, restart_suppressed=False,
+                        ))
                         results["failed"] += 1
                     elif cr.get("restart_loop"):
                         container = cr.get("container", "")
                         svc = self._find_svc_for_container(container)
                         if svc:
-                            await self.alert_manager.send(
-                                f"*{svc.name}* is in a restart loop. Likely a CODE BUG.")
+                            results["events"].append(AlertEvent(
+                                event_id=f"{level}-{svc.name}-restart_suppressed-{int(datetime.now(timezone.utc).timestamp())}",
+                                severity="CRITICAL", service=svc.name, container=svc.container,
+                                check_type="restart_suppressed", patrol_level=level,
+                                timestamp=datetime.now(timezone.utc),
+                                summary=f"{svc.name} is in a restart loop (likely CODE BUG)",
+                                details="Container is in a restart loop. Restarting won't fix it.",
+                                heal_attempted=False, heal_success=None, heal_action=None,
+                                restart_attempts=0, restart_suppressed=True,
+                            ))
                             results["failed"] += 1
                     elif cr.get("status") in ("not_found", "exited"):
                         container = cr.get("container", "")
@@ -365,23 +413,23 @@ class GuardianHC:
                 stale_summary = ", ".join(s.get("bridge", "?") for s in stale) if stale else "none"
                 probe_summary = ", ".join(p.get("to", "?") for p in probes_failed) if probes_failed else "none"
 
-                await self.alert_manager.send(
-                    f"CRITICAL: Docker network broken!\n"
-                    f"Stale nftables bridges: {stale_summary}\n"
-                    f"Failed probes: {probe_summary}\n"
-                    f"Auto-healing: flushing nftables + restarting Docker...")
-
                 heal = await self.network_healer.heal(stale_bridges=stale)
                 self.log_action({"target": "network", "action": "nftables_flush", **heal})
                 if heal.get("healed"):
                     results["healed"] += 1
-                    await self.alert_manager.send(
-                        f"Network healed: {', '.join(heal.get('actions', []))}")
                 else:
                     results["failed"] += 1
-                    await self.alert_manager.send(
-                        f"Network healing FAILED: {heal.get('error', 'unknown')}\n"
-                        f"Manual intervention required!")
+                    results["events"].append(AlertEvent(
+                        event_id=f"{level}-network-network_broken-{int(datetime.now(timezone.utc).timestamp())}",
+                        severity="CRITICAL", service="network", container=None,
+                        check_type="network_broken", patrol_level=level,
+                        timestamp=datetime.now(timezone.utc),
+                        summary="Docker network broken - nftables stale rules",
+                        details=f"Stale bridges: {stale_summary}. Failed probes: {probe_summary}. Heal failed: {heal.get('error', 'unknown')}",
+                        heal_attempted=True, heal_success=False,
+                        heal_action="nftables flush + docker restart",
+                        restart_attempts=0, restart_suppressed=False,
+                    ))
 
             ollama_status = await self.ollama_checker.check()
             results["checks"].append({"type": "ollama_health", **ollama_status})
@@ -400,8 +448,16 @@ class GuardianHC:
                         detail = f"Load5={vls.get('load5')}"
                     elif vls.get("type") == "steal_time":
                         detail = f"Steal={vls.get('steal_pct')}%"
-                    await self.alert_manager.send(
-                        f"VPS load critical: {detail} -- {vls['type']} threshold exceeded.")
+                    results["events"].append(AlertEvent(
+                        event_id=f"{level}-vps_load-vps_load_high-{int(datetime.now(timezone.utc).timestamp())}",
+                        severity="WARNING", service="vps_load", container=None,
+                        check_type="vps_load_high", patrol_level=level,
+                        timestamp=datetime.now(timezone.utc),
+                        summary=f"VPS load critical: {detail}",
+                        details=f"{vls['type']} threshold exceeded: {detail}",
+                        heal_attempted=False, heal_success=None, heal_action=None,
+                        restart_attempts=0, restart_suppressed=False,
+                    ))
                     results["failed"] += 1
 
         if level == "deep":

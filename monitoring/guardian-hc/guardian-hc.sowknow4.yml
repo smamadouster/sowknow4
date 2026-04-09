@@ -1,8 +1,10 @@
-# Guardian HC -- SOWKNOW4 Configuration
-# Self-healing health check for the SOWKNOW4 Legacy Knowledge Vault
+# Guardian HC v2.0 -- SOWKNOW4 Configuration
+# Autonomous observability & self-healing agent
 #
 # Production: /var/docker/sowknow4
 # Dev:        /home/development/src/active/sowknow4
+
+version: "2.0"
 
 app:
   name: "SOWKNOW4 Legacy Knowledge Vault"
@@ -172,3 +174,85 @@ network:
 
 dashboard:
   port: 9090
+
+# --- v2: Plugin System ---
+
+plugins:
+  infrastructure:
+    enabled: true
+  probes:
+    enabled: true
+    service_account: "guardian-probe"
+  sentinel:
+    enabled: true
+  trends:
+    enabled: true
+    retention_raw: "48h"
+    retention_hourly: "14d"
+  memory:
+    enabled: true
+    bootstrap_sources:
+      - "/var/docker/sowknow4/.wolf/buglog.json"
+      - "/var/docker/sowknow4/logs/incidents.jsonl"
+
+modules:
+  - name: "Authentication Service"
+    services: [backend]
+    probes: [jwt_validity, auth_flow]
+  - name: "Document Pipeline"
+    services: [celery-heavy, celery-light, backend]
+    probes: [embedding_pipeline, celery_completion]
+  - name: "Search & Retrieval"
+    services: [backend, postgres]
+    probes: [query_latency]
+  - name: "Collections Engine"
+    services: [celery-collections, backend]
+    probes: [celery_completion]
+  - name: "Chat / LLM Service"
+    services: [backend]
+    probes: [llm_connectivity]
+  - name: "Telegram Bot"
+    services: [telegram-bot]
+    probes: [bot_responsiveness]
+  - name: "Storage Layer"
+    services: [postgres, redis, vault]
+    probes: [redis_deep, postgres_deep, vault_unseal]
+  - name: "Infrastructure"
+    services: [frontend, backend]
+    probes: [nginx_upstream, disk, memory, network, ssl]
+
+database:
+  host: "postgres"
+  port: 5432
+  dbname: "sowknow4"
+  user: "guardian"
+  password: "${GUARDIAN_DB_PASSWORD}"
+  fallback_sqlite: "/tmp/guardian-metrics-buffer.db"
+
+agents:
+  - id: "GA-0"
+    name: "Watcher"
+    role: "monitor"
+    plugins: [probes, sentinel]
+  - id: "GA-1"
+    name: "Healer"
+    role: "heal-executor"
+  - id: "GA-2"
+    name: "Debugger"
+    role: "correlator"
+  - id: "GA-3"
+    name: "Learner"
+    role: "learning"
+    plugins: [memory]
+  - id: "GA-4"
+    name: "Reporter"
+    role: "reporting"
+  - id: "GA-5"
+    name: "Archivist"
+    role: "metrics"
+    plugins: [trends]
+
+daily_report:
+  time: "06:00"
+  timezone: "America/Toronto"
+  channels: [telegram, email]

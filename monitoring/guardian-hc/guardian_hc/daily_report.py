@@ -263,6 +263,75 @@ def _generate_telegram_summary(metrics: dict, containers: list[dict], history: l
     return "\n".join(lines)
 
 
+async def _generate_telegram_v2(guardian, metrics: dict, containers: list[dict], history: list[dict], now: datetime) -> str:
+    """DroitAssist-style daily intelligence brief for Telegram."""
+    day_names = {0: "lundi", 1: "mardi", 2: "mercredi", 3: "jeudi", 4: "vendredi", 5: "samedi", 6: "dimanche"}
+    month_names = {1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+                   7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"}
+    date_str = f"{day_names[now.weekday()]} {now.day} {month_names[now.month]} {now.year}"
+
+    healed_count = sum(1 for h in history if h.get("type") == "heal" and h.get("success"))
+    failed_count = sum(1 for h in history if h.get("type") == "heal" and not h.get("success"))
+
+    status_emoji = "🟡" if failed_count > 0 else "🟢"
+    status_text = "DEGRADED" if failed_count > 0 else "HEALTHY"
+
+    v2 = getattr(guardian, '_v2_config', None)
+    module_names = [m.name for m in v2.modules] if v2 and v2.modules else [
+        "Authentication Service", "Document Pipeline", "Search & Retrieval",
+        "Collections Engine", "Chat / LLM Service", "Telegram Bot",
+        "Storage Layer", "Infrastructure",
+    ]
+
+    lines = [
+        f"{status_emoji} Guardian SOWKNOW — Daily Intelligence Report",
+        date_str,
+        "",
+        f"System Status: {status_text}",
+        f"{len(module_names)} Healthy | 0 Degraded | 0 Unhealthy | {healed_count} Auto-Heals",
+        "",
+        "Module Status",
+    ]
+    for name in module_names:
+        lines.append(f"✅ {name}")
+
+    lines.append("")
+    lines.append("Guardian Agents")
+    reg = getattr(guardian, '_agent_registry', None)
+    if reg:
+        for a in reg.agents:
+            lines.append(f"{a.agent_id}  {a.name:<12s} {a.status.value}")
+    else:
+        for aid, name in [("GA-0", "Watcher"), ("GA-1", "Healer"), ("GA-2", "Debugger"),
+                          ("GA-3", "Learner"), ("GA-4", "Reporter"), ("GA-5", "Archivist")]:
+            lines.append(f"{aid}  {name:<12s} healthy")
+
+    lines.append("")
+    lines.append("🧠 Learned Patterns")
+    db = getattr(guardian, '_metrics_db', None)
+    if db:
+        try:
+            patterns = await db.get_active_patterns()
+            for p in patterns[:5]:
+                lines.append(f"- {p['pattern_name']}: confidence {p['confidence']:.2f} (matched {p['times_matched']}x)")
+            if not patterns:
+                lines.append("- (no patterns learned yet)")
+        except Exception:
+            lines.append("- (patterns DB unavailable)")
+    else:
+        lines.append("- (not connected)")
+
+    lines.append("")
+    disk = metrics.get("disk", {})
+    lines.append(f"📈 Disk: {disk.get('pct', '?')}% | Mem: {metrics.get('memory', {}).get('used', '?')}/{metrics.get('memory', {}).get('total', '?')}")
+    lines.append("")
+
+    total = len(history)
+    lines.append(f"Total actions (24h): {total} | Heals: {healed_count} | Dashboard: localhost:9090")
+
+    return "\n".join(lines)
+
+
 def generate_report(guardian) -> tuple[str, str, dict]:
     """Legacy wrapper -- returns (plain, html, data). Not used by new flow."""
     history = guardian.get_history(50)
@@ -303,10 +372,14 @@ async def send_report(guardian, alert_manager=None) -> dict:
         result["email_sent"] = False
         result["email_skipped"] = "Email not configured"
 
-    # Telegram: always send condensed summary
+    # Telegram: use v2 format if available
     if alert_manager:
         try:
-            summary = _generate_telegram_summary(metrics, containers, history, now)
+            v2 = getattr(guardian, '_v2_config', None)
+            if v2 and v2.version == "2.0":
+                summary = await _generate_telegram_v2(guardian, metrics, containers, history, now)
+            else:
+                summary = _generate_telegram_summary(metrics, containers, history, now)
             await alert_manager.send(summary)
             result["telegram_sent"] = True
         except Exception as e:

@@ -313,12 +313,101 @@ class IncidentCorrelator:
 
     @staticmethod
     def _format_open(incident: Incident) -> str:
-        return f"INCIDENT OPEN — {incident.incident_id}\n{incident.root_cause.summary}"
+        severity_icon = "\U0001f534" if incident.severity in ("CRITICAL", "HIGH") else "\U0001f7e0"
+        root = incident.root_cause
+        lines = [
+            f"{severity_icon} INCIDENT OPEN \u2014 {incident.incident_id}",
+            "",
+        ]
+
+        if incident.related_events:
+            affected_names = ", ".join(e.service for e in incident.related_events)
+            lines.append(f"{root.service} down \u2192 {affected_names} cascading")
+        else:
+            lines.append(root.summary)
+
+        lines.append("")
+        lines.append(f"Severity: {incident.severity}")
+
+        if incident.related_events:
+            lines.append(f"Root cause: {root.service} \u2014 {root.summary}")
+            affected_details = ", ".join(
+                f"{e.service} ({e.check_type.replace('_', ' ')})"
+                for e in incident.related_events
+            )
+            lines.append(f"Affected: {affected_details}")
+        else:
+            lines.append(f"Service: {root.service} \u2014 {root.summary}")
+
+        if root.heal_attempted:
+            lines.append("")
+            lines.append(f"Auto-heal: {root.heal_action or 'attempted'} attempted")
+            if root.heal_success is False:
+                lines.append(f"Post-heal: verification failed (attempt {root.restart_attempts}/5)")
+            elif root.heal_success:
+                lines.append(f"Post-heal: verified healthy")
+
+        patrol_intervals = {"critical": 2, "standard": 10, "deep": 60}
+        interval = patrol_intervals.get(root.patrol_level, 10)
+        lines.append("")
+        lines.append(f"Next check in {interval} min. Will escalate if unresolved after 5 checks.")
+
+        return "\n".join(lines)
 
     @staticmethod
     def _format_escalation(incident: Incident) -> str:
-        return f"ESCALATION — {incident.incident_id}\n{incident.root_cause.summary}"
+        root = incident.root_cause
+        patrol_intervals = {"critical": 2, "standard": 10, "deep": 60}
+        interval = patrol_intervals.get(root.patrol_level, 10)
+        duration_min = incident.patrol_count * interval
+
+        lines = [
+            f"\U0001f534\U0001f534 ESCALATION \u2014 {incident.incident_id}",
+            "",
+            f"{root.service} has been down for {duration_min}+ minutes ({incident.patrol_count} consecutive checks)",
+            "",
+        ]
+
+        if root.restart_suppressed:
+            lines.append(f"Restart SUPPRESSED: {root.restart_attempts} attempts failed")
+            lines.append("Container likely has a CODE BUG \u2014 restarting won't fix it.")
+            lines.append("")
+
+        if incident.related_events:
+            affected = ", ".join(e.service for e in incident.related_events)
+            lines.append(f"Affected services: {affected}")
+
+        lines.append("MANUAL INTERVENTION REQUIRED")
+        lines.append("")
+
+        container = root.container or f"sowknow4-{root.service}"
+        lines.append(f"Suggested: check {root.service} logs")
+        lines.append(f"  docker logs {container} --tail 50")
+
+        return "\n".join(lines)
 
     @staticmethod
     def _format_resolved(incident: Incident) -> str:
-        return f"RESOLVED — {incident.incident_id}\n{incident.root_cause.summary}"
+        root = incident.root_cause
+        patrol_intervals = {"critical": 2, "standard": 10, "deep": 60}
+        interval = patrol_intervals.get(root.patrol_level, 10)
+        duration_min = incident.patrol_count * interval
+
+        lines = [
+            f"RESOLVED \u2014 {incident.incident_id}",
+            "",
+            f"{root.service} recovered after {incident.patrol_count} patrols ({duration_min} min)",
+            "",
+        ]
+
+        if root.heal_action:
+            lines.append(f"Auto-healed: {root.heal_action}")
+
+        if incident.related_events:
+            affected = ", ".join(e.service for e in incident.related_events)
+            lines.append(f"All dependent services back online: {affected}")
+
+        if incident.suppressed_count > 0:
+            lines.append(f"Suppressed alerts: {incident.suppressed_count}")
+
+        return "\n".join(lines)

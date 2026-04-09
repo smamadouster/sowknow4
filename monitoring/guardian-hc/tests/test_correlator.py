@@ -330,3 +330,85 @@ class TestIncidentLifecycle:
         line = json.loads(jsonl_path.read_text().strip())
         assert line["event_type"] == "open"
         assert line["root_cause"]["service"] == "postgres"
+
+
+class TestTelegramFormatters:
+    def _make_incident(self, root_service="postgres", related_services=None, **overrides):
+        root = _make_event(root_service, "tcp_unhealthy",
+                           heal_attempted=True, heal_success=False,
+                           heal_action=f"docker restart sowknow4-{root_service}",
+                           restart_attempts=2)
+        related = [_make_event(s, "container_down") for s in (related_services or [])]
+        now = datetime(2026, 4, 9, 14, 22, 8, tzinfo=timezone.utc)
+        defaults = {
+            "incident_id": "INC-20260409-003",
+            "severity": "CRITICAL",
+            "root_cause": root,
+            "related_events": related,
+            "status": "open",
+            "opened_at": now,
+            "last_seen_at": now,
+            "patrol_count": 1,
+            "escalated_at": None,
+            "resolved_at": None,
+            "suppressed_count": 0,
+            "owner": "Platform Admin",
+        }
+        defaults.update(overrides)
+        return Incident(**defaults)
+
+    def test_format_open_with_related(self):
+        incident = self._make_incident(related_services=["backend", "celery-heavy"])
+        msg = IncidentCorrelator._format_open(incident)
+        assert "INCIDENT OPEN" in msg
+        assert "INC-20260409-003" in msg
+        assert "postgres" in msg
+        assert "backend" in msg
+        assert "celery-heavy" in msg
+        assert "CRITICAL" in msg
+
+    def test_format_open_standalone(self):
+        incident = self._make_incident(root_service="disk", related_services=[])
+        incident.root_cause = _make_event("disk", "disk_warning", severity="WARNING",
+                                          container=None, heal_attempted=True, heal_success=True,
+                                          heal_action="docker prune")
+        incident.severity = "WARNING"
+        msg = IncidentCorrelator._format_open(incident)
+        assert "INCIDENT OPEN" in msg
+        assert "disk" in msg.lower()
+
+    def test_format_escalation(self):
+        incident = self._make_incident(
+            related_services=["backend", "celery-heavy"],
+            patrol_count=5,
+            status="escalated",
+        )
+        incident.root_cause.restart_suppressed = True
+        incident.root_cause.restart_attempts = 5
+        msg = IncidentCorrelator._format_escalation(incident)
+        assert "ESCALATION" in msg
+        assert "INC-20260409-003" in msg
+        assert "MANUAL INTERVENTION REQUIRED" in msg
+        assert "docker logs" in msg
+
+    def test_format_resolved(self):
+        incident = self._make_incident(
+            related_services=["backend", "celery-heavy"],
+            patrol_count=3,
+            suppressed_count=2,
+            status="resolved",
+        )
+        msg = IncidentCorrelator._format_resolved(incident)
+        assert "RESOLVED" in msg
+        assert "INC-20260409-003" in msg
+        assert "backend" in msg
+        assert "Suppressed alerts: 2" in msg
+
+    def test_no_markdown_tables(self):
+        """Telegram messages should not contain Markdown tables (render badly on mobile)."""
+        incident = self._make_incident(related_services=["backend"])
+        for formatter in [IncidentCorrelator._format_open,
+                          IncidentCorrelator._format_escalation,
+                          IncidentCorrelator._format_resolved]:
+            msg = formatter(incident)
+            assert "|" not in msg, f"Found table pipe character in: {msg[:100]}"

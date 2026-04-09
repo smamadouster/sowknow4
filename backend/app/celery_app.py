@@ -43,6 +43,7 @@ celery_app = Celery(
         "app.tasks.pipeline_tasks",
         "app.tasks.pipeline_orchestrator",
         "app.tasks.pipeline_sweeper",
+        "app.tasks.guardian_tasks",
     ],
 )
 

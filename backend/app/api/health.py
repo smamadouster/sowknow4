@@ -149,6 +149,89 @@ async def comprehensive_health() -> JSONResponse:
     return JSONResponse(content=response, status_code=http_code)
 
 
+@router.get("/deep", include_in_schema=False)
+async def deep_health(db=None) -> JSONResponse:
+    """
+    Deep health endpoint for Guardian probes.
+
+    Returns internal state: DB connectivity, active connections, last write,
+    Celery ping, and JWT validity. HTTP 503 when DB is unreachable.
+    """
+    from app.database import AsyncSession, get_db
+
+    result = {
+        "db_connected": False,
+        "last_write": None,
+        "active_connections": 0,
+        "celery_ping": False,
+        "jwt_valid": False,
+    }
+
+    # DB connectivity + active connections
+    try:
+        from app.database import engine
+
+        async with engine.connect() as conn:
+            row = await conn.execute(
+                text(
+                    "SELECT now(), (SELECT count(*) FROM pg_stat_activity WHERE datname = current_database())"
+                )
+            )
+            db_row = row.fetchone()
+            result["db_connected"] = True
+            result["active_connections"] = db_row[1] if db_row else 0
+            # Last document write as staleness indicator
+            try:
+                last = await conn.execute(text("SELECT MAX(updated_at) FROM sowknow.documents"))
+                last_row = last.fetchone()
+                if last_row and last_row[0]:
+                    result["last_write"] = last_row[0].isoformat()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # JWT validity
+    try:
+        from app.utils.security import create_access_token, decode_token
+
+        test_token = create_access_token({"sub": "guardian-probe", "type": "access"})
+        decoded = decode_token(test_token)
+        result["jwt_valid"] = decoded is not None and decoded.get("sub") == "guardian-probe"
+    except Exception:
+        pass
+
+    # Celery ping (non-blocking, 5s timeout)
+    try:
+        from app.celery_app import celery_app
+
+        inspect = celery_app.control.inspect(timeout=5)
+        workers = inspect.ping()
+        result["celery_ping"] = bool(workers)
+    except Exception:
+        pass
+
+    status_code = 200 if result["db_connected"] else 503
+    return JSONResponse(content=result, status_code=status_code)
+
+
+@router.get("/auth-check", include_in_schema=False)
+async def auth_check() -> JSONResponse:
+    """Verify JWT issuance and verification for Guardian probes."""
+    try:
+        from app.utils.security import create_access_token, decode_token
+
+        token = create_access_token({"sub": "guardian-probe"})
+        decoded = decode_token(token)
+        valid = decoded is not None and decoded.get("sub") == "guardian-probe"
+        return JSONResponse(content={"jwt_valid": valid, "token_length": len(token)})
+    except Exception as e:
+        return JSONResponse(
+            content={"jwt_valid": False, "error": str(e)[:200]},
+            status_code=503,
+        )
+
+
 @router.get("/celery", include_in_schema=False)
 async def celery_health_check() -> dict[str, Any]:
     """

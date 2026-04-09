@@ -58,10 +58,10 @@ _visibility_timeout = visibility_timeout
 _task_time_limit = task_time_limit
 
 celery_app.conf.update(
-    # Memory optimisation — concurrency MUST stay at 1 to prevent OOM from
-    # fork-duplicating the 1.3 GB embedding model.  Matches docker-compose --concurrency=1.
+    # Default concurrency — overridden per-worker via CLI flags in docker-compose.
+    # celery-heavy uses --pool=threads --concurrency=3 (threads share one 1.3GB model).
     worker_concurrency=1,
-    worker_max_tasks_per_child=10,  # Lowered from 30 — forces child recycling sooner to release embedding model memory
+    worker_max_tasks_per_child=30,
     worker_prefetch_multiplier=1,
     # Serialisation — JSON only; no binary serializers permitted
     task_serializer="json",
@@ -99,6 +99,9 @@ celery_app.conf.update(
     # Task time limits (env-configurable)
     task_soft_time_limit=int(os.getenv("CELERY_SOFT_TIME_LIMIT", "300")),  # 5 min
     task_time_limit=_task_time_limit,
+    # Broker connection — retry on startup to survive Redis restarts
+    # (required explicitly before Celery 6 where the default changes)
+    broker_connection_retry_on_startup=True,
     # Broker transport — visibility timeout must exceed task_time_limit
     broker_transport_options={
         "visibility_timeout": _visibility_timeout,

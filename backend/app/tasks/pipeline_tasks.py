@@ -25,6 +25,13 @@ from app.models.pipeline import STAGE_RETRY_CONFIG, PipelineStage, StageEnum, St
 logger = logging.getLogger(__name__)
 
 
+class _EmbedContinue(Exception):
+    """Raised by _run_embed when more chunks remain and the task was re-queued."""
+
+    def __init__(self, remaining: int):
+        self.remaining = remaining
+
+
 # ---------------------------------------------------------------------------
 # Core helper: update_stage
 # ---------------------------------------------------------------------------
@@ -124,6 +131,13 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
 
     try:
         work_fn(document_id)
+    except _EmbedContinue as cont:
+        # Partial embed — task re-queued, keep stage RUNNING
+        logger.info(
+            "Stage %s partial for doc %s — %d chunks remaining, re-queued",
+            stage, document_id, cont.remaining,
+        )
+        return document_id
     except Exception as exc:
         logger.exception("Stage %s failed for doc %s: %s", stage, document_id, exc)
 
@@ -273,8 +287,15 @@ def _run_chunk(document_id: str) -> None:
         db.close()
 
 
+EMBED_CHUNK_CAP = int(os.getenv("EMBED_CHUNK_CAP", "64"))
+
+
 def _run_embed(document_id: str) -> None:
-    """Load chunks, generate embeddings in batches of 32, update rows."""
+    """Load chunks, generate embeddings in batches of 32, capped at EMBED_CHUNK_CAP per pass.
+
+    For large documents the work is committed in windows of EMBED_CHUNK_CAP chunks so
+    that each embed task finishes quickly and doesn't starve the queue.
+    """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentChunk
     from app.services.embedding_service import embedding_service
@@ -286,16 +307,30 @@ def _run_embed(document_id: str) -> None:
         if doc is None:
             raise ValueError(f"Document {document_id} not found")
 
+        # Only fetch chunks that still need embeddings
         chunks = (
             db.query(DocumentChunk)
-            .filter(DocumentChunk.document_id == doc_uuid)
+            .filter(
+                DocumentChunk.document_id == doc_uuid,
+                DocumentChunk.embedding_vector.is_(None),
+            )
             .order_by(DocumentChunk.chunk_index)
+            .limit(EMBED_CHUNK_CAP)
             .all()
         )
 
         if not chunks:
-            logger.warning("No chunks for doc %s — skipping embedding", document_id)
-            doc.embedding_generated = False
+            # All chunks already embedded (or none exist)
+            total = (
+                db.query(DocumentChunk)
+                .filter(DocumentChunk.document_id == doc_uuid)
+                .count()
+            )
+            if total == 0:
+                logger.warning("No chunks for doc %s — skipping embedding", document_id)
+                doc.embedding_generated = False
+            else:
+                doc.embedding_generated = True
             db.commit()
             return
 
@@ -307,9 +342,30 @@ def _run_embed(document_id: str) -> None:
             for chunk, vec in zip(batch, vectors):
                 chunk.embedding_vector = vec
 
-        doc.embedding_generated = True
         db.commit()
         logger.info("Embedded %d chunks for doc %s", len(chunks), document_id)
+
+        # Check if more un-embedded chunks remain
+        remaining = (
+            db.query(DocumentChunk)
+            .filter(
+                DocumentChunk.document_id == doc_uuid,
+                DocumentChunk.embedding_vector.is_(None),
+            )
+            .count()
+        )
+        if remaining > 0:
+            logger.info(
+                "Doc %s has %d more chunks to embed — re-queuing", document_id, remaining
+            )
+            # Re-queue ourselves so other docs get a turn between windows
+            embed_stage.apply_async(args=[document_id], countdown=1)
+            # Signal _stage_task to keep stage as RUNNING (not COMPLETED)
+            raise _EmbedContinue(remaining)
+
+        doc.embedding_generated = True
+        db.commit()
+        logger.info("All chunks embedded for doc %s", document_id)
 
     finally:
         db.close()

@@ -4,6 +4,7 @@ Embedding service using multilingual-e5-large model
 
 import logging
 import os
+import threading
 from typing import Any
 
 import numpy as np
@@ -35,13 +36,16 @@ class EmbeddingService:
         self._model = None
         self._device = "cpu"
         self._load_error = None
+        self._load_lock = threading.Lock()
         self._initialized = True
 
     @property
     def model(self) -> object:
         """Return the loaded SentenceTransformer model, loading it lazily if needed."""
         if self._model is None:
-            self._load_model()
+            with self._load_lock:
+                if self._model is None:  # double-checked locking
+                    self._load_model()
         return self._model
 
     @property
@@ -146,9 +150,11 @@ class EmbeddingService:
         if not texts:
             return []
 
-        # Trigger lazy model loading if not yet attempted
+        # Trigger lazy model loading if not yet attempted (thread-safe)
         if self._model is None and self._load_error is None:
-            self._load_model()
+            with self._load_lock:
+                if self._model is None and self._load_error is None:
+                    self._load_model()
 
         # Graceful degradation: model not available in backend container
         if not self.can_embed:

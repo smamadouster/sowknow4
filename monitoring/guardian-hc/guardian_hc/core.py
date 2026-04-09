@@ -29,7 +29,7 @@ from guardian_hc.healers.memory_healer import MemoryHealer
 from guardian_hc.healers.network_healer import NetworkHealer
 from guardian_hc.patrol.runner import PatrolRunner
 from guardian_hc.alerts import AlertManager
-from guardian_hc.correlator import AlertEvent
+from guardian_hc.correlator import AlertEvent, IncidentCorrelator
 
 logger = structlog.get_logger()
 
@@ -136,6 +136,7 @@ class GuardianHC:
         self.network_healer = NetworkHealer({"compose_file": config.compose_file})
         self.celery_checker = CeleryHealthChecker(config.celery)
         self.patrol_runner = PatrolRunner(self)
+        self.correlator = IncidentCorrelator(self.alert_manager)
         self._shutdown = False
         self._history: list[dict] = []
         self._restart_trackers: dict[str, RestartTracker] = {}

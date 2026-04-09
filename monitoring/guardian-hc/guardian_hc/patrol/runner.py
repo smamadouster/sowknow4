@@ -27,6 +27,9 @@ class PatrolRunner:
                 failed = result.get("failed", 0)
                 if healed > 0 or failed > 0:
                     logger.info(f"patrol.{name}.complete", healed=healed, failed=failed)
+
+                # Correlate events and send grouped alerts
+                await self.guardian.correlator.process(result)
             except Exception as e:
                 logger.error(f"patrol.{name}.error", error=str(e)[:200])
             await asyncio.sleep(interval_sec)

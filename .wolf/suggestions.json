@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-04-06T04:01:21.097Z",
+  "achievements": [
+    "Voice input feature (feat/voice-input): Full-stack implementation across 27 files — DB schema, WhisperService, Celery tasks, voice API, Telegram bot handler, VoiceRecorder React component, integrated into Journal/Notes/Search pages (14 commits, +3391 lines)",
+    "Pipeline remediation: Fixed NameError in recover_pending_documents that caused 100% failure for April 2-4 uploads; added backfill tasks for reprocessing failed docs and missing embeddings",
+    "Mintlify-inspired UI overhaul: Cmd+K search modal, CommandPalette, glassmorphism cards, Inter font typography, PrivacyBadge, dashed grid background",
+    "Auth middleware refactor: Eliminated backend HTTP call from auth middleware, fixed circular imports, aligned login redirects with locale config",
+    "Search reliability: Rewrote SSE event parser to match backend contract, improved short-query precision, fixed i18n null reference crashes",
+    "Navigation redesign: Replaced broken horizontal nav with vertical sidebar layout"
+  ],
+  "improvements": [
+    "Voice feature needs integration tests — only 4 unit tests exist for WhisperService; no E2E coverage for the upload→transcribe→display flow",
+    "whisper.cpp model download baked into Dockerfile.worker — consider lazy download or shared volume to avoid bloating every worker rebuild",
+    "VoiceRecorder.tsx at 233 lines — could benefit from extracting the recording UI state machine from the visual component",
+    "entity_extraction_service.py is modified but uncommitted on the current branch — risk of losing work or merge conflicts",
+    "CLAUDE.md still references '16GB VPS' but VPS was upgraded to 32GB on 2026-03-23 (per memory); should update to avoid confusion",
+    "Multiple extra compose files still exist (docker-compose.production.yml, docker-compose.simple.yml, docker-compose.prebuilt.yml) violating the one-compose-file rule in CLAUDE.md"
+  ],
+  "next_tasks": [
+    "Merge feat/voice-input to master — 14 commits ahead, code review fixes already applied (0659e29)",
+    "Run Alembic migration 021 on production for voice/audio schema (document audio columns + note_audio table)",
+    "Deploy updated worker image with whisper.cpp to production VPS — verify memory stays within container limits",
+    "Test Telegram voice note flow end-to-end: send voice → bot downloads → Whisper transcribes → journal entry created",
+    "Address the uncommitted entity_extraction_service.py change — either commit or stash before switching branches",
+    "Clean up untracked files (.agents/, audit scripts, embed_chunked_docs.py) — decide what to gitignore vs commit"
+  ],
+  "risks": [
+    "Worker memory: whisper.cpp + ggml-small model + multilingual-e5-large embeddings in the same Celery worker — risk exceeding 5632MB memory limit under concurrent load",
+    "No voice feature tests beyond WhisperService unit tests — regressions will be invisible until user-facing failures",
+    "14 uncommitted/untracked files in working tree including .secrets.baseline (modified) — potential for accidental secret exposure or lost work",
+    "Pipeline remediation (April 2-4 uploads) — verify all recovered documents actually completed processing; backfill tasks were added but success rate unconfirmed",
+    "Voice API has no rate limiting — audio uploads are expensive to process and could be abused to exhaust worker capacity",
+    "docker-compose.yml now mounts whisper model path — production VPS needs the model pre-downloaded at the expected path before deploy"
+  ]
+}

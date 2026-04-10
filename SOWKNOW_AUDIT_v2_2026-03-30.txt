@@ -1,0 +1,839 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║  SOWKNOW — Deep-Tier Agentic Stack Audit Report  v2.0                 ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+  Generated:      2026-03-30 08:19:32
+  Codebase:       /home/development/src/active/sowknow4
+  Source files:   295
+  Test files:     86  (excluded from agent/tool counts)
+  Lines scanned:  101,085
+  Self-excluded:  4 audit script files
+
+
+========================================================================
+  PROJECT OVERVIEW
+========================================================================
+
+  Directories:
+    📁 .claude/
+    📁 .github/
+    📁 backend/
+    📁 data/
+    📁 docker/
+    📁 docs/
+    📁 frontend/
+    📁 logs/
+    📁 monitoring/
+    📁 nginx/
+    📁 scripts/
+    📁 sync-agent/
+    📁 tests/
+
+
+  ── LLM provider usage (source files only) ──
+
+  ollama                325 refs across 45 files
+    → backend/alembic/versions/001_initial_schema.py
+    → backend/app/api/admin.py
+    → backend/app/api/chat.py
+    → backend/app/api/health.py
+    → backend/app/main_minimal.py
+    ... +40 more files
+  openrouter            158 refs across 24 files
+    → backend/alembic/versions/006_add_minimax_enum.py
+    → backend/app/api/chat.py
+    → backend/app/api/collections.py
+    → backend/app/api/status.py
+    → backend/app/main.py
+    ... +19 more files
+  minimax               139 refs across 31 files
+    → backend/alembic/versions/006_add_minimax_enum.py
+    → backend/alembic/versions/007_add_audit_logs.py
+    → backend/app/api/chat.py
+    → backend/app/api/status.py
+    → backend/app/main_minimal.py
+    ... +26 more files
+  moonshot_kimi          74 refs across 17 files
+    → backend/alembic/versions/001_initial_schema.py
+    → backend/app/api/admin.py
+    → backend/app/api/chat.py
+    → backend/app/models/chat.py
+    → backend/app/models/collection.py
+    ... +12 more files
+  paddleocr              21 refs across 4 files
+    → backend/app/api/status.py
+    → backend/app/main_minimal.py
+    → backend/app/services/monitoring.py
+    → backend/app/services/ocr_service.py
+  tesseract_ocr          18 refs across 2 files
+    → backend/app/services/monitoring.py
+    → backend/app/services/ocr_service.py
+  anthropic               4 refs across 3 files
+    → backend/alembic/versions/006_add_minimax_enum.py
+    → backend/app/api/deps.py
+    → backend/app/services/monitoring.py
+
+========================================================================
+  PHASE 1: AGENT CENSUS & IDENTITY AUDIT
+========================================================================
+
+  Total detected: 59 real + 1 test (excluded)
+    Agent classes:        6
+    Standalone prompts:   53
+
+
+  ── DELIVERABLE 1: Agent status table ──
+
+  Name                                     Grade  WHY   WHO   HOW   Vault  LLM         
+────────────────────────────────────────────────────────────────────────
+  ┌─ Agent Classes ─────────────────────────────────────────────────
+  │ AgentOrchestrator                      F      ❌     ❌     ❌     ❌      ollama      
+  │ AnswerAgent                            F      ❌     ❌     ❌     ❌      ollama      
+  │ ClarificationAgent                     F      ❌     ❌     ❌     ❌      unknown     
+  │ ResearcherAgent                        F      ❌     ❌     ❌     ❌      ollama      
+  │ VerificationAgent                      F      ❌     ❌     ❌     ❌      ollama      
+  │ SyncAgent                              F      ❌     ❌     ❌     ❌      unknown     
+  └─────────────────────────────────────────────────────────────────
+
+  ┌─ Service-Level System Prompts ──────────────────────────────────
+  │ 📄 backend/app/models/deferred_query.py
+  │   L44    F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │ 📄 backend/app/services/agents/answer_agent.py
+  │   L254   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "You are the Answer Agent for SOWKNOW. Generate clear, accurate answers based on research.  Style: {style_instructions.ge..."
+  │   L318   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Extract 3-5 key points from the answer. Return as a JSON array of strings...."
+  │   L392   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Based on the original question and answer, suggest 3-5 relevant follow-up questions. Return as a JSON array of question ..."
+  │   L171   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L298   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L402   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/agents/clarification_agent.py
+  │   L133   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/agents/researcher_agent.py
+  │   L226   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Analyze the search results and extract 3-5 key themes. Return as a JSON array of theme strings...."
+  │   L311   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Based on the original query and research findings, suggest 3-5 follow-up queries that would help explore the topic deepe..."
+  │   L242   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L327   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/agents/verification_agent.py
+  │   L175   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Analyze the claim and identify its type and key components.  Return JSON: {   "claim_type": "factual|opinion|prediction|..."
+  │   L216   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Analyze whether the source text supports, contradicts, or is neutral to the claim.  Return JSON: {   "supports": true/fa..."
+  │   L331   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Identify any factual conflicts between the two source texts.  Return JSON array of conflicts: [   {     "topic": "what t..."
+  │   L187   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L241   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L350   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/article_generation_service.py
+  │   L101   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Parse LLM JSON response into article dicts...."
+  │ 📄 backend/app/services/auto_tagging_service.py
+  │   L146   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:  1. **topics**: 3-5 main topics/th..."
+  │   L214   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "You are an intelligent document tagger for SOWKNOW. Analyze the document and extract:  1. **topics**: 3-5 main topics/th..."
+  │   L175   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L243   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/chat_service.py
+  │   L254   C  WHY:✅ WHO:❌ HOW:❌ Vault:✅
+  │          "You are SOWKNOW, a helpful AI assistant for a multi-generational legacy knowledge system.  Your role is to help users fi..."
+  │   L272   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/collection_chat_service.py
+  │   L303   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW, a helpful assistant for a document collection called "{collection.name}".  Collection Summary: {collect..."
+  │   L338   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/collection_service.py
+  │   L464   D  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "You are a helpful assistant that summarizes document collections concisely...."
+  │ 📄 backend/app/services/deferred_query_service.py
+  │   L199   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "record..."
+  │ 📄 backend/app/services/entity_extraction_service.py
+  │   L185   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "You are an expert entity extractor for SOWKNOW, a knowledge management system. Extract structured information from docum..."
+  │   L249   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/graph_rag_service.py
+  │   L388   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW, an AI assistant for a knowledge management system. When answering questions, use the knowledge graph in..."
+  │   L441   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/intent_parser.py
+  │   L405   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "You are a precise JSON-only intent parser. Respond only with valid JSON, no explanations or markdown...."
+  │ 📄 backend/app/services/progressive_revelation_service.py
+  │   L450   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW's family historian. Create a warm, engaging narrative that describes family relationships, connections, ..."
+  │   L490   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 backend/app/services/report_service.py
+  │   L236   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW, a professional report generator. Create a {guide["length"]} report in {language} about the collection: ..."
+  │   L263   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW, a professional report generator that creates well-structured business reports...."
+  │ 📄 backend/app/services/search_agent.py
+  │   L222   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "Tu es un agent d'analyse de requetes pour SOWKNOW, un systeme de gestion de connaissances personnelles.  Analyse la requ..."
+  │   L256   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "Tu es un assistant de recherche pour SOWKNOW.  Base sur la requete originale et les resultats trouves, genere 3-5 sugges..."
+  │   L284   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system..."
+  │ 📄 backend/app/services/smart_folder_service.py
+  │   L242   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW, an AI content generator. Create a {length_guide} article about the topic: "{topic}"  {style_guide}  IMP..."
+  │   L260   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW, an AI content generator that creates well-structured articles from document context...."
+  │ 📄 backend/app/services/synthesis_service.py
+  │   L244   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "You are an expert information extractor for SOWKNOW. Extract the most relevant information from this document related to..."
+  │   L441   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "You are SOWKNOW's synthesis engine. Create a comprehensive synthesis about the topic.  Style: {style_instructions.get(st..."
+  │   L488   D  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "Extract the 3-7 most important key points from the text. Return as a JSON array of strings, each being a key point...."
+  │   L268   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L462   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │   L499   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system_prompt..."
+  │ 📄 docs/search_agent.py
+  │   L62    C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "Tu es un agent d'analyse de requêtes pour SOWKNOW, un système de gestion de connaissances personnelles.  Analyse la requ..."
+  │   L114   C  WHY:❌ WHO:✅ HOW:❌ Vault:❌
+  │          "Tu es un assistant de recherche pour SOWKNOW.  Basé sur la requête originale et les résultats trouvés, génère 3-5 sugges..."
+  │   L173   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system..."
+  │   L194   F  WHY:❌ WHO:❌ HOW:❌ Vault:❌
+  │          "system..."
+  └─────────────────────────────────────────────────────────────────
+
+  ── Profile grade distribution ──
+
+  A:  (0)
+  B:  (0)
+  C: ███████████ (11)
+  D: ██████████████ (14)
+  F: ██████████████████████████████████ (34)
+
+  🔴 CRITICAL: 34/59 agents have grade F (no meaningful prompt identity)
+     Every agent needs WHY (mission), WHO (persona), HOW (constraints).
+
+========================================================================
+  PHASE 2: 4-STAGE PERSISTENT MEMORY AUDIT
+========================================================================
+
+
+  ── Memory tier status matrix ──
+
+  Tier                                          Real   Partial  Status         
+────────────────────────────────────────────────────────────────────────
+  Stage 1: SENSORY / BUFFER                     34     165      🟢 IMPLEMENTED
+  Stage 2: WORKING MEMORY                       0      1        🔴 MISSING
+  Stage 3: EPISODIC MEMORY                      259    169      🟢 IMPLEMENTED
+  Stage 4: SEMANTIC MEMORY                      134    125      🟢 IMPLEMENTED
+
+
+  ── Stage 1: SENSORY / BUFFER ──
+
+  Purpose: Input filtering, dedup, PII sanitization before LLM
+
+  ✅ Real implementation signals (34):
+    • PII detection/redaction → backend/app/services/chat_service.py:25
+    • PII detection/redaction → backend/app/services/llm_router.py:5
+    • PII detection/redaction → backend/app/services/pii_detection_service.py:15
+    • PII detection/redaction → backend/app/services/search_service.py:16
+    • PII detection/redaction → backend/app/services/agents/agent_orchestrator.py:31
+    • Intent classification → docs/search_router.py:205
+
+  ◐ Supporting signals (165):
+    • Token counting → backend/alembic/versions/001_initial_schema.py:94
+    • Rate limiting → backend/app/celery_app.py:81
+    • Rate limiting → backend/app/main.py:14
+    • Token limit config → backend/app/services/article_generation_service.py:120
+    • Token limit config → backend/app/services/auto_tagging_service.py:191
+    • Input truncation → backend/app/services/auto_tagging_service.py:57
+    • Token limit config → backend/app/services/base_llm_service.py:22
+    • Token counting → backend/app/services/chunking_service.py:23
+    • Token limit config → backend/app/services/collection_chat_service.py:358
+    • Token limit config → backend/app/services/collection_service.py:475
+    • Token counting → backend/app/services/embedding_service.py:255
+    • Token limit config → backend/app/services/entity_extraction_service.py:274
+    • Token limit config → backend/app/services/graph_rag_service.py:449
+    • Token limit config → backend/app/services/intent_parser.py:429
+    • Rate limiting → backend/app/services/kimi_service.py:213
+    • Token limit config → backend/app/services/kimi_service.py:70
+    • Input truncation → backend/app/services/kimi_service.py:67
+    • Token limit config → backend/app/services/llm_router.py:111
+    • Token limit config → backend/app/services/minimax_service.py:46
+    • Input truncation → backend/app/services/minimax_service.py:45
+    • Token limit config → backend/app/services/ollama_service.py:52
+    • Rate limiting → backend/app/services/openrouter_service.py:371
+    • Token limit config → backend/app/services/openrouter_service.py:153
+    • Token counting → backend/app/services/openrouter_service.py:147
+    • Input truncation → backend/app/services/openrouter_service.py:152
+    • Token limit config → backend/app/services/progressive_revelation_service.py:500
+    • Token limit config → backend/app/services/report_service.py:272
+    • Token limit config → backend/app/services/search_agent.py:273
+    • Input truncation → backend/app/services/similarity_service.py:273
+    • Token limit config → backend/app/services/smart_folder_service.py:269
+    • Token limit config → backend/app/services/synthesis_service.py:279
+    • Input truncation → backend/app/services/telegram_notifier.py:55
+    • Input truncation → backend/app/services/agents/agent_orchestrator.py:392
+    • Token limit config → backend/app/services/agents/answer_agent.py:178
+    • Token limit config → backend/app/services/agents/clarification_agent.py:140
+    • Token limit config → backend/app/services/agents/researcher_agent.py:250
+    • Token limit config → backend/app/services/agents/verification_agent.py:194
+    • Rate limiting → backend/app/api/auth.py:10
+    • Token counting → backend/app/tasks/document_tasks.py:271
+    • Token counting → backend/app/models/document.py:198
+    • Token counting → backend/app/schemas/document.py:109
+    • Input truncation → frontend/components/BatchUploader.tsx:156
+    • Input truncation → frontend/components/knowledge-graph/EntityList.tsx:127
+    • Input truncation → frontend/app/[locale]/documents/page.tsx:640
+    • Input truncation → frontend/app/[locale]/documents/[id]/page.tsx:526
+    • Input truncation → frontend/app/[locale]/chat/page.tsx:292
+    • Input truncation → frontend/app/[locale]/collections/page.tsx:219
+    • Input truncation → frontend/app/[locale]/monitoring/page.tsx:248
+    • Input truncation → frontend/app/[locale]/smart-folders/page.tsx:379
+    • Input truncation → frontend/app/[locale]/dashboard/page.tsx:398
+    • Rate limiting → frontend/app/[locale]/verify-email/[token]/page.tsx:79
+    • Input truncation → frontend/app/[locale]/search/page.tsx:281
+    • Rate limiting → frontend/app/[locale]/forgot-password/page.tsx:19
+    • Token limit config → docs/search_agent.py:164
+
+
+
+  ── Stage 2: WORKING MEMORY ──
+
+  Purpose: Prompt caching for static context (vault, values, summaries)
+
+  ◐ Supporting signals (1):
+    • Chat history storage → backend/alembic/versions/010_add_chat_session_index.py:7
+
+  GAP: No prompt-level caching for the SOWKNOW knowledge base.
+  NOTE: Redis response caching (detected elsewhere) caches LLM *outputs*.
+        Working Memory caches the *system context* at the LLM provider level
+        so that the family vault, core values, and document summaries
+        don't consume fresh tokens on every single API call.
+  IMPACT: ~4,000-8,000 redundant tokens/query for resending static context.
+  FIX: If OpenRouter supports it, use their context caching headers.
+       Otherwise, maintain a compressed context summary with a TTL.
+
+
+  ── Stage 3: EPISODIC MEMORY ──
+
+  Purpose: Vector-indexed document retrieval (pgvector + RAG)
+
+  ✅ Real implementation signals (259):
+    • pgvector database → docker-compose.dev.yml:3
+    • pgvector database → docker-compose.prebuilt.yml:2
+    • pgvector database → docker-compose.production.yml:15
+    • pgvector database → docker-compose.simple.yml:5
+    • pgvector database → docker-compose.yml:11
+    • Embedding model → docker-compose.yml:226
+    • pgvector database → backend/alembic/versions/001_initial_schema.py:20
+    • Document chunking → backend/alembic/versions/001_initial_schema.py:92
+    • pgvector database → backend/alembic/versions/004_add_pgvector_column.py:1
+    • Similarity search → backend/alembic/versions/004_add_pgvector_column.py:13
+    • Vector store operations → backend/alembic/versions/005_add_vector_fts_indexes.py:1
+    • Hybrid search → backend/alembic/versions/005_add_vector_fts_indexes.py:2
+    • Document chunking → backend/alembic/versions/005_add_vector_fts_indexes.py:35
+    • Document chunking → backend/alembic/versions/009_add_fulltext_search.py:6
+    • Vector store operations → backend/alembic/versions/010_upgrade_to_hnsw.py:1
+    • pgvector database → backend/alembic/versions/014_add_articles.py:43
+    • Similarity search → backend/alembic/versions/014_add_articles.py:60
+    • pgvector database → backend/scripts/backfill_embeddings.py:2
+    • Document chunking → backend/scripts/reprocess_all.py:44
+    • pgvector database → backend/app/database.py:26
+    • pgvector database → backend/app/main.py:34
+    • pgvector database → backend/app/main_minimal.py:473
+    • Vector store operations → backend/app/main_minimal.py:488
+    • Embedding model → backend/app/main_minimal.py:261
+    • pgvector database → backend/app/performance.py:110
+    • Vector store operations → backend/app/performance.py:109
+    • Document chunking → backend/app/services/article_generation_service.py:57
+    • Hybrid search → backend/app/services/chat_service.py:199
+    • Document chunking → backend/app/services/chat_service.py:213
+    • Chunk retrieval → backend/app/services/chat_service.py:180
+    • Document chunking → backend/app/services/chunking_service.py:2
+    • Embedding model → backend/app/services/chunking_service.py:5
+    • Document chunking → backend/app/services/collection_chat_service.py:286
+    • Hybrid search → backend/app/services/collection_service.py:354
+    • Similarity search → backend/app/services/embedding_service.py:196
+    • Document chunking → backend/app/services/embedding_service.py:246
+    • Embedding model → backend/app/services/embedding_service.py:2
+    • Document chunking → backend/app/services/entity_extraction_service.py:172
+    • Embedding model → backend/app/services/performance_service.py:133
+    • Document chunking → backend/app/services/report_service.py:175
+    • Hybrid search → backend/app/services/search_agent.py:20
+    • Document chunking → backend/app/services/search_agent.py:465
+    • Chunk retrieval → backend/app/services/search_agent.py:480
+    • Chunk retrieval → backend/app/services/search_models.py:127
+    • pgvector database → backend/app/services/search_service.py:120
+    • Similarity search → backend/app/services/search_service.py:120
+    • Hybrid search → backend/app/services/search_service.py:2
+    • Document chunking → backend/app/services/search_service.py:30
+    • Embedding model → backend/app/services/search_service.py:123
+    • Similarity search → backend/app/services/similarity_service.py:147
+    • Hybrid search → backend/app/services/smart_folder_service.py:162
+    • Document chunking → backend/app/services/smart_folder_service.py:203
+    • Document chunking → backend/app/services/synthesis_service.py:218
+    • Embedding generation → backend/app/api/documents.py:1008
+    • Similarity search → backend/app/api/documents.py:966
+    • Hybrid search → backend/app/api/search_agent_router.py:33
+    • Document chunking → backend/app/api/search_agent_router.py:65
+    • pgvector database → backend/app/api/status.py:33
+    • Document chunking → backend/app/tasks/article_tasks.py:165
+    • Embedding generation → backend/app/tasks/document_tasks.py:425
+    • Document chunking → backend/app/tasks/document_tasks.py:80
+    • Embedding generation → backend/app/tasks/embedding_tasks.py:5
+    • Document chunking → backend/app/tasks/embedding_tasks.py:77
+    • Embedding model → backend/app/tasks/embedding_tasks.py:45
+    • pgvector database → backend/app/models/article.py:9
+    • Chunk retrieval → backend/app/models/deferred_query.py:43
+    • pgvector database → backend/app/models/document.py:16
+    • Document chunking → backend/app/models/document.py:187
+    • Document chunking → backend/app/models/processing.py:15
+    • Document chunking → backend/app/schemas/chat.py:51
+    • Embedding generation → backend/app/schemas/document.py:154
+    • Document chunking → backend/app/schemas/document.py:108
+    • Hybrid search → backend/app/schemas/search.py:11
+    • Document chunking → backend/app/schemas/search.py:19
+    • pgvector database → scripts/backfill_embeddings_to_vector.py:3
+    • pgvector database → docker/archived-compose/docker-compose.prebuilt.yml:2
+    • pgvector database → docker/archived-compose/docker-compose.production.yml:15
+    • pgvector database → docker/archived-compose/docker-compose.simple.yml:5
+    • Document chunking → frontend/app/[locale]/search/page.tsx:40
+    • pgvector database → docs/0003_agentic_search.py:13
+    • Hybrid search → docs/0003_agentic_search.py:7
+    • pgvector database → docs/search_agent.py:12
+    • Hybrid search → docs/search_agent.py:316
+    • Embedding model → docs/search_agent.py:30
+    • Chunk retrieval → docs/search_agent.py:622
+    • Hybrid search → docs/search_models.py:53
+    • Chunk retrieval → docs/search_models.py:155
+    • Chunk retrieval → docs/search_router.py:134
+    • pgvector database → .github/workflows/performance-benchmarks.yml:19
+
+  ◐ Supporting signals (169):
+    • Embedding env var → backend/alembic/versions/001_initial_schema.py:57
+    • Embedding env var → backend/alembic/versions/004_add_pgvector_column.py:43
+    • Embedding env var → backend/alembic/versions/004_fix_vector_type.py:8
+    • Embedding env var → backend/alembic/versions/005_add_vector_fts_indexes.py:25
+    • Embedding env var → backend/alembic/versions/010_upgrade_to_hnsw.py:24
+    • Embedding env var → backend/alembic/versions/014_add_articles.py:44
+    • Embedding env var → backend/scripts/backfill_embeddings.py:2
+    • Embedding env var → backend/scripts/reprocess_all.py:20
+    • Embedding config → backend/app/celery_app.py:58
+    • Embedding env var → backend/app/celery_app.py:38
+    • Embedding env var → backend/app/main_minimal.py:258
+    • Embedding env var → backend/app/performance.py:26
+    • Embedding env var → backend/app/services/chunking_service.py:4
+    • Embedding config → backend/app/services/embedding_service.py:34
+    • Embedding env var → backend/app/services/embedding_service.py:34
+    • Embedding env var → backend/app/services/performance_service.py:26
+    • Embedding config → backend/app/services/search_service.py:122
+    • Embedding env var → backend/app/services/search_service.py:15
+    • Embedding env var → backend/app/services/similarity_service.py:17
+    • Embedding env var → backend/app/api/documents.py:1031
+    • Embedding env var → backend/app/tasks/__init__.py:2
+    • Embedding env var → backend/app/tasks/article_tasks.py:267
+    • Embedding config → backend/app/tasks/document_tasks.py:292
+    • Embedding env var → backend/app/tasks/document_tasks.py:296
+    • Embedding config → backend/app/tasks/embedding_tasks.py:45
+    • Embedding env var → backend/app/tasks/embedding_tasks.py:27
+    • Embedding env var → backend/app/models/article.py:80
+    • Embedding env var → backend/app/models/document.py:96
+    • Embedding env var → backend/app/models/processing.py:16
+    • Embedding env var → backend/app/schemas/document.py:57
+    • Embedding env var → scripts/backfill_embeddings_to_vector.py:6
+    • Embedding env var → frontend/app/[locale]/documents/[id]/page.tsx:255
+    • Embedding env var → docs/0003_agentic_search.py:50
+    • Embedding config → docs/search_agent.py:134
+    • Embedding env var → docs/search_agent.py:137
+
+
+
+  ── Stage 4: SEMANTIC MEMORY ──
+
+  Purpose: Structured relationships, entity graph, core values
+
+  ✅ Real implementation signals (134):
+    • Knowledge/entity graph → backend/alembic/versions/003_add_knowledge_graph.py:1
+    • Knowledge/entity graph → backend/app/main.py:28
+    • Graph-RAG → backend/app/main.py:27
+    • Knowledge/entity graph → backend/app/main_minimal.py:156
+    • Graph-RAG → backend/app/main_minimal.py:155
+    • Knowledge/entity graph → backend/app/performance.py:31
+    • Knowledge/entity graph → backend/app/services/entity_extraction_service.py:2
+    • Entity extraction → backend/app/services/entity_extraction_service.py:2
+    • Knowledge/entity graph → backend/app/services/graph_rag_service.py:2
+    • Graph-RAG → backend/app/services/graph_rag_service.py:27
+    • Knowledge/entity graph → backend/app/services/progressive_revelation_service.py:2
+    • Family/curator context → backend/app/services/progressive_revelation_service.py:5
+    • Knowledge/entity graph → backend/app/services/relationship_service.py:2
+    • Entity extraction → backend/app/services/relationship_service.py:21
+    • Relationship mapping → backend/app/services/relationship_service.py:2
+    • Knowledge/entity graph → backend/app/services/synthesis_service.py:2
+    • Knowledge/entity graph → backend/app/services/temporal_reasoning_service.py:2
+    • Knowledge/entity graph → backend/app/services/timeline_service.py:2
+    • Knowledge/entity graph → backend/app/services/agents/researcher_agent.py:4
+    • Graph-RAG → backend/app/services/agents/researcher_agent.py:13
+    • Knowledge/entity graph → backend/app/api/graph_rag.py:68
+    • Graph-RAG → backend/app/api/graph_rag.py:22
+    • Family/curator context → backend/app/api/graph_rag.py:309
+    • Knowledge/entity graph → backend/app/api/knowledge_graph.py:2
+    • Entity extraction → backend/app/api/knowledge_graph.py:4
+    • Relationship mapping → backend/app/api/knowledge_graph.py:4
+    • Knowledge/entity graph → backend/app/api/status.py:25
+    • Entity extraction → backend/app/api/status.py:47
+    • Relationship mapping → backend/app/api/status.py:49
+    • Family/curator context → backend/app/api/status.py:56
+    • Knowledge/entity graph → backend/app/models/__init__.py:15
+    • Knowledge/entity graph → backend/app/models/knowledge_graph.py:2
+    • Knowledge/entity graph → frontend/components/Navigation.tsx:12
+    • Knowledge/entity graph → frontend/components/knowledge-graph/GraphVisualization.tsx:2
+    • Knowledge/entity graph → frontend/lib/api.ts:416
+    • Knowledge/entity graph → frontend/app/[locale]/page.tsx:19
+    • Entity extraction → frontend/app/[locale]/page.tsx:104
+    • Knowledge/entity graph → frontend/app/[locale]/knowledge-graph/page.tsx:2
+
+  ◐ Supporting signals (125):
+    • Entity type definitions → backend/alembic/versions/003_add_knowledge_graph.py:23
+    • Entity type definitions → backend/app/performance.py:51
+    • Entity type definitions → backend/app/services/entity_extraction_service.py:23
+    • Entity type definitions → backend/app/services/graph_rag_service.py:199
+    • Entity type definitions → backend/app/services/progressive_revelation_service.py:99
+    • Progressive revelation → backend/app/services/progressive_revelation_service.py:2
+    • Entity type definitions → backend/app/services/relationship_service.py:18
+    • Entity type definitions → backend/app/services/synthesis_service.py:333
+    • Entity type definitions → backend/app/services/temporal_reasoning_service.py:221
+    • Entity type definitions → backend/app/services/timeline_service.py:17
+    • Entity type definitions → backend/app/services/agents/clarification_agent.py:193
+    • Entity type definitions → backend/app/services/agents/researcher_agent.py:297
+    • Progressive revelation → backend/app/api/graph_rag.py:5
+    • Entity type definitions → backend/app/api/knowledge_graph.py:20
+    • Progressive revelation → backend/app/api/status.py:55
+    • Entity type definitions → backend/app/models/__init__.py:19
+    • Entity type definitions → backend/app/models/knowledge_graph.py:18
+    • Entity type definitions → frontend/components/knowledge-graph/EntityDetail.tsx:54
+    • Entity type definitions → frontend/components/knowledge-graph/EntityList.tsx:24
+    • Entity type definitions → frontend/components/knowledge-graph/GraphVisualization.tsx:57
+    • Entity type definitions → frontend/lib/api.ts:423
+    • Entity type definitions → frontend/app/[locale]/knowledge-graph/page.tsx:44
+
+
+
+========================================================================
+  PHASE 3: TOOLING & PROGRAMMATIC USE AUDIT
+========================================================================
+
+  Formal tool schemas detected: 0 (source) + 0 (tests)
+
+  ⚠️  NO FORMAL TOOL SCHEMAS IN SOURCE CODE
+
+  The multi-agent system (AgentOrchestrator → Clarification/Researcher/
+  Verification/Answer) calls services directly via Python methods rather
+  than through structured tool schemas.
+
+  This works for a tightly-coupled system, but creates risks:
+    • Agents can't self-discover available tools
+    • No schema validation prevents hallucinated parameters
+    • Tool outputs aren't validated before agent consumption
+    • Adding new tools requires code changes in the orchestrator
+
+  RECOMMENDED TOOL SCHEMAS for SOWKNOW:
+    • document_search: Hybrid semantic + keyword vault search
+    • document_upload: Ingest file into processing pipeline
+    • ocr_process: Trigger OCR via configured engine
+    • vault_classify: Classify document as Public/Confidential
+    • generate_report: Create collection report (Short/Standard/Full)
+    • entity_extract: Extract people, orgs, concepts from document
+    • llm_route: Select LLM provider based on vault context
+
+========================================================================
+  PHASE 4: ORCHESTRATION & COMMUNICATION AUDIT
+========================================================================
+
+
+  ── Orchestration patterns ──
+
+  🟢 Orchestrator (1 signals)
+     • Orchestrator class → backend/app/services/agents/agent_orchestrator.py
+
+  🟢 Llm Routing (10 signals)
+     • Provider selection → backend/app/services/auto_tagging_service.py
+     • Provider selection → backend/app/services/chat_service.py
+     • Provider selection → backend/app/services/entity_extraction_service.py
+     • Provider selection → backend/app/services/intent_parser.py
+     • LLM Router class → backend/app/services/llm_router.py
+     • Provider selection → backend/app/services/llm_router.py
+     • Confidential routing → backend/app/services/llm_router.py
+     • Confidential routing → backend/app/services/openrouter_service.py
+     ... +2 more
+
+  🟢 State Management (2 signals)
+     • State manager class → backend/telegram_bot/bot.py
+     • Session management → backend/telegram_bot/bot.py
+
+  🟢 Workflow (25 signals)
+     • Celery task → backend/alembic/versions/001_initial_schema.py
+     • Celery task → backend/alembic/versions/007_add_failed_celery_tasks_dlq.py
+     • Document processing → backend/scripts/reprocess_all.py
+     • Celery task → backend/scripts/resubmit_csv_xml.py
+     • Celery task → backend/app/celery_app.py
+     • Document processing → backend/app/services/dlq_service.py
+     • Celery task → backend/app/services/dlq_service.py
+     • Celery task → backend/app/services/prometheus_metrics.py
+     ... +17 more
+
+
+  ── Docker infrastructure health ──
+
+  🟢 Persistent volumes
+  🟢 Health checks
+  🟢 Restart policies
+  🟢 Resource limits
+  🟢 Network isolation
+
+
+  ── Container services detected ──
+
+  🟢 PostgreSQL / pgvector
+  🟢 Redis
+  🟢 Ollama
+  🟢 Celery workers
+  🟢 Reverse proxy (Nginx/Caddy)
+  🟢 NATS messaging
+
+  ── Environment configuration (values REDACTED) ──
+
+  220 env keys detected: 60 sensitive (🔒), 160 non-sensitive (📋)
+
+  📄 .env  (47 keys, 12 sensitive)
+    🔒 DATABASE_PASSWORD
+    🔒 POSTGRES_PASSWORD
+    🔒 REDIS_PASSWORD
+    🔒 JWT_SECRET
+    🔒 MINIMAX_API_KEY
+    📋 MINIMAX_MODEL
+    🔒 MOONSHOT_API_KEY
+    📋 KIMI_MODEL
+    🔒 OPENROUTER_API_KEY
+    📋 OPENROUTER_MODEL
+    ... +37 more
+
+  📄 .env.example  (44 keys, 16 sensitive)
+    📋 ALLOWED_ORIGINS
+    📋 ALLOWED_HOSTS
+    🔒 DATABASE_PASSWORD
+    🔒 JWT_SECRET
+    🔒 ENCRYPTION_KEY
+    🔒 REDIS_PASSWORD
+    📋 DATABASE_URL
+    📋 REDIS_URL
+    🔒 MINIMAX_API_KEY
+    📋 MINIMAX_MODEL
+    ... +34 more
+
+  📄 .env.save  (42 keys, 10 sensitive)
+    🔒 DATABASE_PASSWORD
+    🔒 REDIS_PASSWORD
+    🔒 JWT_SECRET
+    🔒 MINIMAX_API_KEY
+    📋 MINIMAX_MODEL
+    🔒 MOONSHOT_API_KEY
+    📋 KIMI_MODEL
+    🔒 OPENROUTER_API_KEY
+    📋 OPENROUTER_MODEL
+    🔒 TELEGRAM_BOT_TOKEN
+    ... +32 more
+
+  📄 .secrets  (7 keys, 5 sensitive)
+    📋 POSTGRES_USER
+    🔒 POSTGRES_PASSWORD
+    📋 POSTGRES_DB
+    🔒 SECRET_KEY
+    🔒 JWT_SECRET_KEY
+    🔒 BOT_API_KEY
+    🔒 TELEGRAM_BOT_TOKEN
+
+  📄 backend/.env.example  (38 keys, 9 sensitive)
+    📋 DATABASE_URL
+    📋 REDIS_URL
+    📋 ALLOWED_ORIGINS
+    📋 ALLOWED_HOSTS
+    🔒 JWT_SECRET
+    🔒 ENCRYPTION_KEY
+    🔒 MOONSHOT_API_KEY
+    📋 OCR_ENGINE
+    📋 OCR_FALLBACK_ENABLED
+    📋 OCR_DEFAULT_MODE
+    ... +28 more
+
+  📄 backend/.env.production  (30 keys, 8 sensitive)
+    📋 DATABASE_URL
+    📋 REDIS_URL
+    📋 CELERY_BROKER_URL
+    📋 CELERY_RESULT_BACKEND
+    📋 RATE_LIMIT_ENABLED
+    📋 RATE_LIMIT_PER_MINUTE
+    📋 ENABLE_KNOWLEDGE_GRAPH
+    📋 ENABLE_SMART_COLLECTIONS
+    📋 ENABLE_SMART_FOLDERS
+    📋 ENABLE_MULTI_AGENT
+    ... +20 more
+
+  📄 frontend/.env.production  (12 keys, 0 sensitive)
+    📋 NEXT_PUBLIC_APP_NAME
+    📋 NEXT_PUBLIC_API_URL
+    📋 NEXT_PUBLIC_APP_URL
+    📋 NEXT_PUBLIC_ENV
+    📋 NEXT_PUBLIC_DEFAULT_LANGUAGE
+    📋 NEXT_PUBLIC_SUPPORTED_LANGUAGES
+    📋 NEXT_PUBLIC_ENABLE_KNOWLEDGE_GRAPH
+    📋 NEXT_PUBLIC_ENABLE_SMART_COLLECTIONS
+    📋 NEXT_PUBLIC_ENABLE_SMART_FOLDERS
+    📋 NEXT_PUBLIC_ENABLE_MULTI_AGENT
+    ... +2 more
+
+
+========================================================================
+  DELIVERABLE 2: MEMORY GAP REPORT
+========================================================================
+
+  Identifies where 'forgetting' or 'redundant token spending' occurs.
+
+  🔴 GAPS (1 tiers missing):
+     ❌ Working Memory (prompt caching)
+
+  🟢 IMPLEMENTED (3 tiers):
+     ✅ Sensory / Buffer (input filtering) (34 real signals)
+     ✅ Episodic Memory (vector/RAG) (259 real signals)
+     ✅ Semantic Memory (graph/wisdom) (134 real signals)
+
+
+  ── Token waste estimate (per query) ──
+
+  💸 No prompt caching: ~4,000-8,000 tokens/query
+     Cause: Resending static SOWKNOW context every call
+
+
+  ── Cross-agent state preservation ──
+
+  🟢 24 state management signals detected.
+     • State manager class → backend/telegram_bot/bot.py
+     • Session management → backend/telegram_bot/bot.py
+
+========================================================================
+  DELIVERABLE 3: OPTIMIZATION ROADMAP
+========================================================================
+
+  High-impact changes to make SOWKNOW 'Legacy-Ready'
+
+  ┌─ OPT-1: Upgrade agent profiles with Mission / Persona / Constraints
+  │  Priority: 🔴 CRITICAL
+  │  Effort:   1 week
+  │  Trigger:  34/59 agents scored grade F
+  │
+  │  Every system prompt must clearly define three pillars:
+  │  
+  │    WHY (Mission):
+  │      'You are the Vault Router. Your mission is to ensure zero exposure'
+  │      'of confidential documents to cloud APIs.'
+  │  
+  │    WHO (Persona):
+  │      'You are a meticulous, security-conscious classifier that treats'
+  │      'every ambiguous document as potentially confidential.'
+  │  
+  │    HOW (Constraints):
+  │      'You MUST classify before routing. You MUST NOT pass any document'
+  │      'to OpenRouter/MiniMax that hasn't been vault-checked. You MUST log'
+  │      'every routing decision for audit.'
+  │  
+  │  Apply to all services with standalone prompts:
+  │    chat_service, search_agent, collection_service, report_service,
+  │    smart_folder_service, synthesis_service, auto_tagging_service,
+  │    entity_extraction_service, intent_parser, article_generation_service
+  └────────────────────────────────────────────────────────────────────
+
+  ┌─ OPT-2: Implement Working Memory (prompt-level context caching)
+  │  Priority: 🔴 CRITICAL
+  │  Effort:   1-2 weeks
+  │  Trigger:  Only 0 real working memory signals found
+  │
+  │  Redis response caching (which exists) is NOT working memory.
+  │  Working memory caches the STATIC SYSTEM CONTEXT at the LLM level:
+  │  
+  │    1. Build a compressed 'SOWKNOW Context Block' (~2000 tokens):
+  │       - System identity and persona
+  │       - Vault rules and routing constraints
+  │       - Document corpus summary (top entities, date ranges, topics)
+  │       - Family context and core values (curator-defined)
+  │  
+  │    2. Cache this block across sessions:
+  │       - If OpenRouter supports context caching headers: use them
+  │       - If not: store the block in Redis with a TTL, prepend to every call
+  │       - Invalidate only when the document corpus changes significantly
+  │  
+  │    3. Estimated savings: ~4,000-8,000 tokens per query
+  │       At current usage, this could reduce LLM costs by 30-50%
+  └────────────────────────────────────────────────────────────────────
+
+  ┌─ OPT-5: Formalize tool schemas for agent interoperability
+  │  Priority: 🟢 MEDIUM
+  │  Effort:   3-5 days
+  │  Trigger:  Only 0 formal tool schemas found
+  │
+  │  Current agents call services via direct Python methods.
+  │  For future extensibility and LLM-native tool use:
+  │  
+  │    1. Define JSON schemas for core operations:
+  │       document_search, vault_classify, entity_extract, generate_report
+  │    2. Add a ToolRegistry that agents can introspect at runtime
+  │    3. Wrap each tool with input validation (Pydantic models)
+  │    4. Add output validation before passing results back to the agent
+  │  
+  │    This is MEDIUM priority because the current direct-call approach works.
+  │    Schemas become critical if you add new agents or expose tool use via API.
+  └────────────────────────────────────────────────────────────────────
+
+
+========================================================================
+  SECURITY QUICK-CHECK
+========================================================================
+
+  🔒 60 sensitive env keys detected (values NEVER shown in this report)
+     .env: 12 sensitive keys
+     .env.example: 16 sensitive keys
+     .env.save: 10 sensitive keys
+     .secrets: 5 sensitive keys
+     backend/.env.example: 9 sensitive keys
+     backend/.env.production: 8 sensitive keys
+
+  ⚠️  Ensure .env files are in .gitignore and not committed to VCS.
+  ⚠️  Rotate any credentials that were exposed in audit v1 report output.
+
+  Vault-aware agents: 1/59
+  🟡 Most agent prompts don't mention confidentiality constraints.
+     Consider adding vault awareness to all agents that touch documents.
+
+========================================================================
+  END OF AUDIT REPORT v2.0
+========================================================================

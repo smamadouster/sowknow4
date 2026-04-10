@@ -100,3 +100,8 @@ tsconfig.tsbuildinfo
 
 # Screenshots
 screenshots/
+
+# Large generated files (exceed 500KB git limit)
+SOWKNOW_AUDIT_REPORT.txt
+audit_reports/
+.wolf/token-ledger.json

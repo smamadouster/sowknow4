@@ -1,0 +1,111 @@
+name: backend_unhealthy
+description: >
+  Backend API health failure (/api/v1/health returns non-200 or is unreachable).
+  Checks DB connectivity, Celery ping, and memory before deciding to restart.
+  Falls back to rebuild if a simple restart doesn't resolve the issue.
+
+triggers:
+  - check_name: http_unhealthy
+    service: backend
+  - check_name: restart_suppressed
+    service: backend
+
+steps:
+  # Step 1: Hit the health endpoint directly to confirm the failure
+  - id: confirm_failure
+    name: "Confirm /api/v1/health is actually failing"
+    action: http_check
+    url: "http://backend:8000/api/v1/health"
+    expect_status: 200
+    timeout: 10
+    on_success: resolved   # False alarm — already recovered
+    on_failure: check_deep_health
+
+  # Step 2: Try the deep health endpoint for more detail
+  - id: check_deep_health
+    name: "Check /api/v1/health/deep for DB and Celery status"
+    action: http_check
+    url: "http://backend:8000/api/v1/health/deep"
+    expect_status: 200
+    timeout: 15
+    on_success: resolved   # Deep health OK — surface check was transient
+    on_failure: check_container_state
+
+  # Step 3: Confirm container is actually running
+  - id: check_container_state
+    name: "Confirm backend container is running"
+    action: exec
+    container: sowknow4-backend
+    command: "echo alive"
+    expect_in_stdout: "alive"
+    timeout: 5
+    on_success: check_db_connectivity
+    on_failure: restart_backend
+
+  # Step 4: Check DB connectivity from inside the container
+  - id: check_db_connectivity
+    name: "Test DB connection from backend"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python3 -c "
+      from app.db.session import SessionLocal;
+      db = SessionLocal();
+      db.execute(__import__('sqlalchemy').text('SELECT 1'));
+      db.close();
+      print('db_ok')
+      "
+    expect_in_stdout: "db_ok"
+    timeout: 15
+    on_success: restart_backend    # DB is fine, backend process itself is stuck
+    on_failure: alert_db_down
+
+  # Step 5: Restart backend (RestartTracker gated)
+  - id: restart_backend
+    name: "Restart sowknow4-backend"
+    action: restart_container
+    container: sowknow4-backend
+    wait_after: 25
+    on_success: verify_after_restart
+    on_failure: escalate
+
+  # Step 6: Verify after restart
+  - id: verify_after_restart
+    name: "Re-verify /api/v1/health after restart"
+    action: http_check
+    url: "http://backend:8000/api/v1/health"
+    expect_status: 200
+    timeout: 15
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Backend health verified"
+    action: resolved
+    terminal: true
+
+  - id: alert_db_down
+    name: "Alert: DB unreachable from backend"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: backend_unhealthy*
+
+      Backend health failure — DB connection test failed from inside sowknow4-backend.
+      Postgres may be down or connection pool exhausted.
+      Check: `docker logs sowknow4-postgres` and active connections.
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: backend still unhealthy after restart"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: backend_unhealthy — ESCALATED*
+
+      Backend failed and did not recover after auto-restart.
+      Manual investigation needed:
+      • `docker logs sowknow4-backend`
+      • Check Alembic migration state
+      • Check DB pool exhaustion (pg_stat_activity)
+      • Check available memory (VPS has 32GB — may need container tuning)
+    terminal: true

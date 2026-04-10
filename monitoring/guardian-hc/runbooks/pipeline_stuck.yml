@@ -1,0 +1,117 @@
+name: pipeline_stuck
+description: >
+  Pipeline stages stuck in RUNNING state for >10 minutes.
+  Attempts targeted requeue of stuck documents, then escalates to worker
+  restart if requeue alone doesn't clear the jam.
+
+triggers:
+  - check_name: pipeline
+
+steps:
+  # Step 1: Count how many stages are stuck
+  - id: count_stuck
+    name: "Count stuck pipeline stages"
+    action: exec
+    container: sowknow4-postgres
+    command: >-
+      psql -U postgres -t -c
+      "SELECT count(*) FROM pipeline_stages
+       WHERE status='RUNNING'
+       AND updated_at < now() - interval '10 minutes';"
+    expect_returncode: 0
+    timeout: 15
+    on_success: requeue_stuck
+    on_failure: alert_db_query_failed
+
+  # Step 2: Requeue stuck stages back to PENDING
+  - id: requeue_stuck
+    name: "Requeue stuck stages to PENDING"
+    action: exec
+    container: sowknow4-postgres
+    command: >-
+      psql -U postgres -c
+      "UPDATE pipeline_stages SET status='PENDING', updated_at=now()
+       WHERE status='RUNNING'
+       AND updated_at < now() - interval '10 minutes';"
+    expect_returncode: 0
+    timeout: 15
+    on_success: wait_for_pickup
+    on_failure: escalate
+
+  # Step 3: Wait 30s to see if workers pick up the requeued work
+  - id: wait_for_pickup
+    name: "Wait 30s for workers to pick up requeued stages"
+    action: wait
+    seconds: 30
+    on_success: verify_cleared
+    on_failure: verify_cleared
+
+  # Step 4: Verify stuck count has dropped
+  - id: verify_cleared
+    name: "Check if stuck stages cleared"
+    action: exec
+    container: sowknow4-postgres
+    command: >-
+      psql -U postgres -t -c
+      "SELECT count(*) FROM pipeline_stages
+       WHERE status='RUNNING'
+       AND updated_at < now() - interval '10 minutes';"
+    expect_in_stdout: "0"
+    timeout: 15
+    on_success: resolved
+    on_failure: restart_workers
+
+  # Step 5: Restart celery-heavy (handles OCR/embeddings — most stuck stages)
+  - id: restart_workers
+    name: "Restart celery-heavy worker"
+    action: restart_container
+    container: sowknow4-celery-heavy
+    wait_after: 20
+    on_success: requeue_again
+    on_failure: escalate
+
+  # Step 6: Requeue again after worker restart
+  - id: requeue_again
+    name: "Requeue stuck stages again after worker restart"
+    action: exec
+    container: sowknow4-postgres
+    command: >-
+      psql -U postgres -c
+      "UPDATE pipeline_stages SET status='PENDING', updated_at=now()
+       WHERE status='RUNNING'
+       AND updated_at < now() - interval '10 minutes';"
+    expect_returncode: 0
+    timeout: 15
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Pipeline stuck stages cleared"
+    action: resolved
+    terminal: true
+
+  - id: alert_db_query_failed
+    name: "Alert: could not query pipeline_stages"
+    action: alert
+    message: >-
+      ⚠️ *Guardian runbook: pipeline_stuck*
+
+      Could not query pipeline_stages table. Postgres may be down
+      or the table schema has changed.
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: pipeline still stuck after requeue and restart"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: pipeline_stuck — ESCALATED*
+
+      Pipeline stages remain stuck after auto-requeue and worker restart.
+      Manual investigation needed:
+      • `docker logs sowknow4-celery-heavy`
+      • `docker logs sowknow4-celery-light`
+      • Check pipeline_stages table for error messages
+      • Check Redis queue depth: `redis-cli LLEN celery`
+      • Check for OOM: worker may be killed on large documents
+    terminal: true

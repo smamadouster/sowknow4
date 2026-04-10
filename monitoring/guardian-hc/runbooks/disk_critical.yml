@@ -1,0 +1,93 @@
+name: disk_critical
+description: >
+  Disk usage critical (>85%). Runs targeted cleanup in priority order:
+  Docker image/build cache (largest wins first), then log rotation,
+  then old guardian state files. Alerts with remaining usage after cleanup.
+
+triggers:
+  - check_name: disk
+  - check_name: disk_critical
+
+steps:
+  # Step 1: Show current usage for context in alert
+  - id: check_usage
+    name: "Capture current disk usage"
+    action: exec
+    container: sowknow4-backend
+    command: "df -h / | tail -1"
+    expect_returncode: 0
+    timeout: 10
+    on_success: prune_docker_images
+    on_failure: prune_docker_images  # Continue even if df fails
+
+  # Step 2: Prune dangling Docker images (usually largest win)
+  - id: prune_docker_images
+    name: "Prune dangling Docker images"
+    action: exec
+    container: sowknow4-backend
+    command: "docker image prune -f 2>&1 || echo skipped"
+    expect_returncode: 0
+    timeout: 60
+    on_success: prune_build_cache
+    on_failure: prune_build_cache
+
+  # Step 3: Prune Docker build cache
+  - id: prune_build_cache
+    name: "Prune Docker build cache"
+    action: exec
+    container: sowknow4-backend
+    command: "docker builder prune -f 2>&1 || echo skipped"
+    expect_returncode: 0
+    timeout: 60
+    on_success: truncate_large_logs
+    on_failure: truncate_large_logs
+
+  # Step 4: Truncate container logs > 50M
+  - id: truncate_large_logs
+    name: "Truncate container logs over 50M"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      find /var/lib/docker/containers -name '*.log' -size +50M
+      -exec truncate -s 0 {} \; 2>/dev/null; echo done
+    expect_in_stdout: "done"
+    timeout: 30
+    on_success: check_after_cleanup
+    on_failure: check_after_cleanup
+
+  # Step 5: Verify disk usage after cleanup
+  - id: check_after_cleanup
+    name: "Check disk usage after cleanup"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python3 -c "
+      import shutil; u=shutil.disk_usage('/');
+      pct=round(u.used/u.total*100);
+      print(f'{pct}% used ({round(u.used/1024**3)}G/{round(u.total/1024**3)}G)');
+      exit(0 if pct < 85 else 1)
+      "
+    expect_returncode: 0
+    timeout: 10
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Disk usage reduced below critical threshold"
+    action: resolved
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: disk still critical after cleanup"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: disk_critical — ESCALATED*
+
+      Disk usage remains critical after automated cleanup (Docker prune + log truncation).
+      Manual action needed:
+      • Large document uploads or OCR artifacts may be accumulating
+      • Run: `du -sh /var/docker/sowknow4/backend/media/*`
+      • Check old PostgreSQL WAL: `du -sh /var/lib/docker/volumes/*postgres*`
+      • Consider archiving old documents or expanding disk
+    terminal: true

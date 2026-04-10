@@ -252,6 +252,8 @@ agents:
     role: "metrics"
     plugins: [trends]
 
+runbooks_dir: "/app/runbooks"
+
 daily_report:
   time: "06:00"
   timezone: "America/Toronto"

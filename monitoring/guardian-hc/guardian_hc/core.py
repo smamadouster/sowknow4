@@ -34,6 +34,7 @@ from guardian_hc.plugin import GuardianPlugin, CheckResult, HealResult, Insight,
 from guardian_hc.config import GuardianV2Config, load_config as load_v2_config
 from guardian_hc.agents import AgentRegistry
 from guardian_hc.db import MetricsDB
+from guardian_hc.runbooks import RunbookEngine
 
 logger = structlog.get_logger()
 
@@ -165,6 +166,7 @@ class GuardianHC:
         self._metrics_db: MetricsDB | None = None
         self._agent_registry: AgentRegistry | None = None
         self._v2_config: GuardianV2Config | None = None
+        self._runbook_engine: RunbookEngine | None = None
 
     @classmethod
     def from_config(cls, config_path: str) -> "GuardianHC":
@@ -244,7 +246,13 @@ class GuardianHC:
         return results
 
     async def run_plugin_heals(self, check_results: list[CheckResult]) -> list[HealResult]:
-        """Call heal() on plugins for each CheckResult with needs_healing=True."""
+        """Call heal() on plugins for each CheckResult with needs_healing=True.
+
+        Container restart hints (heal_hint starting with "restart:") are gated
+        through RestartTracker — same cooldown and suppression logic as v1 heals.
+        This prevents infinite restart loops when the root cause is a probe
+        misconfiguration rather than an actual service failure.
+        """
         heal_results: list[HealResult] = []
         for result in check_results:
             if not result.needs_healing:
@@ -253,9 +261,67 @@ class GuardianHC:
             if plugin is None:
                 logger.warning("plugin.heal_skipped_not_found", plugin=result.plugin)
                 continue
+
+            # If a runbook is defined for this check, run it instead of the
+            # generic plugin.heal() path — runbooks provide ordered diagnosis
+            # and targeted repair before falling back to a container restart.
+            hint = result.heal_hint or ""
+            if self._runbook_engine:
+                runbook = self._runbook_engine.find(result.check_name)
+                if runbook:
+                    try:
+                        rb_result = await self._runbook_engine.execute(
+                            runbook, result.check_name,
+                            context={"check_name": result.check_name, "plugin": result.plugin},
+                        )
+                        self.log_action({
+                            "target": result.check_name,
+                            "action": f"runbook:{rb_result.outcome}",
+                            "plugin": plugin.name,
+                            "success": rb_result.outcome in ("resolved",),
+                            "details": f"{rb_result.steps_executed[-1].output[:200] if rb_result.steps_executed else ''}",
+                        })
+                        heal_results.append(HealResult(
+                            plugin=plugin.name,
+                            target=result.check_name,
+                            action=f"runbook:{rb_result.outcome}",
+                            success=rb_result.outcome == "resolved",
+                            details=f"{len(rb_result.steps_executed)} steps in {rb_result.duration_s:.1f}s",
+                        ))
+                    except Exception as e:
+                        logger.error("runbook.execute_failed", check=result.check_name, error=str(e)[:200])
+                    continue  # Don't also call plugin.heal() after a runbook
+
+            # No runbook — fall back to plugin.heal() with RestartTracker gating
+            if hint.startswith("restart:"):
+                container = hint.split(":", 1)[1]
+                tracker = self._get_tracker(container)
+                can, msg = tracker.can_restart()
+                if not can:
+                    logger.warning("plugin.heal_suppressed",
+                                   check=result.check_name, container=container, reason=msg[:200])
+                    self.log_action({
+                        "target": result.check_name,
+                        "action": "plugin_heal_suppressed",
+                        "plugin": plugin.name,
+                        "success": False,
+                        "details": msg,
+                    })
+                    await self.alert_manager.send(
+                        f"⚠️ Guardian: heal suppressed for *{result.check_name}* "
+                        f"(container `{container}` restarted {tracker.attempts}x with no improvement). "
+                        f"Likely a probe config bug or a code error — manual investigation needed."
+                    )
+                    continue
+
             try:
                 heal_result = await plugin.heal(result)
                 if heal_result is not None:
+                    if hint.startswith("restart:"):
+                        container = hint.split(":", 1)[1]
+                        self._get_tracker(container).record_attempt(heal_result.success)
+                        self._save_tracker_state()
+
                     self.log_action({
                         "target": result.check_name,
                         "action": f"plugin_heal:{heal_result.action}",
@@ -679,6 +745,22 @@ class GuardianHC:
             self.register_plugin(MemoryPlugin({
                 "bootstrap_sources": plugin_cfg["memory"].get("bootstrap_sources", []),
             }))
+
+        # Initialize runbook engine — loads YAML runbooks from configured directory
+        runbooks_dir = v2.runbooks_dir if hasattr(v2, "runbooks_dir") and v2.runbooks_dir else ""
+        if not runbooks_dir:
+            # Default: runbooks/ sibling to the config file, or package default
+            import os
+            default_paths = [
+                "/app/runbooks",
+                os.path.join(os.path.dirname(__file__), "..", "runbooks"),
+            ]
+            runbooks_dir = next((p for p in default_paths if os.path.isdir(p)), "")
+        if runbooks_dir:
+            self._runbook_engine = RunbookEngine(runbooks_dir, self)
+            logger.info("runbooks.initialized", loaded=self._runbook_engine.loaded)
+        else:
+            logger.warning("runbooks.no_dir_found", note="Runbooks disabled — no runbooks/ directory found")
 
         logger.info("guardian.v2.initialized", plugins=list(self._plugins.keys()))
 

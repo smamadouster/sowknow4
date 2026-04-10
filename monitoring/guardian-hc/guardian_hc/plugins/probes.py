@@ -47,7 +47,10 @@ class ProbesPlugin(GuardianPlugin):
         self._redis_port: int = int(config.get("redis_port", 6379))
         self._redis_password: str = config.get("redis_password", "")
         self._nginx_url: str = config.get("nginx_url", "http://localhost:80")
-        self._service_account: dict = config.get("service_account", {})
+        # service_account may be a dict {username, password} or a bare string
+        # (name only, no credentials). Normalise to dict to keep usage consistent.
+        sa = config.get("service_account", {})
+        self._service_account: dict = sa if isinstance(sa, dict) else {}
 
     # ------------------------------------------------------------------
     # Public plugin interface
@@ -171,14 +174,36 @@ class ProbesPlugin(GuardianPlugin):
                 heal_hint="restart_backend",
             )
 
+    def _redis_cli_cmd(self, *args: str) -> list[str]:
+        """Build a redis-cli docker exec command, injecting auth if configured."""
+        cmd = ["docker", "exec", "sowknow4-redis", "redis-cli"]
+        if self._redis_password:
+            cmd += ["--no-auth-warning", "-a", self._redis_password]
+        cmd += list(args)
+        return cmd
+
     async def _check_redis_deep(self, ctx: CheckContext) -> CheckResult:
         """Deep Redis health: PING, memory usage, DBSIZE."""
         try:
             ping_proc = subprocess.run(
-                ["docker", "exec", "sowknow4-redis", "redis-cli", "PING"],
+                self._redis_cli_cmd("PING"),
                 capture_output=True, text=True, timeout=10,
             )
             if "PONG" not in ping_proc.stdout:
+                # NOAUTH means Redis is up but the probe isn't sending credentials.
+                # Restarting Redis won't fix this — it's a probe config error.
+                if "NOAUTH" in ping_proc.stdout or "NOAUTH" in ping_proc.stderr:
+                    return CheckResult(
+                        plugin=self.name,
+                        module="Storage Layer",
+                        check_name="redis_deep",
+                        status="fail",
+                        severity=Severity.CRITICAL,
+                        summary="redis_deep probe config error: Redis requires auth but probe has no password",
+                        details={"stdout": ping_proc.stdout[:200],
+                                 "hint": "Set redis_password in guardian-hc.yml plugins.probes config"},
+                        needs_healing=False,
+                    )
                 return CheckResult(
                     plugin=self.name,
                     module="Storage Layer",
@@ -191,11 +216,11 @@ class ProbesPlugin(GuardianPlugin):
                 )
 
             info_proc = subprocess.run(
-                ["docker", "exec", "sowknow4-redis", "redis-cli", "INFO", "memory"],
+                self._redis_cli_cmd("INFO", "memory"),
                 capture_output=True, text=True, timeout=10,
             )
             dbsize_proc = subprocess.run(
-                ["docker", "exec", "sowknow4-redis", "redis-cli", "DBSIZE"],
+                self._redis_cli_cmd("DBSIZE"),
                 capture_output=True, text=True, timeout=10,
             )
 
@@ -397,7 +422,7 @@ class ProbesPlugin(GuardianPlugin):
                     "docker", "exec", "sowknow4-backend",
                     "python3", "-c",
                     (
-                        "from tasks.guardian_tasks import guardian_ping;"
+                        "from app.tasks.guardian_tasks import guardian_ping;"
                         "r = guardian_ping.apply_async();"
                         "res = r.get(timeout=30);"
                         "print('ok' if res else 'fail')"
@@ -415,6 +440,30 @@ class ProbesPlugin(GuardianPlugin):
                     severity=Severity.INFO,
                     summary="Celery task completed successfully",
                 )
+
+            # Classify failure: probe config error vs actual Celery failure.
+            # Import/syntax errors mean the probe itself is broken — restarting
+            # Celery won't help and would just cause unnecessary churn.
+            stderr = submit.stderr or ""
+            stdout = submit.stdout or ""
+            _PROBE_ERROR_KEYWORDS = (
+                "modulenotfounderror", "importerror", "syntaxerror",
+                "nameerror", "attributeerror", "no module named",
+            )
+            is_probe_error = any(kw in stderr.lower() or kw in stdout.lower()
+                                 for kw in _PROBE_ERROR_KEYWORDS)
+            if is_probe_error:
+                return CheckResult(
+                    plugin=self.name,
+                    module="Document Pipeline",
+                    check_name="celery_completion",
+                    status="fail",
+                    severity=Severity.CRITICAL,
+                    summary="celery_completion probe config error — Celery is likely fine",
+                    details={"stderr": stderr[:500], "hint": "Check probe import path or task registration"},
+                    needs_healing=False,  # Don't restart Celery — the probe is broken
+                )
+
             return CheckResult(
                 plugin=self.name,
                 module="Document Pipeline",
@@ -422,7 +471,7 @@ class ProbesPlugin(GuardianPlugin):
                 status="fail",
                 severity=Severity.CRITICAL,
                 summary="Celery task did not complete within 30s",
-                details={"stderr": submit.stderr[:500]},
+                details={"stderr": stderr[:500]},
                 needs_healing=True,
                 heal_hint="restart:sowknow4-celery-light",
             )

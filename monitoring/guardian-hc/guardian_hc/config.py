@@ -59,6 +59,7 @@ class GuardianV2Config:
     network: dict
     celery: dict
     daily_report: dict
+    runbooks_dir: str = ""
     dashboard_port: int = 9090
 
 
@@ -156,6 +157,8 @@ def load_config(raw: dict) -> GuardianV2Config:
     else:
         dashboard_port = 9090
 
+    runbooks_dir: str = str(raw.get("runbooks_dir", ""))
+
     return GuardianV2Config(
         version=version,
         app_name=app_name,
@@ -174,5 +177,6 @@ def load_config(raw: dict) -> GuardianV2Config:
         network=network,
         celery=celery,
         daily_report=daily_report,
+        runbooks_dir=runbooks_dir,
         dashboard_port=dashboard_port,
     )

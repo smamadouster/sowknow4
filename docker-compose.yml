@@ -541,6 +541,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./monitoring/guardian-hc/guardian-hc.sowknow4.yml:/config/guardian-hc.yml:ro
+      - ./monitoring/guardian-hc/guardian_hc:/app/guardian_hc:ro
+      - ./monitoring/guardian-hc/runbooks:/app/runbooks:ro
       - /proc:/host/proc:ro
     # NO ports -- dashboard is internal only, access via docker exec or SSH tunnel
     healthcheck:

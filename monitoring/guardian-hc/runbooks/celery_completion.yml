@@ -1,0 +1,127 @@
+name: celery_completion
+description: >
+  Celery task submission/completion failure.
+  Distinguishes probe misconfiguration (wrong import path, task not registered)
+  from actual worker failures (hung worker, Redis connectivity, task routing).
+
+triggers:
+  - check_name: celery_completion
+
+steps:
+  # Step 1: Verify the probe can import the task. If this fails, the probe
+  # itself is broken — Celery is likely fine. Don't restart anything.
+  - id: check_probe_import
+    name: "Verify probe import path is correct"
+    action: exec
+    container: sowknow4-backend
+    command: "python3 -c 'from app.tasks.guardian_tasks import guardian_ping; print(ok)'"
+    expect_in_stdout: "ok"
+    timeout: 15
+    on_success: check_worker_state
+    on_failure: alert_probe_import_error
+
+  # Step 2: Confirm celery-light container is running
+  - id: check_worker_state
+    name: "Confirm celery-light container is running"
+    action: exec
+    container: sowknow4-celery-light
+    command: "pgrep -f 'celery worker' > /dev/null && echo running"
+    expect_in_stdout: "running"
+    timeout: 10
+    on_success: check_redis_queue
+    on_failure: restart_worker
+
+  # Step 3: Check Redis is reachable and queue depth is not overflowing
+  - id: check_redis_queue
+    name: "Check Redis connectivity and queue depth"
+    action: exec
+    container: sowknow4-redis
+    command: "redis-cli {redis_auth} PING && redis-cli {redis_auth} LLEN celery"
+    expect_in_stdout: "PONG"
+    timeout: 10
+    on_success: submit_test_task
+    on_failure: alert_redis_unreachable
+
+  # Step 4: Submit the guardian_ping task and wait up to 30s for completion
+  - id: submit_test_task
+    name: "Submit guardian_ping task and verify completion"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python3 -c "
+      from app.tasks.guardian_tasks import guardian_ping;
+      r = guardian_ping.apply_async();
+      res = r.get(timeout=30);
+      print('ok' if res else 'fail')
+      "
+    expect_in_stdout: "ok"
+    timeout: 40
+    on_success: resolved
+    on_failure: restart_worker
+
+  # Step 5: Restart celery-light (with RestartTracker cooldown)
+  - id: restart_worker
+    name: "Restart sowknow4-celery-light"
+    action: restart_container
+    container: sowknow4-celery-light
+    wait_after: 20
+    on_success: verify_after_restart
+    on_failure: escalate
+
+  # Step 6: Verify after restart
+  - id: verify_after_restart
+    name: "Re-verify task completion after restart"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python3 -c "
+      from app.tasks.guardian_tasks import guardian_ping;
+      r = guardian_ping.apply_async();
+      res = r.get(timeout=30);
+      print('ok' if res else 'fail')
+      "
+    expect_in_stdout: "ok"
+    timeout: 40
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Celery task completion verified"
+    action: resolved
+    terminal: true
+
+  - id: alert_probe_import_error
+    name: "Alert: probe import misconfiguration"
+    action: alert
+    message: >-
+      ⚠️ *Guardian runbook: celery_completion*
+
+      Probe config error — the probe's Python import failed inside sowknow4-backend.
+      Celery workers are likely healthy. Fix the import path in probes.py.
+      No containers were restarted.
+    terminal: true
+
+  - id: alert_redis_unreachable
+    name: "Alert: Redis unreachable from backend"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: celery_completion*
+
+      Redis is unreachable from sowknow4-backend. Celery tasks cannot be dispatched.
+      Check network connectivity and Redis password configuration.
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: celery still broken after auto-heal"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: celery_completion — ESCALATED*
+
+      Celery task completion failed after auto-heal attempt.
+      Manual investigation needed:
+      • `docker logs sowknow4-celery-light`
+      • `docker logs sowknow4-backend`
+      • Check Redis queue depth and connectivity
+      • Verify task routing config in celery_app.py
+    terminal: true

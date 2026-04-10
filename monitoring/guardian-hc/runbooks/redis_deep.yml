@@ -1,0 +1,108 @@
+name: redis_deep
+description: >
+  Redis deep health failure.
+  Distinguishes probe auth misconfiguration (NOAUTH) from actual Redis failures
+  (OOM, crash, network partition). Only restarts Redis when PING genuinely fails
+  after correct authentication.
+
+triggers:
+  - check_name: redis_deep
+
+steps:
+  # Step 1: PING with correct auth. If NOAUTH appears, the probe is broken — Redis is fine.
+  - id: ping_with_auth
+    name: "PING Redis with credentials"
+    action: exec
+    container: sowknow4-redis
+    command: "redis-cli {redis_auth} PING"
+    expect_in_stdout: "PONG"
+    reject_in_stdout: "NOAUTH"
+    reject_in_stderr: "NOAUTH"
+    timeout: 10
+    on_success: check_memory
+    on_failure: classify_failure
+
+  # Step 2: Distinguish NOAUTH (probe bug) from actual failure
+  - id: classify_failure
+    name: "Classify: NOAUTH vs Redis down"
+    action: exec
+    container: sowknow4-redis
+    command: "redis-cli PING 2>&1 || true"
+    expect_in_stdout: "NOAUTH"
+    timeout: 10
+    on_success: alert_noauth_probe_error
+    on_failure: restart_redis
+
+  # Step 3: Check memory usage — warn if >85%
+  - id: check_memory
+    name: "Check Redis memory usage"
+    action: exec
+    container: sowknow4-redis
+    command: "redis-cli {redis_auth} INFO memory | grep used_memory_human"
+    expect_returncode: 0
+    timeout: 10
+    on_success: check_connected_clients
+    on_failure: resolved  # Memory check failure is not critical — move on
+
+  # Step 4: Check connected clients
+  - id: check_connected_clients
+    name: "Check connected clients count"
+    action: exec
+    container: sowknow4-redis
+    command: "redis-cli {redis_auth} CLIENT LIST | wc -l"
+    expect_returncode: 0
+    timeout: 10
+    on_success: resolved
+    on_failure: resolved
+
+  # Step 5: Restart Redis (gated by RestartTracker)
+  - id: restart_redis
+    name: "Restart sowknow4-redis"
+    action: restart_container
+    container: sowknow4-redis
+    wait_after: 10
+    on_success: verify_after_restart
+    on_failure: escalate
+
+  # Step 6: Verify after restart
+  - id: verify_after_restart
+    name: "Re-verify Redis after restart"
+    action: exec
+    container: sowknow4-redis
+    command: "redis-cli {redis_auth} PING"
+    expect_in_stdout: "PONG"
+    timeout: 10
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Redis healthy"
+    action: resolved
+    terminal: true
+
+  - id: alert_noauth_probe_error
+    name: "Alert: probe missing Redis credentials"
+    action: alert
+    message: >-
+      ⚠️ *Guardian runbook: redis_deep*
+
+      Probe config error — redis-cli PING returned NOAUTH (no password sent).
+      Redis itself is healthy. Fix: set redis_password in guardian-hc.yml
+      under plugins.probes or celery config.
+      No containers were restarted.
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: Redis still down after restart"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: redis_deep — ESCALATED*
+
+      Redis failed and did not recover after auto-restart.
+      Manual investigation needed:
+      • `docker logs sowknow4-redis`
+      • Check disk space (Redis AOF/RDB may be full)
+      • Check /proc/meminfo for OOM conditions
+      • Verify Redis config at /etc/redis/redis.conf in container
+    terminal: true

@@ -21,8 +21,8 @@ class DashboardServer:
 
     def _get_metrics(self) -> dict:
         history = self.guardian.get_history(100)
-        healed = [h for h in history if h.get("healed")]
-        failed = [h for h in history if not h.get("healed") and h.get("action")]
+        healed = [h for h in history if h.get("healed") or h.get("success") is True]
+        failed = [h for h in history if not (h.get("healed") or h.get("success") is True) and h.get("action")]
 
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),

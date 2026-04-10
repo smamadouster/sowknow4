@@ -7,9 +7,15 @@ class ConfigDriftChecker:
 
     async def check(self) -> dict:
         drifts = []
-        if not os.path.exists(self.config.compose_file):
+        # Support both GuardianConfig objects (attribute access) and plain dicts
+        if isinstance(self.config, dict):
+            compose_file = self.config.get("compose_file", "")
+            alerts = self.config.get("alerts", {})
+        else:
+            compose_file = getattr(self.config, "compose_file", "")
+            alerts = getattr(self.config, "alerts", {})
+        if compose_file and not os.path.exists(compose_file):
             drifts.append({"item": "compose_file", "actual": "NOT FOUND"})
-        alerts = self.config.alerts
         tf = (alerts.get("telegram") or {}).get("token_file", "")
         if tf and not os.path.exists(tf):
             drifts.append({"item": f"secret:{tf}", "actual": "MISSING"})

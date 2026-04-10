@@ -156,9 +156,9 @@ def _generate_html(metrics: dict, containers: list[dict], history: list[dict], n
 <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#6B7280">{details}</td>
 </tr>"""
 
-    # Incidents
-    healed = [h for h in history if h.get("healed")]
-    failed = [h for h in history if not h.get("healed") and h.get("action")]
+    # Incidents — v1 heals log "healed": True; v2 plugin heals log "success": True
+    healed = [h for h in history if h.get("healed") or h.get("success") is True]
+    failed = [h for h in history if not (h.get("healed") or h.get("success") is True) and h.get("action")]
     healed_count = len(healed)
     pending_count = len(failed)
     total_incidents = len(history)
@@ -242,8 +242,8 @@ def _generate_telegram_summary(metrics: dict, containers: list[dict], history: l
     total = len(containers)
     down = [c["service"] for c in containers if c["state"] != "running"]
 
-    healed = sum(1 for h in history if h.get("healed"))
-    failed = sum(1 for h in history if not h.get("healed") and h.get("action"))
+    healed = sum(1 for h in history if h.get("healed") or h.get("success") is True)
+    failed = sum(1 for h in history if not (h.get("healed") or h.get("success") is True) and h.get("action"))
 
     lines = [
         f"\U0001f4ca *SOWKNOW4 Daily Report* -- {date_str}",
@@ -270,8 +270,8 @@ async def _generate_telegram_v2(guardian, metrics: dict, containers: list[dict],
                    7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"}
     date_str = f"{day_names[now.weekday()]} {now.day} {month_names[now.month]} {now.year}"
 
-    healed_count = sum(1 for h in history if h.get("type") == "heal" and h.get("success"))
-    failed_count = sum(1 for h in history if h.get("type") == "heal" and not h.get("success"))
+    healed_count = sum(1 for h in history if h.get("healed") or h.get("success") is True)
+    failed_count = sum(1 for h in history if not (h.get("healed") or h.get("success") is True) and h.get("action"))
 
     status_emoji = "🟡" if failed_count > 0 else "🟢"
     status_text = "DEGRADED" if failed_count > 0 else "HEALTHY"
@@ -335,8 +335,8 @@ async def _generate_telegram_v2(guardian, metrics: dict, containers: list[dict],
 def generate_report(guardian) -> tuple[str, str, dict]:
     """Legacy wrapper -- returns (plain, html, data). Not used by new flow."""
     history = guardian.get_history(50)
-    healed = [h for h in history if h.get("healed")]
-    failed = [h for h in history if not h.get("healed") and h.get("action")]
+    healed = [h for h in history if h.get("healed") or h.get("success") is True]
+    failed = [h for h in history if not (h.get("healed") or h.get("success") is True) and h.get("action")]
     data = {"total": len(history), "healed": len(healed), "pending": len(failed)}
     return "", "", data
 
@@ -345,8 +345,8 @@ async def send_report(guardian, alert_manager=None) -> dict:
     """Send the daily dashboard report via email (HTML) and Telegram (summary)."""
     now = datetime.now(timezone.utc)
     history = guardian.get_history(100)
-    healed_list = [h for h in history if h.get("healed")]
-    failed_list = [h for h in history if not h.get("healed") and h.get("action")]
+    healed_list = [h for h in history if h.get("healed") or h.get("success") is True]
+    failed_list = [h for h in history if not (h.get("healed") or h.get("success") is True) and h.get("action")]
 
     result = {
         "incidents": len(history),

@@ -3,6 +3,12 @@
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
 
+| 14:30 | Task 1 AlertIQ: created tests/__init__.py, tests/test_correlator.py, guardian_hc/correlator.py | monitoring/guardian-hc/ | 8/8 tests pass, committed 2a95e88 | ~800 |
+| 19:51 | Task 1 Plugin Base: created guardian_hc/plugin.py (Severity, CheckContext, AnalysisContext, CheckResult, HealResult, Insight, GuardianPlugin) + tests/test_plugin.py | monitoring/guardian-hc/ | 27/27 tests pass, committed bd52618 | ~800 |
+
+| 2026-04-07 | Fix voice dictation: Safari/iOS mimeType compat (webm→mp4 fallback), dynamic file extension | useVoiceRecorder.ts | fixed | ~200 |
+| 2026-04-07 | Fix tag horizontal overflow on mobile: overflow-x-hidden on MobileSheet, min-w-0 on TagAutocomplete | TagAutocomplete.tsx, MobileSheet.tsx | fixed | ~100 |
+
 | 2026-04-05 | Task 2: Created WhisperService (subprocess wrapper for whisper.cpp) with TDD | backend/app/services/whisper_service.py, backend/tests/unit/test_whisper_service.py | 4/4 tests pass, committed 72a53b9 | ~400 tok |
 
 ## 2026-04-05 — Mintlify-inspired UI enhancements
@@ -319,3 +325,534 @@
 | 20:05 | Created useTagSuggestions hook with debounced fetch + top tags on mount | frontend/hooks/useTagSuggestions.ts | created | ~200 |
 | 20:05 | Created TagAutocomplete component with fuzzy search, top chips, dropdown above input | frontend/components/TagAutocomplete.tsx | created | ~350 |
 | 20:05 | Updated TagSelector to use TagAutocomplete on mobile, vault-themed desktop | frontend/components/TagSelector.tsx | updated | ~200 |
+| 19:49 | Edited frontend/app/[locale]/search/page.tsx | added 1 import(s) | ~116 |
+| 19:49 | Edited frontend/app/[locale]/search/page.tsx | 2→4 lines | ~41 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | added 2 import(s) | ~47 |
+| 19:49 | Edited frontend/app/[locale]/search/page.tsx | "p-4 sm:p-6 max-w-5xl mx-a" → "p-4 sm:p-6 max-w-5xl mx-a" | ~19 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | 1→3 lines | ~45 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | added 1 condition(s) | ~37 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | "flex h-[calc(100vh-8rem)]" → "flex bg-vault-1000" | ~34 |
+| 19:49 | Created frontend/app/[locale]/notes/page.tsx | — | ~3945 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | added optional chaining | ~339 |
+| 19:49 | Edited frontend/app/[locale]/documents/page.tsx | added 4 import(s) | ~169 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | 2→2 lines | ~32 |
+| 19:49 | Edited frontend/app/[locale]/documents/page.tsx | 3→5 lines | ~90 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | 3→3 lines | ~112 |
+| 19:49 | Edited frontend/app/[locale]/documents/page.tsx | CSS: open | ~51 |
+| 19:49 | Task 9: mobile-optimized notes page — FAB, MobileSheet editor, swipe-to-delete, PullToRefresh, vault theme | frontend/app/[locale]/notes/page.tsx | committed 6c4377c | ~2800 |
+| 19:49 | Edited frontend/app/[locale]/chat/page.tsx | added optional chaining | ~308 |
+| 19:49 | Edited frontend/app/[locale]/documents/page.tsx | CSS: md | ~22 |
+| 19:49 | Edited frontend/app/[locale]/search/page.tsx | modified if() | ~1156 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | CSS: hover, md | ~231 |
+| 19:50 | Edited frontend/app/[locale]/search/page.tsx | CSS: md, md | ~339 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | 2→2 lines | ~50 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | 3→4 lines | ~60 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | 4→5 lines | ~37 |
+| 19:50 | Task 12: mobile-optimized search page | frontend/app/[locale]/search/page.tsx | committed 1ce9087 | ~800 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | modified t() | ~820 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | CSS: md | ~145 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | CSS: md | ~151 |
+| 19:50 | Edited frontend/app/[locale]/documents/page.tsx | CSS: md, display | ~94 |
+| 19:51 | Edited frontend/app/[locale]/documents/page.tsx | reduced (-7 lines) | ~31 |
+| 19:51 | Edited frontend/app/[locale]/documents/page.tsx | 4→6 lines | ~92 |
+| 19:51 | Edited frontend/app/[locale]/documents/page.tsx | 7→8 lines | ~112 |
+| 19:52 | Edited frontend/app/[locale]/documents/page.tsx | 7→8 lines | ~79 |
+| 20:11 | Session end: 63 writes across 22 files (2026-04-06-mobile-optimization-design.md, 2026-04-06-mobile-optimization.md, user_mobile_primary.md, MEMORY.md, useIsMobile.ts) | 27 reads | ~105920 tok |
+| 20:24 | Session end: 63 writes across 22 files (2026-04-06-mobile-optimization-design.md, 2026-04-06-mobile-optimization.md, user_mobile_primary.md, MEMORY.md, useIsMobile.ts) | 27 reads | ~105920 tok |
+
+## Session: 2026-04-07 08:42
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-07 08:50
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 08:54 | Edited backend/app/tasks/pipeline_tasks.py | modified _run_entities() | ~334 |
+| 08:55 | Edited backend/app/services/entity_extraction_service.py | modified extract_entities_from_document_sync() | ~1955 |
+| 09:00 | Edited backend/app/services/entity_extraction_service.py | modified _create_relationship_sync() | ~147 |
+| 09:00 | Edited backend/app/services/entity_extraction_service.py | 15→14 lines | ~185 |
+| 09:00 | Edited backend/app/services/entity_extraction_service.py | modified _create_relationship() | ~142 |
+| 09:03 | Session end: 5 writes across 2 files (pipeline_tasks.py, entity_extraction_service.py) | 5 reads | ~10106 tok |
+
+## Session: 2026-04-07 09:23
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:26 | Edited frontend/hooks/useVoiceRecorder.ts | 2→7 lines | ~110 |
+| 09:26 | Edited frontend/hooks/useVoiceRecorder.ts | 2→2 lines | ~36 |
+| 09:26 | Edited frontend/components/TagAutocomplete.tsx | "relative space-y-2" → "relative space-y-2 overfl" | ~22 |
+| 09:26 | Edited frontend/hooks/useVoiceRecorder.ts | 2→3 lines | ~60 |
+| 09:26 | Edited frontend/components/TagAutocomplete.tsx | "relative space-y-2 overfl" → "relative space-y-2 min-w-" | ~20 |
+| 09:26 | Edited frontend/components/TagAutocomplete.tsx | "flex gap-2 overflow-x-aut" → "flex gap-2 overflow-x-aut" | ~24 |
+| 09:27 | Edited frontend/components/mobile/MobileSheet.tsx | "flex-1 overflow-y-auto px" → "flex-1 overflow-y-auto ov" | ~22 |
+| 09:28 | Session end: 7 writes across 3 files (useVoiceRecorder.ts, TagAutocomplete.tsx, MobileSheet.tsx) | 19 reads | ~4639 tok |
+
+## Session: 2026-04-07 09:30
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:32 | Edited frontend/hooks/useVoiceRecorder.ts | 6→7 lines | ~58 |
+| 09:32 | Edited frontend/hooks/useVoiceRecorder.ts | inline fix | ~27 |
+| 09:32 | Edited frontend/hooks/useVoiceRecorder.ts | added 1 condition(s) | ~76 |
+| 09:32 | Edited frontend/components/VoiceRecorder.tsx | 7→8 lines | ~68 |
+| 09:32 | Edited frontend/components/VoiceRecorder.tsx | inline fix | ~37 |
+| 09:32 | Edited frontend/components/VoiceRecorder.tsx | 5→6 lines | ~53 |
+| 09:32 | Edited frontend/app/[locale]/notes/page.tsx | inline fix | ~19 |
+| 09:32 | Edited frontend/app/[locale]/notes/page.tsx | 2→3 lines | ~66 |
+| 09:33 | Edited frontend/app/[locale]/notes/page.tsx | CSS: blob, transcript | ~751 |
+| 09:33 | Edited frontend/app/[locale]/search/page.tsx | 3→4 lines | ~35 |
+| 09:33 | Edited frontend/app/[locale]/journal/page.tsx | inline fix | ~16 |
+| 09:33 | Edited frontend/app/[locale]/journal/page.tsx | 2→3 lines | ~32 |
+| 09:33 | Edited frontend/app/[locale]/journal/page.tsx | 3→4 lines | ~38 |
+| 09:34 | Edited frontend/app/[locale]/notes/page.tsx | inline fix | ~17 |
+| 09:34 | Session end: 14 writes across 3 files (useVoiceRecorder.ts, VoiceRecorder.tsx, page.tsx) | 5 reads | ~7877 tok |
+
+## Session: 2026-04-07 09:35
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:49 | Edited frontend/app/globals.css | CSS: width | ~37 |
+| 09:49 | Edited frontend/app/globals.css | CSS: padding-left, padding-right | ~94 |
+| 09:50 | Edited frontend/components/Navigation.tsx | "text-[10px] font-medium t" → "text-[10px] font-medium t" | ~32 |
+| 09:50 | Edited frontend/app/[locale]/layout.tsx | 4→4 lines | ~45 |
+| 09:50 | Edited frontend/components/Navigation.tsx | "flex items-stretch justif" → "flex items-stretch justif" | ~22 |
+| 09:50 | Edited frontend/app/[locale]/layout.tsx | 2→2 lines | ~52 |
+| 09:50 | Edited frontend/components/Navigation.tsx | "text-[10px] font-medium t" → "text-[10px] font-medium w" | ~29 |
+| 09:51 | Edited frontend/components/Navigation.tsx | "flex items-stretch justif" → "flex items-stretch justif" | ~20 |
+| 09:51 | Edited frontend/components/Navigation.tsx | 3→3 lines | ~77 |
+| 09:51 | Session end: 9 writes across 3 files (globals.css, Navigation.tsx, layout.tsx) | 14 reads | ~27362 tok |
+
+## Session: 2026-04-07 09:55
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:24 | Edited frontend/components/Navigation.tsx | inline fix | ~18 |
+| 10:24 | Session end: 1 writes across 1 files (Navigation.tsx) | 5 reads | ~12239 tok |
+| 10:28 | Session end: 1 writes across 1 files (Navigation.tsx) | 5 reads | ~12239 tok |
+
+## Session: 2026-04-07 10:40
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:46 | Edited ../../../../../var/docker/sowknow4/backend/app/tasks/pipeline_orchestrator.py | 5→6 lines | ~38 |
+| 10:46 | Edited ../../../../../var/docker/sowknow4/backend/app/tasks/pipeline_orchestrator.py | 5→6 lines | ~53 |
+| 10:46 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_mobile_optimization.md | — | ~424 |
+| 10:46 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 5→5 lines | ~81 |
+| 10:46 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 7→7 lines | ~79 |
+| 10:46 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 1→2 lines | ~36 |
+| 10:46 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_entity_queue_bottleneck.md | — | ~459 |
+| 10:46 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_bulk_pipeline_catchup.md | — | ~353 |
+| 10:47 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_celery_worker_broken_deps.md | — | ~540 |
+| 10:47 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/MEMORY.md | — | ~977 |
+| 2026-04-07 14:30 | Purged 83K entity queue, added entity backpressure (200), bumped light→4 heavy→2 | pipeline_orchestrator.py, docker-compose.yml | workers restarted healthy | ~500 |
+| 10:47 | Session end: 10 writes across 7 files (pipeline_orchestrator.py, project_mobile_optimization.md, docker-compose.yml, project_entity_queue_bottleneck.md, project_bulk_pipeline_catchup.md) | 14 reads | ~8327 tok |
+
+## Session: 2026-04-07 11:07
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-08 17:50
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:59 | Created docs/superpowers/specs/2026-04-08-guardian-hc-overhaul-design.md | — | ~2103 |
+| 18:00 | Session end: 1 writes across 1 files (2026-04-08-guardian-hc-overhaul-design.md) | 13 reads | ~7353 tok |
+| 18:05 | Created docs/superpowers/plans/2026-04-08-guardian-hc-overhaul.md | — | ~8405 |
+| 18:05 | Session end: 2 writes across 2 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md) | 13 reads | ~16358 tok |
+| 18:06 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | expanded (+14 lines) | ~132 |
+| 18:06 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | 2→1 lines | ~7 |
+| 18:06 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | expanded (+7 lines) | ~82 |
+| 18:07 | Created monitoring/guardian-hc/guardian_hc/healers/disk_healer.py | — | ~339 |
+| 18:08 | Created monitoring/guardian-hc/guardian_hc/alerts.py | — | ~1055 |
+| 18:11 | Created monitoring/guardian-hc/guardian_hc/daily_report.py | — | ~4369 |
+| 18:11 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified _daily_report_loop() | ~25 |
+| 18:11 | Edited monitoring/guardian-hc/guardian_hc/core.py | 7 → 6 | ~22 |
+| 18:12 | Edited docker-compose.yml | 7→10 lines | ~122 |
+| 18:12 | Edited monitoring/guardian-hc/setup.py | "1.1.0" → "1.2.0" | ~6 |
+| 18:14 | Edited monitoring/guardian-hc/guardian_hc/core.py | inline fix | ~15 |
+| 18:14 | Edited monitoring/guardian-hc/guardian_hc/core.py | replace() → timedelta() | ~21 |
+| 18:14 | Session end: 14 writes across 9 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md, guardian-hc.sowknow4.yml, disk_healer.py, alerts.py) | 18 reads | ~41053 tok |
+| 18:20 | Session end: 14 writes across 9 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md, guardian-hc.sowknow4.yml, disk_healer.py, alerts.py) | 18 reads | ~41053 tok |
+| 18:26 | Session end: 14 writes across 9 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md, guardian-hc.sowknow4.yml, disk_healer.py, alerts.py) | 18 reads | ~41053 tok |
+| 18:28 | Session end: 14 writes across 9 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md, guardian-hc.sowknow4.yml, disk_healer.py, alerts.py) | 18 reads | ~41053 tok |
+| 18:29 | Session end: 14 writes across 9 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md, guardian-hc.sowknow4.yml, disk_healer.py, alerts.py) | 18 reads | ~41053 tok |
+| 18:39 | Edited monitoring/guardian-hc/Dockerfile | 1→2 lines | ~34 |
+| 18:42 | Session end: 15 writes across 10 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md, guardian-hc.sowknow4.yml, disk_healer.py, alerts.py) | 18 reads | ~41089 tok |
+| 18:45 | Edited monitoring/guardian-hc/guardian_hc/alerts.py | modified _resolve_env() | ~130 |
+| 18:45 | Edited monitoring/guardian-hc/guardian_hc/alerts.py | 6→6 lines | ~117 |
+| 18:45 | Edited monitoring/guardian-hc/guardian_hc/alerts.py | getenv() → _resolve_env() | ~52 |
+| 18:47 | Session end: 18 writes across 10 files (2026-04-08-guardian-hc-overhaul-design.md, 2026-04-08-guardian-hc-overhaul.md, guardian-hc.sowknow4.yml, disk_healer.py, alerts.py) | 18 reads | ~41448 tok |
+
+## Session: 2026-04-08 18:47
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:59 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_entity_queue_bottleneck.md | — | ~466 |
+| 18:59 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_guardian_hc.md | — | ~451 |
+| 18:59 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_mobile_optimization.md | — | ~500 |
+| 19:00 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_voice_feature.md | — | ~372 |
+| 19:00 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_bulk_pipeline_catchup.md | — | ~324 |
+| 19:00 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/reference_production_deployment.md | — | ~500 |
+
+## Session: 2026-04-08 19:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 19:00 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/MEMORY.md | — | ~984 |
+| 19:01 | Edited frontend/app/[locale]/notes/page.tsx | 2→3 lines | ~58 |
+| 19:01 | Edited frontend/app/[locale]/notes/page.tsx | inline fix | ~14 |
+| 19:02 | Edited frontend/app/[locale]/notes/page.tsx | expanded (+113 lines) | ~1545 |
+| 19:02 | Edited frontend/app/messages/en.json | 4→6 lines | ~50 |
+| 19:02 | Edited frontend/app/messages/fr.json | 4→6 lines | ~51 |
+| 19:02 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 3 reads | ~8499 tok |
+| 19:02 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 3 reads | ~8499 tok |
+| 19:04 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 5 reads | ~8499 tok |
+| 19:05 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 5 reads | ~8499 tok |
+| 19:05 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 5 reads | ~8499 tok |
+| 19:09 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 5 reads | ~8499 tok |
+| 19:27 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 5 reads | ~8499 tok |
+| 19:28 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 5 reads | ~8499 tok |
+| 19:49 | Session end: 6 writes across 4 files (MEMORY.md, page.tsx, en.json, fr.json) | 5 reads | ~8499 tok |
+
+## Session: 2026-04-08 19:49
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 19:52 | Edited backend/app/services/entity_extraction_service.py | values() → get() | ~66 |
+| 19:52 | Edited backend/app/services/entity_extraction_service.py | values() → get() | ~62 |
+| 19:52 | Edited frontend/app/[locale]/notes/page.tsx | inline fix | ~19 |
+| 19:52 | Edited frontend/app/[locale]/notes/page.tsx | modified if() | ~136 |
+| 19:52 | Edited frontend/app/messages/en.json | 2→3 lines | ~30 |
+| 19:52 | Edited frontend/app/messages/fr.json | 2→3 lines | ~30 |
+| 19:52 | Edited frontend/app/[locale]/notes/page.tsx | inline fix | ~24 |
+| 19:52 | Edited frontend/app/[locale]/notes/page.tsx | expanded (+26 lines) | ~336 |
+| 19:53 | Edited frontend/app/[locale]/notes/page.tsx | removed 24 lines | ~17 |
+| 19:53 | Edited frontend/app/[locale]/notes/page.tsx | removed 23 lines | ~25 |
+| 19:53 | Session end: 10 writes across 4 files (entity_extraction_service.py, page.tsx, en.json, fr.json) | 5 reads | ~19705 tok |
+| 20:05 | Session end: 10 writes across 4 files (entity_extraction_service.py, page.tsx, en.json, fr.json) | 6 reads | ~19705 tok |
+| 20:06 | Session end: 10 writes across 4 files (entity_extraction_service.py, page.tsx, en.json, fr.json) | 6 reads | ~19705 tok |
+
+## Session: 2026-04-09 09:17
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:20 | Created Mastertask.md | — | ~792 |
+| 09:20 | Created CLAUDE.md | — | ~842 |
+| 09:21 | Session end: 2 writes across 2 files (Mastertask.md, CLAUDE.md) | 2 reads | ~90095 tok |
+
+## Session: 2026-04-09 09:23
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:30 | Created monitoring/guardian-hc/guardian_hc/healers/network_healer.py | — | ~1128 |
+| 09:30 | Created monitoring/guardian-hc/guardian_hc/checks/network_health.py | — | ~1398 |
+| 09:30 | Edited monitoring/guardian-hc/Dockerfile | 6→10 lines | ~109 |
+| 09:30 | Edited docker-compose.yml | 6→8 lines | ~53 |
+| 09:30 | Edited monitoring/guardian-hc/guardian_hc/checks/ollama_health.py | modified __init__() | ~233 |
+| 09:31 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | 2→3 lines | ~43 |
+| 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~284 |
+| 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified can_restart() | ~498 |
+| 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | 3→4 lines | ~52 |
+| 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get_history() | ~451 |
+| 09:32 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~315 |
+| 09:35 | Session end: 11 writes across 7 files (network_healer.py, network_health.py, Dockerfile, docker-compose.yml, ollama_health.py) | 27 reads | ~14045 tok |
+
+## Session: 2026-04-09 09:39
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:45 | Edited monitoring/guardian-hc/guardian_hc/core.py | added 1 import(s) | ~294 |
+| 09:45 | Edited monitoring/guardian-hc/guardian_hc/core.py | added 3 import(s) | ~52 |
+| 09:45 | Edited monitoring/guardian-hc/guardian_hc/core.py | 3→6 lines | ~110 |
+| 09:45 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified record_attempt() | ~361 |
+| 09:46 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified __init__() | ~350 |
+| 09:46 | Edited monitoring/guardian-hc/guardian_hc/core.py | 11→12 lines | ~158 |
+| 09:46 | Edited monitoring/guardian-hc/guardian_hc/core.py | 3→4 lines | ~58 |
+| 09:46 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified log_action() | ~1274 |
+| 09:47 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified _find_svc_for_container() | ~2611 |
+| 09:47 | Edited monitoring/guardian-hc/guardian_hc/alerts.py | modified send_email() | ~711 |
+| 09:48 | Edited monitoring/guardian-hc/scripts/watchdog.sh | "sowknow4-backend sowknow4" → "sowknow4-backend sowknow4" | ~63 |
+| 09:48 | Edited monitoring/guardian-hc/scripts/watchdog.sh | inline fix | ~30 |
+| 09:48 | Edited monitoring/guardian-hc/scripts/watchdog.sh | 13→14 lines | ~127 |
+| 09:48 | Edited monitoring/guardian-hc/guardian_hc/healers/network_healer.py | 15→18 lines | ~297 |
+| 09:48 | Edited docker-compose.yml | 2→2 lines | ~14 |
+| 09:48 | Edited docker-compose.yml | 4→5 lines | ~50 |
+| 09:48 | Edited docker-compose.yml | 2→2 lines | ~20 |
+| 09:48 | Edited docker-compose.yml | 5→5 lines | ~34 |
+| 09:48 | Edited docker-compose.yml | 6→6 lines | ~92 |
+| 09:49 | Edited monitoring/guardian-hc/guardian_hc/core.py | 2→7 lines | ~90 |
+| 09:49 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | expanded (+8 lines) | ~99 |
+| 09:49 | Edited docker-compose.yml | 5→5 lines | ~47 |
+| 09:51 | Session end: 22 writes across 6 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~29137 tok |
+| 09:56 | Session end: 22 writes across 6 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~29137 tok |
+| 10:03 | Session end: 22 writes across 6 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~29137 tok |
+| 10:05 | Edited monitoring/guardian-hc/guardian_hc/core.py | 2→2 lines | ~43 |
+| 10:05 | Edited monitoring/guardian-hc/guardian_hc/checks/network_health.py | 12→17 lines | ~196 |
+| 10:06 | Edited docker-compose.yml | 4→6 lines | ~33 |
+| 10:06 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~567 |
+| 10:06 | Session end: 26 writes across 7 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~29976 tok |
+| 10:11 | Session end: 26 writes across 7 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~29976 tok |
+| 10:13 | Edited monitoring/guardian-hc/guardian_hc/checks/http_health.py | 1→2 lines | ~51 |
+| 10:13 | Edited monitoring/guardian-hc/guardian_hc/checks/network_health.py | modified _tcp_probe() | ~546 |
+| 10:14 | Session end: 28 writes across 8 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~30631 tok |
+| 10:16 | Session end: 28 writes across 8 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~30631 tok |
+| 10:20 | Session end: 28 writes across 8 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~30631 tok |
+| 10:20 | Session end: 28 writes across 8 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~30631 tok |
+| 10:20 | Session end: 28 writes across 8 files (core.py, alerts.py, watchdog.sh, network_healer.py, docker-compose.yml) | 44 reads | ~30631 tok |
+
+## Session: 2026-04-09 10:21
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:33 | Created docs/superpowers/specs/2026-04-09-alertiq-sowknow-design.md | — | ~3878 |
+| 10:33 | Edited docs/superpowers/specs/2026-04-09-alertiq-sowknow-design.md | 5→7 lines | ~118 |
+| 10:33 | Session end: 2 writes across 1 files (2026-04-09-alertiq-sowknow-design.md) | 21 reads | ~20170 tok |
+| 10:44 | Created docs/superpowers/plans/2026-04-09-alertiq-correlator.md | — | ~17103 |
+| 10:44 | Session end: 3 writes across 2 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md) | 22 reads | ~38550 tok |
+| 10:53 | Created monitoring/guardian-hc/tests/__init__.py | — | ~0 |
+| 10:53 | Created monitoring/guardian-hc/tests/test_correlator.py | — | ~1358 |
+| 10:54 | Created monitoring/guardian-hc/guardian_hc/correlator.py | — | ~1218 |
+| 10:56 | Edited monitoring/guardian-hc/tests/test_correlator.py | modified test_network_overrides_all() | ~1122 |
+| 10:57 | Edited monitoring/guardian-hc/guardian_hc/correlator.py | modified to_jsonl_dict() | ~1386 |
+| 10:59 | Edited monitoring/guardian-hc/tests/test_correlator.py | modified test_highest_severity_in_group() | ~1353 |
+| 10:59 | Edited monitoring/guardian-hc/guardian_hc/correlator.py | added 1 condition(s) | ~1703 |
+| 11:01 | Edited monitoring/guardian-hc/tests/test_correlator.py | modified _make_incident() | ~1069 |
+| 11:02 | Edited monitoring/guardian-hc/guardian_hc/correlator.py | modified _format_open() | ~1141 |
+| 11:04 | Edited monitoring/guardian-hc/guardian_hc/core.py | added 1 import(s) | ~40 |
+| 11:04 | Edited monitoring/guardian-hc/guardian_hc/core.py | 2→2 lines | ~46 |
+| 11:04 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+7 lines) | ~232 |
+| 11:04 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+8 lines) | ~258 |
+| 11:04 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+9 lines) | ~229 |
+| 11:04 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+8 lines) | ~259 |
+| 11:04 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+7 lines) | ~280 |
+| 11:05 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~314 |
+| 11:05 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~329 |
+| 11:05 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+8 lines) | ~214 |
+| 11:05 | Created monitoring/guardian-hc/tests/test_core_events.py | — | ~548 |
+| 11:06 | Edited monitoring/guardian-hc/guardian_hc/core.py | 3→3 lines | ~46 |
+| 11:06 | Edited monitoring/guardian-hc/guardian_hc/core.py | 3→4 lines | ~60 |
+| 11:06 | Edited monitoring/guardian-hc/guardian_hc/patrol/runner.py | modified _run_patrol() | ~217 |
+| 11:08 | Edited monitoring/guardian-hc/tests/test_correlator.py | modified test_no_markdown_tables() | ~962 |
+| 11:09 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 26 reads | ~64150 tok |
+| 11:11 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 26 reads | ~64150 tok |
+| 11:18 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 26 reads | ~64150 tok |
+| 11:21 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 27 reads | ~64150 tok |
+| 11:21 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 27 reads | ~64150 tok |
+| 11:47 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 27 reads | ~64150 tok |
+| 11:47 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 27 reads | ~64150 tok |
+| 11:48 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 27 reads | ~64150 tok |
+| 11:48 | Session end: 27 writes across 8 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 27 reads | ~64150 tok |
+| 11:50 | Edited monitoring/guardian-hc/guardian_hc/__init__.py | "1.1.0" → "1.3.0" | ~6 |
+| 11:50 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | 2.0 → 3.0 | ~6 |
+| 11:50 | Edited monitoring/guardian-hc/setup.py | "1.2.0" → "1.3.0" | ~5 |
+| 11:50 | Edited monitoring/guardian-hc/guardian_hc/cli.py | 1.0 → 3.0 | ~6 |
+| 11:50 | Session end: 31 writes across 11 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 29 reads | ~64173 tok |
+| 11:50 | Session end: 31 writes across 11 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 29 reads | ~64173 tok |
+| 11:58 | Session end: 31 writes across 11 files (2026-04-09-alertiq-sowknow-design.md, 2026-04-09-alertiq-correlator.md, __init__.py, test_correlator.py, correlator.py) | 29 reads | ~64173 tok |
+
+## Session: 2026-04-09 12:29
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:30 | Edited backend/app/celery_app.py | 2→5 lines | ~82 |
+| 12:30 | Session end: 1 writes across 1 files (celery_app.py) | 1 reads | ~82 tok |
+| 12:31 | Session end: 1 writes across 1 files (celery_app.py) | 1 reads | ~82 tok |
+| 12:33 | Edited docker-compose.yml | 2→2 lines | ~41 |
+| 12:33 | Edited docker-compose.yml | 4→4 lines | ~77 |
+| 12:33 | Edited docker-compose.yml | 8→8 lines | ~92 |
+| 12:37 | Session end: 4 writes across 2 files (celery_app.py, docker-compose.yml) | 2 reads | ~5475 tok |
+| 12:38 | Session end: 4 writes across 2 files (celery_app.py, docker-compose.yml) | 2 reads | ~5475 tok |
+| 12:38 | Session end: 4 writes across 2 files (celery_app.py, docker-compose.yml) | 2 reads | ~5475 tok |
+| 12:39 | Session end: 4 writes across 2 files (celery_app.py, docker-compose.yml) | 2 reads | ~5475 tok |
+| 12:40 | Session end: 4 writes across 2 files (celery_app.py, docker-compose.yml) | 2 reads | ~5475 tok |
+| 12:40 | Session end: 4 writes across 2 files (celery_app.py, docker-compose.yml) | 2 reads | ~5475 tok |
+| 12:41 | Session end: 4 writes across 2 files (celery_app.py, docker-compose.yml) | 2 reads | ~5475 tok |
+
+## Session: 2026-04-09 15:15
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:23 | Edited docker-compose.yml | OOM() → copy() | ~104 |
+| 15:23 | Edited backend/app/celery_app.py | 4→4 lines | ~66 |
+| 15:23 | Edited backend/app/tasks/pipeline_tasks.py | modified _run_embed() | ~832 |
+| 15:24 | Edited backend/app/tasks/pipeline_tasks.py | 11→12 lines | ~155 |
+| 15:24 | Edited backend/app/tasks/pipeline_tasks.py | modified __init__() | ~119 |
+| 15:24 | Edited backend/app/tasks/pipeline_tasks.py | expanded (+7 lines) | ~123 |
+| 15:26 | Edited backend/app/services/embedding_service.py | added 1 import(s) | ~68 |
+| 15:26 | Edited backend/app/services/embedding_service.py | modified __init__() | ~104 |
+| 15:26 | Edited backend/app/services/embedding_service.py | modified model() | ~95 |
+| 15:26 | Edited backend/app/services/embedding_service.py | 3→5 lines | ~79 |
+| 15:27 | Edited docker-compose.yml | 2→2 lines | ~26 |
+| 15:29 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 4 reads | ~13429 tok |
+| 15:32 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 4 reads | ~13429 tok |
+| 15:33 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 5 reads | ~13429 tok |
+| 15:37 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 5 reads | ~13429 tok |
+| 15:38 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 5 reads | ~13429 tok |
+| 15:38 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 5 reads | ~13429 tok |
+| 15:39 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 5 reads | ~13429 tok |
+| 16:02 | Session end: 11 writes across 4 files (docker-compose.yml, celery_app.py, pipeline_tasks.py, embedding_service.py) | 5 reads | ~13429 tok |
+
+## Session: 2026-04-09 16:10
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 16:19 | Edited docker-compose.yml | 5→5 lines | ~50 |
+| 16:20 | Edited frontend/app/messages/fr.json | 2→3 lines | ~32 |
+| 16:20 | Edited frontend/app/messages/en.json | 2→3 lines | ~29 |
+| 16:20 | Session end: 3 writes across 3 files (docker-compose.yml, fr.json, en.json) | 4 reads | ~5305 tok |
+| 16:20 | Session end: 3 writes across 3 files (docker-compose.yml, fr.json, en.json) | 4 reads | ~5305 tok |
+| 16:22 | Session end: 3 writes across 3 files (docker-compose.yml, fr.json, en.json) | 5 reads | ~5305 tok |
+| 16:27 | Session end: 3 writes across 3 files (docker-compose.yml, fr.json, en.json) | 5 reads | ~5305 tok |
+
+## Session: 2026-04-09 16:29
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-09 16:33
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-09 18:34
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:40 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~322 |
+| 18:40 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified _get_tracker() | ~196 |
+| 18:51 | Session end: 2 writes across 1 files (core.py) | 6 reads | ~5732 tok |
+| 18:53 | Session end: 2 writes across 1 files (core.py) | 6 reads | ~5732 tok |
+
+## Session: 2026-04-09 18:58
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 19:28 | Created docs/superpowers/specs/2026-04-09-guardian-v2-design.md | — | ~5281 |
+| 19:28 | Edited docs/superpowers/specs/2026-04-09-guardian-v2-design.md | inline fix | ~48 |
+| 19:28 | Edited docs/superpowers/specs/2026-04-09-guardian-v2-design.md | 3→3 lines | ~32 |
+| 19:29 | Session end: 3 writes across 1 files (2026-04-09-guardian-v2-design.md) | 7 reads | ~18799 tok |
+| 19:40 | Created docs/superpowers/plans/2026-04-09-guardian-v2.md | — | ~42083 |
+| 19:42 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | modified to() | ~934 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | modified 1() | ~363 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | inline fix | ~14 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | inline fix | ~23 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | inline fix | ~59 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | inline fix | ~38 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | inline fix | ~17 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | "test123" → "${GUARDIAN_DB_PASSWORD}" | ~10 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | inline fix | ~13 |
+| 19:43 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | inline fix | ~7 |
+| 19:44 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | 1→5 lines | ~83 |
+| 19:44 | Edited docs/superpowers/plans/2026-04-09-guardian-v2.md | 5→1 lines | ~25 |
+| 19:44 | Session end: 16 writes across 2 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md) | 42 reads | ~106091 tok |
+| 19:50 | Created monitoring/guardian-hc/tests/test_agents.py | — | ~1589 |
+| 19:50 | Created monitoring/guardian-hc/tests/test_plugin.py | — | ~2950 |
+| 19:50 | Session end: 18 writes across 4 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py) | 46 reads | ~110630 tok |
+| 19:50 | Edited monitoring/guardian-hc/setup.py | inline fix | ~36 |
+| 19:50 | Created monitoring/guardian-hc/guardian_hc/agents.py | — | ~564 |
+| 19:51 | Created monitoring/guardian-hc/guardian_hc/plugin.py | — | ~1157 |
+| 19:51 | Created monitoring/guardian-hc/tests/test_config.py | — | ~2863 |
+| 19:51 | Session end: 22 writes across 8 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 46 reads | ~115250 tok |
+| 19:51 | Created monitoring/guardian-hc/tests/test_db.py | — | ~2076 |
+| 19:51 | Created monitoring/guardian-hc/guardian_hc/config.py | — | ~1550 |
+| 19:52 | Session end: 24 writes across 10 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 46 reads | ~118876 tok |
+| 19:52 | Session end: 24 writes across 10 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 46 reads | ~118876 tok |
+| 19:52 | Created monitoring/guardian-hc/guardian_hc/db.py | — | ~4967 |
+| 19:53 | Edited monitoring/guardian-hc/guardian_hc/plugin.py | modified check() | ~43 |
+| 19:53 | Edited monitoring/guardian-hc/guardian_hc/db.py | utcnow() → now() | ~26 |
+| 19:53 | Edited monitoring/guardian-hc/guardian_hc/db.py | inline fix | ~13 |
+| 19:53 | Edited monitoring/guardian-hc/tests/test_plugin.py | modified test_base_class_check_returns_empty() | ~82 |
+| 19:55 | Session end: 29 writes across 11 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 51 reads | ~135152 tok |
+| 19:55 | Edited backend/app/api/health.py | modified deep_health() | ~829 |
+| 19:55 | Created backend/app/tasks/guardian_tasks.py | — | ~121 |
+| 19:55 | Edited backend/app/celery_app.py | 3→4 lines | ~36 |
+| 19:55 | Edited backend/app/tasks/__init__.py | 4→4 lines | ~127 |
+| 19:56 | Created monitoring/guardian-hc/tests/test_core_v2.py | — | ~5280 |
+| 19:56 | Session end: 34 writes across 16 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 51 reads | ~141545 tok |
+| 19:56 | Edited monitoring/guardian-hc/guardian_hc/core.py | added 4 import(s) | ~133 |
+| 19:56 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+6 lines) | ~142 |
+| 19:56 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~285 |
+| 19:56 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get_history() | ~912 |
+| 19:56 | Created monitoring/guardian-hc/guardian_hc/plugins/__init__.py | — | ~8 |
+| 19:59 | Session end: 39 writes across 17 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 54 reads | ~148313 tok |
+| 19:59 | Created monitoring/guardian-hc/tests/test_probes.py | — | ~2967 |
+| 19:59 | Created monitoring/guardian-hc/tests/test_sentinel.py | — | ~4653 |
+| 20:00 | Created monitoring/guardian-hc/tests/test_infrastructure_plugin.py | — | ~8182 |
+| 20:00 | Session end: 42 writes across 20 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 54 reads | ~164115 tok |
+| 20:00 | Created monitoring/guardian-hc/guardian_hc/plugins/probes.py | — | ~7345 |
+| 20:01 | Edited monitoring/guardian-hc/tests/test_probes.py | 3→3 lines | ~60 |
+| 20:02 | Created monitoring/guardian-hc/guardian_hc/plugins/sentinel.py | — | ~2065 |
+| 20:03 | Created monitoring/guardian-hc/guardian_hc/plugins/trends.py | — | ~2882 |
+| 20:03 | Created monitoring/guardian-hc/guardian_hc/plugins/memory.py | — | ~1713 |
+| 20:03 | Created monitoring/guardian-hc/tests/test_trends.py | — | ~1033 |
+| 20:04 | Created monitoring/guardian-hc/tests/test_memory_plugin.py | — | ~1664 |
+| 20:04 | Edited monitoring/guardian-hc/tests/test_sentinel.py | inline fix | ~17 |
+| 20:05 | Session end: 51 writes across 27 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 56 reads | ~192982 tok |
+| 20:05 | Session end: 51 writes across 27 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 56 reads | ~192982 tok |
+| 20:07 | Created monitoring/guardian-hc/guardian_hc/telegram_commands.py | — | ~2268 |
+| 20:07 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | modified _generate_telegram_v2() | ~875 |
+| 20:07 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | 9→13 lines | ~178 |
+| 20:08 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified _init_v2() | ~1005 |
+| 20:08 | Edited monitoring/guardian-hc/guardian_hc/patrol/runner.py | modified _run_patrol() | ~513 |
+| 20:08 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | 5→7 lines | ~57 |
+| 20:09 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | expanded (+82 lines) | ~564 |
+| 20:09 | Edited monitoring/guardian-hc/guardian_hc/core.py | removed 5 lines | ~12 |
+| 20:09 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified _build_pg_dsn() | ~127 |
+| 20:10 | Created monitoring/guardian-hc/tests/test_integration.py | — | ~2420 |
+| 20:10 | Edited monitoring/guardian-hc/guardian_hc/agents.py | 3→3 lines | ~43 |
+| 20:11 | Edited monitoring/guardian-hc/tests/test_integration.py | inline fix | ~18 |
+| 20:11 | Session end: 63 writes across 32 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 56 reads | ~202172 tok |
+| 20:13 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | "sowknow4" → "sowknow" | ~6 |
+| 20:14 | Edited monitoring/guardian-hc/guardian_hc/core.py | inline fix | ~11 |
+| 20:19 | Session end: 65 writes across 32 files (2026-04-09-guardian-v2-design.md, 2026-04-09-guardian-v2.md, test_agents.py, test_plugin.py, setup.py) | 58 reads | ~203834 tok |
+
+## Session: 2026-04-10 09:18
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:22 | Edited monitoring/guardian-hc/guardian_hc/plugins/probes.py | modified _redis_cli_cmd() | ~413 |
+| 09:22 | Edited monitoring/guardian-hc/guardian_hc/plugins/probes.py | modified _check_celery_completion() | ~179 |
+| 09:22 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | 5→5 lines | ~96 |
+| 09:22 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | 2→2 lines | ~56 |
+| 09:22 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | 5→6 lines | ~37 |
+| 09:22 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | 9→8 lines | ~94 |
+| 09:23 | Edited monitoring/guardian-hc/guardian_hc/dashboard.py | 3→3 lines | ~70 |
+| 09:23 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | modified generate_report() | ~104 |
+| 09:23 | Edited monitoring/guardian-hc/guardian_hc/daily_report.py | 2→2 lines | ~59 |
+| 06:15 | fixed 3 guardian-hc bugs: celery_completion import, redis_deep auth, incident count inflation | probes.py, daily_report.py, dashboard.py | deployed to prod, guardian restarted | ~3200 |
+| 09:24 | Session end: 9 writes across 3 files (probes.py, daily_report.py, dashboard.py) | 10 reads | ~6483 tok |
+| 09:29 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified run_plugin_heals() | ~883 |
+| 09:29 | Edited monitoring/guardian-hc/guardian_hc/plugins/probes.py | expanded (+24 lines) | ~737 |
+| 09:29 | Edited monitoring/guardian-hc/guardian_hc/plugins/probes.py | expanded (+14 lines) | ~378 |
+| 06:30 | reinforced guardian-hc: RestartTracker for plugin heals, probe error classification, NOAUTH detection, suppression alerts | core.py, probes.py | deployed to prod | ~2800 |
+| 09:30 | Session end: 12 writes across 4 files (probes.py, daily_report.py, dashboard.py, core.py) | 11 reads | ~8481 tok |
+| 09:33 | Created monitoring/guardian-hc/guardian_hc/runbooks/__init__.py | — | ~41 |
+
+## Session: 2026-04-10 09:33
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:33 | Created monitoring/guardian-hc/guardian_hc/runbooks/engine.py | — | ~3600 |
+| 09:34 | Created monitoring/guardian-hc/runbooks/celery_completion.yml | — | ~1173 |
+| 09:34 | Created monitoring/guardian-hc/runbooks/redis_deep.yml | — | ~934 |
+| 09:34 | Created monitoring/guardian-hc/runbooks/backend_unhealthy.yml | — | ~1001 |
+| 09:35 | Created monitoring/guardian-hc/runbooks/pipeline_stuck.yml | — | ~1017 |
+| 09:35 | Created monitoring/guardian-hc/runbooks/disk_critical.yml | — | ~839 |
+| 09:35 | Edited monitoring/guardian-hc/guardian_hc/core.py | added 1 import(s) | ~137 |
+| 09:35 | Edited monitoring/guardian-hc/guardian_hc/core.py | 5→6 lines | ~87 |
+| 09:35 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified startswith() | ~1096 |
+| 09:36 | Edited monitoring/guardian-hc/guardian_hc/core.py | expanded (+16 lines) | ~278 |
+| 09:36 | Edited monitoring/guardian-hc/guardian_hc/config.py | 2→3 lines | ~23 |
+| 09:36 | Edited monitoring/guardian-hc/guardian_hc/config.py | 20→23 lines | ~171 |
+| 09:36 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | 4→6 lines | ~46 |
+| 09:38 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 5→7 lines | ~110 |
+| 09:38 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | "/var/docker/sowknow4/moni" → "/app/runbooks" | ~9 |
+| 09:38 | Edited monitoring/guardian-hc/guardian_hc/core.py | 4→4 lines | ~44 |
+| 09:39 | Edited monitoring/guardian-hc/Dockerfile | expanded (+13 lines) | ~233 |
+| 09:40 | implemented runbook system: engine.py + 5 YAML runbooks, wired into core.py, fixed Dockerfile to install docker-cli+psql, added bind mounts for guardian_hc/ and runbooks/ | core.py, config.py, runbooks/*, Dockerfile, docker-compose.yml | deployed, 5 runbooks loaded | ~4500 |
+| 09:40 | Session end: 17 writes across 11 files (engine.py, celery_completion.yml, redis_deep.yml, backend_unhealthy.yml, pipeline_stuck.yml) | 4 reads | ~27273 tok |
+| 09:42 | Edited monitoring/guardian-hc/guardian_hc/checks/config_drift.py | modified check() | ~181 |
+| 09:43 | Edited monitoring/guardian-hc/guardian_hc/plugins/probes.py | 1→4 lines | ~80 |

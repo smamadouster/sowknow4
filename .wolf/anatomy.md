@@ -1,11 +1,37 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-10T09:43:07.852Z
-> Files: 820 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-11T09:09:57.518Z
+> Files: 831 tracked | Anatomy hits: 0 | Misses: 0
+
+## ../../../../../tmp/
+
+- `crontab.new` — ============================================================================ (~918 tok)
 
 ## ../../../../../var/docker/sowknow4/
 
-- `docker-compose.yml` — Docker Compose services (~5249 tok)
+- `docker-compose.yml` — Docker Compose services (~5337 tok)
+
+## ../../../../../var/docker/sowknow4/backend/app/api/
+
+- `voice.py` — API: 2 endpoints (~1297 tok)
+
+## ../../../../../var/docker/sowknow4/backend/app/services/
+
+- `whisper_service.py` — WhisperService: transcribe (~745 tok)
+
+## ../../../../../var/docker/sowknow4/frontend/hooks/
+
+- `useVoiceRecorder.ts` — Exports RecordingState, useVoiceRecorder (~2428 tok)
+
+## ../../../../../var/docker/sowknow4/monitoring/guardian-hc/scripts/
+
+- `watchdog.sh` — ############################################################################## (~2126 tok)
+
+## ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/
+
+- `MEMORY.md` — SOWKNOW Project Memory Index (~1048 tok)
+- `project_april_8_outage.md` (~474 tok)
+- `project_dictation_fr_to_en_fix.md` (~615 tok)
 
 ## ./
 
@@ -915,6 +941,18 @@
 - `researcher_agent.meta.json` (~487 tok)
 - `verification_agent.data.json` (~11729 tok)
 - `verification_agent.meta.json` (~382 tok)
+
+## backend/app/api/
+
+- `voice.py` — API: 2 endpoints (~1289 tok)
+
+## frontend/hooks/
+
+- `useVoiceRecorder.ts` — Exports RecordingState, useVoiceRecorder (~2468 tok)
+
+## frontend/lib/
+
+- `api.ts` — API client for SOWKNOW backend (~7002 tok)
 
 ## monitoring/guardian-hc/
 

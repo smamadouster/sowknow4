@@ -31,14 +31,11 @@ services:
     auto_heal:
       restart: true
 
-  - name: "vault"
-    container: "sowknow4-vault"
-    health_check:
-      type: tcp
-      host: vault
-      port: 8200
-    auto_heal:
-      restart: true
+  # vault removed 2026-04-11: profile-gated since 2026-04-10 unseal-key mismatch.
+  # Container doesn't run, so container_vault check failed every patrol and
+  # Guardian spammed heal-suppressed Telegram alerts 24/7. Re-add only after
+  # vault is re-initialized and `profiles: ["vault-broken"]` is lifted in
+  # docker-compose.yml.
 
   - name: "nats"
     container: "sowknow4-nats"
@@ -215,11 +212,13 @@ modules:
     services: [telegram-bot]
     probes: [bot_responsiveness]
   - name: "Storage Layer"
-    services: [postgres, redis, vault]
-    probes: [redis_deep, postgres_deep, vault_unseal]
+    services: [postgres, redis]
+    probes: [redis_deep, postgres_deep]
   - name: "Infrastructure"
     services: [frontend, backend]
-    probes: [nginx_upstream, disk, memory, network, ssl]
+    # nginx_upstream removed 2026-04-11: sowknow4 uses host nginx, not a container.
+    # The old probe hard-coded `restart:sowknow4-nginx` which never exists.
+    probes: [disk, memory, network, ssl]
 
 database:
   host: "postgres"

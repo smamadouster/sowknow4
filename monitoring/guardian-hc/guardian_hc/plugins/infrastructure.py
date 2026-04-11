@@ -5,6 +5,11 @@ existing v1 checker/healer implementations.
 """
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+import httpx
+
 from guardian_hc.plugin import (
     CheckContext,
     CheckResult,
@@ -33,11 +38,17 @@ from guardian_hc.healers.network_healer import NetworkHealer
 # ---------------------------------------------------------------------------
 # Patrol level → check category mapping
 # ---------------------------------------------------------------------------
+#
+# oom_events and restart_rate run on EVERY patrol level because a container
+# can start crash-looping between two standard patrols (10m) and we want to
+# alert within one critical patrol (2m). Both checks are cheap:
+#   - oom_events: one `docker events` subprocess call, filtered to event=oom
+#   - restart_rate: in-memory sliding window of RestartCount per container
 
 PATROL_CHECKS: dict[str, list[str]] = {
-    "critical": ["containers", "api_health"],
-    "standard": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load"],
-    "deep": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "ssl", "config_drift"],
+    "critical": ["containers", "api_health", "oom_events", "restart_rate"],
+    "standard": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "oom_events", "restart_rate"],
+    "deep": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "ssl", "config_drift", "oom_events", "restart_rate"],
 }
 
 
@@ -72,6 +83,20 @@ class InfrastructurePlugin(GuardianPlugin):
         self._memory_healer = MemoryHealer()
         self._ssl_healer = SslHealer(config.get("ssl"))
         self._network_healer = NetworkHealer({"compose_file": config.get("compose_file", "./docker-compose.yml")})
+
+        # OOM + restart-rate sliding-window state (in-memory, wiped on Guardian restart)
+        #   _oom_events: container_name -> list[datetime] of OOM events in the window
+        #   _restart_history: container_name -> list[(datetime, RestartCount)] samples
+        #   _last_oom_poll: upper bound from the previous docker-events poll; used as
+        #                   the `--since` of the next call to avoid double-counting
+        self._oom_events: dict[str, list[datetime]] = {}
+        self._restart_history: dict[str, list[tuple[datetime, int]]] = {}
+        self._last_oom_poll: datetime | None = None
+        # Alert thresholds (keep conservative; adjust via config if needed)
+        self._oom_window_minutes = 15
+        self._oom_alert_threshold = 2  # N OOMs in window → alert
+        self._restart_window_minutes = 10
+        self._restart_alert_threshold = 3  # N restarts in window → alert
 
     # ------------------------------------------------------------------
     # check()
@@ -117,6 +142,14 @@ class InfrastructurePlugin(GuardianPlugin):
         # --- config_drift ---
         if "config_drift" in active:
             results.extend(await self._check_config_drift())
+
+        # --- oom_events ---
+        if "oom_events" in active:
+            results.extend(await self._check_oom_events())
+
+        # --- restart_rate ---
+        if "restart_rate" in active:
+            results.extend(await self._check_restart_rate())
 
         return results
 
@@ -332,6 +365,203 @@ class InfrastructurePlugin(GuardianPlugin):
                 heal_hint=None,
             )
         ]
+
+    # ------------------------------------------------------------------
+    # OOM + restart-rate probes (added 2026-04-11)
+    # ------------------------------------------------------------------
+    #
+    # Why these exist:
+    #   On 2026-04-10/11 celery-heavy was in an OOM crash-loop
+    #   (RestartCount 0 → 34 in 15h) and Guardian noticed nothing, because:
+    #     1. docker inspect reports OOMKilled=false when init: true / tini
+    #        catches the child SIGKILL and exits 0 on its behalf.
+    #     2. Guardian had no probe that looked at `docker events` for OOM
+    #        signals, and no probe that sampled RestartCount over time.
+    #   These two checks close the gap. They are cheap (one subprocess and
+    #   one docker-API call per patrol) and state is held in memory.
+
+    async def _check_oom_events(self) -> list[CheckResult]:
+        """Detect containers that have been OOM-killed by the kernel cgroup.
+
+        Uses `docker events --filter event=oom` to gather historical OOM
+        events since the last poll. We record timestamps per container in a
+        sliding window and alert when a container has been killed
+        `_oom_alert_threshold` times within `_oom_window_minutes`.
+        """
+        now = datetime.now(timezone.utc)
+        # First call: look back over the full window so we don't miss fresh OOMs.
+        since = self._last_oom_poll or (now - timedelta(minutes=self._oom_window_minutes))
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "events",
+                "--since", since.strftime("%Y-%m-%dT%H:%M:%S"),
+                "--until", now.strftime("%Y-%m-%dT%H:%M:%S"),
+                "--filter", "event=oom",
+                "--format", "{{.Time}}|{{.Actor.Attributes.name}}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
+        except (asyncio.TimeoutError, FileNotFoundError, OSError) as exc:
+            return [CheckResult(
+                plugin=self.name,
+                module="Infrastructure",
+                check_name="oom_events",
+                status="fail",
+                severity=Severity.WARNING,
+                summary=f"OOM probe error: {str(exc)[:100]}",
+                needs_healing=False,
+            )]
+
+        self._last_oom_poll = now
+
+        # Parse "<unix-ts>|<container_name>" lines
+        for line in stdout.decode(errors="replace").strip().splitlines():
+            if "|" not in line:
+                continue
+            ts_str, _, name = line.partition("|")
+            try:
+                ts = datetime.fromtimestamp(int(ts_str), tz=timezone.utc)
+            except ValueError:
+                continue
+            if not name:
+                continue
+            self._oom_events.setdefault(name, []).append(ts)
+
+        # Prune outside the sliding window
+        cutoff = now - timedelta(minutes=self._oom_window_minutes)
+        results: list[CheckResult] = []
+        for name, events in list(self._oom_events.items()):
+            fresh = [t for t in events if t >= cutoff]
+            if fresh:
+                self._oom_events[name] = fresh
+            else:
+                del self._oom_events[name]
+                continue
+            if len(fresh) >= self._oom_alert_threshold:
+                results.append(CheckResult(
+                    plugin=self.name,
+                    module="Infrastructure",
+                    check_name=f"oom_{name}",
+                    status="fail",
+                    severity=Severity.CRITICAL,
+                    summary=(
+                        f"{name} OOM-killed {len(fresh)}x in the last "
+                        f"{self._oom_window_minutes} min — likely memory leak "
+                        f"or cgroup limit too low. Restart won't fix it."
+                    ),
+                    details={
+                        "events": [t.isoformat() for t in fresh],
+                        "window_minutes": self._oom_window_minutes,
+                    },
+                    # Deliberately not healable: a restart would just OOM again.
+                    needs_healing=False,
+                    heal_hint=None,
+                ))
+
+        if not results:
+            results.append(CheckResult(
+                plugin=self.name,
+                module="Infrastructure",
+                check_name="oom_events",
+                status="pass",
+                severity=Severity.INFO,
+                summary="No container OOM-kills in the last "
+                        f"{self._oom_window_minutes} min",
+            ))
+        return results
+
+    async def _check_restart_rate(self) -> list[CheckResult]:
+        """Detect containers that are restarting abnormally fast.
+
+        Samples every sowknow4-* container's RestartCount via the Docker
+        Engine API, stores the sample in a per-container sliding window, and
+        alerts when the count has grown by `_restart_alert_threshold` or more
+        within `_restart_window_minutes`.
+
+        This is the catch-all net — crash-loop, OOM, healthcheck flap,
+        segfault, whatever the cause, a container restarting 3+ times in
+        10 min is abnormal and the user wants to know.
+        """
+        now = datetime.now(timezone.utc)
+        results: list[CheckResult] = []
+
+        try:
+            transport = httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://docker", timeout=5
+            ) as client:
+                resp = await client.get("/containers/json?all=true")
+                containers = resp.json()
+                for c in containers:
+                    names = c.get("Names", [])
+                    name = names[0].lstrip("/") if names else ""
+                    # Scope to sowknow4-* only — Guardian should not babysit
+                    # other projects sharing this host (ghostshell, etc.)
+                    if not name.startswith("sowknow4-"):
+                        continue
+
+                    insp = await client.get(f"/containers/{c['Id']}/json")
+                    restart_count = insp.json().get("RestartCount", 0)
+
+                    history = self._restart_history.setdefault(name, [])
+                    history.append((now, restart_count))
+                    # Prune older than window
+                    cutoff = now - timedelta(minutes=self._restart_window_minutes)
+                    history[:] = [(t, rc) for (t, rc) in history if t >= cutoff]
+
+                    if len(history) < 2:
+                        continue
+
+                    oldest_rc = history[0][1]
+                    delta = restart_count - oldest_rc
+                    if delta >= self._restart_alert_threshold:
+                        results.append(CheckResult(
+                            plugin=self.name,
+                            module="Infrastructure",
+                            check_name=f"restart_rate_{name}",
+                            status="fail",
+                            severity=Severity.CRITICAL,
+                            summary=(
+                                f"{name} restarted {delta}x in the last "
+                                f"{self._restart_window_minutes} min "
+                                f"(RestartCount {oldest_rc} → {restart_count}). "
+                                f"Check `docker logs {name}` and dmesg for OOM."
+                            ),
+                            details={
+                                "delta": delta,
+                                "window_minutes": self._restart_window_minutes,
+                                "current_restart_count": restart_count,
+                            },
+                            # Deliberately not healable: auto-restart during a
+                            # crash-loop just accelerates the loop.
+                            needs_healing=False,
+                            heal_hint=None,
+                        ))
+        except Exception as exc:
+            return [CheckResult(
+                plugin=self.name,
+                module="Infrastructure",
+                check_name="restart_rate",
+                status="fail",
+                severity=Severity.WARNING,
+                summary=f"Restart-rate probe error: {str(exc)[:100]}",
+                needs_healing=False,
+            )]
+
+        if not results:
+            results.append(CheckResult(
+                plugin=self.name,
+                module="Infrastructure",
+                check_name="restart_rate",
+                status="pass",
+                severity=Severity.INFO,
+                summary=f"No crash-looping containers "
+                        f"(window: {self._restart_window_minutes} min, "
+                        f"threshold: {self._restart_alert_threshold})",
+            ))
+        return results
 
     # ------------------------------------------------------------------
     # heal()

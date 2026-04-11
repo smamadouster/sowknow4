@@ -29,15 +29,20 @@ class ProbesPlugin(GuardianPlugin):
     name = "probes"
     enabled = True
 
+    # "nginx" probe removed 2026-04-11: sowknow4 runs nginx on the host, not
+    # in a container. The old probe hit http://localhost:80 (which from inside
+    # the Guardian container is itself) and hard-coded heal_hint
+    # "restart:sowknow4-nginx", which never existed. Host nginx is health-
+    # checked by the external host watchdog and Cloudflare instead.
     PROBE_LEVELS: dict[str, list[str]] = {
         "critical": ["jwt", "redis_deep", "celery_completion"],
         "standard": [
             "jwt", "redis_deep", "celery_completion",
-            "postgres_deep", "deep_health", "pipeline", "nginx",
+            "postgres_deep", "deep_health", "pipeline",
         ],
         "deep": [
             "jwt", "redis_deep", "celery_completion",
-            "postgres_deep", "deep_health", "pipeline", "nginx", "auth_flow",
+            "postgres_deep", "deep_health", "pipeline", "auth_flow",
         ],
     }
 

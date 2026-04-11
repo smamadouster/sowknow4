@@ -309,7 +309,7 @@ services:
           # --concurrency=2 after celery-heavy was crash-looping — kernel
           # OOM-killed every ~25 min when RSS crept past 5 GiB. Threads pool
           # ignores max-tasks-per-child so the leak ran unchecked.
-          memory: 5120M
+          memory: 4096M
           cpus: '2.0'
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=1

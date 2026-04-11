@@ -91,6 +91,11 @@ services:
       - sowknow-net
 
   vault:
+    # Gated 2026-04-10: unseal key mismatch makes vault unusable. Backend
+    # decoupled from it (b27cd1c). Only starts if `--profile vault-broken`
+    # is explicitly passed. To re-enable: remove the `profiles:` line below
+    # AND fix the unseal key (recover or re-init).
+    profiles: ["vault-broken"]
     image: hashicorp/vault:1.15
     container_name: sowknow4-vault
     restart: unless-stopped

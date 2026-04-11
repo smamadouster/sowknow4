@@ -862,3 +862,35 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+| 19:10 | Edited ../../../../../var/docker/sowknow4/backend/app/services/whisper_service.py | modified _build_command() | ~89 |
+| 19:10 | Edited ../../../../../var/docker/sowknow4/backend/app/services/whisper_service.py | modified transcribe() | ~147 |
+| 19:10 | Edited ../../../../../var/docker/sowknow4/backend/app/api/voice.py | inline fix | ~25 |
+| 19:10 | Edited ../../../../../var/docker/sowknow4/backend/app/api/voice.py | modified transcribe_audio() | ~426 |
+| 19:10 | Edited ../../../../../var/docker/sowknow4/frontend/hooks/useVoiceRecorder.ts | modified catch() | ~490 |
+| 19:17 | Session end: 5 writes across 3 files (whisper_service.py, voice.py, useVoiceRecorder.ts) | 5 reads | ~1409 tok |
+| 19:32 | Edited ../../../../../tmp/crontab.new | 2→2 lines | ~71 |
+| 19:37 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/scripts/watchdog.sh | 2→3 lines | ~101 |
+| 19:38 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_april_8_outage.md | — | ~491 |
+| 19:38 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_dictation_fr_to_en_fix.md | — | ~642 |
+| 19:38 | Edited ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/MEMORY.md | 1→3 lines | ~142 |
+| 19:40 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 5→10 lines | ~126 |
+| 19:41 | Session end: 11 writes across 9 files (whisper_service.py, voice.py, useVoiceRecorder.ts, crontab.new, watchdog.sh) | 9 reads | ~8298 tok |
+
+## Session: 2026-04-11 09:04
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:06 | Edited frontend/hooks/useVoiceRecorder.ts | added nullish coalescing | ~145 |
+| 09:06 | Edited frontend/hooks/useVoiceRecorder.ts | added nullish coalescing | ~24 |
+| 09:07 | Edited frontend/hooks/useVoiceRecorder.ts | 7→3 lines | ~64 |
+| 09:07 | Edited backend/app/api/voice.py | 6→6 lines | ~72 |
+| 09:07 | Edited backend/app/api/voice.py | 2→2 lines | ~38 |
+| 09:07 | Edited backend/app/api/voice.py | 4→4 lines | ~48 |
+| 09:07 | Edited frontend/lib/api.ts | inline fix | ~21 |
+| 09:07 | Session end: 7 writes across 3 files (useVoiceRecorder.ts, voice.py, api.ts) | 5 reads | ~2882 tok |
+
+## Session: 2026-04-11 09:08
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:09 | Edited frontend/hooks/useVoiceRecorder.ts | modified if() | ~32 |

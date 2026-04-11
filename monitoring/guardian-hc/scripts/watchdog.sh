@@ -29,7 +29,8 @@ if [ -z "$TELEGRAM_CHAT_ID" ] && [ -f "$PROJECT_DIR/.env" ]; then
 fi
 
 # All SOWKNOW4 containers (sowknow4- prefix per naming convention)
-EXPECTED_CONTAINERS="sowknow4-backend sowknow4-postgres sowknow4-redis sowknow4-vault sowknow4-nats sowknow4-celery-light sowknow4-celery-heavy sowknow4-celery-collections sowknow4-celery-beat sowknow4-frontend sowknow4-telegram-bot"
+# vault excluded 2026-04-10: unseal key mismatch, intentionally stopped, backend decoupled
+EXPECTED_CONTAINERS="sowknow4-backend sowknow4-postgres sowknow4-redis sowknow4-nats sowknow4-celery-light sowknow4-celery-heavy sowknow4-celery-collections sowknow4-celery-beat sowknow4-frontend sowknow4-telegram-bot"
 
 # -- Helpers --
 timestamp() { date '+%Y-%m-%d %H:%M:%S'; }

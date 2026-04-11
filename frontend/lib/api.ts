@@ -226,7 +226,7 @@ class ApiClient {
     const formData = new FormData();
     formData.append('file', audioBlob, 'voice.webm');
 
-    return this.request<{ transcript: string; detected_language: string }>('/v1/voice/transcribe', {
+    return this.request<{ transcript: string }>('/v1/voice/transcribe', {
       method: 'POST',
       headers: {},
       body: formData,

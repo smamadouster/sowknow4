@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type RecordingState = 'idle' | 'recording' | 'preview' | 'transcribing';
 
+// Single source of truth for locale ↔ language-tag conversion.
+// Web Speech expects BCP-47 (fr-FR); whisper.cpp expects ISO 639-1 (fr).
+const BCP47: Record<string, string> = { fr: 'fr-FR', en: 'en-US' };
+const ISO6391: Record<string, string> = { fr: 'fr', 'fr-FR': 'fr', en: 'en', 'en-US': 'en' };
+const toBcp47 = (l?: string) => (l && BCP47[l]) ?? l;
+const toWhisperLang = (l?: string) => (l && ISO6391[l]) ?? l ?? 'auto';
+
 interface UseVoiceRecorderOptions {
   onTranscript?: (text: string) => void;
   onAudioReady?: (blob: Blob, transcript: string) => void;
@@ -112,9 +119,8 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
         const recognition = new SpeechRecognitionCtor!();
         recognition.continuous = true;
         recognition.interimResults = true;
-        // Set language from app locale for accurate recognition
         if (lang) {
-          recognition.lang = lang === 'fr' ? 'fr-FR' : lang === 'en' ? 'en-US' : lang;
+          recognition.lang = toBcp47(lang) ?? lang;
         }
         recognition.onresult = (event: SpeechRecognitionEvent) => {
           let interim = '';
@@ -175,38 +181,43 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const send = useCallback(async () => {
     if (!audioBlob) return;
 
-    if (privateMode && !transcript) {
-      setState('transcribing');
-      try {
-        const formData = new FormData();
-        const ext = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
-        formData.append('file', audioBlob, `voice.${ext}`);
-        const res = await fetch(`${apiBaseUrl}/api/v1/voice/transcribe`, {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error('Transcription failed');
-        const data = await res.json();
-        setTranscript(data.transcript);
-        onAudioReady?.(audioBlob, data.transcript);
-      } catch (err) {
+    // Always use backend whisper for accuracy. iOS Safari Web Speech API
+    // is unreliable with non-default languages — sending FR audio comes
+    // back as EN text. Whisper.cpp with explicit `language` is consistent.
+    setState('transcribing');
+    let finalTranscript = transcript;
+    try {
+      const formData = new FormData();
+      const ext = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+      formData.append('file', audioBlob, `voice.${ext}`);
+      formData.append('language', toWhisperLang(lang));
+      const res = await fetch(`${apiBaseUrl}/api/v1/voice/transcribe`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Transcription failed');
+      const data = await res.json();
+      finalTranscript = data.transcript;
+      setTranscript(finalTranscript);
+    } catch {
+      // Fall back to web speech transcript if backend whisper fails
+      if (!finalTranscript) {
         setError('Server transcription failed');
         setState('preview');
         return;
       }
-    } else {
-      onAudioReady?.(audioBlob, transcript);
     }
 
-    onTranscript?.(transcript);
+    onAudioReady?.(audioBlob, finalTranscript);
+    onTranscript?.(finalTranscript);
     setState('idle');
     cleanup();
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     setAudioBlob(null);
     setTranscript('');
-  }, [audioBlob, transcript, privateMode, apiBaseUrl, onTranscript, onAudioReady, cleanup, audioUrl]);
+  }, [audioBlob, transcript, lang, apiBaseUrl, onTranscript, onAudioReady, cleanup, audioUrl]);
 
   const reRecord = useCallback(() => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);

@@ -4,7 +4,7 @@ import tempfile
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,12 +26,14 @@ MAX_AUDIO_SIZE = 10 * 1024 * 1024  # 10MB
 @router.post("/transcribe")
 async def transcribe_audio(
     file: UploadFile = File(...),
+    language: str = Form("auto"),
     current_user: User = Depends(get_current_user),
 ):
     """Transcribe audio using Whisper.cpp (private, server-side transcription).
 
     Accepts audio files up to 10MB / ~60 seconds.
-    Returns: {"transcript": str, "detected_language": str}
+    `language` is an ISO 639-1 code (e.g. 'fr', 'en') or 'auto' for detection.
+    Returns: {"transcript": str}
     """
     if file.content_type not in ALLOWED_AUDIO_TYPES:
         raise HTTPException(
@@ -52,8 +54,8 @@ async def transcribe_audio(
         tmp_path = tmp.name
 
     try:
-        result = await whisper_service.transcribe(tmp_path)
-        return {"transcript": result["transcript"], "detected_language": "auto"}
+        result = await whisper_service.transcribe(tmp_path, language=language)
+        return {"transcript": result["transcript"]}
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     finally:
@@ -72,7 +74,7 @@ async def stream_audio(
     RBAC enforced: same rules as parent document/note.
     """
     try:
-        audio_uuid = audio_uuid
+        audio_uuid = uuid.UUID(audio_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid audio ID")
 

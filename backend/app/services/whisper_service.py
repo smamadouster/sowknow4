@@ -13,12 +13,12 @@ WHISPER_TIMEOUT = int(os.getenv("WHISPER_TIMEOUT", "30"))
 class WhisperService:
     """Wraps whisper.cpp CLI for server-side audio transcription."""
 
-    def _build_command(self, audio_path: str) -> list[str]:
+    def _build_command(self, audio_path: str, language: str = "auto") -> list[str]:
         return [
             WHISPER_BINARY,
             "-m", WHISPER_MODEL,
             "-f", audio_path,
-            "--language", "auto",
+            "--language", language,
             "--no-timestamps",
             "--print-progress", "false",
         ]
@@ -37,14 +37,17 @@ class WhisperService:
                 cleaned.append(text)
         return {"transcript": " ".join(cleaned)}
 
-    async def transcribe(self, audio_path: str) -> dict:
+    async def transcribe(self, audio_path: str, language: str = "auto") -> dict:
         """Transcribe an audio file using whisper.cpp.
 
+        Args:
+            audio_path: path to audio file
+            language: ISO 639-1 code (e.g. 'fr', 'en') or 'auto' for detection
         Returns: {"transcript": str}
         Raises: RuntimeError on whisper failure.
         """
-        cmd = self._build_command(audio_path)
-        logger.info(f"Whisper transcription: {audio_path}")
+        cmd = self._build_command(audio_path, language=language)
+        logger.info(f"Whisper transcription: {audio_path} (lang={language})")
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,

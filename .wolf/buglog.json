@@ -1852,6 +1852,118 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-04-10T09:42:55.277Z"
+    },
+    {
+      "id": "bug-116",
+      "timestamp": "2026-04-10T19:10:22.394Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../../var/docker/sowknow4/backend/app/services/whisper_service.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 8→11 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-10T19:10:22.394Z"
+    },
+    {
+      "id": "bug-117",
+      "timestamp": "2026-04-10T19:10:52.706Z",
+      "error_message": "Wrong operator: && should be ===",
+      "file": "../../../../../var/docker/sowknow4/frontend/hooks/useVoiceRecorder.ts",
+      "root_cause": "Used \"&&\" instead of \"===\"",
+      "fix": "Changed operator && → ===",
+      "tags": [
+        "auto-detected",
+        "operator-fix",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-10T19:10:52.706Z"
+    },
+    {
+      "id": "bug-118",
+      "timestamp": "2026-04-10T19:37:22.415Z",
+      "error_message": "Incorrect value in code",
+      "file": "../../../../../var/docker/sowknow4/monitoring/guardian-hc/scripts/watchdog.sh",
+      "root_cause": "Had \"sowknow4-backend sowknow4-postgres sowknow4-redis",
+      "fix": "Changed to \"sowknow4-backend sowknow4-postgres sowknow4-redis",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "sh"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-10T19:37:22.415Z"
+    },
+    {
+      "id": "bug-119",
+      "timestamp": "2026-04-11T09:06:57.983Z",
+      "error_message": "Null/undefined access in ",
+      "file": "frontend/hooks/useVoiceRecorder.ts",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check) | Also: recognition.lang = toBcp47(lang) ?? lang;",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-04-11T09:06:59.800Z"
+    },
+    {
+      "id": "bug-120",
+      "timestamp": "2026-04-11T09:07:02.906Z",
+      "error_message": "Significant refactor of ",
+      "file": "frontend/hooks/useVoiceRecorder.ts",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 7→3 lines (5 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T09:07:02.906Z"
+    },
+    {
+      "id": "bug-121",
+      "timestamp": "2026-04-11T09:07:13.220Z",
+      "error_message": "Wrong return value",
+      "file": "backend/app/api/voice.py",
+      "root_cause": "Was returning: {\"transcript\": result[\"transcript\"], \"language\": l",
+      "fix": "Now returns: {\"transcript\": result[\"transcript\"]}",
+      "tags": [
+        "auto-detected",
+        "return-value",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T09:07:13.220Z"
+    },
+    {
+      "id": "bug-122",
+      "timestamp": "2026-04-11T09:07:16.640Z",
+      "error_message": "Wrong return value",
+      "file": "frontend/lib/api.ts",
+      "root_cause": "Was returning: this.request<{ transcript: string; detected_langua",
+      "fix": "Now returns: this.request<{ transcript: string }>('/v1/voice/tr",
+      "tags": [
+        "auto-detected",
+        "return-value",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T09:07:16.640Z"
     }
   ]
 }

@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-11T09:09:57.518Z
-> Files: 831 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-11T10:38:49.578Z
+> Files: 837 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -9,7 +9,7 @@
 
 ## ../../../../../var/docker/sowknow4/
 
-- `docker-compose.yml` — Docker Compose services (~5337 tok)
+- `docker-compose.yml` — Docker Compose services (~5522 tok)
 
 ## ../../../../../var/docker/sowknow4/backend/app/api/
 
@@ -23,6 +23,15 @@
 
 - `useVoiceRecorder.ts` — Exports RecordingState, useVoiceRecorder (~2428 tok)
 
+## ../../../../../var/docker/sowknow4/monitoring/guardian-hc/
+
+- `guardian-hc.sowknow4.yml` — Guardian HC v2.0 -- SOWKNOW4 Configuration (~1740 tok)
+
+## ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/
+
+- `infrastructure.py` — InfrastructurePlugin — wraps all v1 checkers and healers in the v2 plugin interface. (~7514 tok)
+- `probes.py` — ProbesPlugin — deep application probes for Guardian (Watcher role). (~8178 tok)
+
 ## ../../../../../var/docker/sowknow4/monitoring/guardian-hc/scripts/
 
 - `watchdog.sh` — ############################################################################## (~2126 tok)
@@ -32,6 +41,7 @@
 - `MEMORY.md` — SOWKNOW Project Memory Index (~1048 tok)
 - `project_april_8_outage.md` (~474 tok)
 - `project_dictation_fr_to_en_fix.md` (~615 tok)
+- `reference_production_deployment.md` (~874 tok)
 
 ## ./
 
@@ -54,7 +64,7 @@
 - `docker-compose.prebuilt.yml` — Docker Compose: 4 services (~466 tok)
 - `docker-compose.production.yml` — SOWKNOW Production Docker Compose (~3121 tok)
 - `docker-compose.simple.yml` — Docker Compose: 4 services (~729 tok)
-- `docker-compose.yml` — Docker Compose services (~5214 tok)
+- `docker-compose.yml` — Docker Compose services (~5499 tok)
 - `embed_chunked_docs.py` — run, db_query, redis_cmd, queue_depth + 6 more (~2009 tok)
 - `fix-iptables.sh` — Fix for Docker DOCKER-INTERNAL chain blocking inter-container traffic (~218 tok)
 - `health-check.sh` (~402 tok)
@@ -945,6 +955,14 @@
 ## backend/app/api/
 
 - `voice.py` — API: 2 endpoints (~1289 tok)
+
+## backend/app/models/
+
+- `pipeline.py` — Pipeline stage tracking model for guaranteed document processing. (~993 tok)
+
+## backend/app/tasks/
+
+- `pipeline_tasks.py` — _EmbedContinue: update_stage (~5163 tok)
 
 ## frontend/hooks/
 

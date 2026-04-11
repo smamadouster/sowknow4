@@ -24,6 +24,8 @@
 - [2026-04-10] Guardian HC probes MUST classify their own errors. If a probe fails due to its own misconfiguration (wrong import path, missing credentials), it must return needs_healing=False — otherwise Guardian will restart a healthy container in a futile loop. Check stderr for ModuleNotFoundError/ImportError, stdout for NOAUTH.
 - [2026-04-10] When writing `docker exec ... python3 -c` probes against the backend container: the bind mount is ./backend:/app, so code lives at /app/app/... → always use `from app.tasks.X import Y`, never `from tasks.X import Y`.
 - [2026-04-10] Guardian v2 plugin heals log `success: True/False` but the dashboard/report counted healed via `h.get("healed")` (v1 field only). All plugin heal results must be checked as: `h.get("healed") or h.get("success") is True`.
+- [2026-04-11] NEVER use `--pool=prefork` with `concurrency=1` for celery-heavy. fork() doubles the ~1.3GB model in memory → RSS hits cgroup limit → OOM kill. Use `--pool=solo`: single process, model loaded once, no fork overhead. solo pool ignores `--max-tasks-per-child` (use `--max-memory-per-child` as a safety valve instead).
+- [2026-04-11] NUL bytes (0x00) in OCR'd text cause PostgreSQL "string literal cannot contain NUL characters" errors during chunk insert. Always strip with `text.replace('\x00', '')` before passing to the DB.
 
 ## Decision Log
 

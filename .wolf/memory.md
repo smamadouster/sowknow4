@@ -894,3 +894,47 @@
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
 | 09:09 | Edited frontend/hooks/useVoiceRecorder.ts | modified if() | ~32 |
+| 09:14 | Session end: 1 writes across 1 files (useVoiceRecorder.ts) | 2 reads | ~3791 tok |
+| 09:20 | Session end: 1 writes across 1 files (useVoiceRecorder.ts) | 2 reads | ~3791 tok |
+| 09:32 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/reference_production_deployment.md | — | ~918 |
+| 09:32 | Session end: 2 writes across 2 files (useVoiceRecorder.ts, reference_production_deployment.md) | 3 reads | ~4775 tok |
+
+## Session: 2026-04-11 09:34
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:52 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian-hc.sowknow4.yml | 10→7 lines | ~100 |
+| 09:52 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian-hc.sowknow4.yml | 6→8 lines | ~103 |
+| 09:52 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/probes.py | 11→16 lines | ~221 |
+| 09:52 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 12→16 lines | ~226 |
+| 09:58 | Session end: 4 writes across 3 files (guardian-hc.sowknow4.yml, probes.py, docker-compose.yml) | 19 reads | ~28015 tok |
+| 10:02 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | expanded (+6 lines) | ~217 |
+| 10:03 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | inline fix | ~28 |
+| 10:03 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/infrastructure.py | expanded (+11 lines) | ~668 |
+| 10:03 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/infrastructure.py | modified __init__() | ~578 |
+| 10:03 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/infrastructure.py | expanded (+8 lines) | ~116 |
+| 10:04 | Edited ../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/infrastructure.py | added error handling | ~2800 |
+| 10:10 | Session end: 10 writes across 4 files (guardian-hc.sowknow4.yml, probes.py, docker-compose.yml, infrastructure.py) | 20 reads | ~32422 tok |
+
+## Session: 2026-04-11 10:12
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:38 | Edited docker-compose.yml | 18→17 lines | ~196 |
+| 10:38 | Edited docker-compose.yml | inline fix | ~25 |
+| 10:38 | Edited backend/app/tasks/pipeline_tasks.py | modified _run_embed() | ~56 |
+| 10:38 | Edited backend/app/tasks/pipeline_tasks.py | 5→5 lines | ~73 |
+| 10:38 | Edited backend/app/models/pipeline.py | inline fix | ~36 |
+| 10:38 | Edited backend/app/tasks/pipeline_tasks.py | modified strip() | ~68 |
+| 10:39 | OOM remediation: solo pool, batch-16, max_attempts-5, NUL strip | docker-compose.yml, pipeline_tasks.py, pipeline.py | 4 fixes applied | ~2800 |
+| 10:39 | Session end: 6 writes across 3 files (docker-compose.yml, pipeline_tasks.py, pipeline.py) | 3 reads | ~11116 tok |
+| 11:09 | Session end: 6 writes across 3 files (docker-compose.yml, pipeline_tasks.py, pipeline.py) | 3 reads | ~11116 tok |
+| 11:12 | Session end: 6 writes across 3 files (docker-compose.yml, pipeline_tasks.py, pipeline.py) | 3 reads | ~11116 tok |
+| 11:15 | Session end: 6 writes across 3 files (docker-compose.yml, pipeline_tasks.py, pipeline.py) | 3 reads | ~11116 tok |
+| 11:17 | Session end: 6 writes across 3 files (docker-compose.yml, pipeline_tasks.py, pipeline.py) | 3 reads | ~11116 tok |
+| 11:20 | Session end: 6 writes across 3 files (docker-compose.yml, pipeline_tasks.py, pipeline.py) | 3 reads | ~11116 tok |
+
+## Session: 2026-04-11 12:47
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

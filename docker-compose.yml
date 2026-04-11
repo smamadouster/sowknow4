@@ -8,7 +8,7 @@
 #
 # Memory Allocation:
 #   celery-light:    2048MB  (CPU/IO tasks, concurrency=2)
-#   celery-heavy:    5120MB  (prefork pool, concurrency=1, 1.3GB model, max-tasks-per-child=30)
+#   celery-heavy:    4096MB  (solo pool, single process, 1.3GB model, no fork overhead)
 #   postgres:        1536MB  (pgvector, 5 concurrent users)
 #   backend:          512MB  (FastAPI)
 #   frontend:         512MB  (Next.js)
@@ -304,18 +304,17 @@ services:
     deploy:
       resources:
         limits:
-          # Prefork pool + concurrency=1: one child loads the 1.3GB embeddings
-          # model. max-tasks-per-child=30 recycles the child every 30 tasks so
-          # memory leaks are reclaimed. 2026-04-11: switched from --pool=threads
-          # --concurrency=2 after celery-heavy was crash-looping — kernel
-          # OOM-killed every ~25 min when RSS crept past 5 GiB. Threads pool
-          # ignores max-tasks-per-child so the leak ran unchecked.
-          memory: 5120M
+          # Solo pool: single process, no fork() — model loaded ONCE at ~1.3GB.
+          # No child duplication means RSS stays ~3-3.5GB instead of ~5GB+.
+          # 2026-04-11: switched from --pool=prefork (concurrency=1) which was
+          # OOM-killing every ~25-50 tasks as fork doubled model memory to ~5GB,
+          # hitting the 5GB cgroup limit. Solo pool eliminates the fork overhead.
+          memory: 4096M
           cpus: '2.0'
     command: >-
-      celery -A app.celery_app worker --loglevel=info --concurrency=1
-      --pool=prefork
-      --max-tasks-per-child=30
+      celery -A app.celery_app worker --loglevel=info
+      --pool=solo
+      --max-memory-per-child=3800000
       -Q pipeline.embed
       --prefetch-multiplier=1
       -n heavy@%h

@@ -281,6 +281,23 @@ class ProbesPlugin(GuardianPlugin):
                 ],
                 capture_output=True, text=True, timeout=15,
             )
+
+            # Empty stdout means docker exec itself failed (container mid-restart,
+            # socket error, etc.) — report as probe warning, not a healthy pass.
+            # Check before running the remaining three queries to avoid 45s of wasted timeouts.
+            if not conn_result.stdout.strip():
+                stderr = conn_result.stderr or ""
+                return CheckResult(
+                    plugin=self.name,
+                    module="Storage Layer",
+                    check_name="postgres_deep",
+                    status="warning",
+                    severity=Severity.WARNING,
+                    summary="postgres_deep probe got no output from docker exec — Postgres may be mid-restart or unreachable",
+                    details={"stderr": stderr[:500], "returncode": conn_result.returncode},
+                    needs_healing=False,  # don't restart Postgres when exec itself is unreachable
+                )
+
             max_result = subprocess.run(
                 [
                     "docker", "exec", "sowknow4-postgres",
@@ -505,6 +522,18 @@ class ProbesPlugin(GuardianPlugin):
                 ],
                 capture_output=True, text=True, timeout=15,
             )
+            if not result.stdout.strip():
+                stderr = result.stderr or ""
+                return CheckResult(
+                    plugin=self.name,
+                    module="Document Pipeline",
+                    check_name="pipeline",
+                    status="warning",
+                    severity=Severity.WARNING,
+                    summary="pipeline probe got no output from docker exec — Postgres may be mid-restart or unreachable",
+                    details={"stderr": stderr[:500], "returncode": result.returncode},
+                    needs_healing=False,  # don't requeue when exec itself is unreachable
+                )
             stuck = int(result.stdout.strip() or 0)
             if stuck > 0:
                 return CheckResult(

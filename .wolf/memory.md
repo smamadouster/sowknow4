@@ -938,3 +938,34 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-04-11 17:44
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-11 17:52
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-11 17:53
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-11 17:54
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:06 | Edited monitoring/guardian-hc/guardian_hc/plugins/probes.py | modified strip() | ~296 |
+| 18:06 | postgres_deep probe: detect empty docker exec stdout → return warning not false-positive pass | monitoring/guardian-hc/guardian_hc/plugins/probes.py | needs_healing=False warning; synced to /var/docker | ~150 |
+| 18:07 | Session end: 1 writes across 1 files (probes.py) | 7 reads | ~18351 tok |
+| 18:09 | Session end: 1 writes across 1 files (probes.py) | 7 reads | ~18351 tok |
+
+## Session: 2026-04-11 18:11
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:16 | /simplify: moved conn_result guard before remaining 3 subprocesses in _check_postgres_deep; stderr[:300]→[:500]; added same exec-failure guard to _check_pipeline | probes.py | avoids 45s wasted timeouts; pipeline no longer silently returns stuck=0 on exec failure | ~350 |
+| 18:16 | Session end: 2 writes across 1 files (probes.py) | 1 reads | ~9696 tok |

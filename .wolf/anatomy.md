@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-11T10:38:49.578Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-11T18:16:15.607Z
 > Files: 837 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
@@ -990,7 +990,7 @@
 
 ## monitoring/guardian-hc/guardian_hc/plugins/
 
-- `probes.py` — ProbesPlugin — deep application probes for Guardian (Watcher role). (~8080 tok)
+- `probes.py` — ProbesPlugin — deep application probes for Guardian (Watcher role). (~8636 tok)
 
 ## monitoring/guardian-hc/guardian_hc/runbooks/
 

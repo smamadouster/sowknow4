@@ -1,32 +1,33 @@
 {
-  "session_id": "session-2026-04-11-0908",
-  "started": "2026-04-11T09:08:18.954Z",
+  "session_id": "session-2026-04-11-1811",
+  "started": "2026-04-11T18:11:19.236Z",
   "files_read": {
-    "/home/development/src/active/sowknow4/backend/app/api/voice.py": {
-      "count": 1,
-      "tokens": 1289,
-      "first_read": "2026-04-11T09:08:41.475Z"
-    },
-    "/home/development/src/active/sowknow4/frontend/hooks/useVoiceRecorder.ts": {
-      "count": 1,
-      "tokens": 2470,
-      "first_read": "2026-04-11T09:08:44.969Z"
+    "/home/development/src/active/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/probes.py": {
+      "count": 7,
+      "tokens": 8636,
+      "first_read": "2026-04-11T18:14:38.286Z"
     }
   },
   "files_written": [
     {
-      "file": "/home/development/src/active/sowknow4/frontend/hooks/useVoiceRecorder.ts",
+      "file": "/home/development/src/active/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/probes.py",
       "action": "edit",
-      "tokens": 32,
-      "at": "2026-04-11T09:09:57.527Z"
+      "tokens": 732,
+      "at": "2026-04-11T18:16:09.094Z"
+    },
+    {
+      "file": "/home/development/src/active/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/probes.py",
+      "action": "edit",
+      "tokens": 328,
+      "at": "2026-04-11T18:16:15.617Z"
     }
   ],
   "edit_counts": {
-    "frontend/hooks/useVoiceRecorder.ts": 1
+    "monitoring/guardian-hc/guardian_hc/plugins/probes.py": 2
   },
-  "anatomy_hits": 2,
+  "anatomy_hits": 1,
   "anatomy_misses": 0,
-  "repeated_reads_warned": 0,
+  "repeated_reads_warned": 6,
   "cerebrum_warnings": 0,
-  "stop_count": 0
+  "stop_count": 1
 }

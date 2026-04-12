@@ -296,7 +296,7 @@ export default function NotesPage() {
   );
 
   return (
-    <div className="min-h-screen bg-vault-950">
+    <div className="min-h-screen bg-vault-950 overflow-x-hidden">
       <div className="max-w-6xl mx-auto px-4 py-8 pb-20 md:pb-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">

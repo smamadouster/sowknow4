@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_admin_only
 from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
+from app.models.pipeline import PipelineStage, StageEnum, StageStatus
 from app.models.chat import ChatSession
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.processing import ProcessingQueue, TaskStatus
@@ -27,6 +28,8 @@ from app.schemas.admin import (
     AuditLogResponse,
     DashboardResponse,
     PasswordReset,
+    PipelineStageStats,
+    PipelineStatsResponse,
     QueueStats,
     SystemStats,
     UserCreateByAdmin,
@@ -652,6 +655,102 @@ async def get_anomalies(
         date=datetime.utcnow().isoformat(),
         total_anomalies=len(anomalies),
         anomalies=anomalies,
+    )
+
+
+PIPELINE_STAGE_ORDER = [
+    StageEnum.UPLOADED,
+    StageEnum.OCR,
+    StageEnum.CHUNKED,
+    StageEnum.EMBEDDED,
+    StageEnum.INDEXED,
+    StageEnum.ARTICLES,
+    StageEnum.ENTITIES,
+    StageEnum.ENRICHED,
+]
+
+
+@router.get("/pipeline-stats", response_model=PipelineStatsResponse)
+async def get_pipeline_stats(
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
+) -> PipelineStatsResponse:
+    """Per-stage pipeline funnel with throughput rates (Admin only)."""
+    # Query 1: active counts grouped by stage + status
+    active_result = await db.execute(
+        select(PipelineStage.stage, PipelineStage.status, func.count().label("cnt"))
+        .where(PipelineStage.status.in_([StageStatus.PENDING, StageStatus.RUNNING, StageStatus.FAILED]))
+        .group_by(PipelineStage.stage, PipelineStage.status)
+    )
+    active_rows = active_result.all()
+
+    # Query 2: throughput — completed in last 1 hour
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    hourly_result = await db.execute(
+        select(PipelineStage.stage, func.count().label("cnt"))
+        .where(
+            PipelineStage.status == StageStatus.COMPLETED,
+            PipelineStage.completed_at >= one_hour_ago,
+        )
+        .group_by(PipelineStage.stage)
+    )
+    hourly_rows = {
+        (row.stage if isinstance(row.stage, str) else row.stage.value): row.cnt
+        for row in hourly_result.all()
+    }
+
+    # Query 3: throughput — completed in last 10 minutes
+    ten_min_ago = datetime.utcnow() - timedelta(minutes=10)
+    tenmin_result = await db.execute(
+        select(PipelineStage.stage, func.count().label("cnt"))
+        .where(
+            PipelineStage.status == StageStatus.COMPLETED,
+            PipelineStage.completed_at >= ten_min_ago,
+        )
+        .group_by(PipelineStage.stage)
+    )
+    tenmin_rows = {
+        (row.stage if isinstance(row.stage, str) else row.stage.value): row.cnt
+        for row in tenmin_result.all()
+    }
+
+    # Build per-stage counts map
+    counts: dict[str, dict[str, int]] = {
+        s.value: {"pending": 0, "running": 0, "failed": 0} for s in PIPELINE_STAGE_ORDER
+    }
+    for row in active_rows:
+        stage_key = row.stage if isinstance(row.stage, str) else row.stage.value
+        status_key = row.status if isinstance(row.status, str) else row.status.value
+        if stage_key in counts and status_key in counts[stage_key]:
+            counts[stage_key][status_key] = row.cnt
+
+    stages = []
+    for stage_enum in PIPELINE_STAGE_ORDER:
+        key = stage_enum.value
+        c = counts[key]
+        stages.append(
+            PipelineStageStats(
+                stage=key,
+                pending=c["pending"],
+                running=c["running"],
+                failed=c["failed"],
+                throughput_per_hour=hourly_rows.get(key, 0),
+                throughput_per_10min=tenmin_rows.get(key, 0),
+            )
+        )
+
+    total_active = sum(s.running for s in stages)
+
+    # Bottleneck: stage with highest pending count (ignore zero)
+    max_pending = max((s.pending for s in stages), default=0)
+    bottleneck = None
+    if max_pending > 0:
+        bottleneck = next(s.stage for s in stages if s.pending == max_pending)
+
+    return PipelineStatsResponse(
+        stages=stages,
+        total_active=total_active,
+        bottleneck_stage=bottleneck,
     )
 
 

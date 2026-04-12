@@ -3,6 +3,13 @@
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
 
+| 13:42 | fixed stale heal_action label in guardian core.py; NFT_OUTPUT_EMPTY already removed | guardian-hc/core.py | 281 tests pass, commit 1fa40bf | ~2k |
+
+| 17:52 | Deployed nftables permanent fix — watchdog + guardian detector/healer | watchdog.sh, network_health.py, network_healer.py | deployed | ~2k |
+| 14:35 | network_healer fallback heal counting fix | monitoring/guardian-hc/guardian_hc/healers/network_healer.py | 281 tests passed, committed | ~5k |
+
+| 17:33 | Replaced _find_stale_nftables_bridges to use Docker socket GET /networks + nft -a list chain handle parsing instead of ip link | monitoring/guardian-hc/guardian_hc/checks/network_health.py | 5/5 tests pass, 275 total, committed fd6357c | ~800 |
+
 | 14:30 | Task 1 AlertIQ: created tests/__init__.py, tests/test_correlator.py, guardian_hc/correlator.py | monitoring/guardian-hc/ | 8/8 tests pass, committed 2a95e88 | ~800 |
 | 19:51 | Task 1 Plugin Base: created guardian_hc/plugin.py (Severity, CheckContext, AnalysisContext, CheckResult, HealResult, Insight, GuardianPlugin) + tests/test_plugin.py | monitoring/guardian-hc/ | 27/27 tests pass, committed bd52618 | ~800 |
 
@@ -969,3 +976,148 @@
 |------|--------|---------|---------|--------|
 | 18:16 | /simplify: moved conn_result guard before remaining 3 subprocesses in _check_postgres_deep; stderr[:300]→[:500]; added same exec-failure guard to _check_pipeline | probes.py | avoids 45s wasted timeouts; pipeline no longer silently returns stuck=0 on exec failure | ~350 |
 | 18:16 | Session end: 2 writes across 1 files (probes.py) | 1 reads | ~9696 tok |
+| 18:19 | Session end: 2 writes across 1 files (probes.py) | 2 reads | ~9696 tok |
+
+## Session: 2026-04-11 18:21
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-11 18:33
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:44 | Edited ../ghostshell/docker-compose.yml | 10→12 lines | ~85 |
+| 18:46 | Fixed 6 systemd failures from GhostShell health report | /etc/fail2ban/jail.d/defaults-debian.conf, /etc/systemd/system/ghostshell-key-backup.service, /home/development/src/active/ghostshell/docker-compose.yml | Fixed: fail2ban(backend=auto), certbot(idna core.py), guardian-network-fix(disabled), ghostshell-luks(disabled), key-backup(dynamic vault IP) | ~8k |
+| 18:47 | Session end: 1 writes across 1 files (docker-compose.yml) | 3 reads | ~5584 tok |
+| 18:55 | Edited ../ghostshell/config/caddy/Caddyfile | expanded (+96 lines) | ~665 |
+| 18:55 | Edited ../ghostshell/docker-compose.yml | 5→10 lines | ~135 |
+| 18:55 | Edited ../ghostshell/docker-compose.yml | "/redis_exporter" → "CMD" | ~15 |
+| 18:55 | Session end: 4 writes across 2 files (docker-compose.yml, Caddyfile) | 5 reads | ~6446 tok |
+| 18:56 | Session end: 4 writes across 2 files (docker-compose.yml, Caddyfile) | 5 reads | ~6446 tok |
+| 18:56 | Created ../ghostshell/scripts/sre-daily-maintenance.sh | — | ~2123 |
+| 18:56 | Edited ../ghostshell/backend/app/services/search/searxng.py | modified _ensure_client() | ~128 |
+| 18:56 | Session end: 6 writes across 4 files (docker-compose.yml, Caddyfile, sre-daily-maintenance.sh, searxng.py) | 6 reads | ~8848 tok |
+| 18:57 | Session end: 6 writes across 4 files (docker-compose.yml, Caddyfile, sre-daily-maintenance.sh, searxng.py) | 6 reads | ~8848 tok |
+| 19:03 | Session end: 6 writes across 4 files (docker-compose.yml, Caddyfile, sre-daily-maintenance.sh, searxng.py) | 6 reads | ~8848 tok |
+| 19:10 | Session end: 6 writes across 4 files (docker-compose.yml, Caddyfile, sre-daily-maintenance.sh, searxng.py) | 6 reads | ~8848 tok |
+| 19:12 | Session end: 6 writes across 4 files (docker-compose.yml, Caddyfile, sre-daily-maintenance.sh, searxng.py) | 6 reads | ~8848 tok |
+| 19:13 | Edited ../ghostshell/config/caddy/Caddyfile | — | ~0 |
+| 19:13 | Session end: 7 writes across 4 files (docker-compose.yml, Caddyfile, sre-daily-maintenance.sh, searxng.py) | 6 reads | ~8848 tok |
+
+## Session: 2026-04-11 19:13
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 19:25 | Created ../ghostshell/docs/superpowers/specs/2026-04-11-integration-api-remaining-tasks-design.md | — | ~2175 |
+| 19:25 | Session end: 1 writes across 1 files (2026-04-11-integration-api-remaining-tasks-design.md) | 1 reads | ~3119 tok |
+| 19:29 | Created ../ghostshell/docs/superpowers/plans/2026-04-11-integration-api-remaining-tasks.md | — | ~13162 |
+| 19:29 | Edited ../ghostshell/docs/superpowers/plans/2026-04-11-integration-api-remaining-tasks.md | get_db_session() → get_session_maker() | ~84 |
+| 19:29 | Edited ../ghostshell/docs/superpowers/plans/2026-04-11-integration-api-remaining-tasks.md | get_db_session() → get_session_maker() | ~54 |
+| 19:30 | Session end: 4 writes across 2 files (2026-04-11-integration-api-remaining-tasks-design.md, 2026-04-11-integration-api-remaining-tasks.md) | 1 reads | ~17369 tok |
+| 19:31 | Edited ../ghostshell/config/caddy/Caddyfile | expanded (+14 lines) | ~116 |
+| 19:34 | Edited ../ghostshell/config/caddy/Caddyfile | 13→15 lines | ~110 |
+| 19:36 | Edited ../ghostshell/backend/tests/test_integration_api.py | modified test_product_defaults() | ~375 |
+| 19:37 | Edited ../ghostshell/backend/app/models/integration.py | modified __init__() | ~1286 |
+| 19:38 | Created ../ghostshell/backend/alembic/versions/013_add_crm_core_tables.py | — | ~1256 |
+| 19:38 | Edited ../ghostshell/backend/alembic/versions/013_add_crm_core_tables.py | 12→12 lines | ~132 |
+| 19:39 | Edited ../ghostshell/backend/alembic/versions/013_add_crm_core_tables.py | 12→10 lines | ~157 |
+| 19:44 | Edited ../ghostshell/backend/alembic/versions/013_add_crm_core_tables.py | inline fix | ~14 |
+| 19:44 | Edited ../ghostshell/backend/app/models/integration.py | 3→3 lines | ~28 |
+| 19:44 | Edited ../ghostshell/backend/app/models/integration.py | modified ContactProduct() | ~78 |
+| 19:44 | Edited ../ghostshell/backend/tests/test_integration_api.py | 4→5 lines | ~59 |
+| 19:44 | Edited ../ghostshell/backend/tests/test_integration_api.py | 6→3 lines | ~8 |
+| 19:49 | Edited ../ghostshell/backend/app/core/config.py | 1→2 lines | ~55 |
+| 19:49 | Created ../ghostshell/backend/tests/test_brevo_client.py | — | ~1194 |
+| 19:50 | Created ../ghostshell/backend/app/services/brevo/__init__.py | — | ~0 |
+| 19:50 | Created ../ghostshell/backend/app/services/brevo/client.py | — | ~950 |
+| 19:51 | Created ../ghostshell/backend/tests/test_brevo_sync.py | — | ~1400 |
+| 19:52 | Created ../ghostshell/backend/app/services/brevo/sync_service.py | — | ~1422 |
+| 19:52 | Edited ../ghostshell/backend/app/main.py | 3→4 lines | ~38 |
+| 19:52 | Edited ../ghostshell/backend/app/main.py | modified warning() | ~234 |
+| 19:52 | Edited ../ghostshell/backend/app/main.py | 6→8 lines | ~68 |
+| 19:58 | Edited ../ghostshell/backend/app/main.py | 3→6 lines | ~49 |
+| 19:58 | Edited ../ghostshell/backend/app/main.py | inline fix | ~19 |
+| 19:58 | Edited ../ghostshell/backend/app/services/brevo/sync_service.py | modified get() | ~122 |
+| 19:58 | Edited ../ghostshell/backend/app/services/brevo/sync_service.py | modified get() | ~162 |
+| 19:58 | Edited ../ghostshell/backend/app/services/brevo/sync_service.py | 3→5 lines | ~84 |
+| 19:59 | Edited ../ghostshell/backend/tests/test_brevo_sync.py | modified test_handler_ignores_missing_email() | ~625 |
+| 20:01 | Created ../ghostshell/backend/tests/test_brevo_webhooks.py | — | ~1299 |
+| 20:03 | Created ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | — | ~1584 |
+| 20:05 | Edited ../ghostshell/backend/app/api/routes/integration/__init__.py | 8→11 lines | ~132 |
+| 20:07 | Edited ../ghostshell/backend/app/api/routes/integration/__init__.py | 5→2 lines | ~28 |
+| 20:08 | Edited ../ghostshell/backend/app/main.py | expanded (+9 lines) | ~175 |
+| 20:12 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | added 2 import(s) | ~57 |
+| 20:12 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | 2→4 lines | ~65 |
+| 20:13 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | modified isinstance() | ~98 |
+| 20:13 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | "brevo:{message_id}:{event" → "brevo:{hashlib.md5(messag" | ~35 |
+| 20:13 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | modified compare_digest() | ~44 |
+| 20:13 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | 2→2 lines | ~44 |
+| 20:13 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | modified _update_consent() | ~487 |
+| 20:13 | Edited ../ghostshell/backend/tests/test_brevo_webhooks.py | modified test_multiple_events_processed() | ~362 |
+| 20:20 | Edited ../ghostshell/backend/app/services/brevo/client.py | 8→6 lines | ~91 |
+| 20:20 | Edited ../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py | 10→6 lines | ~101 |
+| 20:20 | Edited ../ghostshell/backend/app/services/brevo/sync_service.py | modified _on_consent_changed() | ~126 |
+
+## Session: 2026-04-11 20:24
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-12 16:54
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:00 | Fixed auth broken — stale nftables handles 3-14 from dead bridge br-6d25c565a449 dropping 172.18.x.x traffic | nftables raw PREROUTING | backend+redis+postgres connectivity restored, health degraded→ok | ~3k |
+| 17:15 | Created docs/superpowers/specs/2026-04-12-nftables-permanent-fix-design.md | — | ~3196 |
+| 17:15 | Edited docs/superpowers/specs/2026-04-12-nftables-permanent-fix-design.md | 3→3 lines | ~40 |
+| 17:15 | Session end: 2 writes across 1 files (2026-04-12-nftables-permanent-fix-design.md) | 17 reads | ~24410 tok |
+| 17:21 | Created docs/superpowers/plans/2026-04-12-nftables-permanent-fix.md | — | ~9357 |
+| 17:21 | Edited docs/superpowers/plans/2026-04-12-nftables-permanent-fix.md | VPS() → main() | ~113 |
+| 17:21 | Session end: 4 writes across 2 files (2026-04-12-nftables-permanent-fix-design.md, 2026-04-12-nftables-permanent-fix.md) | 17 reads | ~34557 tok |
+| 17:27 | Created monitoring/guardian-hc/tests/test_network_health.py | — | ~2232 |
+| 17:27 | created failing tests for _find_stale_nftables_bridges | monitoring/guardian-hc/tests/test_network_health.py | 3/5 fail as expected; 2 pass coincidentally (both old+new return [] for clean/nft-fail cases) | ~800 |
+| 17:30 | Edited monitoring/guardian-hc/tests/test_network_health.py | 3→2 lines | ~20 |
+| 17:30 | Edited monitoring/guardian-hc/tests/test_network_health.py | removed 4 lines | ~6 |
+| 17:30 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified patch() | ~113 |
+| 17:30 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified test_returns_empty_when_nft_fails() | ~113 |
+| 17:30 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified test_returns_error_entry_on_exception() | ~114 |
+| 17:30 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified patch() | ~91 |
+| 17:31 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified _make_proc() | ~117 |
+| 17:31 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified patch() | ~153 |
+| 17:31 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified patch() | ~128 |
+| 17:31 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified patch() | ~119 |
+| 17:33 | Edited monitoring/guardian-hc/guardian_hc/checks/network_health.py | modified _find_stale_nftables_bridges() | ~708 |
+| 17:35 | Edited monitoring/guardian-hc/tests/test_network_health.py | — | ~0 |
+| 17:35 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified test_returns_stale_bridge_with_handles() | ~281 |
+| 17:35 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified test_returns_empty_when_all_bridges_live() | ~252 |
+| 17:35 | Edited monitoring/guardian-hc/tests/test_network_health.py | modified test_multiple_stale_bridges_grouped_correctly() | ~362 |
+| 17:35 | Edited monitoring/guardian-hc/tests/test_network_health.py | inline fix | ~12 |
+| 17:37 | Created monitoring/guardian-hc/tests/test_network_healer.py | — | ~1442 |
+| 17:38 | Created failing tests for NetworkHealer surgical per-handle deletion | monitoring/guardian-hc/tests/test_network_healer.py | 5/6 tests fail as expected (current healer uses flush+restart, not per-handle delete) | ~800 |
+| 17:41 | Created monitoring/guardian-hc/guardian_hc/healers/network_healer.py | — | ~1469 |
+| 17:43 | Edited monitoring/guardian-hc/guardian_hc/healers/network_healer.py | modified __init__() | ~23 |
+| 17:43 | Edited monitoring/guardian-hc/guardian_hc/healers/network_healer.py | 19→20 lines | ~275 |
+| 17:44 | Edited monitoring/guardian-hc/scripts/watchdog.sh | modified check_nftables_stale_rules() | ~832 |
+| 17:44 | Edited monitoring/guardian-hc/scripts/watchdog.sh | 3→4 lines | ~22 |
+| 17:44 | Added check_nftables_stale_rules() to watchdog.sh (Check 6), renumbered rotate_log to Check 7, inserted call before check_api in main() | monitoring/guardian-hc/scripts/watchdog.sh | committed c84681c; 281 tests pass | ~1200 |
+| 17:49 | Edited ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_guardian_nftables_heal_broken.md | 4→8 lines | ~359 |
+| 17:52 | Edited monitoring/guardian-hc/guardian_hc/core.py | "nftables flush + docker r" → "nftables surgical handle " | ~31 |
+| 17:53 | Session end: 29 writes across 9 files (2026-04-12-nftables-permanent-fix-design.md, 2026-04-12-nftables-permanent-fix.md, test_network_health.py, network_health.py, test_network_healer.py) | 25 reads | ~65839 tok |
+
+## Session: 2026-04-12 18:09
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:09 | Diagnosed auth outage — stale nftables handles from dead bridge br-6d25c565a449 | host nftables | Immediate surgical fix: deleted handles 3-14, auth restored | ~800 |
+| 18:15 | Permanent fix: added check_nftables_stale_rules() (Check 6) to watchdog.sh | watchdog.sh | 2-min cron auto-heal path, probe-gated, surgical per-handle deletion | ~1200 |
+| 18:20 | Fixed Guardian detector: replaced ip link show with Docker socket API | network_health.py | _find_stale_nftables_bridges() now returns correct stale handles | ~900 |
+| 18:25 | Rewrote Guardian healer: surgical deletion + TCP probe + fallback | network_healer.py | Zero-downtime heal path; fallback flush+docker restart retained | ~800 |
+| 18:30 | Created tests for detector (5) and healer (6) | test_network_health.py, test_network_healer.py | All 11 tests passing | ~600 |
+| 18:40 | Fixed test mock drift (ip_proc unused), healed fallback logic, updated core.py label | multiple | Code review issues resolved | ~400 |
+| 18:50 | Deployed to production at /var/docker/sowknow4 | prod | git pull devrepo master → 1fa40bf; guardian-hc restarted; all 8 containers healthy | ~300 |
+
+## Session: 2026-04-12 18:11
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

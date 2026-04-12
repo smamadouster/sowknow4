@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-11T18:16:15.607Z
-> Files: 837 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-12T17:52:24.388Z
+> Files: 864 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -41,7 +41,66 @@
 - `MEMORY.md` — SOWKNOW Project Memory Index (~1048 tok)
 - `project_april_8_outage.md` (~474 tok)
 - `project_dictation_fr_to_en_fix.md` (~615 tok)
+- `project_guardian_nftables_heal_broken.md` (~770 tok)
 - `reference_production_deployment.md` (~874 tok)
+
+## ../ghostshell/
+
+- `docker-compose.yml` — Docker Compose services (~6439 tok)
+
+## ../ghostshell/backend/alembic/versions/
+
+- `013_add_crm_core_tables.py` — Add CRM core tables: products, crm_users, contact_products, campaigns. (~1282 tok)
+
+## ../ghostshell/backend/app/
+
+- `main.py` — AWA GhostShell - Main Application Entry Point (~10741 tok)
+
+## ../ghostshell/backend/app/api/routes/integration/
+
+- `__init__.py` — Integration API router assembly. (~182 tok)
+- `brevo_webhooks.py` — POST /brevo/webhooks — receive Brevo email engagement events. (~1744 tok)
+
+## ../ghostshell/backend/app/core/
+
+- `config.py` — AWA GhostShell - Application Configuration (~3390 tok)
+
+## ../ghostshell/backend/app/models/
+
+- `integration.py` — SQLAlchemy models for the CRM Integration API Layer. (~2989 tok)
+
+## ../ghostshell/backend/app/services/brevo/
+
+- `__init__.py` (~0 tok)
+- `client.py` — Thin httpx wrapper around the Brevo Contacts API v3. (~948 tok)
+- `sync_service.py` — NATS subscriber that syncs CRM events to Brevo contact lists. (~1625 tok)
+
+## ../ghostshell/backend/app/services/search/
+
+- `searxng.py` — SearXNGProvider: is_configured, search, health_check, close (~1060 tok)
+
+## ../ghostshell/backend/tests/
+
+- `test_brevo_client.py` — Unit tests for BrevoClient. (~1194 tok)
+- `test_brevo_sync.py` — Unit tests for BrevoSyncService NATS handlers. (~1902 tok)
+- `test_brevo_webhooks.py` — Tests for Brevo webhook receiver. (~1494 tok)
+- `test_integration_api.py` — Integration API Layer tests. (~6516 tok)
+
+## ../ghostshell/config/caddy/
+
+- `Caddyfile` — AWA GhostShell - Caddy Reverse Proxy Configuration (~841 tok)
+
+## ../ghostshell/docs/superpowers/plans/
+
+- `2026-04-11-integration-api-remaining-tasks.md` — GhostShell Integration API — Remaining Tasks Implementation Plan (~12343 tok)
+
+## ../ghostshell/docs/superpowers/specs/
+
+- `2026-04-11-integration-api-remaining-tasks-design.md` — Design Spec: GhostShell Integration API — Remaining Tasks (~2039 tok)
+
+## ../ghostshell/scripts/
+
+- `sre-daily-maintenance.sh` — SRE Daily Health Report — Direct host execution (~2123 tok)
 
 ## ./
 
@@ -964,6 +1023,14 @@
 
 - `pipeline_tasks.py` — _EmbedContinue: update_stage (~5163 tok)
 
+## docs/superpowers/plans/
+
+- `2026-04-12-nftables-permanent-fix.md` — nftables Permanent Fix Implementation Plan (~8783 tok)
+
+## docs/superpowers/specs/
+
+- `2026-04-12-nftables-permanent-fix-design.md` — Design Spec: Permanent nftables Stale-Rules Auto-Heal (~2998 tok)
+
 ## frontend/hooks/
 
 - `useVoiceRecorder.ts` — Exports RecordingState, useVoiceRecorder (~2468 tok)
@@ -980,13 +1047,18 @@
 ## monitoring/guardian-hc/guardian_hc/
 
 - `config.py` — class: load_config (~1585 tok)
-- `core.py` — class: can_restart, record_attempt, to_dict, from_dict + 6 more (~11487 tok)
+- `core.py` — class: can_restart, record_attempt, to_dict, from_dict + 6 more (~11498 tok)
 - `daily_report.py` (~5381 tok)
 - `dashboard.py` — DashboardServer: start, handle_dashboard, handle_metrics, handle_send_report (~758 tok)
 
 ## monitoring/guardian-hc/guardian_hc/checks/
 
 - `config_drift.py` — ConfigDriftChecker: check (~303 tok)
+- `network_health.py` — NetworkHealthChecker: check (~2096 tok)
+
+## monitoring/guardian-hc/guardian_hc/healers/
+
+- `network_healer.py` — NetworkHealer: heal (~1444 tok)
 
 ## monitoring/guardian-hc/guardian_hc/plugins/
 
@@ -1004,3 +1076,12 @@
 - `disk_critical.yml` (~839 tok)
 - `pipeline_stuck.yml` (~1017 tok)
 - `redis_deep.yml` (~934 tok)
+
+## monitoring/guardian-hc/scripts/
+
+- `watchdog.sh` — ############################################################################## (~2955 tok)
+
+## monitoring/guardian-hc/tests/
+
+- `test_network_healer.py` — Tests for NetworkHealer.heal() — surgical per-handle deletion. (~1442 tok)
+- `test_network_health.py` — Tests for NetworkHealthChecker._find_stale_nftables_bridges(). (~2202 tok)

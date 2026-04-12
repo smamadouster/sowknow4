@@ -2052,10 +2052,255 @@
       "file": "docker-compose.yml, backend/app/tasks/pipeline_tasks.py",
       "root_cause": "prefork pool with concurrency=1 performs fork() which duplicates the 1.3GB model in memory, pushing total RSS past 5GB cgroup limit. EMBED_CHUNK_CAP=64 + batch_size=32 allocated large PyTorch tensors. 132 docs permanently failed, 23 others failed with NUL byte error.",
       "fix": "1) Switched --pool=prefork to --pool=solo (no fork, model loaded once, ~3-3.5GB stable). 2) Reduced EMBED_CHUNK_CAP from 64 to 16 and inner batch_size from 32 to 16. 3) Increased EMBEDDED max_attempts from 3 to 5. 4) Added NUL byte strip (text.replace('\\x00','')) in _run_chunk before DB insert. Memory limit lowered from 5120M to 4096M.",
-      "tags": ["oom", "celery", "embedding", "prefork", "solo-pool", "pipeline", "nul-bytes"],
+      "tags": [
+        "oom",
+        "celery",
+        "embedding",
+        "prefork",
+        "solo-pool",
+        "pipeline",
+        "nul-bytes"
+      ],
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-04-11T00:00:00.000Z"
+    },
+    {
+      "id": "bug-129",
+      "timestamp": "2026-04-11T18:46:00Z",
+      "error_message": "ModuleNotFoundError: No module named idna.core / pip._vendor.pyparsing.core / certifi.core",
+      "file": "/usr/local/lib/python3.12/dist-packages/idna/, /usr/lib/python3/dist-packages/idna/, /usr/lib/python3/dist-packages/pip/",
+      "root_cause": "core.py files systematically deleted from 20+ Python packages in /usr/local/lib/python3.12/dist-packages/ and /usr/lib/python3/dist-packages/. Affected: idna, certifi, click, aiosqlite, fsspec, redis.commands, pyparsing, and others. Caused certbot to fail (ModuleNotFoundError idna.core) and system pip to be broken (pyparsing.core missing).",
+      "fix": "sudo apt reinstall python3-idna python3-certifi python3-pyparsing python3-click python3-pip; then sudo /home/mamadou/.local/bin/pip3 install --upgrade --force-reinstall --target /usr/local/lib/python3.12/dist-packages idna certifi click aiosqlite fsspec redis",
+      "tags": [
+        "python",
+        "certbot",
+        "pip",
+        "idna",
+        "core.py",
+        "systemd",
+        "corruption"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T18:46:00Z"
+    },
+    {
+      "id": "bug-130",
+      "timestamp": "2026-04-11T18:46:00Z",
+      "error_message": "fail2ban: Backend systemd failed to initialize due to No module named distutils",
+      "file": "/etc/fail2ban/jail.d/defaults-debian.conf",
+      "root_cause": "fail2ban jail.d/defaults-debian.conf had backend=systemd. Python 3.12 removed distutils, which the systemd backend requires.",
+      "fix": "Change backend = systemd to backend = auto in /etc/fail2ban/jail.d/defaults-debian.conf",
+      "tags": [
+        "fail2ban",
+        "python",
+        "distutils",
+        "python312",
+        "systemd"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T18:46:00Z"
+    },
+    {
+      "id": "bug-131",
+      "timestamp": "2026-04-11T18:46:00Z",
+      "error_message": "ghostshell-key-backup: FATAL: Cannot connect to Vault at http://172.20.0.3:8200",
+      "file": "/etc/systemd/system/ghostshell-key-backup.service",
+      "root_cause": "VAULT_ADDR hardcoded as 172.20.0.3:8200 but actual Vault container IP is 172.19.0.3 (ghostshell_backend network). Docker IPs change on network recreation.",
+      "fix": "Updated unit to dynamically resolve VAULT_ADDR via ExecStartPre: docker inspect -f IP ghostshell-vault. Also added ports: 127.0.0.1:8200:8200 to vault in docker-compose.yml for future use.",
+      "tags": [
+        "vault",
+        "ghostshell",
+        "key-backup",
+        "hardcoded-ip",
+        "docker",
+        "systemd"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T18:46:00Z"
+    },
+    {
+      "id": "bug-132",
+      "timestamp": "2026-04-11T18:55:33.937Z",
+      "error_message": "Significant refactor of ",
+      "file": "../ghostshell/docker-compose.yml",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 5→10 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "yml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T18:55:33.937Z"
+    },
+    {
+      "id": "bug-133",
+      "timestamp": "2026-04-11T18:55:40.050Z",
+      "error_message": "Incorrect value in code",
+      "file": "../ghostshell/docker-compose.yml",
+      "root_cause": "Had \"/redis_exporter\"",
+      "fix": "Changed to \"CMD\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "yml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T18:55:40.050Z"
+    },
+    {
+      "id": "bug-134",
+      "timestamp": "2026-04-11T19:44:39.666Z",
+      "error_message": "Wrong reference: UUID should be JSONB",
+      "file": "../ghostshell/backend/alembic/versions/013_add_crm_core_tables.py",
+      "root_cause": "Used \"UUID\" instead of \"JSONB\"",
+      "fix": "Changed UUID → JSONB",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T19:44:39.666Z"
+    },
+    {
+      "id": "bug-135",
+      "timestamp": "2026-04-11T19:52:26.259Z",
+      "error_message": "Missing await",
+      "file": "../ghostshell/backend/app/main.py",
+      "root_cause": "Async call without await — returned Promise instead of value",
+      "fix": "Added await to async call",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T19:52:26.259Z"
+    },
+    {
+      "id": "bug-136",
+      "timestamp": "2026-04-11T20:13:08.590Z",
+      "error_message": "Incorrect value in code",
+      "file": "../ghostshell/backend/app/api/routes/integration/brevo_webhooks.py",
+      "root_cause": "Had \"brevo:{message_id}:{event}\"",
+      "fix": "Changed to \"brevo:{hashlib.md5(message_id.encode()).hexdigest",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-11T20:13:08.590Z"
+    },
+    {
+      "id": "bug-137",
+      "timestamp": "2026-04-12T17:00:00.000Z",
+      "error_message": "authentication not working — backend→redis TCP timeout, backend health 503, intra-container networking broken",
+      "file": "nftables: ip raw PREROUTING",
+      "root_cause": "Docker 29.x stale nftables raw PREROUTING DROP rules from dead bridge br-6d25c565a449 (and br-566bf590ed5b). Rules reference dead bridge ID so all intra-container traffic on br-4c301de03a1f (sowknow-net) matches the DROP condition. Handles 3-14 were dropping: backend (17k), redis (23k), celery-collections (15k), frontend (2.7k) packets.",
+      "fix": "sudo nft delete rule ip raw PREROUTING handle N for handles 3-14. No Docker restart needed. Backend→Redis and Backend→Postgres both confirmed connected immediately after.",
+      "tags": [
+        "nftables",
+        "docker-networking",
+        "authentication",
+        "redis",
+        "postgres",
+        "stale-rules",
+        "intra-container"
+      ],
+      "related_bugs": [],
+      "occurrences": 3,
+      "last_seen": "2026-04-12T17:00:00.000Z"
+    },
+    {
+      "id": "bug-138",
+      "timestamp": "2026-04-12T17:15:35.657Z",
+      "error_message": "Incorrect value in code",
+      "file": "docs/superpowers/specs/2026-04-12-nftables-permanent-fix-design.md",
+      "root_cause": "Had 't fix it, flush + docker restart\n    if failed:\n ",
+      "fix": "Changed to 't fix it, flush + docker restart\n    if not probe",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-12T17:15:35.657Z"
+    },
+    {
+      "id": "bug-139",
+      "timestamp": "2026-04-12T17:33:10.568Z",
+      "error_message": "Significant refactor of ",
+      "file": "monitoring/guardian-hc/guardian_hc/checks/network_health.py",
+      "root_cause": "12 lines replaced/restructured",
+      "fix": "Rewrote 27→56 lines (12 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-12T17:33:10.568Z"
+    },
+    {
+      "id": "bug-140",
+      "timestamp": "2026-04-12T17:35:53.744Z",
+      "error_message": "Wrong reference: _make_nft_proc should be _make_proc",
+      "file": "monitoring/guardian-hc/tests/test_network_health.py",
+      "root_cause": "Used \"_make_nft_proc\" instead of \"_make_proc\"",
+      "fix": "Changed _make_nft_proc → _make_proc",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-12T17:35:53.744Z"
+    },
+    {
+      "id": "bug-141",
+      "timestamp": "2026-04-12T17:49:42.394Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_guardian_nftables_heal_broken.md",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 4→8 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-12T17:49:42.394Z"
+    },
+    {
+      "id": "bug-142",
+      "timestamp": "2026-04-12T17:52:24.398Z",
+      "error_message": "Incorrect value in code",
+      "file": "monitoring/guardian-hc/guardian_hc/core.py",
+      "root_cause": "Had \"nftables flush + docker restart\"",
+      "fix": "Changed to \"nftables surgical handle deletion (fallback: flus",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-12T17:52:24.398Z"
     }
   ]
 }

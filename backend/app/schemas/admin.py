@@ -181,3 +181,31 @@ class PasswordReset(BaseModel):
                 "Password must contain at least 1 special character (!@#$%^&*()_+-=[]{}|;:,.<>?)"
             )
         return v
+
+
+class PipelineStageStats(BaseModel):
+    """Counts and throughput for a single pipeline stage."""
+
+    stage: str
+    pending: int
+    running: int
+    failed: int
+    throughput_per_hour: int
+    throughput_per_10min: int
+
+
+class PipelineStatsResponse(BaseModel):
+    """Full pipeline funnel snapshot."""
+
+    stages: list[PipelineStageStats]
+    total_active: int  # sum of all running counts
+    bottleneck_stage: str | None  # stage with highest pending count, or None
+
+
+class UploadsHistoryPoint(BaseModel):
+    day: str  # "YYYY-MM-DD"
+    count: int
+
+
+class UploadsHistoryResponse(BaseModel):
+    history: list[UploadsHistoryPoint]

@@ -11,18 +11,22 @@ import {
 interface Stats {
   total_documents: number;
   uploads_today: number;
-  indexed_pages: number;
+  indexed_documents: number;
   public_documents: number;
   confidential_documents: number;
   total_users: number;
-  active_users_today: number;
+  active_sessions: number;
+  processing_documents: number;
+  error_documents: number;
 }
 
 interface QueueStats {
-  pending: number;
-  in_progress: number;
-  failed: number;
-  total: number;
+  pending_tasks: number;
+  in_progress_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  average_wait_time: number | null;
+  longest_running_task: string | null;
 }
 
 interface UploadsPoint {
@@ -31,14 +35,14 @@ interface UploadsPoint {
 }
 
 interface Anomaly {
-  id: string;
   document_id: string;
   filename: string;
+  bucket: string;
   status: string;
-  error_message: string;
-  hours_stuck: number;
+  error_message: string | null;
+  stuck_duration_hours: number;
   created_at: string;
-  updated_at: string;
+  last_task_type: string | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -172,7 +176,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">{t('indexed_pages')}</p>
-              <p className="text-3xl font-bold text-gray-900">{stats?.indexed_pages ?? '-'}</p>
+              <p className="text-3xl font-bold text-gray-900">{stats?.indexed_documents ?? '-'}</p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -186,7 +190,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">{t('processing_queue')}</p>
-              <p className="text-3xl font-bold text-gray-900">{queueStats?.total ?? '-'}</p>
+              <p className="text-3xl font-bold text-gray-900">{queueStats ? queueStats.pending_tasks + queueStats.in_progress_tasks + queueStats.failed_tasks : '-'}</p>
             </div>
             <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,9 +199,9 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="mt-4 flex gap-4 text-sm">
-            <span className="text-yellow-600">{queueStats?.pending ?? 0} pending</span>
-            <span className="text-blue-600">{queueStats?.in_progress ?? 0} processing</span>
-            <span className="text-red-600">{queueStats?.failed ?? 0} failed</span>
+            <span className="text-yellow-600">{queueStats?.pending_tasks ?? 0} pending</span>
+            <span className="text-blue-600">{queueStats?.in_progress_tasks ?? 0} processing</span>
+            <span className="text-red-600">{queueStats?.failed_tasks ?? 0} failed</span>
           </div>
         </div>
       </div>
@@ -208,24 +212,24 @@ export default function DashboardPage() {
         <div className="w-full bg-gray-200 rounded-full h-4 mb-4">
           <div 
             className="bg-blue-600 h-4 rounded-full transition-all"
-            style={{ 
-              width: queueStats && queueStats.total > 0 
-                ? `${((queueStats.in_progress / queueStats.total) * 100)}%` 
-                : '0%' 
+            style={{
+              width: queueStats && (queueStats.pending_tasks + queueStats.in_progress_tasks + queueStats.failed_tasks) > 0
+                ? `${((queueStats.in_progress_tasks / (queueStats.pending_tasks + queueStats.in_progress_tasks + queueStats.failed_tasks)) * 100)}%`
+                : '0%'
             }}
           ></div>
         </div>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
-            <p className="text-2xl font-bold text-yellow-600">{queueStats?.pending ?? 0}</p>
+            <p className="text-2xl font-bold text-yellow-600">{queueStats?.pending_tasks ?? 0}</p>
             <p className="text-sm text-gray-500">{tAdmin('pending_tasks')}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-blue-600">{queueStats?.in_progress ?? 0}</p>
+            <p className="text-2xl font-bold text-blue-600">{queueStats?.in_progress_tasks ?? 0}</p>
             <p className="text-sm text-gray-500">{tAdmin('in_progress_tasks')}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-red-600">{queueStats?.failed ?? 0}</p>
+            <p className="text-2xl font-bold text-red-600">{queueStats?.failed_tasks ?? 0}</p>
             <p className="text-sm text-gray-500">{tAdmin('failed_tasks')}</p>
           </div>
         </div>
@@ -274,9 +278,9 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={240}>
               <BarChart
                 data={[
-                  { name: tAdmin('pending_tasks'), value: queueStats.pending, fill: '#eab308' },
-                  { name: tAdmin('in_progress_tasks'), value: queueStats.in_progress, fill: '#3b82f6' },
-                  { name: tAdmin('failed_tasks'), value: queueStats.failed, fill: '#ef4444' },
+                  { name: tAdmin('pending_tasks'), value: queueStats.pending_tasks, fill: '#eab308' },
+                  { name: tAdmin('in_progress_tasks'), value: queueStats.in_progress_tasks, fill: '#3b82f6' },
+                  { name: tAdmin('failed_tasks'), value: queueStats.failed_tasks, fill: '#ef4444' },
                 ]}
                 margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
               >
@@ -379,7 +383,7 @@ export default function DashboardPage() {
                 </thead>
                 <tbody>
                   {anomalies.map((anomaly) => (
-                    <tr key={anomaly.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={anomaly.document_id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4">
                         <p className="font-medium text-gray-900">{anomaly.filename}</p>
                         <p className="text-xs text-gray-400">{anomaly.document_id}</p>
@@ -391,7 +395,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-3 px-4">
                         <span className="text-red-600 font-medium">
-                          {tAdmin('hours_stuck', { hours: anomaly.hours_stuck })}
+                          {tAdmin('hours_stuck', { hours: anomaly.stuck_duration_hours })}
                         </span>
                       </td>
                       <td className="py-3 px-4">

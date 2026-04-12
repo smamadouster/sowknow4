@@ -62,6 +62,17 @@ interface PipelineStats {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+const STAGE_LABELS: Record<string, string> = {
+  uploaded: 'Uploaded',
+  ocr: 'OCR',
+  chunked: 'Chunking',
+  embedded: 'Embedding',
+  indexed: 'Indexing',
+  articles: 'Articles',
+  entities: 'Entities',
+  enriched: 'Enriched',
+};
+
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
   const tAdmin = useTranslations('admin');
@@ -374,18 +385,7 @@ export default function DashboardPage() {
         {pipelineStats ? (
           <div className="space-y-3">
             {(() => {
-              const STAGE_LABELS: Record<string, string> = {
-                uploaded: 'Uploaded',
-                ocr: 'OCR',
-                chunked: 'Chunking',
-                embedded: 'Embedding',
-                indexed: 'Indexing',
-                articles: 'Articles',
-                entities: 'Entities',
-                enriched: 'Enriched',
-              };
               const maxPending = Math.max(...pipelineStats.stages.map(s => s.pending), 1);
-
               return pipelineStats.stages.map((stage) => {
                 const isBottleneck = stage.stage === pipelineStats.bottleneck_stage;
                 const barWidth = Math.round((stage.pending / maxPending) * 100);
@@ -451,7 +451,7 @@ export default function DashboardPage() {
             {tAdmin('anomalies_title')}
           </h2>
           <button
-            onClick={() => { loadSlowStats(); loadLiveStats(); }}
+            onClick={() => { loadSlowStats().catch(console.error); loadLiveStats().catch(console.error); }}
             className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

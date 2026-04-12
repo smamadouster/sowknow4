@@ -45,13 +45,28 @@ interface Anomaly {
   last_task_type: string | null;
 }
 
+interface PipelineStageData {
+  stage: string;
+  pending: number;
+  running: number;
+  failed: number;
+  throughput_per_hour: number;
+  throughput_per_10min: number;
+}
+
+interface PipelineStats {
+  stages: PipelineStageData[];
+  total_active: number;
+  bottleneck_stage: string | null;
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
   const tAdmin = useTranslations('admin');
   const tCommon = useTranslations('common');
-  
+
   const [stats, setStats] = useState<Stats | null>(null);
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
@@ -59,58 +74,59 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [pipelineStats, setPipelineStats] = useState<PipelineStats | null>(null);
+  const [lastPipelineUpdate, setLastPipelineUpdate] = useState<Date>(new Date());
 
-  useEffect(() => {
-    loadDashboard();
-    const interval = setInterval(loadDashboard, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadDashboard = async () => {
-    setLoading(true);
-    setError(null);
-
+  const loadSlowStats = async () => {
     try {
-      const [statsRes, queueRes, anomaliesRes] = await Promise.all([
+      const [statsRes, anomaliesRes, historyRes] = await Promise.all([
         fetch(`${API_BASE}/v1/admin/stats`, { credentials: 'include' }),
-        fetch(`${API_BASE}/v1/admin/queue-stats`, { credentials: 'include' }),
         fetch(`${API_BASE}/v1/admin/anomalies`, { credentials: 'include' }),
+        fetch(`${API_BASE}/v1/admin/uploads-history`, { credentials: 'include' }),
       ]);
 
-      if (statsRes.ok) {
-        const data = await statsRes.json();
-        setStats(data);
-        // Build a 7-day uploads trend from the today figure
-        const today = data.uploads_today ?? 0;
-        const history: UploadsPoint[] = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - (6 - i));
-          const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-          // Vary earlier days slightly around today's count
-          const variance = Math.round((Math.random() - 0.5) * Math.max(2, today * 0.4));
-          return { day: label, count: Math.max(0, (i === 6 ? today : today + variance)) };
-        });
-        setUploadsHistory(history);
-      }
-      
-      if (queueRes.ok) {
-        const data = await queueRes.json();
-        setQueueStats(data);
-      }
-      
+      if (statsRes.ok) setStats(await statsRes.json());
       if (anomaliesRes.ok) {
         const data = await anomaliesRes.json();
         setAnomalies(data.anomalies || data || []);
       }
-      
+      if (historyRes.ok) {
+        const data = await historyRes.json();
+        setUploadsHistory(data.history || []);
+      }
       setLastUpdated(new Date());
     } catch (e) {
-      console.error('Error loading dashboard:', e);
+      console.error('Error loading slow stats:', e);
       setError(tCommon('error'));
-    } finally {
-      setLoading(false);
     }
   };
+
+  const loadLiveStats = async () => {
+    try {
+      const [queueRes, pipelineRes] = await Promise.all([
+        fetch(`${API_BASE}/v1/admin/queue-stats`, { credentials: 'include' }),
+        fetch(`${API_BASE}/v1/admin/pipeline-stats`, { credentials: 'include' }),
+      ]);
+
+      if (queueRes.ok) setQueueStats(await queueRes.json());
+      if (pipelineRes.ok) setPipelineStats(await pipelineRes.json());
+      setLastPipelineUpdate(new Date());
+    } catch (e) {
+      console.error('Error loading live stats:', e);
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([loadSlowStats(), loadLiveStats()]).finally(() => setLoading(false));
+
+    const slowInterval = setInterval(loadSlowStats, 60_000);
+    const liveInterval = setInterval(loadLiveStats, 10_000);
+    return () => {
+      clearInterval(slowInterval);
+      clearInterval(liveInterval);
+    };
+  }, []);
 
   if (loading && !stats) {
     return (
@@ -210,7 +226,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('processing_queue')}</h2>
         <div className="w-full bg-gray-200 rounded-full h-4 mb-4">
-          <div 
+          <div
             className="bg-blue-600 h-4 rounded-full transition-all"
             style={{
               width: queueStats && (queueStats.pending_tasks + queueStats.in_progress_tasks + queueStats.failed_tasks) > 0
@@ -339,6 +355,95 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Pipeline Funnel */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">Pipeline</h2>
+            {pipelineStats && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {pipelineStats.total_active} active
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-gray-400">
+            Updated {lastPipelineUpdate.toLocaleTimeString()}
+          </div>
+        </div>
+
+        {pipelineStats ? (
+          <div className="space-y-3">
+            {(() => {
+              const STAGE_LABELS: Record<string, string> = {
+                uploaded: 'Uploaded',
+                ocr: 'OCR',
+                chunked: 'Chunking',
+                embedded: 'Embedding',
+                indexed: 'Indexing',
+                articles: 'Articles',
+                entities: 'Entities',
+                enriched: 'Enriched',
+              };
+              const maxPending = Math.max(...pipelineStats.stages.map(s => s.pending), 1);
+
+              return pipelineStats.stages.map((stage) => {
+                const isBottleneck = stage.stage === pipelineStats.bottleneck_stage;
+                const barWidth = Math.round((stage.pending / maxPending) * 100);
+
+                return (
+                  <div
+                    key={stage.stage}
+                    className={`flex items-center gap-4 p-3 rounded-lg ${isBottleneck ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'}`}
+                  >
+                    {/* Stage label */}
+                    <div className="w-24 shrink-0">
+                      <span className="text-sm font-medium text-gray-700">
+                        {STAGE_LABELS[stage.stage] ?? stage.stage}
+                      </span>
+                      {isBottleneck && (
+                        <span className="ml-1 text-xs text-amber-600">⚡</span>
+                      )}
+                    </div>
+
+                    {/* Pending bar */}
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-2 rounded-full transition-all ${isBottleneck ? 'bg-amber-400' : 'bg-blue-400'}`}
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+
+                    {/* Counts */}
+                    <div className="flex items-center gap-3 text-xs shrink-0">
+                      <span className="text-yellow-700 font-medium w-16 text-right">
+                        {stage.pending.toLocaleString()} pending
+                      </span>
+                      <span className="text-blue-700 w-16 text-right">
+                        {stage.running} running
+                      </span>
+                      {stage.failed > 0 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                          {stage.failed} failed
+                        </span>
+                      )}
+                      <span className="text-gray-400 w-28 text-right">
+                        {stage.throughput_per_hour}/hr · {stage.throughput_per_10min}/10min
+                      </span>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Anomalies Report */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
@@ -346,7 +451,7 @@ export default function DashboardPage() {
             {tAdmin('anomalies_title')}
           </h2>
           <button
-            onClick={loadDashboard}
+            onClick={() => { loadSlowStats(); loadLiveStats(); }}
             className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

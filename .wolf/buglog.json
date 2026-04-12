@@ -2301,6 +2301,30 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-04-12T17:52:24.398Z"
+    },
+    {
+      "id": "bug-143",
+      "timestamp": "2026-04-12T18:30:00.000Z",
+      "error_message": "Voice dictation: BonjourBonjourBonjour... hallucination instead of real transcript",
+      "file": "backend/app/services/whisper_service.py",
+      "root_cause": "whisper.cpp binary (/usr/local/bin/whisper-cpp) was never installed in backend container. Every transcription request failed with FileNotFoundError → FastAPI returned 500 → frontend silently fell back to Web Speech API → iOS Safari produced hallucinated French output.",
+      "fix": "Replaced whisper.cpp CLI subprocess approach with faster-whisper Python library. Added ffmpeg to Dockerfile.minimal. Added faster-whisper to requirements-minimal.txt. Added sowknow-model-cache volume and HF_HOME=/models env to backend service in docker-compose.yml. Model (small, int8, CPU) is lazy-loaded on first request.",
+      "tags": ["dictation", "whisper", "voice", "transcription", "ios", "safari", "hallucination"],
+      "related_bugs": ["bug-voice-safari-mimetype"],
+      "occurrences": 1,
+      "last_seen": "2026-04-12T18:30:00.000Z"
+    },
+    {
+      "id": "bug-144",
+      "timestamp": "2026-04-12T18:36:00.000Z",
+      "error_message": "Backend crash-loop: asyncpg InvalidPasswordError after container recreation",
+      "file": "docker-compose.yml",
+      "root_cause": "Credential rotation (2026-03-28) updated .env DATABASE_PASSWORD but never ran ALTER USER in postgres. Celery workers kept old password from pre-rotation container config. Recreating backend with docker compose up triggered it to use the new .env password, which didn't match the actual DB password.",
+      "fix": "Ran ALTER USER sowknow WITH PASSWORD '<new_pw>' in postgres to match .env. Restarted all celery workers so they also pick up the new .env credentials.",
+      "tags": ["postgres", "credentials", "credential-rotation", "auth"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-12T18:36:00.000Z"
     }
   ]
 }

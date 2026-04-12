@@ -35,6 +35,7 @@ numpy<2  # Pin to 1.x — NumPy 2.x ABI breaks sentence-transformers in Celery f
 sentence-transformers==2.2.2
 torch==2.1.0
 transformers==4.35.0
+faster-whisper  # CPU-optimized speech-to-text (no torch dep, uses CTranslate2)
 
 # AI API Clients
 google-generativeai>=0.8.0

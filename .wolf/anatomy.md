@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-12T17:52:24.388Z
-> Files: 864 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-12T18:37:26.297Z
+> Files: 865 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -40,7 +40,7 @@
 
 - `MEMORY.md` — SOWKNOW Project Memory Index (~1048 tok)
 - `project_april_8_outage.md` (~474 tok)
-- `project_dictation_fr_to_en_fix.md` (~615 tok)
+- `project_dictation_fr_to_en_fix.md` — 2026-04-10 fix (original) (~608 tok)
 - `project_guardian_nftables_heal_broken.md` (~770 tok)
 - `reference_production_deployment.md` (~874 tok)
 
@@ -123,7 +123,7 @@
 - `docker-compose.prebuilt.yml` — Docker Compose: 4 services (~466 tok)
 - `docker-compose.production.yml` — SOWKNOW Production Docker Compose (~3121 tok)
 - `docker-compose.simple.yml` — Docker Compose: 4 services (~729 tok)
-- `docker-compose.yml` — Docker Compose services (~5499 tok)
+- `docker-compose.yml` — Docker Compose services (~5523 tok)
 - `embed_chunked_docs.py` — run, db_query, redis_cmd, queue_depth + 6 more (~2009 tok)
 - `fix-iptables.sh` — Fix for Docker DOCKER-INTERNAL chain blocking inter-container traffic (~218 tok)
 - `health-check.sh` (~402 tok)
@@ -229,18 +229,18 @@
 - `alembic.ini` — A generic, single database configuration. (~858 tok)
 - `benchmark_results.json` (~535 tok)
 - `celerybeat-schedule` (~4369 tok)
-- `Dockerfile` — Docker container definition (~176 tok)
+- `Dockerfile` — Docker container definition (~179 tok)
 - `Dockerfile.dev` (~87 tok)
-- `Dockerfile.minimal` (~278 tok)
+- `Dockerfile.minimal` (~281 tok)
 - `Dockerfile.telegram` (~148 tok)
 - `Dockerfile.worker` (~740 tok)
 - `entrypoint.sh` (~50 tok)
 - `pipeline_status_check.py` — Quick pipeline status check — run inside backend container. (~232 tok)
 - `pyproject.toml` — Python project configuration (~1556 tok)
 - `pytest.ini` (~302 tok)
-- `requirements-minimal.txt` — SOWKNOW Backend Requirements - Minimal Working Version (~274 tok)
+- `requirements-minimal.txt` — SOWKNOW Backend Requirements - Minimal Working Version (~292 tok)
 - `requirements-telegram.txt` (~26 tok)
-- `requirements.txt` — Python dependencies (~353 tok)
+- `requirements.txt` — Python dependencies (~373 tok)
 - `run_security_tests.sh` — SOWKNOW Security Test Runner (~661 tok)
 - `test_security_config.py` — Tests: production_security, development_configuration, nginx_configuration (~2318 tok)
 - `validate_security.py` — parse_allowed_origins, parse_allowed_hosts, test_security_config, check_env_files (~2673 tok)
@@ -1018,6 +1018,10 @@
 ## backend/app/models/
 
 - `pipeline.py` — Pipeline stage tracking model for guaranteed document processing. (~993 tok)
+
+## backend/app/services/
+
+- `whisper_service.py` — WhisperService: transcribe (~738 tok)
 
 ## backend/app/tasks/
 

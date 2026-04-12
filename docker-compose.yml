@@ -179,12 +179,15 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS},backend
       - COOKIE_DOMAIN=${COOKIE_DOMAIN}
+      - HF_HOME=/models
+      - WHISPER_MODEL_SIZE=small
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
       - sowknow-audio-data:/data/audio
       - sowknow-backups:/app/backups
       - ./backend:/app
+      - sowknow-model-cache:/models
     ports:
       - "8001:8000"
     depends_on:

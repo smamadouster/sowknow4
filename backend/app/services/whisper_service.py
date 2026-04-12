@@ -1,74 +1,67 @@
 import asyncio
 import logging
 import os
-import re
 
 logger = logging.getLogger(__name__)
 
-WHISPER_BINARY = os.getenv("WHISPER_BINARY", "/usr/local/bin/whisper-cpp")
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "/models/ggml-small.bin")
-WHISPER_TIMEOUT = int(os.getenv("WHISPER_TIMEOUT", "30"))
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small")
+# Shares the model cache volume already mounted at /models in worker containers
+WHISPER_MODEL_DIR = os.getenv("HF_HOME", "/models")
 
 
 class WhisperService:
-    """Wraps whisper.cpp CLI for server-side audio transcription."""
+    """Audio transcription using faster-whisper (CTranslate2, CPU int8).
 
-    def _build_command(self, audio_path: str, language: str = "auto") -> list[str]:
-        return [
-            WHISPER_BINARY,
-            "-m", WHISPER_MODEL,
-            "-f", audio_path,
-            "--language", language,
-            "--no-timestamps",
-            "--print-progress", "false",
-        ]
+    Model is lazy-loaded on first request and cached for the process lifetime.
+    First call downloads ~460 MB from HuggingFace to WHISPER_MODEL_DIR.
+    """
 
-    def _parse_output(self, raw: str) -> dict:
-        """Parse whisper.cpp output into clean transcript."""
-        if not raw.strip():
-            return {"transcript": ""}
-        # Remove timestamp lines like [00:00:00.000 --> 00:00:03.000]
-        lines = raw.strip().split("\n")
-        cleaned = []
-        for line in lines:
-            # Strip timestamp prefix if present
-            text = re.sub(r"\[[\d:.]+\s*-->\s*[\d:.]+\]\s*", "", line).strip()
-            if text:
-                cleaned.append(text)
-        return {"transcript": " ".join(cleaned)}
+    _model = None
+
+    def _get_model(self):
+        if self._model is None:
+            from faster_whisper import WhisperModel
+            logger.info("Loading whisper model: %s (this may take a moment on first run)", WHISPER_MODEL_SIZE)
+            self._model = WhisperModel(
+                WHISPER_MODEL_SIZE,
+                device="cpu",
+                compute_type="int8",
+                download_root=WHISPER_MODEL_DIR,
+            )
+            logger.info("Whisper model ready")
+        return self._model
+
+    def _transcribe_sync(self, audio_path: str, language: str = "auto") -> dict:
+        model = self._get_model()
+        lang = None if language == "auto" else language
+        segments, info = model.transcribe(
+            audio_path,
+            language=lang,
+            condition_on_previous_text=False,  # prevents "BonjourBonjour..." hallucination
+            vad_filter=True,                   # skip silence, reduces hallucination on short clips
+            vad_parameters={"min_silence_duration_ms": 300},
+        )
+        transcript = " ".join(seg.text.strip() for seg in segments).strip()
+        logger.info(
+            "Transcription complete: %d chars (detected lang=%s prob=%.2f)",
+            len(transcript), info.language, info.language_probability,
+        )
+        return {"transcript": transcript}
 
     async def transcribe(self, audio_path: str, language: str = "auto") -> dict:
-        """Transcribe an audio file using whisper.cpp.
+        """Transcribe an audio file. Runs sync work in a thread-pool executor.
 
         Args:
-            audio_path: path to audio file
-            language: ISO 639-1 code (e.g. 'fr', 'en') or 'auto' for detection
+            audio_path: path to audio file (webm, mp4/m4a, ogg, wav)
+            language: ISO 639-1 code ('fr', 'en') or 'auto' for detection
         Returns: {"transcript": str}
-        Raises: RuntimeError on whisper failure.
+        Raises: RuntimeError on failure.
         """
-        cmd = self._build_command(audio_path, language=language)
-        logger.info(f"Whisper transcription: {audio_path} (lang={language})")
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        loop = asyncio.get_event_loop()
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=WHISPER_TIMEOUT
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise RuntimeError(f"Whisper transcription timed out after {WHISPER_TIMEOUT}s")
-
-        if proc.returncode != 0:
-            error_msg = stderr.decode().strip()
-            raise RuntimeError(f"Whisper failed (exit {proc.returncode}): {error_msg}")
-
-        result = self._parse_output(stdout.decode())
-        logger.info(f"Transcription complete: {len(result['transcript'])} chars")
-        return result
+            return await loop.run_in_executor(None, self._transcribe_sync, audio_path, language)
+        except Exception as e:
+            raise RuntimeError(f"Whisper transcription failed: {e}") from e
 
 
 whisper_service = WhisperService()

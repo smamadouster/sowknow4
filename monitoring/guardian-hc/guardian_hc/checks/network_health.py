@@ -79,32 +79,61 @@ class NetworkHealthChecker:
         return results
 
     async def _find_stale_nftables_bridges(self) -> list[dict]:
-        """Compare bridge IDs in nftables rules vs actually existing bridges."""
-        stale = []
+        """Compare bridge IDs in nftables raw PREROUTING vs live Docker networks.
+
+        Uses Docker socket API for authoritative live bridge list — NOT ip link,
+        which retains dead bridge interfaces in the kernel for seconds after removal.
+
+        Returns a list of dicts:
+            {"bridge": "br-XXXX", "handles": [3, 7, 10], "rule_count": 3}
+        On error returns [{"bridge": "error", "error": "..."}].
+        """
         try:
-            # Get all bridge IDs referenced in nftables (runs on host)
-            rc, nft_output, err = await _host_exec("nft", "list", "ruleset", timeout=10)
+            # 1. Live bridge IDs from Docker socket (first 12 hex chars of network ID)
+            transport = httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://docker", timeout=5
+            ) as client:
+                resp = await client.get("/networks")
+                live_bridges = {
+                    net["Id"][:12]
+                    for net in resp.json()
+                    if net.get("Driver") == "bridge"
+                }
+
+            # 2. Parse raw PREROUTING chain on host with handle numbers
+            rc, nft_out, _ = await _host_exec(
+                "nft", "-a", "list", "chain", "ip", "raw", "PREROUTING",
+                timeout=10,
+            )
             if rc != 0:
-                # nft not available or failed -- not an error worth healing
                 return []
 
-            nft_bridges = set(re.findall(r'br-[a-f0-9]{12}', nft_output))
+            # 3. Build bridge → [handles] map
+            #    Line example:
+            #    ip daddr 1.2.3.4 iifname != "br-6d25c565a449" ... drop # handle 7
+            bridge_handles: dict[str, list[int]] = {}
+            for line in nft_out.splitlines():
+                m_bridge = re.search(r'iifname[^"]*"(br-[a-f0-9]{12})"', line)
+                m_handle = re.search(r'#\s+handle\s+(\d+)', line)
+                if m_bridge and m_handle:
+                    br = m_bridge.group(1)
+                    bridge_handles.setdefault(br, []).append(int(m_handle.group(1)))
 
-            # Get actually existing bridges (runs on host)
-            rc, ip_output, _ = await _host_exec("ip", "link", "show", "type", "bridge", timeout=5)
-            if rc != 0:
-                return []
-
-            real_bridges = set(re.findall(r'br-[a-f0-9]{12}', ip_output))
-
-            for dead_br in nft_bridges - real_bridges:
-                count = nft_output.count(dead_br)
-                stale.append({"bridge": dead_br, "rule_count": count})
+            # 4. Stale = referenced in rules but absent from live Docker networks
+            stale = []
+            for br, handles in bridge_handles.items():
+                br_id = br.replace("br-", "")
+                if br_id not in live_bridges:
+                    stale.append({
+                        "bridge": br,
+                        "handles": handles,
+                        "rule_count": len(handles),
+                    })
+            return stale
 
         except Exception as e:
-            stale.append({"bridge": "error", "error": str(e)[:200]})
-
-        return stale
+            return [{"bridge": "error", "error": str(e)[:200]}]
 
     async def _tcp_probe(self, container: str, host: str, port: int) -> dict:
         """Test TCP connectivity from one container to another via Docker API exec."""

@@ -113,6 +113,7 @@ export default function BookmarksPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
+    fetchBookmarks();
   };
 
   // Shared create form content (used in both MobileSheet and desktop modal)
@@ -192,7 +193,7 @@ export default function BookmarksPage() {
         {/* Delete button: hidden on mobile (replaced by swipe-to-delete) */}
         <button
           onClick={() => handleDelete(bookmark.id)}
-          className="hidden md:flex text-text-muted hover:text-red-400 transition-colors shrink-0 mt-0.5"
+          className="hidden md:inline-flex text-text-muted hover:text-red-400 transition-colors shrink-0 mt-0.5"
           aria-label={tCommon('delete')}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

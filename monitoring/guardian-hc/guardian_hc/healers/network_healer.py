@@ -33,9 +33,6 @@ async def _host_exec(*cmd: str, timeout: int = 30) -> tuple[int, str, str]:
 class NetworkHealer:
     def __init__(self, config: dict = None):
         self.config = config or {}
-        self.compose_file = self.config.get(
-            "compose_file", "/var/docker/sowknow4/docker-compose.yml"
-        )
 
     async def heal(self, stale_bridges: list[dict] = None) -> dict:
         """Surgically delete stale nftables handles to restore inter-container networking.
@@ -101,6 +98,7 @@ class NetworkHealer:
         # Step 3: Fallback — flush entire chain + restart Docker
         # Used when surgical deletion wasn't sufficient (e.g. nft version quirk).
         logger.warning("network_healer.fallback_flush", reason="probe still failing after handle deletion")
+        rc2 = 1  # tracks docker restart success in fallback
         rc, _, err = await _host_exec(
             "nft", "flush", "chain", "ip", "raw", "PREROUTING",
             timeout=10,
@@ -114,7 +112,7 @@ class NetworkHealer:
             if rc2 == 0:
                 actions.append("fallback: Docker daemon restarted")
 
-        healed = bool(deleted)  # partial success if we deleted at least something
+        healed = bool(deleted) or (rc == 0 and rc2 == 0)
         logger.info("network_healer.complete", healed=healed, actions=actions)
         return {"healed": healed, "actions": actions}
 

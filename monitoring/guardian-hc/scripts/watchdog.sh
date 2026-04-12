@@ -219,7 +219,78 @@ Try: systemctl status docker"
     fi
 }
 
-# -- Check 6: Log rotation --
+# -- Check 6: Stale nftables handles from dead Docker bridges --
+check_nftables_stale_rules() {
+    # nft must be available (package: nftables)
+    command -v nft > /dev/null 2>&1 || return
+
+    # Get live Docker bridge IDs (first 12 hex chars of network ID)
+    local live_bridges
+    live_bridges=$(docker network ls --no-trunc --format '{{.ID}}' 2>/dev/null | cut -c1-12)
+    [ -z "$live_bridges" ] && return
+
+    # Read raw PREROUTING chain with handle numbers
+    local nft_output
+    nft_output=$(nft -a list chain ip raw PREROUTING 2>/dev/null)
+    [ -z "$nft_output" ] && return
+
+    # Find handles whose iifname bridge is absent from live Docker networks
+    # Line format: ... iifname != "br-XXXXXXXXXXXX" ... # handle N
+    local stale_handles=()
+    while IFS= read -r line; do
+        local bridge handle
+        bridge=$(echo "$line" | grep -oP '"br-[a-f0-9]{12}"' | tr -d '"')
+        handle=$(echo "$line" | grep -oP '#\s+handle\s+\K[0-9]+')
+        [ -z "$bridge" ] || [ -z "$handle" ] && continue
+        local br_id="${bridge#br-}"
+        echo "$live_bridges" | grep -qF "$br_id" && continue   # bridge is live
+        stale_handles+=("${handle}:${bridge}")
+    done <<< "$nft_output"
+
+    [ ${#stale_handles[@]} -eq 0 ] && return
+
+    log "nftables: ${#stale_handles[@]} stale handle(s) found: ${stale_handles[*]}"
+
+    # TCP probe gate: only heal if connectivity is actually broken.
+    # Avoids false-positive heals during clean Docker network teardown.
+    local probe_result
+    probe_result=$(docker exec sowknow4-backend python3 -c \
+        "import socket; s=socket.socket(); s.settimeout(3); s.connect(('redis',6379)); print('ok')" \
+        2>/dev/null)
+    if [ "$probe_result" = "ok" ]; then
+        log "nftables: stale handles present but probes pass — skipping heal (network teardown?)"
+        return
+    fi
+
+    # Surgical deletion
+    local healed_count=0
+    local failed_handles=()
+    for entry in "${stale_handles[@]}"; do
+        local h="${entry%%:*}"
+        local br="${entry##*:}"
+        if nft delete rule ip raw PREROUTING handle "$h" 2>/dev/null; then
+            healed_count=$((healed_count + 1))
+            log "nftables: deleted stale handle $h (bridge $br)"
+        else
+            failed_handles+=("$h")
+            log "nftables: failed to delete handle $h"
+        fi
+    done
+
+    # Verify
+    probe_result=$(docker exec sowknow4-backend python3 -c \
+        "import socket; s=socket.socket(); s.settimeout(3); s.connect(('redis',6379)); print('ok')" \
+        2>/dev/null)
+
+    if [ "$probe_result" = "ok" ]; then
+        alert_healed "nftables stale handles healed: deleted $healed_count handle(s) from br-$(echo "${stale_handles[0]##*br-}" | cut -c1-12)... Connectivity restored."
+    else
+        local failed_str="${failed_handles[*]:-none}"
+        alert "nftables heal FAILED. Deleted $healed_count handle(s), failed: $failed_str. Backend→redis probe still broken. Manual fix: sudo nft -a list chain ip raw PREROUTING — then sudo nft delete rule ip raw PREROUTING handle N for each stale handle."
+    fi
+}
+
+# -- Check 7: Log rotation --
 rotate_log() {
     if [ -f "$LOG_FILE" ]; then
         local size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
@@ -239,6 +310,7 @@ main() {
     fi
 
     check_containers
+    check_nftables_stale_rules
     check_api
     check_worker
     check_disk

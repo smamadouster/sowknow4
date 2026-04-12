@@ -608,7 +608,7 @@ class GuardianHC:
                         summary="Docker network broken - nftables stale rules",
                         details=f"Stale bridges: {stale_summary}. Failed probes: {probe_summary}. Heal failed: {heal.get('error', 'unknown')}",
                         heal_attempted=True, heal_success=False,
-                        heal_action="nftables flush + docker restart",
+                        heal_action="nftables surgical handle deletion (fallback: flush + docker restart)",
                         restart_attempts=0, restart_suppressed=False,
                     ))
 

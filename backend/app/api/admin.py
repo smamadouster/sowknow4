@@ -32,6 +32,8 @@ from app.schemas.admin import (
     PipelineStatsResponse,
     QueueStats,
     SystemStats,
+    UploadsHistoryPoint,
+    UploadsHistoryResponse,
     UserCreateByAdmin,
     UserListResponse,
     UserManagementResponse,
@@ -752,6 +754,32 @@ async def get_pipeline_stats(
         total_active=total_active,
         bottleneck_stage=bottleneck,
     )
+
+
+@router.get("/uploads-history", response_model=UploadsHistoryResponse)
+async def get_uploads_history(
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
+) -> UploadsHistoryResponse:
+    """7-day real uploads history grouped by day (Admin only)."""
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+
+    result = await db.execute(
+        select(
+            func.date(Document.created_at).label("day"),
+            func.count().label("count"),
+        )
+        .where(Document.created_at >= seven_days_ago)
+        .group_by(func.date(Document.created_at))
+        .order_by(func.date(Document.created_at))
+    )
+    rows = result.all()
+
+    history = [
+        UploadsHistoryPoint(day=str(row.day), count=row.count)
+        for row in rows
+    ]
+    return UploadsHistoryResponse(history=history)
 
 
 @router.get("/dashboard", response_model=DashboardResponse)

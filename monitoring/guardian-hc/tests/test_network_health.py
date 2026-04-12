@@ -64,9 +64,6 @@ def _make_proc(output: str, rc: int = 0):
     return proc
 
 
-def _make_nft_proc(output: str, rc: int = 0):
-    """Return a mock process for asyncio.create_subprocess_exec."""
-    return _make_proc(output, rc)
 
 
 # ---------------------------------------------------------------------------
@@ -92,13 +89,12 @@ class TestFindStaleBridges:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.get = AsyncMock(return_value=mock_response)
 
-        nft_proc = _make_nft_proc(NFT_OUTPUT_WITH_STALE)
-        ip_proc = _make_proc("4: br-4c301de03a1f: <BROADCAST> mtu 1500")
+        nft_proc = _make_proc(NFT_OUTPUT_WITH_STALE)
 
         with patch("guardian_hc.checks.network_health.httpx.AsyncClient",
                    return_value=mock_client), \
              patch("asyncio.create_subprocess_exec",
-                   side_effect=[nft_proc, ip_proc]):
+                   side_effect=[nft_proc]):
             result = await checker._find_stale_nftables_bridges()
 
         assert len(result) == 1
@@ -122,13 +118,12 @@ class TestFindStaleBridges:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.get = AsyncMock(return_value=mock_response)
 
-        nft_proc = _make_nft_proc(NFT_OUTPUT_CLEAN)
-        ip_proc = _make_proc("4: br-4c301de03a1f: <BROADCAST> mtu 1500")
+        nft_proc = _make_proc(NFT_OUTPUT_CLEAN)
 
         with patch("guardian_hc.checks.network_health.httpx.AsyncClient",
                    return_value=mock_client), \
              patch("asyncio.create_subprocess_exec",
-                   side_effect=[nft_proc, ip_proc]):
+                   side_effect=[nft_proc]):
             result = await checker._find_stale_nftables_bridges()
 
         assert result == []
@@ -147,7 +142,7 @@ class TestFindStaleBridges:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.get = AsyncMock(return_value=mock_response)
 
-        nft_proc = _make_nft_proc("", rc=1)
+        nft_proc = _make_proc("", rc=1)
 
         with patch("guardian_hc.checks.network_health.httpx.AsyncClient",
                    return_value=mock_client), \
@@ -198,13 +193,12 @@ table ip raw {
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.get = AsyncMock(return_value=mock_response)
 
-        nft_proc = _make_nft_proc(nft_two_stale)
-        ip_proc = _make_proc("4: br-4c301de03a1f: <BROADCAST> mtu 1500")
+        nft_proc = _make_proc(nft_two_stale)
 
         with patch("guardian_hc.checks.network_health.httpx.AsyncClient",
                    return_value=mock_client), \
              patch("asyncio.create_subprocess_exec",
-                   side_effect=[nft_proc, ip_proc]):
+                   side_effect=[nft_proc]):
             result = await checker._find_stale_nftables_bridges()
 
         assert len(result) == 2

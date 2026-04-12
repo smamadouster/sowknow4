@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-12T18:37:26.297Z
-> Files: 865 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-12T19:59:16.689Z
+> Files: 883 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -217,6 +217,16 @@
 - `4979677117012901152` (~23 tok)
 - `8214761925694487808` (~234 tok)
 - `9536525009889484707` (~112 tok)
+
+## .superpowers/brainstorm/1833855-1776019685/content/
+
+- `pain-points.html` (~706 tok)
+
+## .superpowers/brainstorm/1837747-1776019768/content/
+
+- `bookmarks-mobile-design.html` — Bookmarks Mobile Design (~3956 tok)
+- `pain-points.html` (~704 tok)
+- `waiting-1.html` (~38 tok)
 
 ## audit_reports/
 
@@ -1013,11 +1023,16 @@
 
 ## backend/app/api/
 
+- `admin.py` — API: 7 endpoints (~10421 tok)
 - `voice.py` — API: 2 endpoints (~1289 tok)
 
 ## backend/app/models/
 
 - `pipeline.py` — Pipeline stage tracking model for guaranteed document processing. (~993 tok)
+
+## backend/app/schemas/
+
+- `admin.py` — SystemStats: validate_role_change, validate_password, validate_password (~1472 tok)
 
 ## backend/app/services/
 
@@ -1027,13 +1042,43 @@
 
 - `pipeline_tasks.py` — _EmbedContinue: update_stage (~5163 tok)
 
+## backend/tests/unit/
+
+- `test_admin_pipeline_stats.py` — Unit tests for /admin/pipeline-stats assembler logic. (~1117 tok)
+- `test_whisper_service.py` — TestWhisperService: test_transcribe_sync_returns_transcript, test_transcribe_sync_auto_language_pass (~906 tok)
+
 ## docs/superpowers/plans/
 
+- `2026-04-12-bookmarks-mobile-overflow-fix.md` — Mobile Overflow Fix + Bookmarks Mobile Adaptation — Implementation Plan (~5592 tok)
+- `2026-04-12-dashboard-live-pipeline.md` — Dashboard Live Pipeline Monitoring Implementation Plan (~6201 tok)
 - `2026-04-12-nftables-permanent-fix.md` — nftables Permanent Fix Implementation Plan (~8783 tok)
 
 ## docs/superpowers/specs/
 
+- `2026-04-12-bookmarks-mobile-overflow-fix-design.md` — Mobile Overflow Fix + Bookmarks Mobile Adaptation (~967 tok)
+- `2026-04-12-dashboard-live-pipeline-design.md` — Dashboard Live Pipeline Monitoring — Design Spec (~1650 tok)
 - `2026-04-12-nftables-permanent-fix-design.md` — Design Spec: Permanent nftables Stale-Rules Auto-Heal (~2998 tok)
+
+## frontend/__tests__/
+
+- `bookmarks.test.tsx` — Minimal mocks required by the page (~692 tok)
+
+## frontend/app/
+
+- `globals.css` — Styles: 55 rules, 27 vars (~2814 tok)
+
+## frontend/app/[locale]/bookmarks/
+
+- `page.tsx` — dynamic — renders form (~3728 tok)
+- `utils.ts` — Exports parseDomain (~43 tok)
+
+## frontend/app/[locale]/dashboard/
+
+- `page.tsx` — API_BASE (~6352 tok)
+
+## frontend/app/[locale]/notes/
+
+- `page.tsx` — dynamic — renders form (~5457 tok)
 
 ## frontend/hooks/
 

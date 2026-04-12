@@ -3,6 +3,12 @@
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
 
+| 2026-04-12T21:20 | Task 4: Created unit tests for pipeline-stats assembler logic | backend/tests/unit/test_admin_pipeline_stats.py | 8/8 tests pass | ~1k tokens |
+
+| 2026-04-12T21:15 | Task 3: Created frontend/__tests__/bookmarks.test.tsx with TDD mocks + parseDomain tests | frontend/__tests__/bookmarks.test.tsx | 6/6 tests pass (all pass, not in FAIL state yet) | ~750 tokens |
+
+| 2026-04-12T[TIME] | Add overflow-x-hidden to Notes page outer wrapper | frontend/app/[locale]/notes/page.tsx | DONE (commit e82d276) | ~500 tokens |
+
 | 13:42 | fixed stale heal_action label in guardian core.py; NFT_OUTPUT_EMPTY already removed | guardian-hc/core.py | 281 tests pass, commit 1fa40bf | ~2k |
 
 | 17:52 | Deployed nftables permanent fix — watchdog + guardian detector/healer | watchdog.sh, network_health.py, network_healer.py | deployed | ~2k |
@@ -1134,3 +1140,88 @@
 | 18:26 | Edited backend/requirements-minimal.txt | 2→5 lines | ~40 |
 | 18:37 | Created ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_dictation_fr_to_en_fix.md | — | ~634 |
 | 18:37 | Session end: 7 writes across 7 files (Dockerfile, requirements.txt, whisper_service.py, docker-compose.yml, Dockerfile.minimal) | 9 reads | ~11805 tok |
+| 18:40 | Created backend/tests/unit/test_whisper_service.py | — | ~906 |
+| 18:44 | Session end: 8 writes across 8 files (Dockerfile, requirements.txt, whisper_service.py, docker-compose.yml, Dockerfile.minimal) | 11 reads | ~12711 tok |
+| 18:45 | Session end: 8 writes across 8 files (Dockerfile, requirements.txt, whisper_service.py, docker-compose.yml, Dockerfile.minimal) | 11 reads | ~12711 tok |
+
+## Session: 2026-04-12 18:45
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:48 | Created .superpowers/brainstorm/1833855-1776019685/content/pain-points.html | — | ~706 |
+| 18:48 | Session end: 1 writes across 1 files (pain-points.html) | 4 reads | ~757 tok |
+| 18:49 | Created .superpowers/brainstorm/1837747-1776019768/content/pain-points.html | — | ~704 |
+| 18:49 | Session end: 2 writes across 1 files (pain-points.html) | 4 reads | ~1511 tok |
+| 18:50 | Session end: 2 writes across 1 files (pain-points.html) | 4 reads | ~1511 tok |
+| 18:51 | Session end: 2 writes across 1 files (pain-points.html) | 4 reads | ~1511 tok |
+| 18:54 | Session end: 2 writes across 1 files (pain-points.html) | 11 reads | ~1511 tok |
+| 18:56 | Session end: 2 writes across 1 files (pain-points.html) | 12 reads | ~1511 tok |
+| 18:57 | Created .superpowers/brainstorm/1837747-1776019768/content/bookmarks-mobile-design.html | — | ~3956 |
+| 18:58 | Session end: 3 writes across 2 files (pain-points.html, bookmarks-mobile-design.html) | 12 reads | ~5749 tok |
+| 18:59 | Session end: 3 writes across 2 files (pain-points.html, bookmarks-mobile-design.html) | 12 reads | ~5749 tok |
+| 18:59 | Created docs/superpowers/specs/2026-04-12-bookmarks-mobile-overflow-fix-design.md | — | ~1009 |
+| 18:59 | Edited docs/superpowers/specs/2026-04-12-bookmarks-mobile-overflow-fix-design.md | "MobileBottomSheet" → "MobileSheet" | ~31 |
+| 18:59 | Edited docs/superpowers/specs/2026-04-12-bookmarks-mobile-overflow-fix-design.md | inline fix | ~46 |
+| 18:59 | Edited docs/superpowers/specs/2026-04-12-bookmarks-mobile-overflow-fix-design.md | "MobileBottomSheet" → "MobileSheet" | ~14 |
+| 18:59 | Created .superpowers/brainstorm/1837747-1776019768/content/waiting-1.html | — | ~38 |
+| 19:00 | Session end: 8 writes across 4 files (pain-points.html, bookmarks-mobile-design.html, 2026-04-12-bookmarks-mobile-overflow-fix-design.md, waiting-1.html) | 12 reads | ~6968 tok |
+| 19:01 | Created docs/superpowers/plans/2026-04-12-bookmarks-mobile-overflow-fix.md | — | ~5964 |
+| 19:02 | Session end: 9 writes across 5 files (pain-points.html, bookmarks-mobile-design.html, 2026-04-12-bookmarks-mobile-overflow-fix-design.md, waiting-1.html, 2026-04-12-bookmarks-mobile-overflow-fix.md) | 13 reads | ~13358 tok |
+| 19:02 | Edited frontend/app/globals.css | 6→6 lines | ~38 |
+| 2026-04-12 | Fixed global overflow-x: changed clip to hidden for iOS Safari scroll containment | frontend/app/globals.css | committed d8c3fec | ~100 |
+| 19:03 | Edited frontend/app/[locale]/notes/page.tsx | 2→2 lines | ~22 |
+| 19:05 | Created frontend/__tests__/bookmarks.test.tsx | — | ~752 |
+| 19:08 | Edited frontend/app/[locale]/bookmarks/page.tsx | 2→2 lines | ~34 |
+| 19:08 | Edited frontend/app/[locale]/bookmarks/page.tsx | inline fix | ~13 |
+| 19:10 | Edited frontend/app/[locale]/bookmarks/page.tsx | inline fix | ~15 |
+| 19:10 | Created frontend/app/[locale]/bookmarks/utils.ts | — | ~43 |
+| 19:10 | Edited frontend/app/[locale]/bookmarks/page.tsx | added 1 import(s) | ~136 |
+| 19:11 | Edited frontend/app/[locale]/bookmarks/page.tsx | modified BookmarksPage() | ~44 |
+| 19:12 | Edited frontend/app/[locale]/bookmarks/page.tsx | inline fix | ~11 |
+| 19:12 | Edited frontend/app/[locale]/bookmarks/page.tsx | added 1 import(s) | ~18 |
+| 19:12 | Edited frontend/app/[locale]/bookmarks/page.tsx | 3→1 lines | ~11 |
+| 19:13 | Edited frontend/app/[locale]/bookmarks/page.tsx | inline fix | ~11 |
+| 19:13 | Edited frontend/app/[locale]/bookmarks/page.tsx | added 1 import(s) | ~11 |
+| 19:15 | Edited frontend/app/[locale]/bookmarks/page.tsx | 5→4 lines | ~27 |
+| 19:15 | Edited frontend/app/[locale]/bookmarks/page.tsx | 3→3 lines | ~48 |
+| 19:16 | Edited frontend/__tests__/bookmarks.test.tsx | added 1 import(s) | ~62 |
+| 19:16 | Edited frontend/__tests__/bookmarks.test.tsx | — | ~0 |
+| 19:20 | Edited frontend/app/[locale]/bookmarks/page.tsx | 4→5 lines | ~33 |
+| 19:20 | Edited frontend/app/[locale]/bookmarks/page.tsx | "hidden md:flex text-text-" → "hidden md:inline-flex tex" | ~32 |
+| 19:30 | Mobile overflow fix + Bookmarks mobile adaptation deployed | globals.css, notes/page.tsx, bookmarks/page.tsx, bookmarks/utils.ts | 5 commits, deployed to prod | ~45k |
+| 19:23 | Session end: 29 writes across 9 files (pain-points.html, bookmarks-mobile-design.html, 2026-04-12-bookmarks-mobile-overflow-fix-design.md, waiting-1.html, 2026-04-12-bookmarks-mobile-overflow-fix.md) | 24 reads | ~33037 tok |
+
+## Session: 2026-04-12 19:25
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 19:41 | Created docs/superpowers/specs/2026-04-12-dashboard-live-pipeline-design.md | — | ~1734 |
+| 19:41 | Edited docs/superpowers/specs/2026-04-12-dashboard-live-pipeline-design.md | 2→4 lines | ~64 |
+| 19:41 | Session end: 2 writes across 1 files (2026-04-12-dashboard-live-pipeline-design.md) | 3 reads | ~1926 tok |
+| 19:44 | Created docs/superpowers/plans/2026-04-12-dashboard-live-pipeline.md | — | ~6590 |
+| 19:45 | Edited docs/superpowers/plans/2026-04-12-dashboard-live-pipeline.md | 10→10 lines | ~91 |
+| 19:45 | Edited docs/superpowers/plans/2026-04-12-dashboard-live-pipeline.md | expanded (+6 lines) | ~185 |
+| 19:45 | Session end: 5 writes across 2 files (2026-04-12-dashboard-live-pipeline-design.md, 2026-04-12-dashboard-live-pipeline.md) | 6 reads | ~10276 tok |
+| 19:46 | Edited backend/app/schemas/admin.py | modified validate_password() | ~440 |
+| 19:47 | Edited backend/app/api/admin.py | added 1 import(s) | ~35 |
+| 19:47 | Edited backend/app/api/admin.py | 15→17 lines | ~106 |
+| 19:48 | Edited backend/app/api/admin.py | modified get_pipeline_stats() | ~988 |
+| 19:50 | Edited backend/app/api/admin.py | 17→19 lines | ~121 |
+| 19:50 | Edited backend/app/api/admin.py | modified get_uploads_history() | ~300 |
+| 19:51 | Created backend/tests/unit/test_admin_pipeline_stats.py | — | ~1117 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | 32→36 lines | ~217 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | inline fix | ~29 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | inline fix | ~48 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | 3→3 lines | ~81 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | 5→5 lines | ~95 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | 9→9 lines | ~149 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | 5→5 lines | ~102 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | inline fix | ~30 |
+| 19:53 | Edited frontend/app/[locale]/dashboard/page.tsx | inline fix | ~26 |
+| 19:56 | Created frontend/app/[locale]/dashboard/page.tsx | — | ~6380 |
+| 19:56 | Edited frontend/app/[locale]/dashboard/page.tsx | inline fix | ~56 |
+| 19:56 | Added pipeline funnel panel + dual polling intervals (10s live/60s slow) + real uploads chart to dashboard | frontend/app/[locale]/dashboard/page.tsx | committed 584ca37 | ~2500 |
+| 19:58 | Edited frontend/app/[locale]/dashboard/page.tsx | expanded (+11 lines) | ~84 |
+| 19:59 | Edited frontend/app/[locale]/dashboard/page.tsx | reduced (-11 lines) | ~716 |
+| 19:59 | Edited frontend/app/[locale]/dashboard/page.tsx | inline fix | ~31 |
+| 20:00 | Session end: 26 writes across 5 files (2026-04-12-dashboard-live-pipeline-design.md, 2026-04-12-dashboard-live-pipeline.md, admin.py, test_admin_pipeline_stats.py, page.tsx) | 7 reads | ~40817 tok |

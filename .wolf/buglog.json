@@ -2,6 +2,28 @@
   "version": 1,
   "bugs": [
     {
+      "id": "bug-166",
+      "timestamp": "2026-04-13T15:45:00.000Z",
+      "error_message": "Cannot play any voice file (Telegram OGG voice notes) - recurring ~20 times",
+      "file": "backend/app/api/voice.py, backend/app/tasks/voice_tasks.py, backend/app/api/documents.py, frontend/app/[locale]/journal/page.tsx",
+      "root_cause": "THREE independent bugs: (1) python-magic detects Telegram OGG Opus as application/ogg not audio/ogg - frontend isAudio() and stream endpoint rejected it. (2) Confidential files are Fernet-encrypted as .ogg.encrypted on disk - FileResponse served raw ciphertext. (3) voice_tasks.py passed encrypted path to whisper.cpp - transcription silently failed.",
+      "fix": "1) get_mime_type: normalize application/ogg to audio/ogg at upload. 2) voice.py: _stream_audio_file() decrypts via storage_service.get_file(decrypt=True), returns StreamingResponse. 3) voice_tasks.py: decrypt to tmp file before whisper, delete in finally. 4) isAudio() frontend updated. 5) 23 regression tests added.",
+      "tags": [
+        "voice",
+        "audio",
+        "ogg",
+        "mime-type",
+        "telegram",
+        "playback",
+        "encryption",
+        "fernet",
+        "whisper"
+      ],
+      "related_bugs": [],
+      "occurrences": 20,
+      "last_seen": "2026-04-13T15:45:00.000Z"
+    },
+    {
       "id": "bug-001",
       "timestamp": "2026-04-05T18:10:10.441Z",
       "error_message": "Incorrect value in code",
@@ -22,8 +44,8 @@
       "timestamp": "2026-04-05T18:10:17.338Z",
       "error_message": "CSS fix: font-family",
       "file": "frontend/app/globals.css",
-      "root_cause": "font-family: 'Source Sans 3', system-ui, -apple-system, sans-serif → 'Inter', 'Source Sans 3', system-ui, -apple-system, sans-serif",
-      "fix": "Changed font-family: 'Source Sans 3', system-ui, -apple-system, sans-serif → 'Inter', 'Source Sans 3', system-ui, -apple-system, sans-serif",
+      "root_cause": "font-family: 'Source Sans 3', system-ui, -apple-system, sans-serif \u2192 'Inter', 'Source Sans 3', system-ui, -apple-system, sans-serif",
+      "fix": "Changed font-family: 'Source Sans 3', system-ui, -apple-system, sans-serif \u2192 'Inter', 'Source Sans 3', system-ui, -apple-system, sans-serif",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -39,7 +61,7 @@
       "error_message": "Significant refactor of ",
       "file": "frontend/app/globals.css",
       "root_cause": "9 lines replaced/restructured",
-      "fix": "Rewrote 15→17 lines (9 removed)",
+      "fix": "Rewrote 15\u219217 lines (9 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -70,8 +92,8 @@
       "timestamp": "2026-04-05T18:11:38.542Z",
       "error_message": "CSS fix: sm, hover",
       "file": "frontend/app/[locale]/page.tsx",
-      "root_cause": "sm: text-base font-display\">{tNav(service.titleKey) → text-base font-display tracking-tight\">{tNav(service.titleKey); hover: -translate-y-1` → -translate-y-1.5 group-hover:bg-gradient-to-br`",
-      "fix": "Changed sm: text-base font-display\">{tNav(service.titleKey) → text-base font-display tracking-tight\">{tNav(service.titleKey); hover: -translate-y-1` → -translate-y-1.5 group-hover:bg-gradient-to-br`",
+      "root_cause": "sm: text-base font-display\">{tNav(service.titleKey) \u2192 text-base font-display tracking-tight\">{tNav(service.titleKey); hover: -translate-y-1` \u2192 -translate-y-1.5 group-hover:bg-gradient-to-br`",
+      "fix": "Changed sm: text-base font-display\">{tNav(service.titleKey) \u2192 text-base font-display tracking-tight\">{tNav(service.titleKey); hover: -translate-y-1` \u2192 -translate-y-1.5 group-hover:bg-gradient-to-br`",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -87,7 +109,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/alembic/versions/021_add_voice_audio_support.py",
       "root_cause": "4 lines replaced/restructured",
-      "fix": "Rewrote 9→9 lines (4 removed)",
+      "fix": "Rewrote 9\u21929 lines (4 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -118,7 +140,7 @@
       "timestamp": "2026-04-05T19:04:45.920Z",
       "error_message": "Missing await",
       "file": "backend/app/api/notes.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -134,7 +156,7 @@
       "timestamp": "2026-04-05T19:06:50.861Z",
       "error_message": "Missing await",
       "file": "backend/app/api/voice.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -151,7 +173,7 @@
       "error_message": "Wrong reference: prometheus should be audio",
       "file": "docker-compose.yml",
       "root_cause": "Used \"prometheus\" instead of \"audio\"",
-      "fix": "Changed prometheus → audio",
+      "fix": "Changed prometheus \u2192 audio",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -166,7 +188,7 @@
       "timestamp": "2026-04-05T19:10:40.310Z",
       "error_message": "Missing await",
       "file": "backend/telegram_bot/bot.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call | Also: async def handle_voice_message(; update: Update, context: ContextTypes.DEFAULT_TYPE",
       "tags": [
         "auto-detected",
@@ -182,7 +204,7 @@
       "timestamp": "2026-04-05T19:17:57.593Z",
       "error_message": "Missing error handling in unknown",
       "file": "frontend/app/[locale]/journal/page.tsx",
-      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "root_cause": "Code path had no error handling \u2014 exceptions would propagate uncaught",
       "fix": "Added try/catch block",
       "tags": [
         "auto-detected",
@@ -230,8 +252,8 @@
       "timestamp": "2026-04-05T19:19:38.815Z",
       "error_message": "CSS fix: dark",
       "file": "frontend/app/[locale]/notes/page.tsx",
-      "root_cause": "dark: border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm\" → text-amber-400\">",
-      "fix": "Changed dark: border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm\" → text-amber-400\">",
+      "root_cause": "dark: border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm\" \u2192 text-amber-400\">",
+      "fix": "Changed dark: border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm\" \u2192 text-amber-400\">",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -279,7 +301,7 @@
       "error_message": "Wrong reference: uuid should be audio_uuid",
       "file": "backend/app/api/voice.py",
       "root_cause": "Used \"uuid\" instead of \"audio_uuid\"",
-      "fix": "Changed uuid → audio_uuid",
+      "fix": "Changed uuid \u2192 audio_uuid",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -295,7 +317,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/tests/unit/test_pipeline_stages.py",
       "root_cause": "11 lines replaced/restructured",
-      "fix": "Rewrote 31→23 lines (11 removed)",
+      "fix": "Rewrote 31\u219223 lines (11 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -327,7 +349,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/app/celery_app.py",
       "root_cause": "12 lines replaced/restructured",
-      "fix": "Rewrote 15→5 lines (12 removed)",
+      "fix": "Rewrote 15\u21925 lines (12 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -359,7 +381,7 @@
       "error_message": "Significant refactor of ",
       "file": "docker-compose.yml",
       "root_cause": "6 lines replaced/restructured",
-      "fix": "Rewrote 51→100 lines (6 removed)",
+      "fix": "Rewrote 51\u2192100 lines (6 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -391,7 +413,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/app/tasks/pipeline_orchestrator.py",
       "root_cause": "11 lines replaced/restructured",
-      "fix": "Rewrote 71→106 lines (11 removed)",
+      "fix": "Rewrote 71\u2192106 lines (11 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -406,7 +428,7 @@
       "timestamp": "2026-04-06T09:29:52.170Z",
       "error_message": "Missing await",
       "file": "backend/app/api/documents.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -423,7 +445,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/alembic/versions/022_add_pipeline_stages_table.py",
       "root_cause": "21 lines replaced/restructured",
-      "fix": "Rewrote 22→18 lines (21 removed)",
+      "fix": "Rewrote 22\u219218 lines (21 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -438,7 +460,7 @@
       "timestamp": "2026-04-06T10:20:32.904Z",
       "error_message": "Missing error handling in pipeline_sweeper",
       "file": "backend/app/tasks/pipeline_sweeper.py",
-      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "root_cause": "Code path had no error handling \u2014 exceptions would propagate uncaught",
       "fix": "Added try/catch block",
       "tags": [
         "auto-detected",
@@ -455,7 +477,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/app/tasks/pipeline_orchestrator.py",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 10→28 lines (3 removed)",
+      "fix": "Rewrote 10\u219228 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -470,7 +492,7 @@
       "timestamp": "2026-04-06T10:42:49.576Z",
       "error_message": "Missing error handling in unknown",
       "file": "../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/MEMORY.md",
-      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "root_cause": "Code path had no error handling \u2014 exceptions would propagate uncaught",
       "fix": "Added try/catch block",
       "tags": [
         "auto-detected",
@@ -486,7 +508,7 @@
       "timestamp": "2026-04-06T18:18:31.994Z",
       "error_message": "Missing await",
       "file": "backend/app/tasks/pipeline_tasks.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -503,7 +525,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/app/tasks/pipeline_tasks.py",
       "root_cause": "39 lines replaced/restructured",
-      "fix": "Rewrote 47→10 lines (39 removed)",
+      "fix": "Rewrote 47\u219210 lines (39 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -518,7 +540,7 @@
       "timestamp": "2026-04-06T18:21:24.239Z",
       "error_message": "Missing error handling in unknown",
       "file": "backend/app/tasks/pipeline_sweeper.py",
-      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "root_cause": "Code path had no error handling \u2014 exceptions would propagate uncaught",
       "fix": "Added try/catch block",
       "tags": [
         "auto-detected",
@@ -550,8 +572,8 @@
       "timestamp": "2026-04-06T19:41:26.474Z",
       "error_message": "CSS fix: max-width",
       "file": "frontend/app/globals.css",
-      "root_cause": "max-width: 90% → 95%",
-      "fix": "Changed max-width: 90% → 95%",
+      "root_cause": "max-width: 90% \u2192 95%",
+      "fix": "Changed max-width: 90% \u2192 95%",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -615,7 +637,7 @@
       "error_message": "Wrong reference: voice should be tags",
       "file": "backend/app/main.py",
       "root_cause": "Used \"voice\" instead of \"tags\"",
-      "fix": "Changed voice → tags",
+      "fix": "Changed voice \u2192 tags",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -631,7 +653,7 @@
       "error_message": "Significant refactor of ",
       "file": "frontend/components/Navigation.tsx",
       "root_cause": "40 lines replaced/restructured",
-      "fix": "Rewrote 62→19 lines (40 removed)",
+      "fix": "Rewrote 62\u219219 lines (40 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -646,8 +668,8 @@
       "timestamp": "2026-04-06T19:44:41.050Z",
       "error_message": "CSS fix: md",
       "file": "frontend/components/Navigation.tsx",
-      "root_cause": "md: hidden ${ → hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl pb-safe transition-transform duration-300 ${",
-      "fix": "Changed md: hidden ${ → hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl pb-safe transition-transform duration-300 ${",
+      "root_cause": "md: hidden ${ \u2192 hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl pb-safe transition-transform duration-300 ${",
+      "fix": "Changed md: hidden ${ \u2192 hidden fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-vault-950/95 backdrop-blur-xl pb-safe transition-transform duration-300 ${",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -695,7 +717,7 @@
       "error_message": "Wrong reference: true should be false",
       "file": "frontend/app/[locale]/chat/page.tsx",
       "root_cause": "Used \"true\" instead of \"false\"",
-      "fix": "Changed true → false",
+      "fix": "Changed true \u2192 false",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -726,8 +748,8 @@
       "timestamp": "2026-04-06T19:49:48.066Z",
       "error_message": "CSS fix: isDragActive",
       "file": "frontend/app/[locale]/documents/page.tsx",
-      "root_cause": "isDragActive: dropzoneIsDragActive → dropzoneIsDragActive, open: openDropzone",
-      "fix": "Changed isDragActive: dropzoneIsDragActive → dropzoneIsDragActive, open: openDropzone",
+      "root_cause": "isDragActive: dropzoneIsDragActive \u2192 dropzoneIsDragActive, open: openDropzone",
+      "fix": "Changed isDragActive: dropzoneIsDragActive \u2192 dropzoneIsDragActive, open: openDropzone",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -772,7 +794,7 @@
     {
       "id": "bug-pipeline-missing-columns",
       "timestamp": "2026-04-07T09:00:00.000Z",
-      "error_message": "column documents.audio_file_path does not exist — ProgrammingError crashes ALL pipeline tasks",
+      "error_message": "column documents.audio_file_path does not exist \u2014 ProgrammingError crashes ALL pipeline tasks",
       "file": "backend/alembic/versions/021_add_voice_audio_support.py",
       "root_cause": "Migration 021 partially applied: note_audio table created but 3 columns on documents table (audio_file_path, audio_duration_seconds, detected_language) were never added. Alembic version shows 022 as current, masking the gap. Every Document query by Celery crashed.",
       "fix": "ALTER TABLE sowknow.documents ADD COLUMN IF NOT EXISTS for all 3 columns. Reset 2346 failed pipeline_stages to pending.",
@@ -790,7 +812,7 @@
     {
       "id": "bug-entity-asyncio-loop",
       "timestamp": "2026-04-07T09:00:00.000Z",
-      "error_message": "got Future attached to a different loop — entity_stage fails with RuntimeError",
+      "error_message": "got Future attached to a different loop \u2014 entity_stage fails with RuntimeError",
       "file": "backend/app/tasks/pipeline_tasks.py",
       "root_cause": "_run_entities used AsyncSessionLocal inside asyncio.run(), but the module-level async engine's connection pool binds connections to the first event loop. Subsequent asyncio.run() calls create new loops, causing Future/loop mismatch.",
       "fix": "Rewrote _run_entities to use sync SessionLocal for DB ops. Added extract_entities_from_document_sync() to entity_extraction_service. Only the LLM HTTP call uses asyncio.run().",
@@ -808,7 +830,7 @@
     {
       "id": "bug-entity-invalid-relation-type",
       "timestamp": "2026-04-07T09:00:00.000Z",
-      "error_message": "'uses_vehicle' is not a valid RelationType — LLM returns relation types not in enum",
+      "error_message": "'uses_vehicle' is not a valid RelationType \u2014 LLM returns relation types not in enum",
       "file": "backend/app/services/entity_extraction_service.py",
       "root_cause": "RelationType enum has a fixed set of values, but the LLM generates arbitrary relation types. ValueError crashes entity extraction.",
       "fix": "Wrapped RelationType() in try/except, falling back to RelationType.RELATED_TO for unknown types.",
@@ -872,10 +894,10 @@
     {
       "id": "bug-voice-safari-mimetype",
       "timestamp": "2026-04-07T10:00:00.000Z",
-      "error_message": "Voice dictation not working on iPhone Safari — MediaRecorder fails with unsupported mimeType",
+      "error_message": "Voice dictation not working on iPhone Safari \u2014 MediaRecorder fails with unsupported mimeType",
       "file": "frontend/hooks/useVoiceRecorder.ts",
       "root_cause": "Hardcoded 'audio/webm;codecs=opus' mimeType not supported by Safari/iOS. Safari supports audio/mp4. Also hardcoded 'voice.webm' filename for transcription upload.",
-      "fix": "Added MediaRecorder.isTypeSupported() fallback chain: webm → mp4 → browser default. Dynamic blob type from recorder.mimeType. Dynamic file extension in FormData upload.",
+      "fix": "Added MediaRecorder.isTypeSupported() fallback chain: webm \u2192 mp4 \u2192 browser default. Dynamic blob type from recorder.mimeType. Dynamic file extension in FormData upload.",
       "tags": [
         "voice",
         "safari",
@@ -890,7 +912,7 @@
     {
       "id": "bug-tag-horizontal-overflow",
       "timestamp": "2026-04-07T10:00:00.000Z",
-      "error_message": "Tag input in notes causes horizontal page scroll on mobile — user must side-scroll to reach tags",
+      "error_message": "Tag input in notes causes horizontal page scroll on mobile \u2014 user must side-scroll to reach tags",
       "file": "frontend/components/TagAutocomplete.tsx",
       "root_cause": "TagAutocomplete chip container with overflow-x-auto expanded the page width because MobileSheet content area had no horizontal overflow constraint, and TagAutocomplete wrapper had no min-w-0 to respect flex container boundaries.",
       "fix": "Added overflow-x-hidden to MobileSheet content div, min-w-0 to TagAutocomplete wrapper, max-w-full to chip scroll container.",
@@ -911,7 +933,7 @@
       "error_message": "Wrong reference: options should be lang",
       "file": "frontend/hooks/useVoiceRecorder.ts",
       "root_cause": "Used \"options\" instead of \"lang\"",
-      "fix": "Changed options → lang",
+      "fix": "Changed options \u2192 lang",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -943,7 +965,7 @@
       "error_message": "Wrong reference: VoiceRecorderProps should be lang",
       "file": "frontend/components/VoiceRecorder.tsx",
       "root_cause": "Used \"VoiceRecorderProps\" instead of \"lang\"",
-      "fix": "Changed VoiceRecorderProps → lang",
+      "fix": "Changed VoiceRecorderProps \u2192 lang",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -958,8 +980,8 @@
       "timestamp": "2026-04-07T09:33:02.847Z",
       "error_message": "CSS fix: focus",
       "file": "frontend/app/[locale]/notes/page.tsx",
-      "root_cause": "focus: ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none\" → ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none ${",
-      "fix": "Changed focus: ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none\" → ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none ${",
+      "root_cause": "focus: ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none\" \u2192 ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none ${",
+      "fix": "Changed focus: ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none\" \u2192 ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none resize-none ${",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -974,8 +996,8 @@
       "timestamp": "2026-04-07T09:49:52.066Z",
       "error_message": "CSS fix: overflow-x",
       "file": "frontend/app/globals.css",
-      "root_cause": "overflow-x: hidden → clip",
-      "fix": "Changed overflow-x: hidden → clip",
+      "root_cause": "overflow-x: hidden \u2192 clip",
+      "fix": "Changed overflow-x: hidden \u2192 clip",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -1039,7 +1061,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian-hc.sowknow4.yml",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 7→21 lines (2 removed)",
+      "fix": "Rewrote 7\u219221 lines (2 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1087,7 +1109,7 @@
       "error_message": "Wrong reference: timezone should be timedelta",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
       "root_cause": "Used \"timezone\" instead of \"timedelta\"",
-      "fix": "Changed timezone → timedelta",
+      "fix": "Changed timezone \u2192 timedelta",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -1119,7 +1141,7 @@
       "error_message": "Wrong reference: openEditor should be setViewingNote",
       "file": "frontend/app/[locale]/notes/page.tsx",
       "root_cause": "Used \"openEditor\" instead of \"setViewingNote\"",
-      "fix": "Changed openEditor → setViewingNote",
+      "fix": "Changed openEditor \u2192 setViewingNote",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -1151,7 +1173,7 @@
       "error_message": "Significant refactor of ",
       "file": "backend/app/services/entity_extraction_service.py",
       "root_cause": "7 lines replaced/restructured",
-      "fix": "Rewrote 12→7 lines (7 removed) | Also: # Find entities; source_entity = None",
+      "fix": "Rewrote 12\u21927 lines (7 removed) | Also: # Find entities; source_entity = None",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1167,7 +1189,7 @@
       "error_message": "Significant refactor of ",
       "file": "frontend/app/[locale]/notes/page.tsx",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 8→11 lines (2 removed) | Also: <div className=\"space-y-4\">; {viewingNote.content ? (",
+      "fix": "Rewrote 8\u219211 lines (2 removed) | Also: <div className=\"space-y-4\">; {viewingNote.content ? (",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1198,7 +1220,7 @@
       "timestamp": "2026-04-09T09:31:54.641Z",
       "error_message": "Missing await",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1215,7 +1237,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
       "root_cause": "27 lines replaced/restructured",
-      "fix": "Rewrote 39→15 lines (27 removed)",
+      "fix": "Rewrote 39\u219215 lines (27 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1231,7 +1253,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 40→94 lines (2 removed)",
+      "fix": "Rewrote 40\u219294 lines (2 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1263,7 +1285,7 @@
       "error_message": "Wrong reference: service_started should be service_healthy",
       "file": "docker-compose.yml",
       "root_cause": "Used \"service_started\" instead of \"service_healthy\"",
-      "fix": "Changed service_started → service_healthy",
+      "fix": "Changed service_started \u2192 service_healthy",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -1279,7 +1301,7 @@
       "error_message": "Significant refactor of ",
       "file": "docker-compose.yml",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 6→6 lines (2 removed)",
+      "fix": "Rewrote 6\u21926 lines (2 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1295,7 +1317,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/checks/network_health.py",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 12→17 lines (3 removed)",
+      "fix": "Rewrote 12\u219217 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1327,7 +1349,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/checks/network_health.py",
       "root_cause": "12 lines replaced/restructured",
-      "fix": "Rewrote 20→39 lines (12 removed)",
+      "fix": "Rewrote 20\u219239 lines (12 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1342,7 +1364,7 @@
       "timestamp": "2026-04-09T10:59:23.916Z",
       "error_message": "Missing await",
       "file": "monitoring/guardian-hc/tests/test_correlator.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1358,7 +1380,7 @@
       "timestamp": "2026-04-09T10:59:53.700Z",
       "error_message": "Missing await",
       "file": "monitoring/guardian-hc/guardian_hc/correlator.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1375,7 +1397,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/correlator.py",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 11→100 lines (3 removed)",
+      "fix": "Rewrote 11\u2192100 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1391,7 +1413,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 5→12 lines (2 removed) | Also: await self.alert_manager.send(; f\"Container *{svc.name}* restarted for {reason} bu | Also: await self.alert_manager.send(; f\"Container *{svc.name}* failed {reason} and auto- | Also: await self.alert_manager.send(; f\"*{svc.name}* memory at {ms.get('mem_pct')}% but  | Also: await self.alert_manager.send(; f\"Celery queue depth CRITICAL: {cr.get('total_dept | Also: await self.alert_manager.send(; f\"*{svc.name}* is in a restart loop. Likely a CODE | Also: await self.alert_manager.send(; f\"VPS load critical: {detail} -- {vls['type']} thr",
+      "fix": "Rewrote 5\u219212 lines (2 removed) | Also: await self.alert_manager.send(; f\"Container *{svc.name}* restarted for {reason} bu | Also: await self.alert_manager.send(; f\"Container *{svc.name}* failed {reason} and auto- | Also: await self.alert_manager.send(; f\"*{svc.name}* memory at {ms.get('mem_pct')}% but  | Also: await self.alert_manager.send(; f\"Celery queue depth CRITICAL: {cr.get('total_dept | Also: await self.alert_manager.send(; f\"*{svc.name}* is in a restart loop. Likely a CODE | Also: await self.alert_manager.send(; f\"VPS load critical: {detail} -- {vls['type']} thr",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1406,7 +1428,7 @@
       "timestamp": "2026-04-09T11:08:04.273Z",
       "error_message": "Missing await",
       "file": "monitoring/guardian-hc/tests/test_correlator.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1472,7 +1494,7 @@
       "error_message": "Significant refactor of ",
       "file": "docs/superpowers/plans/2026-04-09-guardian-v2.md",
       "root_cause": "15 lines replaced/restructured",
-      "fix": "Rewrote 25→28 lines (15 removed)",
+      "fix": "Rewrote 25\u219228 lines (15 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1504,7 +1526,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/plugin.py",
       "root_cause": "5 lines replaced/restructured",
-      "fix": "Rewrote 7→3 lines (5 removed)",
+      "fix": "Rewrote 7\u21923 lines (5 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1536,7 +1558,7 @@
       "error_message": "Wrong reference: utcnow should be now",
       "file": "monitoring/guardian-hc/guardian_hc/db.py",
       "root_cause": "Used \"utcnow\" instead of \"now\"",
-      "fix": "Changed utcnow → now",
+      "fix": "Changed utcnow \u2192 now",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -1551,7 +1573,7 @@
       "timestamp": "2026-04-09T19:55:43.833Z",
       "error_message": "Missing await",
       "file": "backend/app/api/health.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1567,7 +1589,7 @@
       "timestamp": "2026-04-09T19:56:50.844Z",
       "error_message": "Missing await",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1584,7 +1606,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/tests/test_probes.py",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 3→3 lines (2 removed)",
+      "fix": "Rewrote 3\u21923 lines (2 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1615,7 +1637,7 @@
       "timestamp": "2026-04-09T20:07:51.224Z",
       "error_message": "Missing await",
       "file": "monitoring/guardian-hc/guardian_hc/daily_report.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1631,7 +1653,7 @@
       "timestamp": "2026-04-09T20:08:27.411Z",
       "error_message": "Missing await",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -1664,7 +1686,7 @@
       "error_message": "Wrong reference: agents should be summary",
       "file": "monitoring/guardian-hc/tests/test_integration.py",
       "root_cause": "Used \"agents\" instead of \"summary\"",
-      "fix": "Changed agents → summary",
+      "fix": "Changed agents \u2192 summary",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -1712,7 +1734,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/daily_report.py",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 5→5 lines (3 removed)",
+      "fix": "Rewrote 5\u21925 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1811,7 +1833,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/core.py",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 43→70 lines (3 removed)",
+      "fix": "Rewrote 43\u219270 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1843,7 +1865,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/checks/config_drift.py",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 6→12 lines (2 removed)",
+      "fix": "Rewrote 6\u219212 lines (2 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1859,7 +1881,7 @@
       "error_message": "Significant refactor of ",
       "file": "../../../../../var/docker/sowknow4/backend/app/services/whisper_service.py",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 8→11 lines (3 removed)",
+      "fix": "Rewrote 8\u219211 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1875,7 +1897,7 @@
       "error_message": "Wrong operator: && should be ===",
       "file": "../../../../../var/docker/sowknow4/frontend/hooks/useVoiceRecorder.ts",
       "root_cause": "Used \"&&\" instead of \"===\"",
-      "fix": "Changed operator && → ===",
+      "fix": "Changed operator && \u2192 ===",
       "tags": [
         "auto-detected",
         "operator-fix",
@@ -1923,7 +1945,7 @@
       "error_message": "Significant refactor of ",
       "file": "frontend/hooks/useVoiceRecorder.ts",
       "root_cause": "5 lines replaced/restructured",
-      "fix": "Rewrote 7→3 lines (5 removed)",
+      "fix": "Rewrote 7\u21923 lines (5 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1971,7 +1993,7 @@
       "error_message": "Significant refactor of ",
       "file": "../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian-hc.sowknow4.yml",
       "root_cause": "8 lines replaced/restructured",
-      "fix": "Rewrote 10→7 lines (8 removed) | Also: services: [postgres, redis, vault]; probes: [redis_deep, postgres_deep, vault_unseal]",
+      "fix": "Rewrote 10\u21927 lines (8 removed) | Also: services: [postgres, redis, vault]; probes: [redis_deep, postgres_deep, vault_unseal]",
       "tags": [
         "auto-detected",
         "refactor",
@@ -1987,7 +2009,7 @@
       "error_message": "Significant refactor of ",
       "file": "../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/probes.py",
       "root_cause": "2 lines replaced/restructured",
-      "fix": "Rewrote 11→16 lines (2 removed)",
+      "fix": "Rewrote 11\u219216 lines (2 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -2003,7 +2025,7 @@
       "error_message": "Significant refactor of ",
       "file": "../../../../../var/docker/sowknow4/docker-compose.yml",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 12→18 lines (3 removed)",
+      "fix": "Rewrote 12\u219218 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -2019,7 +2041,7 @@
       "error_message": "Significant refactor of ",
       "file": "../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/infrastructure.py",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 41→52 lines (3 removed)",
+      "fix": "Rewrote 41\u219252 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -2034,7 +2056,7 @@
       "timestamp": "2026-04-11T10:04:30.203Z",
       "error_message": "Missing error handling in def",
       "file": "../../../../../var/docker/sowknow4/monitoring/guardian-hc/guardian_hc/plugins/infrastructure.py",
-      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "root_cause": "Code path had no error handling \u2014 exceptions would propagate uncaught",
       "fix": "Added try/catch block",
       "tags": [
         "auto-detected",
@@ -2048,7 +2070,7 @@
     {
       "id": "bug-128",
       "timestamp": "2026-04-11T00:00:00.000Z",
-      "error_message": "celery-heavy OOM killed every ~25-50 tasks — RSS climbed to ~5.1GB, hit 5GB cgroup limit",
+      "error_message": "celery-heavy OOM killed every ~25-50 tasks \u2014 RSS climbed to ~5.1GB, hit 5GB cgroup limit",
       "file": "docker-compose.yml, backend/app/tasks/pipeline_tasks.py",
       "root_cause": "prefork pool with concurrency=1 performs fork() which duplicates the 1.3GB model in memory, pushing total RSS past 5GB cgroup limit. EMBED_CHUNK_CAP=64 + batch_size=32 allocated large PyTorch tensors. 132 docs permanently failed, 23 others failed with NUL byte error.",
       "fix": "1) Switched --pool=prefork to --pool=solo (no fork, model loaded once, ~3-3.5GB stable). 2) Reduced EMBED_CHUNK_CAP from 64 to 16 and inner batch_size from 32 to 16. 3) Increased EMBEDDED max_attempts from 3 to 5. 4) Added NUL byte strip (text.replace('\\x00','')) in _run_chunk before DB insert. Memory limit lowered from 5120M to 4096M.",
@@ -2128,7 +2150,7 @@
       "error_message": "Significant refactor of ",
       "file": "../ghostshell/docker-compose.yml",
       "root_cause": "4 lines replaced/restructured",
-      "fix": "Rewrote 5→10 lines (4 removed)",
+      "fix": "Rewrote 5\u219210 lines (4 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -2160,7 +2182,7 @@
       "error_message": "Wrong reference: UUID should be JSONB",
       "file": "../ghostshell/backend/alembic/versions/013_add_crm_core_tables.py",
       "root_cause": "Used \"UUID\" instead of \"JSONB\"",
-      "fix": "Changed UUID → JSONB",
+      "fix": "Changed UUID \u2192 JSONB",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -2175,7 +2197,7 @@
       "timestamp": "2026-04-11T19:52:26.259Z",
       "error_message": "Missing await",
       "file": "../ghostshell/backend/app/main.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call",
       "tags": [
         "auto-detected",
@@ -2205,10 +2227,10 @@
     {
       "id": "bug-137",
       "timestamp": "2026-04-12T17:00:00.000Z",
-      "error_message": "authentication not working — backend→redis TCP timeout, backend health 503, intra-container networking broken",
+      "error_message": "authentication not working \u2014 backend\u2192redis TCP timeout, backend health 503, intra-container networking broken",
       "file": "nftables: ip raw PREROUTING",
       "root_cause": "Docker 29.x stale nftables raw PREROUTING DROP rules from dead bridge br-6d25c565a449 (and br-566bf590ed5b). Rules reference dead bridge ID so all intra-container traffic on br-4c301de03a1f (sowknow-net) matches the DROP condition. Handles 3-14 were dropping: backend (17k), redis (23k), celery-collections (15k), frontend (2.7k) packets.",
-      "fix": "sudo nft delete rule ip raw PREROUTING handle N for handles 3-14. No Docker restart needed. Backend→Redis and Backend→Postgres both confirmed connected immediately after.",
+      "fix": "sudo nft delete rule ip raw PREROUTING handle N for handles 3-14. No Docker restart needed. Backend\u2192Redis and Backend\u2192Postgres both confirmed connected immediately after.",
       "tags": [
         "nftables",
         "docker-networking",
@@ -2244,7 +2266,7 @@
       "error_message": "Significant refactor of ",
       "file": "monitoring/guardian-hc/guardian_hc/checks/network_health.py",
       "root_cause": "12 lines replaced/restructured",
-      "fix": "Rewrote 27→56 lines (12 removed)",
+      "fix": "Rewrote 27\u219256 lines (12 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -2260,7 +2282,7 @@
       "error_message": "Wrong reference: _make_nft_proc should be _make_proc",
       "file": "monitoring/guardian-hc/tests/test_network_health.py",
       "root_cause": "Used \"_make_nft_proc\" instead of \"_make_proc\"",
-      "fix": "Changed _make_nft_proc → _make_proc",
+      "fix": "Changed _make_nft_proc \u2192 _make_proc",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -2276,7 +2298,7 @@
       "error_message": "Significant refactor of ",
       "file": "../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_guardian_nftables_heal_broken.md",
       "root_cause": "3 lines replaced/restructured",
-      "fix": "Rewrote 4→8 lines (3 removed)",
+      "fix": "Rewrote 4\u21928 lines (3 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -2307,7 +2329,7 @@
       "timestamp": "2026-04-12T18:30:00.000Z",
       "error_message": "Voice dictation: BonjourBonjourBonjour... hallucination instead of real transcript",
       "file": "backend/app/services/whisper_service.py",
-      "root_cause": "whisper.cpp binary (/usr/local/bin/whisper-cpp) was never installed in backend container. Every transcription request failed with FileNotFoundError → FastAPI returned 500 → frontend silently fell back to Web Speech API → iOS Safari produced hallucinated French output.",
+      "root_cause": "whisper.cpp binary (/usr/local/bin/whisper-cpp) was never installed in backend container. Every transcription request failed with FileNotFoundError \u2192 FastAPI returned 500 \u2192 frontend silently fell back to Web Speech API \u2192 iOS Safari produced hallucinated French output.",
       "fix": "Replaced whisper.cpp CLI subprocess approach with faster-whisper Python library. Added ffmpeg to Dockerfile.minimal. Added faster-whisper to requirements-minimal.txt. Added sowknow-model-cache volume and HF_HOME=/models env to backend service in docker-compose.yml. Model (small, int8, CPU) is lazy-loaded on first request.",
       "tags": [
         "dictation",
@@ -2362,8 +2384,8 @@
       "timestamp": "2026-04-12T19:02:57.125Z",
       "error_message": "CSS fix: overflow-x",
       "file": "frontend/app/globals.css",
-      "root_cause": "overflow-x: clip → hidden",
-      "fix": "Changed overflow-x: clip → hidden",
+      "root_cause": "overflow-x: clip \u2192 hidden",
+      "fix": "Changed overflow-x: clip \u2192 hidden",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -2395,7 +2417,7 @@
       "error_message": "Significant refactor of ",
       "file": "frontend/app/[locale]/bookmarks/page.tsx",
       "root_cause": "5 lines replaced/restructured",
-      "fix": "Rewrote 16→8 lines (5 removed)",
+      "fix": "Rewrote 16\u21928 lines (5 removed)",
       "tags": [
         "auto-detected",
         "refactor",
@@ -2411,7 +2433,7 @@
       "error_message": "Wrong reference: import should be export",
       "file": "frontend/app/[locale]/bookmarks/page.tsx",
       "root_cause": "Used \"import\" instead of \"export\"",
-      "fix": "Changed import → export",
+      "fix": "Changed import \u2192 export",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -2442,7 +2464,7 @@
       "timestamp": "2026-04-12T19:48:14.330Z",
       "error_message": "Missing await",
       "file": "backend/app/api/admin.py",
-      "root_cause": "Async call without await — returned Promise instead of value",
+      "root_cause": "Async call without await \u2014 returned Promise instead of value",
       "fix": "Added await to async call | Also: @router.get(\"/uploads-history\", response_model=UploadsHistor; async def get_uploads_history(",
       "tags": [
         "auto-detected",
@@ -2458,8 +2480,8 @@
       "timestamp": "2026-04-12T19:53:21.883Z",
       "error_message": "CSS fix: error_message",
       "file": "frontend/app/[locale]/dashboard/page.tsx",
-      "root_cause": "error_message: string → string | null",
-      "fix": "Changed error_message: string → string | null",
+      "root_cause": "error_message: string \u2192 string | null",
+      "fix": "Changed error_message: string \u2192 string | null",
       "tags": [
         "auto-detected",
         "style-fix",
@@ -2475,7 +2497,7 @@
       "error_message": "Wrong reference: indexed_pages should be indexed_documents",
       "file": "frontend/app/[locale]/dashboard/page.tsx",
       "root_cause": "Used \"indexed_pages\" instead of \"indexed_documents\"",
-      "fix": "Changed indexed_pages → indexed_documents",
+      "fix": "Changed indexed_pages \u2192 indexed_documents",
       "tags": [
         "auto-detected",
         "wrong-reference",
@@ -2538,7 +2560,7 @@
       "timestamp": "2026-04-12T19:59:16.700Z",
       "error_message": "Missing error handling in unknown",
       "file": "frontend/app/[locale]/dashboard/page.tsx",
-      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "root_cause": "Code path had no error handling \u2014 exceptions would propagate uncaught",
       "fix": "Added try/catch block",
       "tags": [
         "auto-detected",
@@ -2548,6 +2570,192 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-04-12T19:59:16.700Z"
+    },
+    {
+      "id": "bug-158",
+      "timestamp": "2026-04-13T09:51:13.052Z",
+      "error_message": "Wrong reference: 256MB should be 512MB",
+      "file": "docker-compose.yml",
+      "root_cause": "Used \"256MB\" instead of \"512MB\"",
+      "fix": "Changed 256MB \u2192 512MB",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "yml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T09:51:13.052Z"
+    },
+    {
+      "id": "bug-159",
+      "timestamp": "2026-04-13T10:22:45.063Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../../var/docker/sowknow4/backend/app/services/llm_router.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 13\u219216 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T10:22:45.063Z"
+    },
+    {
+      "id": "bug-160",
+      "timestamp": "2026-04-13T10:23:08.343Z",
+      "error_message": "Wrong operator: != should be ==",
+      "file": "../../../../../var/docker/sowknow4/backend/app/services/llm_router.py",
+      "root_cause": "Used \"!=\" instead of \"==\"",
+      "fix": "Changed operator != \u2192 ==",
+      "tags": [
+        "auto-detected",
+        "operator-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T10:23:08.343Z"
+    },
+    {
+      "id": "bug-161",
+      "timestamp": "2026-04-13T11:04:25.355Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../../var/docker/sowknow4/docker-compose.yml",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 6\u21926 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "yml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T11:04:25.355Z"
+    },
+    {
+      "id": "bug-162",
+      "timestamp": "2026-04-13T00:00:00Z",
+      "error_message": "psycopg2 misparsed :transcript::text \u2014 treated ::text cast as part of the named parameter",
+      "file": "backend/app/tasks/voice_tasks.py",
+      "root_cause": "SQLAlchemy/psycopg2 named parameter syntax (:name) conflicts with PostgreSQL cast syntax (::type) when combined as :name::type",
+      "fix": "Replaced :transcript::text with CAST(:transcript AS text) and :doc_id::uuid with CAST(:doc_id AS uuid)",
+      "tags": [
+        "sqlalchemy",
+        "psycopg2",
+        "postgresql",
+        "cast",
+        "named-parameter",
+        "voice",
+        "whisper"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T00:00:00Z"
+    },
+    {
+      "id": "bug-163",
+      "timestamp": "2026-04-13T12:44:11.538Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../../var/docker/sowknow4/backend/app/api/voice.py",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 7\u219223 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T12:44:11.538Z"
+    },
+    {
+      "id": "bug-164",
+      "timestamp": "2026-04-13T00:00:00Z",
+      "error_message": "Telegram voice OGG journal entries fail to play back \u2014 audio stream returns 404",
+      "file": "backend/app/api/voice.py",
+      "root_cause": "stream endpoint checked doc.audio_file_path (only set for web-recorded notes); Telegram OGGs stored at doc.file_path which was never checked",
+      "fix": "Fall back to doc.file_path when audio_file_path is None and mime_type starts with audio/; also improved content-type detection by file extension",
+      "tags": [
+        "voice",
+        "journal",
+        "ogg",
+        "telegram",
+        "playback",
+        "audio",
+        "stream"
+      ],
+      "related_bugs": [
+        "bug-162"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T00:00:00Z"
+    },
+    {
+      "id": "bug-165",
+      "timestamp": "2026-04-13T15:06:42.415Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/voice.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 4\u21925 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T15:06:42.415Z"
+    },
+    {
+      "id": "bug-167",
+      "timestamp": "2026-04-13T15:12:06.899Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/voice.py",
+      "root_cause": "26 lines replaced/restructured",
+      "fix": "Rewrote 55\u219234 lines (26 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T15:12:06.899Z"
+    },
+    {
+      "id": "bug-168",
+      "timestamp": "2026-04-13T15:16:59.784Z",
+      "error_message": "Function not marked async",
+      "file": "backend/tests/unit/test_voice_stream.py",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T15:16:59.784Z"
+    },
+    {
+      "id": "bug-169",
+      "timestamp": "2026-04-13T15:18:14.708Z",
+      "error_message": "Incorrect value in code",
+      "file": "backend/tests/unit/test_voice_stream.py",
+      "root_cause": "Had \"any bytes \u2014 will be replaced by mock\"",
+      "fix": "Changed to \"any bytes - will be replaced by mock\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-13T15:18:14.708Z"
     }
   ]
 }

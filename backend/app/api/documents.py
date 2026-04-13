@@ -140,11 +140,20 @@ def get_file_extension(filename: str) -> str:
 
 
 def get_mime_type(filename: str, content: bytes = b"") -> str:
-    """Get MIME type using content-based detection (magic bytes) with filename fallback"""
+    """Get MIME type using content-based detection (magic bytes) with filename fallback.
+
+    OGG normalization: python-magic detects Telegram OGG Opus voice files as
+    'application/ogg' which is technically valid but browsers require 'audio/ogg'
+    to render an <audio> element.  We normalize it here so the DB always stores
+    the browser-compatible value.
+    """
     if content and _magic_available:
         try:
             detected = _magic.from_buffer(content, mime=True)
             if detected and detected != "application/octet-stream":
+                # Normalize application/ogg → audio/ogg for browser compatibility
+                if detected == "application/ogg":
+                    detected = "audio/ogg"
                 return detected
         except Exception:
             pass

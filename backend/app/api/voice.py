@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 import tempfile
@@ -5,7 +6,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +15,60 @@ from app.models.document import Document
 from app.models.note import Note
 from app.models.note_audio import NoteAudio
 from app.models.user import User
+from app.services.storage_service import storage_service
 from app.services.whisper_service import whisper_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
 
 ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/wav", "audio/mpeg", "audio/mp4"}
+
+# Maps audio file extension to browser-compatible MIME type.
+# .ogg.encrypted → strip .encrypted first, then look up .ogg
+_EXT_TO_MIME: dict[str, str] = {
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".flac": "audio/flac",
+    ".aac": "audio/aac",
+}
+
+
+def _stream_audio_file(file_path: str) -> FileResponse | StreamingResponse:
+    """Return a streaming response for an audio file, decrypting if needed.
+
+    Confidential files are stored Fernet-encrypted with a .encrypted suffix
+    (e.g. voice_123_abc.ogg.encrypted).  FileResponse would serve the raw
+    ciphertext which browsers cannot play.  This helper decrypts on the fly
+    and returns the plaintext audio bytes.
+    """
+    # Determine real extension (strip .encrypted suffix if present)
+    real_path = file_path[: -len(".encrypted")] if file_path.endswith(".encrypted") else file_path
+    ext = os.path.splitext(real_path)[1].lower()
+    content_type = _EXT_TO_MIME.get(ext, "audio/ogg")
+
+    if file_path.endswith(".encrypted") and storage_service.encryption_enabled:
+        # Decrypt in memory; never write plaintext back to disk
+        bucket = "confidential" if "/confidential/" in file_path else "public"
+        filename = os.path.basename(file_path)
+        file_bytes = storage_service.get_file(filename, bucket, decrypt=True)
+        if file_bytes is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to decrypt audio file",
+            )
+        return StreamingResponse(
+            io.BytesIO(file_bytes),
+            media_type=content_type,
+            headers={"Content-Length": str(len(file_bytes)), "Accept-Ranges": "none"},
+        )
+
+    return FileResponse(file_path, media_type=content_type)
+
+
 MAX_AUDIO_SIZE = 10 * 1024 * 1024  # 10MB
 
 
@@ -84,13 +133,20 @@ async def stream_audio(
     )
     doc = result.scalar_one_or_none()
 
-    if doc and doc.audio_file_path:
+    if doc:
         if doc.bucket.value == "confidential" and current_user.role.value not in ["admin", "superuser"]:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-        if not os.path.exists(doc.audio_file_path):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
-        content_type = "audio/webm" if doc.audio_file_path.endswith(".webm") else "audio/ogg"
-        return FileResponse(doc.audio_file_path, media_type=content_type)
+
+        # application/ogg is what python-magic returns for Telegram OGG Opus files.
+        # Both audio/* and application/ogg are valid audio MIME types.
+        _AUDIO_MIME_PREFIXES = ("audio/", "application/ogg")
+        is_audio_mime = doc.mime_type and any(doc.mime_type.startswith(p) for p in _AUDIO_MIME_PREFIXES)
+        # Web-recorded notes store path in audio_file_path; Telegram OGGs use file_path
+        audio_path = doc.audio_file_path or (doc.file_path if is_audio_mime else None)
+        if audio_path:
+            if not os.path.exists(audio_path):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
+            return _stream_audio_file(audio_path)
 
     # Check note audio
     result = await db.execute(
@@ -108,7 +164,6 @@ async def stream_audio(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         if not os.path.exists(note_audio.file_path):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
-        content_type = "audio/webm" if note_audio.file_path.endswith(".webm") else "audio/ogg"
-        return FileResponse(note_audio.file_path, media_type=content_type)
+        return _stream_audio_file(note_audio.file_path)
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")

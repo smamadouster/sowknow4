@@ -3,6 +3,8 @@
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
 
+| 15:06 | Fixed Telegram OGG voice playback (application/ogg mime bug) | backend/app/api/voice.py, frontend/app/[locale]/journal/page.tsx | Fixed: stream endpoint now accepts application/ogg, frontend isAudio() updated | ~800 |
+
 | 2026-04-12T21:20 | Task 4: Created unit tests for pipeline-stats assembler logic | backend/tests/unit/test_admin_pipeline_stats.py | 8/8 tests pass | ~1k tokens |
 
 | 2026-04-12T21:15 | Task 3: Created frontend/__tests__/bookmarks.test.tsx with TDD mocks + parseDomain tests | frontend/__tests__/bookmarks.test.tsx | 6/6 tests pass (all pass, not in FAIL state yet) | ~750 tokens |
@@ -1225,3 +1227,97 @@
 | 19:59 | Edited frontend/app/[locale]/dashboard/page.tsx | reduced (-11 lines) | ~716 |
 | 19:59 | Edited frontend/app/[locale]/dashboard/page.tsx | inline fix | ~31 |
 | 20:00 | Session end: 26 writes across 5 files (2026-04-12-dashboard-live-pipeline-design.md, 2026-04-12-dashboard-live-pipeline.md, admin.py, test_admin_pipeline_stats.py, page.tsx) | 7 reads | ~40817 tok |
+| 20:05 | Session end: 26 writes across 5 files (2026-04-12-dashboard-live-pipeline-design.md, 2026-04-12-dashboard-live-pipeline.md, admin.py, test_admin_pipeline_stats.py, page.tsx) | 8 reads | ~40817 tok |
+
+## Session: 2026-04-13 09:15
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-13 09:29
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-13 09:32
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-13 09:34
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:50 | Edited docker-compose.yml | inline fix | ~46 |
+| 09:51 | Edited docker-compose.yml | 22→22 lines | ~221 |
+| 09:51 | Edited docker-compose.yml | inline fix | ~29 |
+| 09:51 | Session end: 3 writes across 1 files (docker-compose.yml) | 1 reads | ~5833 tok |
+| 09:56 | Session end: 3 writes across 1 files (docker-compose.yml) | 1 reads | ~5833 tok |
+| 09:57 | Session end: 3 writes across 1 files (docker-compose.yml) | 1 reads | ~5833 tok |
+
+## Session: 2026-04-13 09:58
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-13 10:12
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:19 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | inline fix | ~46 |
+| 10:19 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 6→6 lines | ~26 |
+| 10:19 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | inline fix | ~32 |
+| 10:19 | Session end: 3 writes across 1 files (docker-compose.yml) | 2 reads | ~5658 tok |
+| 10:22 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | 13→16 lines | ~227 |
+| 10:22 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | 7→7 lines | ~104 |
+| 10:23 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | modified available() | ~904 |
+| 10:34 | Session end: 6 writes across 2 files (docker-compose.yml, llm_router.py) | 3 reads | ~6893 tok |
+| 11:04 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 10→10 lines | ~99 |
+| 11:04 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 6→6 lines | ~79 |
+| 11:04 | Session end: 8 writes across 2 files (docker-compose.yml, llm_router.py) | 3 reads | ~7071 tok |
+
+## Session: 2026-04-13 11:36
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:05 | Edited backend/Dockerfile.worker | 5→5 lines | ~62 |
+| 12:11 | Fixed whisper-cpp missing libggml.so.0 — added -DBUILD_SHARED_LIBS=OFF to cmake in Dockerfile.worker | backend/Dockerfile.worker | rebuilt image, whisper-cpp works | ~800 |
+| 12:12 | Session end: 1 writes across 1 files (Dockerfile.worker) | 1 reads | ~806 tok |
+| 12:20 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 9→9 lines | ~38 |
+| 12:21 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | inline fix | ~46 |
+| 12:21 | Session end: 3 writes across 2 files (Dockerfile.worker, docker-compose.yml) | 4 reads | ~11998 tok |
+
+## Session: 2026-04-13 12:36
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:37 | Edited ../../../../../var/docker/sowknow4/backend/app/tasks/voice_tasks.py | 3→3 lines | ~63 |
+| 12:37 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | inline fix | ~46 |
+| 12:37 | Edited backend/app/tasks/voice_tasks.py | 3→3 lines | ~63 |
+| 12:38 | Session end: 3 writes across 2 files (voice_tasks.py, docker-compose.yml) | 3 reads | ~5726 tok |
+| 12:44 | Edited ../../../../../var/docker/sowknow4/backend/app/api/voice.py | modified exists() | ~323 |
+| 12:44 | Edited ../../../../../var/docker/sowknow4/backend/app/api/voice.py | modified exists() | ~159 |
+| 12:44 | Edited ../../../../../var/docker/sowknow4/backend/telegram_bot/bot.py | 8→10 lines | ~113 |
+| 12:44 | Session end: 6 writes across 4 files (voice_tasks.py, docker-compose.yml, voice.py, bot.py) | 6 reads | ~7610 tok |
+
+## Session: 2026-04-13 15:04
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:06 | Edited backend/app/api/voice.py | 4→5 lines | ~119 |
+| 15:06 | Edited backend/app/api/voice.py | 3→5 lines | ~105 |
+| 15:06 | Edited frontend/app/[locale]/journal/page.tsx | 2→2 lines | ~31 |
+| 15:07 | Session end: 3 writes across 2 files (voice.py, page.tsx) | 5 reads | ~8546 tok |
+| 15:11 | Edited backend/app/api/voice.py | added 2 import(s) | ~182 |
+| 15:12 | Edited backend/app/api/voice.py | modified exists() | ~535 |
+| 15:12 | Edited backend/app/api/voice.py | modified _stream_audio_file() | ~589 |
+| 15:12 | Edited backend/app/tasks/voice_tasks.py | modified transcribe_voice_note() | ~845 |
+| 15:12 | Edited backend/app/api/documents.py | modified get_mime_type() | ~276 |
+| 15:14 | Created backend/tests/unit/test_voice_stream.py | — | ~7167 |
+| 15:16 | Edited backend/tests/unit/test_voice_stream.py | added 1 import(s) | ~73 |
+| 15:16 | Edited backend/tests/unit/test_voice_stream.py | modified test_encrypted_ogg_decrypted_and_streamed() | ~340 |
+| 15:17 | Edited backend/tests/unit/test_voice_stream.py | modified _call_task() | ~1431 |
+| 15:18 | Edited backend/tests/unit/test_voice_stream.py | modified test_confidential_encrypted_ogg_decrypted() | ~522 |
+| 15:18 | Edited backend/tests/unit/test_voice_stream.py | "any bytes — will be repla" → "any bytes - will be repla" | ~22 |
+| 15:18 | Edited backend/app/api/voice.py | 5→7 lines | ~38 |
+| 15:20 | Session end: 15 writes across 5 files (voice.py, page.tsx, voice_tasks.py, documents.py, test_voice_stream.py) | 10 reads | ~22275 tok |

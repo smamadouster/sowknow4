@@ -97,7 +97,7 @@ export default function JournalPage() {
     mimeType.startsWith('image/');
 
   const isAudio = (mimeType: string) =>
-    mimeType.startsWith('audio/');
+    mimeType.startsWith('audio/') || mimeType === 'application/ogg';
 
   const hasMore = page * PAGE_SIZE < total;
 

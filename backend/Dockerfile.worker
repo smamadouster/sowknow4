@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y \
     && cd /tmp \
     && git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git \
     && cd whisper.cpp \
-    && cmake -B build \
+    && cmake -B build -DBUILD_SHARED_LIBS=OFF \
     && cmake --build build --config Release -j$(nproc) \
     && cp build/bin/whisper-cli /usr/local/bin/whisper-cpp \
     && cd / && rm -rf /tmp/whisper.cpp \

@@ -28,6 +28,7 @@ This project uses OpenWolf for context management. Read and follow .wolf/OPENWOL
 - **Healthchecks**: Every service MUST have a working healthcheck. Celery: use `pgrep`. Backend: match actual endpoint path. Verify after ANY compose change.
 - **Images**: Always `python:3.11-slim`. Prune after builds. Multi-stage or slim bases only.
 - **Bind mount**: `./backend:/app` overrides image files at runtime. The code in `./backend/` is what runs.
+- **nftables**: Docker 29 leaves stale PREROUTING rules on network recreate/reboot — they silently drop all inter-container traffic. A systemd service flushes `ip raw PREROUTING` after every Docker start. NEVER remove this service. Manual fix: `sudo nft flush chain ip raw PREROUTING`.
 
 ## STACK
 - **Core**: FastAPI + Next.js 14 PWA + PostgreSQL/pgvector + Celery + Redis

@@ -160,6 +160,7 @@ from app.api import (
     search,
     smart_folders,
     tags,
+    voice,
 )
 
 app.include_router(auth.router, prefix="/api/v1")
@@ -175,6 +176,7 @@ app.include_router(chat.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/api/v1")
 app.include_router(pipeline_admin.router, prefix="/api/v1")
 app.include_router(tags.router, prefix="/api/v1")
+app.include_router(voice.router, prefix="/api/v1")
 
 
 @app.get("/")

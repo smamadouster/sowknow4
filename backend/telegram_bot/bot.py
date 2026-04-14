@@ -1235,7 +1235,9 @@ async def journal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
         "📓 <b>Mode Journal activé</b>\n\n"
-        "Envoyez vos textes, photos ou schémas.\n"
+        "✍️ Texte — écrivez directement\n"
+        "🎙️ Voix — envoyez un message vocal\n"
+        "📷 Photo / fichier — envoyez une image ou un doc\n\n"
         "Utilisez <code>#tags</code> pour étiqueter.\n\n"
         "Tapez /done pour quitter.",
         parse_mode="HTML",

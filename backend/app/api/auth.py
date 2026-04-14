@@ -79,6 +79,9 @@ SAMESITE_VALUE = "lax"
 # =============================================================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
+TELEGRAM_ADMIN_USER_IDS = set(
+    int(x.strip()) for x in os.getenv("TELEGRAM_ADMIN_USER_IDS", "").split(",") if x.strip()
+)
 
 
 async def verify_telegram_user(telegram_user_id: int, bot_token: str) -> bool:
@@ -882,12 +885,14 @@ async def telegram_auth(
         temp_password = secrets.token_urlsafe(32)
         hashed_password = get_password_hash(temp_password)
 
+        user_role = "admin" if auth_data.telegram_user_id in TELEGRAM_ADMIN_USER_IDS else "user"
+
         user = User(
             id=uuid.uuid4(),
             email=email,
             hashed_password=hashed_password,
             full_name=full_name,
-            role="user",
+            role=user_role,
             is_active=True,
         )
 
@@ -895,10 +900,17 @@ async def telegram_auth(
         await db.commit()
         await db.refresh(user)
 
-        logger.info(f"New Telegram user created: {email}")
+        logger.info(f"New Telegram user created: {email} (role={user_role})")
 
     elif not user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User account is disabled")
+
+    # Upgrade role if telegram_user_id is now in admin list
+    if auth_data.telegram_user_id in TELEGRAM_ADMIN_USER_IDS and user.role.value == "user":
+        user.role = "admin"
+        await db.commit()
+        await db.refresh(user)
+        logger.info(f"Upgraded Telegram user {email} to admin role")
 
     # Create JWT tokens
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)

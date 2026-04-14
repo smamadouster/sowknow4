@@ -8,9 +8,10 @@
 #
 # Memory Allocation:
 #   celery-light:    2048MB  (CPU/IO tasks, concurrency=2)
-#   celery-heavy:    5120MB  (prefork pool, concurrency=1, 1.3GB model, max-tasks-per-child=30)
+#   celery-heavy:     512MB  (pipeline.embed queue — I/O-bound HTTP to embed-server)
+#   embed-server:    2048MB  (embedding model, serves all callers via HTTP)
 #   postgres:        1536MB  (pgvector, 5 concurrent users)
-#   backend:          512MB  (FastAPI)
+#   backend:          768MB  (FastAPI)
 #   frontend:         512MB  (Next.js)
 #   redis:            256MB  (cache/queue)
 #   vault:            256MB  (secrets)
@@ -19,7 +20,7 @@
 #   nats:             128MB  (message broker)
 #   guardian-hc:      128MB  (self-healing monitor, monitoring profile)
 #   certbot:          128MB  (TLS renewal, tls profile)
-#   TOTAL:          ~8448MB  (plenty of headroom on 32GB VPS)
+#   TOTAL:          ~8576MB  (plenty of headroom on 32GB VPS)
 
 x-common-env: &common-env
   env_file:
@@ -181,6 +182,7 @@ services:
       - COOKIE_DOMAIN=${COOKIE_DOMAIN}
       - HF_HOME=/models
       - WHISPER_MODEL_SIZE=small
+      - EMBED_SERVER_URL=http://embed-server:8000
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -199,6 +201,8 @@ services:
       #   condition: service_healthy
       nats:
         condition: service_healthy
+      embed-server:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -214,6 +218,38 @@ services:
         limits:
           memory: 768M
           cpus: '1.0'
+    networks:
+      - sowknow-net
+
+  embed-server:
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.embed
+    container_name: sowknow4-embed-server
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
+    volumes:
+      - sowknow-model-cache:/models
+      - ./backend:/app
+    # NO ports — internal only. Access: http://embed-server:8000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+          cpus: '2.0'
     networks:
       - sowknow-net
 
@@ -239,6 +275,7 @@ services:
       - TRANSFORMERS_CACHE=/models
       - PADDLEOCR_HOME=/tmp/paddleocr
       - SKIP_MODEL_DOWNLOAD=1
+      - EMBED_SERVER_URL=http://embed-server:8000
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -248,6 +285,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      embed-server:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -283,19 +322,19 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_HOST=redis
-      - SENTENCE_TRANSFORMERS_HOME=/models
-      - HF_HOME=/models
-      - TRANSFORMERS_CACHE=/models
+      - EMBED_SERVER_URL=http://embed-server:8000
+      - SKIP_MODEL_DOWNLOAD=1
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
       - sowknow-audio-data:/data/audio
-      - sowknow-model-cache:/models
       - ./backend:/app
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      embed-server:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
@@ -306,17 +345,13 @@ services:
     deploy:
       resources:
         limits:
-          # Prefork pool + concurrency=1: one child loads the 1.3GB embeddings
-          # model. max-tasks-per-child=30 recycles the child every 30 tasks so
-          # memory leaks are reclaimed. 2026-04-11: switched from --pool=threads
-          # --concurrency=2 after celery-heavy was crash-looping — kernel
-          # OOM-killed every ~25 min when RSS crept past 5 GiB. Threads pool
-          # ignores max-tasks-per-child so the leak ran unchecked.
-          memory: 4096M
+          # celery-heavy handles pipeline.embed queue; tasks call embed-server via HTTP
+          # (no model in this container — 512MB is sufficient for pure I/O work)
+          memory: 512M
           cpus: '2.0'
     command: >-
-      celery -A app.celery_app worker --loglevel=info --concurrency=1
-      --pool=solo
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
+      --pool=prefork
       -Q pipeline.embed
       --prefetch-multiplier=1
       -n heavy@%h

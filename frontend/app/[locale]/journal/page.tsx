@@ -46,6 +46,7 @@ export default function JournalPage() {
   const [loadingContent, setLoadingContent] = useState<string | null>(null);
   const [contentSearch, setContentSearch] = useState('');
   const [contentSearchResults, setContentSearchResults] = useState<Map<string, number[]>>(new Map());
+  const [audioBlobUrls, setAudioBlobUrls] = useState<Record<string, string>>({});
   const PAGE_SIZE = 20;
 
   // Debounce search
@@ -121,11 +122,22 @@ export default function JournalPage() {
 
   const handleEntryClick = useCallback((entry: JournalEntry) => {
     const expanded = expandedEntry === entry.id;
-    if (!expanded && !isImage(entry.mime_type) && !isAudio(entry.mime_type) && !entryContents[entry.id]) {
-      fetchEntryContent(entry.id);
+    if (!expanded) {
+      if (!isImage(entry.mime_type) && !isAudio(entry.mime_type) && !entryContents[entry.id]) {
+        fetchEntryContent(entry.id);
+      }
+      if (isAudio(entry.mime_type) && !audioBlobUrls[entry.id]) {
+        fetch(api.getAudioStreamUrl(entry.id), { credentials: 'include' })
+          .then(r => r.blob())
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            setAudioBlobUrls(prev => ({ ...prev, [entry.id]: url }));
+          })
+          .catch(err => console.error('Failed to load audio:', err));
+      }
     }
     setExpandedEntry(expanded ? null : entry.id);
-  }, [expandedEntry, entryContents, fetchEntryContent]);
+  }, [expandedEntry, entryContents, audioBlobUrls, fetchEntryContent]);
 
   const searchInContent = useCallback((content: string, searchTerm: string): number[] => {
     if (!searchTerm.trim()) return [];
@@ -333,11 +345,18 @@ export default function JournalPage() {
 
                 {expanded && isAudio(entry.mime_type) && (
                   <div className="mt-2">
-                    <audio
-                      src={api.getAudioStreamUrl(entry.id)}
-                      controls
-                      className="w-full"
-                    />
+                    {audioBlobUrls[entry.id] ? (
+                      <audio
+                        src={audioBlobUrls[entry.id]}
+                        controls
+                        className="w-full"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 text-gray-400 py-3">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500"></div>
+                        <span className="text-sm">Chargement audio…</span>
+                      </div>
+                    )}
                     {entry.metadata?.transcript && (
                       <p className="mt-2 text-sm text-gray-600 italic">{entry.metadata.transcript}</p>
                     )}

@@ -1515,3 +1515,22 @@
 | 18:32 | Edited backend/tests/integration/test_knowledge_graph.py | modified test_unique_edge_constraint() | ~663 |
 | 18:33 | Edited backend/app/services/knowledge_graph/traversal.py | added 1 import(s) | ~26 |
 | 18:33 | Edited backend/app/services/knowledge_graph/traversal.py | modified _parse_jsonb() | ~378 |
+| 18:34 | Edited backend/app/services/knowledge_graph/pool.py | inline fix | ~20 |
+| 18:34 | Edited backend/tests/integration/test_knowledge_graph.py | 3→3 lines | ~39 |
+| 18:34 | Edited backend/tests/integration/test_knowledge_graph.py | 3→2 lines | ~33 |
+| 18:35 | Session end: 32 writes across 13 files (__init__.py, models.py, traversal.py, extraction.py, 023_add_graph_tables.py) | 7 reads | ~26493 tok |
+| 18:36 | Session end: 32 writes across 13 files (__init__.py, models.py, traversal.py, extraction.py, 023_add_graph_tables.py) | 7 reads | ~26493 tok |
+
+## Session: 2026-04-14 18:36
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-14 18:37
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:42 | Edited ../../../../../var/docker/sowknow4/backend/app/api/voice.py | modified _is_safari() | ~1287 |
+| 18:42 | Edited ../../../../../var/docker/sowknow4/backend/app/api/voice.py | exists() → clients() | ~691 |
+| 18:43 | fix: Safari OGG playback — transcode to MP3 on-the-fly via ffmpeg | backend/app/api/voice.py | fixed | ~800 |
+| 18:43 | Session end: 2 writes across 1 files (voice.py) | 4 reads | ~15276 tok |

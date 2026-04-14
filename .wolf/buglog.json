@@ -2,6 +2,18 @@
   "version": 1,
   "bugs": [
     {
+      "id": "bug-167",
+      "timestamp": "2026-04-14T00:00:00.000Z",
+      "error_message": "Cannot play OGG voice file in journal on iPhone Safari",
+      "file": "backend/app/api/voice.py",
+      "root_cause": "Safari/iOS does not support OGG Opus audio natively. The backend served the raw .ogg file which the browser cannot decode.",
+      "fix": "_stream_audio_file() made async; added _is_safari() UA detection and _transcode_ogg_to_mp3() which pipes audio bytes through ffmpeg to produce MP3. stream_audio() now passes request.headers user-agent. Transcode only triggered for .ogg/.opus + Safari UA; other browsers get raw OGG unchanged.",
+      "tags": ["voice", "audio", "ogg", "safari", "ios", "ffmpeg", "transcode", "journal"],
+      "related_bugs": ["bug-166"],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T00:00:00.000Z"
+    },
+    {
       "id": "bug-166",
       "timestamp": "2026-04-13T15:45:00.000Z",
       "error_message": "Cannot play any voice file (Telegram OGG voice notes) - recurring ~20 times",
@@ -3055,6 +3067,150 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-04-14T17:56:31.372Z"
+    },
+    {
+      "id": "bug-188",
+      "timestamp": "2026-04-14T18:21:44.841Z",
+      "error_message": "Missing await",
+      "file": "backend/app/tasks/pipeline_tasks.py",
+      "root_cause": "Async call without await — returned Promise instead of value",
+      "fix": "Added await to async call",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:21:44.841Z"
+    },
+    {
+      "id": "bug-189",
+      "timestamp": "2026-04-14T18:22:11.854Z",
+      "error_message": "Missing await",
+      "file": "backend/app/services/agents/researcher_agent.py",
+      "root_cause": "Async call without await — returned Promise instead of value",
+      "fix": "Added await to async call",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:22:11.854Z"
+    },
+    {
+      "id": "bug-190",
+      "timestamp": "2026-04-14T18:22:29.486Z",
+      "error_message": "Wrong reference: request should be user",
+      "file": "backend/app/services/agents/researcher_agent.py",
+      "root_cause": "Used \"request\" instead of \"user\"",
+      "fix": "Changed request → user",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:22:29.486Z"
+    },
+    {
+      "id": "bug-191",
+      "timestamp": "2026-04-14T18:31:00.189Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/services/knowledge_graph/extraction.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 11→13 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:31:00.189Z"
+    },
+    {
+      "id": "bug-192",
+      "timestamp": "2026-04-14T18:31:08.697Z",
+      "error_message": "Missing await",
+      "file": "backend/app/services/knowledge_graph/extraction.py",
+      "root_cause": "Async call without await — returned Promise instead of value",
+      "fix": "Added await to async call",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:31:08.697Z"
+    },
+    {
+      "id": "bug-193",
+      "timestamp": "2026-04-14T18:32:38.858Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/services/knowledge_graph/traversal.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 6→10 lines (3 removed) | Also: aliases=row.get(\"aliases\", []),; language=row.get(\"language\", \"fr\"),",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-04-14T18:33:44.724Z"
+    },
+    {
+      "id": "bug-194",
+      "timestamp": "2026-04-14T18:32:56.086Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/tests/integration/test_knowledge_graph.py",
+      "root_cause": "9 lines replaced/restructured",
+      "fix": "Rewrote 32→42 lines (9 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:32:56.086Z"
+    },
+    {
+      "id": "bug-195",
+      "timestamp": "2026-04-14T18:34:18.175Z",
+      "error_message": "Incorrect value in code",
+      "file": "backend/app/services/knowledge_graph/pool.py",
+      "root_cause": "Had hardcoded credentials embedded in the DB connection URL",
+      "fix": "Changed to password-free local socket URL: postgresql://localhost/sowknow",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:34:18.175Z"
+    },
+    {
+      "id": "bug-196",
+      "timestamp": "2026-04-14T18:42:35.347Z",
+      "error_message": "Missing await",
+      "file": "../../../../../var/docker/sowknow4/backend/app/api/voice.py",
+      "root_cause": "Async call without await — returned Promise instead of value",
+      "fix": "Added await to async call",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-14T18:42:35.347Z"
     }
   ]
 }

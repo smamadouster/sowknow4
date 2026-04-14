@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T18:33:44.712Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T18:42:51.382Z
 > Files: 927 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
@@ -13,7 +13,7 @@
 
 ## ../../../../../var/docker/sowknow4/backend/app/api/
 
-- `voice.py` — API: 2 endpoints (~1514 tok)
+- `voice.py` — API: 2 endpoints (~2406 tok)
 
 ## ../../../../../var/docker/sowknow4/backend/app/services/
 
@@ -1113,7 +1113,7 @@
 - `__init__.py` (~133 tok)
 - `extraction.py` — EntityExtractor: process_chunk (~4937 tok)
 - `models.py` — Pydantic: GraphNode (~1503 tok)
-- `pool.py` — get_graph_pool, close_graph_pool (~475 tok)
+- `pool.py` — get_graph_pool, close_graph_pool (~469 tok)
 - `traversal.py` — GraphTraversalService: resolve_entity, find_connections, get_neighbours (~3453 tok)
 
 ## backend/app/tasks/
@@ -1127,7 +1127,7 @@
 
 ## backend/tests/integration/
 
-- `test_knowledge_graph.py` — TestGraphSchema: event_loop, pool, clean_graph, insert_node + 12 more (~6647 tok)
+- `test_knowledge_graph.py` — TestGraphSchema: event_loop, pool, clean_graph, insert_node + 12 more (~6640 tok)
 
 ## backend/tests/unit/
 

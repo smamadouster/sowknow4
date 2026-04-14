@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 import os
@@ -5,7 +6,7 @@ import tempfile
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,14 +37,37 @@ _EXT_TO_MIME: dict[str, str] = {
     ".aac": "audio/aac",
 }
 
+# OGG/Opus extensions that need transcoding for Safari
+_OGG_EXTENSIONS = {".ogg", ".opus"}
 
-def _stream_audio_file(file_path: str) -> FileResponse | StreamingResponse:
-    """Return a streaming response for an audio file, decrypting if needed.
 
-    Confidential files are stored Fernet-encrypted with a .encrypted suffix
-    (e.g. voice_123_abc.ogg.encrypted).  FileResponse would serve the raw
-    ciphertext which browsers cannot play.  This helper decrypts on the fly
-    and returns the plaintext audio bytes.
+def _is_safari(user_agent: str) -> bool:
+    """Return True if the UA is Safari (iOS or desktop) but not Chrome/Edge/Firefox."""
+    ua = user_agent.lower()
+    return "safari" in ua and "chrome" not in ua and "chromium" not in ua and "firefox" not in ua
+
+
+async def _transcode_ogg_to_mp3(audio_bytes: bytes) -> bytes:
+    """Transcode OGG Opus bytes → MP3 via ffmpeg (async, non-blocking)."""
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-i", "pipe:0", "-f", "mp3", "-q:a", "4", "-loglevel", "error", "pipe:1",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(input=audio_bytes), timeout=30)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg transcoding failed: {stderr.decode()}")
+    return stdout
+
+
+async def _stream_audio_file(file_path: str, user_agent: str = "") -> FileResponse | StreamingResponse:
+    """Return a streaming response for an audio file.
+
+    Handles two cases:
+    - Encrypted files (.ogg.encrypted): decrypted in memory via storage_service
+    - Safari clients + OGG files: transcoded to MP3 on the fly via ffmpeg
+      (Safari / iOS do not support OGG Opus natively)
     """
     # Determine real extension (strip .encrypted suffix if present)
     real_path = file_path[: -len(".encrypted")] if file_path.endswith(".encrypted") else file_path
@@ -60,6 +84,25 @@ def _stream_audio_file(file_path: str) -> FileResponse | StreamingResponse:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to decrypt audio file",
             )
+    elif os.path.exists(file_path):
+        file_bytes = None  # will use FileResponse unless transcoding needed
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
+
+    # Transcode OGG → MP3 for Safari (which doesn't support OGG Opus)
+    needs_transcode = ext in _OGG_EXTENSIONS and _is_safari(user_agent)
+    if needs_transcode:
+        if file_bytes is None:
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+        try:
+            file_bytes = await _transcode_ogg_to_mp3(file_bytes)
+            content_type = "audio/mpeg"
+        except Exception as exc:
+            logger.warning("ffmpeg transcode failed, serving raw OGG: %s", exc)
+            # Fall through — serve raw; at least the download will work
+
+    if file_bytes is not None:
         return StreamingResponse(
             io.BytesIO(file_bytes),
             media_type=content_type,
@@ -114,6 +157,7 @@ async def transcribe_audio(
 @router.get("/audio/{audio_id}/stream")
 async def stream_audio(
     audio_id: str,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -121,11 +165,14 @@ async def stream_audio(
 
     Checks both document audio and note audio tables.
     RBAC enforced: same rules as parent document/note.
+    OGG files are transcoded to MP3 for Safari/iOS clients (no native OGG support).
     """
     try:
         audio_uuid = uuid.UUID(audio_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid audio ID")
+
+    user_agent = request.headers.get("user-agent", "")
 
     # Check document audio first
     result = await db.execute(
@@ -144,9 +191,7 @@ async def stream_audio(
         # Web-recorded notes store path in audio_file_path; Telegram OGGs use file_path
         audio_path = doc.audio_file_path or (doc.file_path if is_audio_mime else None)
         if audio_path:
-            if not os.path.exists(audio_path):
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
-            return _stream_audio_file(audio_path)
+            return await _stream_audio_file(audio_path, user_agent)
 
     # Check note audio
     result = await db.execute(
@@ -162,8 +207,6 @@ async def stream_audio(
         parent_note = note_result.scalar_one_or_none()
         if parent_note and parent_note.bucket.value == "confidential" and current_user.role.value not in ["admin", "superuser"]:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-        if not os.path.exists(note_audio.file_path):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
-        return _stream_audio_file(note_audio.file_path)
+        return await _stream_audio_file(note_audio.file_path, user_agent)
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")

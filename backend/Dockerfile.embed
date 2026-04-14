@@ -1,0 +1,33 @@
+FROM python:3.11.11-slim
+
+WORKDIR /app
+
+# Minimal system deps (no OCR, no Whisper)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 1001 appuser && useradd -g appuser -u 1001 -m appuser
+
+# CPU-only PyTorch (200 MB vs 2 GB for full)
+RUN pip install --no-cache-dir torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+
+COPY embed_server/requirements.txt /tmp/embed_requirements.txt
+RUN pip install --no-cache-dir -r /tmp/embed_requirements.txt
+
+# Model cache dir — volume-mounted at runtime, NOT baked in
+RUN mkdir -p /models && chown appuser:appuser /models
+
+# Source code arrives via bind mount ./backend:/app
+RUN mkdir -p /data && chown -R appuser:appuser /app /data
+
+ENV PYTHONPATH=/app
+ENV SENTENCE_TRANSFORMERS_HOME=/models
+ENV HF_HOME=/models
+ENV TRANSFORMERS_CACHE=/models
+
+USER appuser
+
+CMD ["uvicorn", "embed_server.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

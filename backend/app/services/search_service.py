@@ -16,7 +16,7 @@ from app.models.note import Note, NoteBucket
 from app.models.space import Space, SpaceBucket
 from app.models.tag import Tag, TargetType
 from app.models.user import User, UserRole
-from app.services.embedding_service import embedding_service
+from app.services.embed_client import embedding_service
 from app.services.pii_detection_service import pii_detection_service
 
 logger = logging.getLogger(__name__)

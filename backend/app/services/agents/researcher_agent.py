@@ -6,6 +6,7 @@ to gather comprehensive information for a query.
 """
 
 import logging
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
@@ -77,6 +78,102 @@ class ResearcherAgent:
         self.search_service = search_service
         self.graph_rag_service = graph_rag_service
 
+    # ── Graph traversal intent detection ─────────────────────────────────
+
+    # Patterns that signal "find path between X and Y", not just RAG search
+    _GRAPH_TRAVERSAL_RE = re.compile(
+        r"(?:"
+        r"is there (?:a |an )?(link|connection|relationship) between"
+        r"|what connects"
+        r"|how is .+ related to"
+        r"|(?:find|show) (?:the )?path between"
+        r"|relationship between"
+        r"|lien entre"
+        r"|y a.t.il un lien entre"
+        r"|quel (?:est le )?(?:rapport|lien) entre"
+        r"|qu.est.ce qui relie"
+        r"|comment .+ est.il lié"
+        r")",
+        re.IGNORECASE,
+    )
+
+    # Captures the two entity names from "between X and Y", "connects X and Y", "entre X et Y"
+    _ENTITY_PAIR_RE = re.compile(
+        r"(?:between|entre|connects?|relie)\s+(.+?)\s+(?:and|et)\s+(.+?)(?:\?|$)",
+        re.IGNORECASE,
+    )
+
+    def _is_graph_traversal_query(self, query: str) -> bool:
+        return bool(self._GRAPH_TRAVERSAL_RE.search(query))
+
+    def _extract_traversal_pair(self, query: str) -> tuple[str, str] | None:
+        m = self._ENTITY_PAIR_RE.search(query)
+        if m:
+            return m.group(1).strip(), m.group(2).strip()
+        return None
+
+    async def _run_graph_traversal(
+        self, query: str, user
+    ) -> list[dict[str, Any]]:
+        """
+        Run bidirectional BFS path-finding for traversal queries.
+        Returns a list of finding-shaped dicts that merge into normal results.
+        """
+        from app.services.embed_client import embedding_service
+        from app.services.knowledge_graph.models import ConnectionQuery
+        from app.services.knowledge_graph.pool import get_graph_pool
+        from app.services.knowledge_graph.traversal import GraphTraversalService
+
+        pair = self._extract_traversal_pair(query)
+        if not pair:
+            logger.info("Graph traversal: could not extract entity pair from '%s'", query)
+            return []
+
+        start_entity, end_entity = pair
+        include_confidential = getattr(user, "role", "user") in ("admin", "super_user")
+
+        pool = await get_graph_pool()
+
+        async def embedding_fn(text: str) -> list[float]:
+            return embedding_service.encode_single(text)
+
+        svc = GraphTraversalService(pool=pool, embedding_fn=embedding_fn)
+        cq = ConnectionQuery(
+            start_entity=start_entity,
+            end_entity=end_entity,
+            max_depth=5,
+            min_confidence=0.3,
+            include_confidential=include_confidential,
+        )
+
+        paths = await svc.find_connections(cq, max_results=5)
+        if not paths:
+            logger.info(
+                "Graph traversal: no path found between '%s' and '%s'",
+                start_entity, end_entity,
+            )
+            return []
+
+        findings = []
+        for path in paths:
+            findings.append({
+                "type": "graph_path",
+                "score": path.min_confidence,
+                "content": path.summary,
+                "hop_count": path.hop_count,
+                "min_confidence": path.min_confidence,
+                "supporting_document_ids": path.supporting_document_ids,
+                "nodes": [n.canonical_name for n in path.nodes],
+                "edges": [e.edge_type for e in path.edges],
+                "document_bucket": "public",
+            })
+
+        logger.info(
+            "Graph traversal: found %d path(s) between '%s' and '%s'",
+            len(paths), start_entity, end_entity,
+        )
+        return findings
+
     def _has_confidential_documents(self, findings: list[dict[str, Any]]) -> bool:
         """Check if any findings contain confidential documents"""
         return any(finding.get("document_bucket") == "confidential" for finding in findings)
@@ -141,6 +238,17 @@ class ResearcherAgent:
 
                 if graph_context.get("relationships"):
                     relationships = graph_context["relationships"]
+
+            # Step 2b: Graph traversal for explicit path-finding queries
+            if request.use_graph and self._is_graph_traversal_query(search_query):
+                logger.info("Researcher: Detected graph traversal intent — running BFS path-finder")
+                try:
+                    traversal_findings = await self._run_graph_traversal(search_query, user)
+                    if traversal_findings:
+                        # Prepend paths — they directly answer the question
+                        findings = traversal_findings + findings
+                except Exception as exc:
+                    logger.warning("Graph traversal failed (non-fatal): %s", exc)
 
             # Step 3: Gather additional context
             context = await self._gather_context(search_query, findings, db)

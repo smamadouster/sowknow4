@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T17:56:54.346Z
-> Files: 912 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T18:33:44.712Z
+> Files: 927 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -294,14 +294,14 @@
 - `Dockerfile.dev` (~87 tok)
 - `Dockerfile.minimal` (~281 tok)
 - `Dockerfile.telegram` (~148 tok)
-- `Dockerfile.worker` (~747 tok)
+- `Dockerfile.worker` (~824 tok)
 - `entrypoint.sh` (~50 tok)
 - `pipeline_status_check.py` — Quick pipeline status check — run inside backend container. (~232 tok)
 - `pyproject.toml` — Python project configuration (~1556 tok)
 - `pytest.ini` (~302 tok)
 - `requirements-minimal.txt` — SOWKNOW Backend Requirements - Minimal Working Version (~292 tok)
 - `requirements-telegram.txt` (~26 tok)
-- `requirements.txt` — Python dependencies (~373 tok)
+- `requirements.txt` — Python dependencies (~386 tok)
 - `run_security_tests.sh` — SOWKNOW Security Test Runner (~661 tok)
 - `test_security_config.py` — Tests: production_security, development_configuration, nginx_configuration (~2318 tok)
 - `validate_security.py` — parse_allowed_origins, parse_allowed_hosts, test_security_config, check_env_files (~2673 tok)
@@ -1032,6 +1032,11 @@
 - `intent_parser.meta.json` (~464 tok)
 - `kimi_service.data.json` (~4276 tok)
 - `kimi_service.meta.json` (~726 tok)
+- `knowledge_graph/__init__.py` — KG package: exports GraphNode, GraphEdge, GraphTraversalService, EntityExtractor, all enums (~150 tok)
+- `knowledge_graph/extraction.py` — EntityExtractor: process_chunk, NER+spaCy (graceful fallback), _resolve_or_create (embedding dedup), financial rules, LLM edge inference; asyncpg, sowknow schema (~900 tok)
+- `knowledge_graph/models.py` — Pydantic models: NodeType, EdgeType, ExtractionMethod, GraphNode, GraphEdge, PathResult, ConnectionQuery (~450 tok)
+- `knowledge_graph/pool.py` — get_graph_pool() / close_graph_pool(): module-level asyncpg pool factory from DATABASE_URL (~120 tok)
+- `knowledge_graph/traversal.py` — GraphTraversalService: resolve_entity, find_connections (BFS recursive CTE), get_neighbours; asyncpg, sowknow schema (~800 tok)
 - `llm_router.data.json` (~9146 tok)
 - `llm_router.meta.json` (~464 tok)
 - `minimax_service.data.json` (~4215 tok)
@@ -1072,6 +1077,10 @@
 - `verification_agent.data.json` (~11729 tok)
 - `verification_agent.meta.json` (~382 tok)
 
+## backend/alembic/versions/
+
+- `023_add_graph_tables.py` — Add knowledge graph tables (graph_nodes, graph_edges, entity_synonyms) (~1280 tok)
+
 ## backend/app/
 
 - `main_minimal.py` — API: 4 endpoints (~4794 tok)
@@ -1095,18 +1104,36 @@
 
 - `whisper_service.py` — WhisperService: transcribe (~738 tok)
 
+## backend/app/services/agents/
+
+- `researcher_agent.py` — from: embedding_fn, research (~5514 tok)
+
+## backend/app/services/knowledge_graph/
+
+- `__init__.py` (~133 tok)
+- `extraction.py` — EntityExtractor: process_chunk (~4937 tok)
+- `models.py` — Pydantic: GraphNode (~1503 tok)
+- `pool.py` — get_graph_pool, close_graph_pool (~475 tok)
+- `traversal.py` — GraphTraversalService: resolve_entity, find_connections, get_neighbours (~3453 tok)
+
 ## backend/app/tasks/
 
-- `pipeline_tasks.py` — _EmbedContinue: update_stage (~5163 tok)
+- `pipeline_tasks.py` — _EmbedContinue: update_stage (~5675 tok)
 - `voice_tasks.py` — transcribe_voice_note (~1072 tok)
 
 ## backend/embed_server/
 
 - `requirements.txt` — Python dependencies (~31 tok)
 
+## backend/tests/integration/
+
+- `test_knowledge_graph.py` — TestGraphSchema: event_loop, pool, clean_graph, insert_node + 12 more (~6647 tok)
+
 ## backend/tests/unit/
 
 - `test_admin_pipeline_stats.py` — Unit tests for /admin/pipeline-stats assembler logic. (~1117 tok)
+- `test_graph_intent_detection.py` — TestIsGraphTraversalQuery: agent, test_en_link_between, test_en_connection_between, test_en_what_con (~1082 tok)
+- `test_knowledge_graph_models.py` — TestNodeType: test_all_values_are_strings, test_financial_types_present, test_core_types_present, te (~1402 tok)
 - `test_voice_stream.py` — TestGetMimeTypeOggNormalization: make_fernet, encrypt_bytes, test_application_ogg_normalized_to_audi (~6763 tok)
 - `test_whisper_service.py` — TestWhisperService: test_transcribe_sync_returns_transcript, test_transcribe_sync_auto_language_pass (~906 tok)
 

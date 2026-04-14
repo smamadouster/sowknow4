@@ -59,6 +59,9 @@ opencv-python-headless==4.10.0.84
 # Language detection (for full-text search tsvector language selection)
 langdetect==1.0.9
 
+# Knowledge graph — NER extraction
+spacy>=3.7,<4.0
+
 # Utilities
 pydantic==2.5.0
 pydantic-settings==2.1.0

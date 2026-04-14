@@ -1472,3 +1472,46 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+
+## Session: 2026-04-14 18:08
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-14 18:11
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 18:14 | Created backend/app/services/knowledge_graph/__init__.py | — | ~133 |
+| 18:15 | Created backend/app/services/knowledge_graph/models.py | — | ~1503 |
+| 18:15 | Created backend/app/services/knowledge_graph/traversal.py | — | ~3188 |
+| 18:16 | Created backend/app/services/knowledge_graph/extraction.py | — | ~4545 |
+| 18:17 | Created backend/alembic/versions/023_add_graph_tables.py | — | ~1280 |
+| 18:17 | Edited backend/requirements.txt | 2→5 lines | ~38 |
+| 18:17 | Created backend/app/services/knowledge_graph/pool.py | — | ~475 |
+| 18:18 | Installed knowledge_graph module (traversal+extraction+pool+migration 023) | backend/app/services/knowledge_graph/, alembic/versions/023_add_graph_tables.py | 3 DB tables created (sowknow.graph_nodes/edges/entity_synonyms), migration applied | ~500 |
+| 18:18 | Session end: 7 writes across 7 files (__init__.py, models.py, traversal.py, extraction.py, 023_add_graph_tables.py) | 3 reads | ~11538 tok |
+| 18:21 | Edited backend/app/tasks/pipeline_tasks.py | modified _run_entities() | ~882 |
+| 18:21 | Edited backend/app/services/agents/researcher_agent.py | added 1 import(s) | ~116 |
+| 18:22 | Edited backend/app/services/agents/researcher_agent.py | modified _is_graph_traversal_query() | ~1026 |
+| 18:22 | Edited backend/app/services/agents/researcher_agent.py | modified get() | ~518 |
+| 18:22 | Edited backend/app/services/agents/researcher_agent.py | inline fix | ~27 |
+| 18:22 | Edited backend/Dockerfile.worker | expanded (+7 lines) | ~112 |
+| 18:24 | Wired EntityExtractor into _run_entities + GraphTraversalService into researcher_agent + spaCy installed in celery containers | pipeline_tasks.py, researcher_agent.py, Dockerfile.worker | all smoke tests pass | ~300 |
+| 18:24 | Session end: 13 writes across 10 files (__init__.py, models.py, traversal.py, extraction.py, 023_add_graph_tables.py) | 6 reads | ~15153 tok |
+| 18:28 | Created backend/tests/unit/test_knowledge_graph_models.py | — | ~1402 |
+| 18:28 | Created backend/tests/unit/test_graph_intent_detection.py | — | ~1082 |
+| 18:29 | Created backend/tests/integration/test_knowledge_graph.py | — | ~6290 |
+| 18:30 | Edited backend/app/services/agents/researcher_agent.py | 5→5 lines | ~69 |
+| 18:31 | Edited backend/app/services/knowledge_graph/extraction.py | 11→13 lines | ~167 |
+| 18:31 | Edited backend/app/services/knowledge_graph/extraction.py | modified _ensure_document_node() | ~377 |
+| 18:31 | Edited backend/tests/integration/test_knowledge_graph.py | modified insert_node() | ~112 |
+| 18:31 | Edited backend/tests/integration/test_knowledge_graph.py | inline fix | ~12 |
+| 18:31 | Edited backend/tests/integration/test_knowledge_graph.py | inline fix | ~12 |
+| 18:31 | Edited backend/tests/integration/test_knowledge_graph.py | inline fix | ~12 |
+| 18:31 | Edited backend/tests/integration/test_knowledge_graph.py | expanded (+11 lines) | ~355 |
+| 18:32 | Edited backend/app/services/knowledge_graph/traversal.py | expanded (+9 lines) | ~184 |
+| 18:32 | Edited backend/app/services/knowledge_graph/traversal.py | 6→10 lines | ~107 |
+| 18:32 | Edited backend/tests/integration/test_knowledge_graph.py | modified test_unique_edge_constraint() | ~663 |
+| 18:33 | Edited backend/app/services/knowledge_graph/traversal.py | added 1 import(s) | ~26 |
+| 18:33 | Edited backend/app/services/knowledge_graph/traversal.py | modified _parse_jsonb() | ~378 |

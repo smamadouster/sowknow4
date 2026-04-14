@@ -421,6 +421,10 @@ def _run_entities(document_id: str) -> None:
     Uses sync SessionLocal for all DB operations (safe in Celery workers)
     and only runs the LLM call via asyncio.run() to avoid event-loop conflicts
     with the module-level async engine/connection pool.
+
+    Also runs the new graph extraction pipeline (asyncpg, separate pool) which
+    populates graph_nodes / graph_edges / entity_synonyms via spaCy NER +
+    financial rules + LLM relationship inference.
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentChunk
@@ -440,10 +444,54 @@ def _run_entities(document_id: str) -> None:
             .all()
         )
 
+        # Step 1: Existing LLM-based entity extraction (SQLAlchemy ORM)
         entity_extraction_service.extract_entities_from_document_sync(doc, chunks, db)
+
+        # Step 2: New graph extraction (asyncpg, spaCy NER + financial rules)
+        bucket = doc.bucket.value if hasattr(doc.bucket, "value") else str(doc.bucket)
+        asyncio.run(_graph_extract_document(document_id, chunks, bucket))
+
     finally:
         db.close()
     logger.info("Entities extracted for doc %s", document_id)
+
+
+async def _graph_extract_document(document_id: str, chunks, bucket: str) -> None:
+    """Run the knowledge-graph extraction pipeline over all chunks of a document.
+
+    Uses a dedicated asyncpg pool (separate from the SQLAlchemy pool) so it
+    is safe to call via asyncio.run() from a Celery task.
+    """
+    from app.services.embed_client import embedding_service
+    from app.services.knowledge_graph.extraction import EntityExtractor
+    from app.services.knowledge_graph.pool import get_graph_pool
+
+    pool = await get_graph_pool()
+
+    async def embedding_fn(text: str) -> list[float]:
+        return embedding_service.encode_single(text)
+
+    extractor = EntityExtractor(
+        pool=pool,
+        embedding_fn=embedding_fn,
+        llm_fn=None,  # LLM relationship extraction is opt-in — enable once spaCy NER is validated
+    )
+
+    total = {"nodes_created": 0, "edges_created": 0, "nodes_merged": 0}
+    for chunk in chunks:
+        stats = await extractor.process_chunk(
+            chunk_text=chunk.chunk_text,
+            document_id=document_id,
+            chunk_id=str(chunk.id),
+            bucket=bucket,
+        )
+        for k in total:
+            total[k] += stats.get(k, 0)
+
+    logger.info(
+        "Graph extraction done for doc %s — nodes_created=%d merged=%d edges=%d",
+        document_id, total["nodes_created"], total["nodes_merged"], total["edges_created"],
+    )
 
 
 # ---------------------------------------------------------------------------

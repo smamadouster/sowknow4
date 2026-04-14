@@ -54,6 +54,13 @@ RUN pip install --no-cache-dir torch==2.1.0 --index-url https://download.pytorch
 # Install remaining dependencies (torch already satisfied, won't re-download)
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install spaCy models for NER-based graph extraction
+# fr_core_news_lg: French corpus (primary language)
+# en_core_web_sm: English fallback (lightweight)
+RUN pip install --no-cache-dir spacy && \
+    python -m spacy download fr_core_news_lg && \
+    python -m spacy download en_core_web_sm
+
 # Model cache directory — volume-mounted at runtime, NOT baked into image
 # Docker preserves ownership from image when creating new named volumes
 RUN mkdir -p /models && chown appuser:appuser /models

@@ -129,14 +129,9 @@ export default function JournalPage() {
       if (isAudio(entry.mime_type) && !audioBlobUrls[entry.id]) {
         fetch(api.getAudioStreamUrl(entry.id), { credentials: 'include' })
           .then(r => r.blob())
-          .then(blob => new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          }))
-          .then(dataUrl => {
-            setAudioBlobUrls(prev => ({ ...prev, [entry.id]: dataUrl }));
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            setAudioBlobUrls(prev => ({ ...prev, [entry.id]: url }));
           })
           .catch(err => console.error('Failed to load audio:', err));
       }

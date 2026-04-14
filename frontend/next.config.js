@@ -64,6 +64,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
+              "media-src 'self' blob:",
               "connect-src 'self' https://static.cloudflareinsights.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",

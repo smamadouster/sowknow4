@@ -9,18 +9,18 @@
 # Memory Allocation:
 #   celery-light:    2048MB  (CPU/IO tasks, concurrency=2)
 #   celery-heavy:     512MB  (pipeline.embed queue — I/O-bound HTTP to embed-server)
-#   embed-server:    2048MB  (embedding model, serves all callers via HTTP)
+#   embed-server:    3072MB  (embedding model — 1.3GB model needs headroom during load)
 #   postgres:        1536MB  (pgvector, 5 concurrent users)
 #   backend:          768MB  (FastAPI)
 #   frontend:         512MB  (Next.js)
-#   redis:            256MB  (cache/queue)
+#   redis:            512MB  (cache/queue — raised from 256MB; 224MB RDB + AOF rewrite fork headroom)
 #   vault:            256MB  (secrets)
 #   telegram-bot:     256MB  (Telegram interface)
 #   celery-beat:      128MB  (scheduler)
 #   nats:             128MB  (message broker)
 #   guardian-hc:      128MB  (self-healing monitor, monitoring profile)
 #   certbot:          128MB  (TLS renewal, tls profile)
-#   TOTAL:          ~8576MB  (plenty of headroom on 32GB VPS)
+#   TOTAL:          ~9600MB  (plenty of headroom on 32GB VPS)
 
 x-common-env: &common-env
   env_file:
@@ -71,7 +71,7 @@ services:
     container_name: sowknow4-redis
     restart: unless-stopped
     logging: *default-logging
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    command: redis-server --appendonly yes --maxmemory 400mb --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
@@ -86,7 +86,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
           cpus: '0.5'
     networks:
       - sowknow-net
@@ -171,7 +171,8 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma2:2b
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - VAULT_ADDR=http://vault:8200
       - VAULT_TOKEN=${VAULT_ROOT_TOKEN:?VAULT_ROOT_TOKEN must be set in .env}
@@ -248,7 +249,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2048M
+          memory: 3072M
           cpus: '2.0'
     networks:
       - sowknow-net
@@ -269,7 +270,8 @@ services:
       - REDIS_HOST=redis
       - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma2:2b
       - SENTENCE_TRANSFORMERS_HOME=/models
       - HF_HOME=/models
       - TRANSFORMERS_CACHE=/models
@@ -507,6 +509,28 @@ services:
     networks:
       - sowknow-net
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sowknow4-ollama
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - sowknow-ollama-models:/root/.ollama
+    # NO ports — internal network only. Access via docker exec or other containers on sowknow-net.
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - sowknow-net
+
   # --- Optional profiles (activate with --profile) ---
 
   certbot:
@@ -655,3 +679,4 @@ volumes:
   sowknow-model-cache:
   sowknow-audio-data:
   sowknow-prometheus-data:
+  sowknow-ollama-models:

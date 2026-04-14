@@ -58,7 +58,7 @@ def generate_embeddings_batch(
 
     from app.database import SessionLocal
     from app.models.document import DocumentChunk
-    from app.services.embedding_service import embedding_service
+    from app.services.embed_client import embedding_service
 
     db = SessionLocal()
     try:
@@ -146,7 +146,7 @@ def recompute_embeddings_for_document(self, document_id: str) -> dict:
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentChunk
-    from app.services.embedding_service import embedding_service
+    from app.services.embed_client import embedding_service
 
     start = time.time()
     db = SessionLocal()

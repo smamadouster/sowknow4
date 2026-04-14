@@ -14,8 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document, DocumentChunk
 from app.models.user import User, UserRole
-from app.services.embedding_service import embedding_service
-
 logger = logging.getLogger(__name__)
 
 
@@ -55,7 +53,7 @@ class SimilarityGroupingService:
     """Service for grouping similar documents"""
 
     def __init__(self):
-        self.embedding_service = embedding_service
+        pass
 
     async def find_similar_groups(
         self,

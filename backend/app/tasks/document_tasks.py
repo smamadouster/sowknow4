@@ -485,7 +485,7 @@ def generate_embeddings(self, chunk_ids: list) -> dict:
 
     from app.database import SessionLocal
     from app.models.document import DocumentChunk
-    from app.services.embedding_service import embedding_service
+    from app.services.embed_client import embedding_service
 
     db = SessionLocal()
     try:

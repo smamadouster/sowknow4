@@ -264,7 +264,7 @@ def generate_article_embeddings(self, article_ids: list[str]) -> dict:
     """
     from app.database import SessionLocal
     from app.models.article import Article, ArticleStatus
-    from app.services.embedding_service import embedding_service
+    from app.services.embed_client import embedding_service
 
     db = SessionLocal()
     try:

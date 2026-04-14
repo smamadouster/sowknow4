@@ -13,14 +13,14 @@
 #   postgres:        1536MB  (pgvector, 5 concurrent users)
 #   backend:          768MB  (FastAPI)
 #   frontend:         512MB  (Next.js)
-#   redis:            512MB  (cache/queue — raised from 256MB; 224MB RDB + AOF rewrite fork headroom)
+#   redis:            768MB  (cache/queue — raised from 512MB; allkeys-lru eviction, AOF rewrite fork headroom)
 #   vault:            256MB  (secrets)
 #   telegram-bot:     256MB  (Telegram interface)
 #   celery-beat:      128MB  (scheduler)
 #   nats:             128MB  (message broker)
 #   guardian-hc:      128MB  (self-healing monitor, monitoring profile)
 #   certbot:          128MB  (TLS renewal, tls profile)
-#   TOTAL:          ~9600MB  (plenty of headroom on 32GB VPS)
+#   TOTAL:          ~9344MB  (plenty of headroom on 32GB VPS)
 
 x-common-env: &common-env
   env_file:
@@ -71,7 +71,7 @@ services:
     container_name: sowknow4-redis
     restart: unless-stopped
     logging: *default-logging
-    command: redis-server --appendonly yes --maxmemory 400mb --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    command: redis-server --appendonly yes --maxmemory 400mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
@@ -86,7 +86,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M
           cpus: '0.5'
     networks:
       - sowknow-net
@@ -509,28 +509,6 @@ services:
     networks:
       - sowknow-net
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: sowknow4-ollama
-    restart: unless-stopped
-    logging: *default-logging
-    volumes:
-      - sowknow-ollama-models:/root/.ollama
-    # NO ports — internal network only. Access via docker exec or other containers on sowknow-net.
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-          cpus: '4.0'
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    networks:
-      - sowknow-net
-
   # --- Optional profiles (activate with --profile) ---
 
   certbot:
@@ -666,6 +644,8 @@ services:
 networks:
   sowknow-net:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
 
 volumes:
   sowknow-postgres-data:
@@ -679,4 +659,4 @@ volumes:
   sowknow-model-cache:
   sowknow-audio-data:
   sowknow-prometheus-data:
-  sowknow-ollama-models:
+  # sowknow-ollama-models: disabled — Ollama removed 2026-04-14, confidential routing uses OpenRouter

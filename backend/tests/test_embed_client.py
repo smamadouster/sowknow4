@@ -24,10 +24,8 @@ def set_embed_url(monkeypatch):
 
 
 def get_client():
-    import importlib
-    import app.services.embed_client as mod
-    importlib.reload(mod)
-    return mod.EmbedClient()
+    from app.services.embed_client import EmbedClient
+    return EmbedClient()
 
 
 def test_encode_calls_embed_endpoint():
@@ -102,3 +100,37 @@ def test_encode_single_returns_zero_on_empty():
     client = get_client()
     assert client.encode_single("") == [0.0] * 1024
     assert client.encode_single("   ") == [0.0] * 1024
+
+
+def test_health_check_proxies_to_server():
+    health_data = {"status": "healthy", "model_loaded": True, "device": "cpu"}
+    with patch("httpx.get", return_value=_mock_response(200, health_data)):
+        client = get_client()
+        result = client.health_check()
+    assert result["status"] == "healthy"
+    assert result["model_loaded"] is True
+
+
+def test_health_check_returns_error_on_failure():
+    with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
+        client = get_client()
+        result = client.health_check()
+    assert result["status"] == "error"
+    assert result["model_loaded"] is False
+
+
+def test_can_embed_caches_result():
+    health_resp = _mock_response(200, {"status": "healthy"})
+    with patch("httpx.get", return_value=health_resp) as mock_get:
+        client = get_client()
+        _ = client.can_embed
+        _ = client.can_embed  # second call should not hit server
+    assert mock_get.call_count == 1  # cached on second call
+
+
+def test_encode_returns_zero_vectors_on_server_error():
+    error_resp = _mock_response(503, {"detail": "model not loaded"})
+    with patch("httpx.post", return_value=error_resp):
+        client = get_client()
+        result = client.encode(["hello"])
+    assert result == [[0.0] * 1024]

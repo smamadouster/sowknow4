@@ -3,7 +3,16 @@
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
 
+| 16:24 | Created FastAPI embed microservice (embed_server package) with /embed, /embed-query, /health endpoints | backend/embed_server/__init__.py, backend/embed_server/main.py, backend/tests/test_embed_server.py | 5/5 tests pass, committed to feat/embed-server | ~3500 |
+| 16:35 | Task 2: Created Dockerfile.embed + requirements.txt for standalone embedding container (lean, no OCR/Whisper) | backend/Dockerfile.embed, backend/embed_server/requirements.txt | Dockerfile syntax validated, committed 4998bd2 | ~400 |
+
+| 18:06 | Phase 7A: Fixed Telegram auth role — Telegram users always created as "user"; added TELEGRAM_ADMIN_USER_IDS env var support to auth.py | backend/app/api/auth.py | deployed to prod, backend restarted | ~34k |
+| 18:06 | Phase 7D: PRD v1.2 created with all corrections (LLMs, RAM, Ollama, confidential routing, new features) | SOWKNOW_PRD_v1.2.md | created | ~43k |
+| 18:24 | Phase 7B: voice router never registered in main_minimal.py; added include_router(voice.router, prefix="/api/v1") | backend/app/main_minimal.py | deployed, /api/v1/voice/audio/{id}/stream returns 401 not 404 | ~34k |
+
 | 15:06 | Fixed Telegram OGG voice playback (application/ogg mime bug) | backend/app/api/voice.py, frontend/app/[locale]/journal/page.tsx | Fixed: stream endpoint now accepts application/ogg, frontend isAudio() updated | ~800 |
+
+| 2026-04-13T00:00 | Created PRD v1.2 — corrected LLM stack, RAM, container limits, Ollama status, confidential routing, added Phase 7 features | SOWKNOW_PRD_v1.2.md | Created alongside v1.1 (v1.1 intact) | ~3k tokens |
 
 | 2026-04-12T21:20 | Task 4: Created unit tests for pipeline-stats assembler logic | backend/tests/unit/test_admin_pipeline_stats.py | 8/8 tests pass | ~1k tokens |
 
@@ -1321,3 +1330,118 @@
 | 15:18 | Edited backend/tests/unit/test_voice_stream.py | "any bytes — will be repla" → "any bytes - will be repla" | ~22 |
 | 15:18 | Edited backend/app/api/voice.py | 5→7 lines | ~38 |
 | 15:20 | Session end: 15 writes across 5 files (voice.py, page.tsx, voice_tasks.py, documents.py, test_voice_stream.py) | 10 reads | ~22275 tok |
+| 15:53 | Session end: 15 writes across 5 files (voice.py, page.tsx, voice_tasks.py, documents.py, test_voice_stream.py) | 11 reads | ~22275 tok |
+
+## Session: 2026-04-13 16:01
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 16:02 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | modified LLMProvider() | ~49 |
+| 16:02 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | modified __init__() | ~86 |
+| 16:02 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | 3→2 lines | ~14 |
+| 16:02 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | reduced (-7 lines) | ~25 |
+| 16:02 | Edited ../../../../../var/docker/sowknow4/backend/app/services/llm_router.py | 4→3 lines | ~29 |
+| 16:03 | Edited ../../../../../var/docker/sowknow4/backend/app/services/chat_service.py | reduced (-6 lines) | ~28 |
+| 16:03 | Edited ../../../../../var/docker/sowknow4/backend/app/services/chat_service.py | 4→3 lines | ~57 |
+| 16:08 | Session end: 7 writes across 2 files (llm_router.py, chat_service.py) | 2 reads | ~288 tok |
+| 16:08 | Session end: 7 writes across 2 files (llm_router.py, chat_service.py) | 2 reads | ~288 tok |
+
+## Session: 2026-04-13 16:12
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:53 | Edited docker-compose.yml | expanded (+22 lines) | ~186 |
+| 17:53 | Edited backend/app/api/auth.py | 5→8 lines | ~118 |
+| 17:53 | Edited docker-compose.yml | 1→2 lines | ~15 |
+| 17:53 | Edited backend/app/api/auth.py | 26→28 lines | ~266 |
+| 17:54 | Edited docker-compose.yml | 3→4 lines | ~46 |
+| 17:54 | Edited docker-compose.yml | 2→3 lines | ~34 |
+| 17:54 | Edited backend/app/api/auth.py | expanded (+7 lines) | ~133 |
+| 17:54 | Edited backend/app/main_minimal.py | 15→16 lines | ~65 |
+| 17:55 | Edited backend/app/main_minimal.py | 1→2 lines | ~29 |
+| 17:57 | Created SOWKNOW_PRD_v1.2.md | — | ~7416 |
+| 18:02 | fix(telegram): added TELEGRAM_ADMIN_USER_IDS env var to grant admin role to Telegram owner | backend/app/api/auth.py, .env.example | deployed + restarted backend | ~800 |
+| 18:06 | Session end: 10 writes across 4 files (docker-compose.yml, auth.py, main_minimal.py, SOWKNOW_PRD_v1.2.md) | 11 reads | ~35533 tok |
+| 18:06 | fix(audio): register voice router in main_minimal.py | backend/app/main_minimal.py | voice stream endpoint now returns 401 instead of 404 | ~200 |
+| 18:11 | Session end: 10 writes across 4 files (docker-compose.yml, auth.py, main_minimal.py, SOWKNOW_PRD_v1.2.md) | 11 reads | ~35533 tok |
+| 18:54 | Session end: 10 writes across 4 files (docker-compose.yml, auth.py, main_minimal.py, SOWKNOW_PRD_v1.2.md) | 11 reads | ~35533 tok |
+| 19:45 | Session end: 10 writes across 4 files (docker-compose.yml, auth.py, main_minimal.py, SOWKNOW_PRD_v1.2.md) | 11 reads | ~35533 tok |
+
+## Session: 2026-04-13 19:57
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-13 19:58
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-14 12:25
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:27 | Edited ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/project_guardian_nftables_heal_broken.md | expanded (+14 lines) | ~426 |
+| 12:27 | Edited CLAUDE.md | 1→2 lines | ~105 |
+| 12:27 | Session end: 2 writes across 2 files (project_guardian_nftables_heal_broken.md, CLAUDE.md) | 3 reads | ~1719 tok |
+
+## Session: 2026-04-14 12:28
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-04-14 12:37
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:44 | Created docs/superpowers/plans/2026-04-14-embed-server-extraction.md | — | ~7735 |
+| 15:44 | Session end: 1 writes across 1 files (2026-04-14-embed-server-extraction.md) | 5 reads | ~14775 tok |
+| 16:11 | Session end: 1 writes across 1 files (2026-04-14-embed-server-extraction.md) | 5 reads | ~14775 tok |
+| 16:20 | Edited .gitignore | 2→5 lines | ~14 |
+| 16:23 | Created .worktrees/feat/embed-server/backend/tests/test_embed_server.py | — | ~439 |
+| 16:23 | Edited .worktrees/feat/embed-server/backend/tests/test_embed_server.py | modified client() | ~40 |
+| 16:24 | Created .worktrees/feat/embed-server/backend/embed_server/main.py | — | ~434 |
+| 16:28 | Created .worktrees/feat/embed-server/backend/embed_server/main.py | — | ~544 |
+| 16:28 | Created .worktrees/feat/embed-server/backend/tests/test_embed_server.py | — | ~694 |
+| 16:28 | Edited .worktrees/feat/embed-server/backend/tests/test_embed_server.py | 6→3 lines | ~28 |
+| 16:30 | Created .worktrees/feat/embed-server/backend/embed_server/requirements.txt | — | ~26 |
+| 16:30 | Created .worktrees/feat/embed-server/backend/Dockerfile.embed | — | ~261 |
+| 16:33 | Edited .worktrees/feat/embed-server/backend/embed_server/requirements.txt | 5→5 lines | ~27 |
+| 16:33 | Edited .worktrees/feat/embed-server/backend/Dockerfile.embed | 14→19 lines | ~183 |
+| 16:34 | Created .worktrees/feat/embed-server/backend/tests/test_embed_client.py | — | ~906 |
+| 16:34 | Created .worktrees/feat/embed-server/backend/app/services/embed_client.py | — | ~980 |
+| 16:35 | Edited .worktrees/feat/embed-server/.wolf/anatomy.md | 5→6 lines | ~89 |
+| 16:35 | Edited .worktrees/feat/embed-server/.wolf/anatomy.md | 1→2 lines | ~78 |
+| 16:39 | Created .worktrees/feat/embed-server/backend/app/services/embed_client.py | — | ~1342 |
+| 16:39 | Created .worktrees/feat/embed-server/backend/tests/test_embed_client.py | — | ~1257 |
+| 16:40 | Edited .worktrees/feat/embed-server/backend/app/tasks/pipeline_tasks.py | inline fix | ~17 |
+| 16:40 | Edited .worktrees/feat/embed-server/backend/app/tasks/embedding_tasks.py | inline fix | ~17 |
+| 16:40 | Edited .worktrees/feat/embed-server/backend/app/tasks/document_tasks.py | inline fix | ~17 |
+| 16:40 | Edited .worktrees/feat/embed-server/backend/app/tasks/article_tasks.py | inline fix | ~17 |
+| 16:41 | Edited .worktrees/feat/embed-server/backend/app/services/search_service.py | inline fix | ~16 |
+| 16:41 | Edited .worktrees/feat/embed-server/backend/app/services/similarity_service.py | 3→1 lines | ~11 |
+| 16:41 | Edited .worktrees/feat/embed-server/backend/app/services/similarity_service.py | modified __init__() | ~21 |
+| 16:44 | Edited .worktrees/feat/embed-server/docker-compose.yml | 14→15 lines | ~225 |
+| 16:45 | Edited .worktrees/feat/embed-server/docker-compose.yml | 3→4 lines | ~34 |
+| 16:45 | Edited .worktrees/feat/embed-server/docker-compose.yml | 13→15 lines | ~144 |
+| 16:45 | Edited .worktrees/feat/embed-server/docker-compose.yml | expanded (+33 lines) | ~304 |
+| 16:45 | Edited .worktrees/feat/embed-server/docker-compose.yml | 29→32 lines | ~297 |
+| 16:45 | Edited .worktrees/feat/embed-server/docker-compose.yml | 40→36 lines | ~360 |
+| 16:49 | Edited .worktrees/feat/embed-server/docker-compose.yml | 15→15 lines | ~225 |
+| 16:49 | Edited .worktrees/feat/embed-server/docker-compose.yml | 25→24 lines | ~202 |
+| 16:49 | Edited .worktrees/feat/embed-server/backend/Dockerfile.embed | 9→6 lines | ~33 |
+| 16:51 | Session end: 34 writes across 16 files (2026-04-14-embed-server-extraction.md, .gitignore, test_embed_server.py, main.py, requirements.txt) | 39 reads | ~48621 tok |
+| 17:11 | Session end: 34 writes across 16 files (2026-04-14-embed-server-extraction.md, .gitignore, test_embed_server.py, main.py, requirements.txt) | 39 reads | ~48621 tok |
+| 17:12 | Session end: 34 writes across 16 files (2026-04-14-embed-server-extraction.md, .gitignore, test_embed_server.py, main.py, requirements.txt) | 39 reads | ~48621 tok |
+| 17:15 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | reduced (-10 lines) | ~55 |
+| 17:22 | Edited backend/embed_server/requirements.txt | 2→3 lines | ~18 |
+| 17:30 | Edited docker-compose.yml | 6→6 lines | ~28 |
+| 17:31 | Edited docker-compose.yml | 12→12 lines | ~198 |
+| 17:31 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | inline fix | ~25 |
+| 17:31 | Edited ../../../../../var/docker/sowknow4/docker-compose.yml | 21→21 lines | ~178 |
+| 17:32 | Session end: 40 writes across 16 files (2026-04-14-embed-server-extraction.md, .gitignore, test_embed_server.py, main.py, requirements.txt) | 41 reads | ~55336 tok |
+
+## Session: 2026-04-14 17:38
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

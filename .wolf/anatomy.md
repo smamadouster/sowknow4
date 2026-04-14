@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-12T19:59:16.689Z
-> Files: 883 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T17:31:30.807Z
+> Files: 911 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -9,15 +9,25 @@
 
 ## ../../../../../var/docker/sowknow4/
 
-- `docker-compose.yml` — Docker Compose services (~5522 tok)
+- `docker-compose.yml` — Docker Compose services (~5834 tok)
 
 ## ../../../../../var/docker/sowknow4/backend/app/api/
 
-- `voice.py` — API: 2 endpoints (~1297 tok)
+- `voice.py` — API: 2 endpoints (~1514 tok)
 
 ## ../../../../../var/docker/sowknow4/backend/app/services/
 
+- `chat_service.py` — OllamaService: chat_completion, health_check, get_conversation_history, retrieve_relevant_chunks + 1 (~7069 tok)
+- `llm_router.py` — RoutingReason: generate_completion, detect_context_sensitivity, select_provider, build_messages + 1 (~3456 tok)
 - `whisper_service.py` — WhisperService: transcribe (~745 tok)
+
+## ../../../../../var/docker/sowknow4/backend/app/tasks/
+
+- `voice_tasks.py` — transcribe_voice_note (~546 tok)
+
+## ../../../../../var/docker/sowknow4/backend/telegram_bot/
+
+- `bot.py` — RedisSessionManager: connect, close, get_session, set_session + 9 more (~18712 tok)
 
 ## ../../../../../var/docker/sowknow4/frontend/hooks/
 
@@ -41,7 +51,7 @@
 - `MEMORY.md` — SOWKNOW Project Memory Index (~1048 tok)
 - `project_april_8_outage.md` (~474 tok)
 - `project_dictation_fr_to_en_fix.md` — 2026-04-10 fix (original) (~608 tok)
-- `project_guardian_nftables_heal_broken.md` (~770 tok)
+- `project_guardian_nftables_heal_broken.md` — Root Cause #5 — Confirmed 2026-04-14 (~1107 tok)
 - `reference_production_deployment.md` (~874 tok)
 
 ## ../ghostshell/
@@ -105,7 +115,7 @@
 ## ./
 
 - `.gitattributes` — Git attributes (~183 tok)
-- `.gitignore` — Git ignore rules (~240 tok)
+- `.gitignore` — Git ignore rules (~279 tok)
 - `.pre-commit-config.yaml` (~115 tok)
 - `.secrets` — ⚠️  ROTATE ALL THESE VALUES IMMEDIATELY ⚠️ (~252 tok)
 - `.secrets.baseline` (~8828 tok)
@@ -113,7 +123,7 @@
 - `AI-ERVICES-CONFIGURATION.md` — AI Services Configuration Guide (~2083 tok)
 - `Caddyfile.production` — Caddyfile for SOWKNOW production deployment (~516 tok)
 - `CHANGELOG.md` — Change log (~1067 tok)
-- `CLAUDE.md` — OpenWolf (~789 tok)
+- `CLAUDE.md` — OpenWolf (~861 tok)
 - `DATABASE-PASSWORD-GUIDE.md` — Database Password Change Guide (~1106 tok)
 - `deploy-agentic-search.sh` — SOWKNOW4 — Deploy Agentic Search Enhancement (~771 tok)
 - `deploy-production.sh` — SOWKNOW4 Production Deployment Script (Simplified) (~3074 tok)
@@ -123,7 +133,7 @@
 - `docker-compose.prebuilt.yml` — Docker Compose: 4 services (~466 tok)
 - `docker-compose.production.yml` — SOWKNOW Production Docker Compose (~3121 tok)
 - `docker-compose.simple.yml` — Docker Compose: 4 services (~729 tok)
-- `docker-compose.yml` — Docker Compose services (~5523 tok)
+- `docker-compose.yml` — Docker Compose services (~5977 tok)
 - `embed_chunked_docs.py` — run, db_query, redis_cmd, queue_depth + 6 more (~2009 tok)
 - `fix-iptables.sh` — Fix for Docker DOCKER-INTERNAL chain blocking inter-container traffic (~218 tok)
 - `health-check.sh` (~402 tok)
@@ -143,6 +153,7 @@
 - `sowknow_audit.py` — URL configuration (~16069 tok)
 - `SOWKNOW_ExecutionPlan_v1.2.md` — SOWKNOW Multi-Generational Legacy Knowledge System (~7063 tok)
 - `SOWKNOW_PRD_v1.1.md` — SOWKNOW Multi-Generational Legacy Knowledge System (~5335 tok)
+- `SOWKNOW_PRD_v1.2.md` — SOWKNOW Multi-Generational Legacy Knowledge System (~6952 tok)
 - `sowknow_runbook.py` — run, docker_exec, redis_cli, db_query + 4 more (~8306 tok)
 - `sowknow_static_audit.sh` — SOWKNOW Static Code & Security Audit (~3290 tok)
 - `SOWKNOW_TechStack_v1.1.md` — SOWKNOW Multi-Generational Legacy Knowledge System (~5094 tok)
@@ -228,6 +239,42 @@
 - `pain-points.html` (~704 tok)
 - `waiting-1.html` (~38 tok)
 
+## .worktrees/feat/embed-server/
+
+- `docker-compose.yml` — Docker Compose services (~5757 tok)
+
+## .worktrees/feat/embed-server/.wolf/
+
+- `anatomy.md` — anatomy.md (~10160 tok)
+
+## .worktrees/feat/embed-server/backend/
+
+- `Dockerfile.embed` (~290 tok)
+
+## .worktrees/feat/embed-server/backend/app/services/
+
+- `embed_client.py` — EmbedClient: embedding_dim, can_embed, health_check, encode + 3 more (~1342 tok)
+- `search_service.py` — SearchResult: semantic_search, keyword_search, tag_search (~12207 tok)
+- `similarity_service.py` — SimilarityGroup: to_dict, find_similar_groups, find_similar_to_document (~3703 tok)
+
+## .worktrees/feat/embed-server/backend/app/tasks/
+
+- `article_tasks.py` — Celery tasks: record_success, record_failure, allow_request, generate_articles_for_document, generat (~3922 tok)
+- `document_tasks.py` — Celery tasks: detect_text_language, process_document (~9939 tok)
+- `embedding_tasks.py` — generate_embeddings_batch, recompute_embeddings_for_document, upgrade_embeddings_model (~3172 tok)
+- `pipeline_tasks.py` — _EmbedContinue: update_stage (~5127 tok)
+
+## .worktrees/feat/embed-server/backend/embed_server/
+
+- `__init__.py` — Package marker for embed_server microservice (~1 tok)
+- `main.py` — API: 3 endpoints (~544 tok)
+- `requirements.txt` — Python dependencies (~25 tok)
+
+## .worktrees/feat/embed-server/backend/tests/
+
+- `test_embed_client.py` — set_embed_url, get_client, test_encode_calls_embed_endpoint, test_encode_empty_returns_empty (~1257 tok)
+- `test_embed_server.py` — client, test_health_ok, test_embed_returns_vectors, test_embed_empty_texts (~647 tok)
+
 ## audit_reports/
 
 - `OCR_SERVICE_INTEGRATION_AUDIT_2026-02-21.md` — OCR Service Integration Audit Report (~5210 tok)
@@ -243,7 +290,7 @@
 - `Dockerfile.dev` (~87 tok)
 - `Dockerfile.minimal` (~281 tok)
 - `Dockerfile.telegram` (~148 tok)
-- `Dockerfile.worker` (~740 tok)
+- `Dockerfile.worker` (~747 tok)
 - `entrypoint.sh` (~50 tok)
 - `pipeline_status_check.py` — Quick pipeline status check — run inside backend container. (~232 tok)
 - `pyproject.toml` — Python project configuration (~1556 tok)
@@ -1021,10 +1068,16 @@
 - `verification_agent.data.json` (~11729 tok)
 - `verification_agent.meta.json` (~382 tok)
 
+## backend/app/
+
+- `main_minimal.py` — API: 4 endpoints (~4794 tok)
+
 ## backend/app/api/
 
 - `admin.py` — API: 7 endpoints (~10421 tok)
-- `voice.py` — API: 2 endpoints (~1289 tok)
+- `auth.py` — API: 2 endpoints (~9599 tok)
+- `documents.py` — API: 1 endpoints (~13769 tok)
+- `voice.py` — API: 2 endpoints (~1926 tok)
 
 ## backend/app/models/
 
@@ -1041,10 +1094,16 @@
 ## backend/app/tasks/
 
 - `pipeline_tasks.py` — _EmbedContinue: update_stage (~5163 tok)
+- `voice_tasks.py` — transcribe_voice_note (~1072 tok)
+
+## backend/embed_server/
+
+- `requirements.txt` — Python dependencies (~31 tok)
 
 ## backend/tests/unit/
 
 - `test_admin_pipeline_stats.py` — Unit tests for /admin/pipeline-stats assembler logic. (~1117 tok)
+- `test_voice_stream.py` — TestGetMimeTypeOggNormalization: make_fernet, encrypt_bytes, test_application_ogg_normalized_to_audi (~6763 tok)
 - `test_whisper_service.py` — TestWhisperService: test_transcribe_sync_returns_transcript, test_transcribe_sync_auto_language_pass (~906 tok)
 
 ## docs/superpowers/plans/
@@ -1052,6 +1111,7 @@
 - `2026-04-12-bookmarks-mobile-overflow-fix.md` — Mobile Overflow Fix + Bookmarks Mobile Adaptation — Implementation Plan (~5592 tok)
 - `2026-04-12-dashboard-live-pipeline.md` — Dashboard Live Pipeline Monitoring Implementation Plan (~6201 tok)
 - `2026-04-12-nftables-permanent-fix.md` — nftables Permanent Fix Implementation Plan (~8783 tok)
+- `2026-04-14-embed-server-extraction.md` — Embed Server Extraction Implementation Plan (~7252 tok)
 
 ## docs/superpowers/specs/
 
@@ -1075,6 +1135,10 @@
 ## frontend/app/[locale]/dashboard/
 
 - `page.tsx` — API_BASE (~6352 tok)
+
+## frontend/app/[locale]/journal/
+
+- `page.tsx` — JournalPage (~4370 tok)
 
 ## frontend/app/[locale]/notes/
 

@@ -98,6 +98,9 @@ tsconfig.tsbuildinfo
 # Claude Code
 .claude/
 
+# Git worktrees
+.worktrees/
+
 # Screenshots
 screenshots/
 

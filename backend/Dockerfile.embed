@@ -28,9 +28,6 @@ ENV SENTENCE_TRANSFORMERS_HOME=/models
 ENV HF_HOME=/models
 ENV TRANSFORMERS_CACHE=/models
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
 USER appuser
 
 # Single worker only: each uvicorn process loads the 1.3GB model independently.

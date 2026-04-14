@@ -11,7 +11,7 @@
 #   celery-heavy:     512MB  (pipeline.embed queue — I/O-bound HTTP to embed-server)
 #   embed-server:    2048MB  (embedding model, serves all callers via HTTP)
 #   postgres:        1536MB  (pgvector, 5 concurrent users)
-#   backend:          512MB  (FastAPI)
+#   backend:          768MB  (FastAPI)
 #   frontend:         512MB  (Next.js)
 #   redis:            256MB  (cache/queue)
 #   vault:            256MB  (secrets)
@@ -20,7 +20,7 @@
 #   nats:             128MB  (message broker)
 #   guardian-hc:      128MB  (self-healing monitor, monitoring profile)
 #   certbot:          128MB  (TLS renewal, tls profile)
-#   TOTAL:          ~8320MB  (plenty of headroom on 32GB VPS)
+#   TOTAL:          ~8576MB  (plenty of headroom on 32GB VPS)
 
 x-common-env: &common-env
   env_file:
@@ -222,7 +222,6 @@ services:
       - sowknow-net
 
   embed-server:
-    <<: *common-env
     init: true
     security_opt:
       - no-new-privileges:true
@@ -244,8 +243,8 @@ services:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
       interval: 30s
       timeout: 15s
-      retries: 5
-      start_period: 120s
+      retries: 8
+      start_period: 300s
     deploy:
       resources:
         limits:

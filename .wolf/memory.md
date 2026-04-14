@@ -1445,3 +1445,30 @@
 
 | Time | Action | File(s) | Outcome | ~Tokens |
 |------|--------|---------|---------|--------|
+| 17:45 | Edited docker-compose.yml | inline fix | ~18 |
+| 17:45 | Edited docker-compose.yml | inline fix | ~46 |
+| 17:45 | Edited docker-compose.yml | 9→9 lines | ~38 |
+| 17:45 | Edited docker-compose.yml | removed 23 lines | ~16 |
+| 17:45 | Edited docker-compose.yml | 3→5 lines | ~32 |
+| 17:45 | Edited docker-compose.yml | 2→2 lines | ~37 |
+| 17:45 | Edited docker-compose.yml | inline fix | ~32 |
+| 17:46 | Session end: 7 writes across 1 files (docker-compose.yml) | 2 reads | ~13448 tok |
+| 17:46 | Session end: 7 writes across 1 files (docker-compose.yml) | 2 reads | ~13448 tok |
+| 17:51 | Edited ../../../../mamadou/.claude/settings.json | 1→4 lines | ~50 |
+| 17:51 | Session end: 8 writes across 2 files (docker-compose.yml, settings.json) | 3 reads | ~13939 tok |
+
+## Session: 2026-04-14 17:52
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:55 | Edited docs/superpowers/plans/2026-04-14-embed-server-extraction.md | modified lifespan() | ~432 |
+| 17:55 | Edited docs/superpowers/plans/2026-04-14-embed-server-extraction.md | modified __init__() | ~1081 |
+| 17:56 | Edited docs/superpowers/plans/2026-04-14-embed-server-extraction.md | modified make_client() | ~90 |
+| 17:56 | Edited docs/superpowers/plans/2026-04-14-embed-server-extraction.md | added 1 import(s) | ~32 |
+| 17:56 | Edited docs/superpowers/plans/2026-04-14-embed-server-extraction.md | expanded (+6 lines) | ~176 |
+| 17:57 | Session end: 5 writes across 1 files (2026-04-14-embed-server-extraction.md) | 1 reads | ~9356 tok |
+
+## Session: 2026-04-14 17:57
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|

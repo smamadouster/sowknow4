@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T17:31:30.807Z
-> Files: 911 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T17:56:54.346Z
+> Files: 912 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -45,6 +45,10 @@
 ## ../../../../../var/docker/sowknow4/monitoring/guardian-hc/scripts/
 
 - `watchdog.sh` — ############################################################################## (~2126 tok)
+
+## ../../../../mamadou/.claude/
+
+- `settings.json` (~396 tok)
 
 ## ../../../../mamadou/.claude/projects/-home-development-src-active-sowknow4/memory/
 
@@ -133,7 +137,7 @@
 - `docker-compose.prebuilt.yml` — Docker Compose: 4 services (~466 tok)
 - `docker-compose.production.yml` — SOWKNOW Production Docker Compose (~3121 tok)
 - `docker-compose.simple.yml` — Docker Compose: 4 services (~729 tok)
-- `docker-compose.yml` — Docker Compose services (~5977 tok)
+- `docker-compose.yml` — Docker Compose services (~5852 tok)
 - `embed_chunked_docs.py` — run, db_query, redis_cmd, queue_depth + 6 more (~2009 tok)
 - `fix-iptables.sh` — Fix for Docker DOCKER-INTERNAL chain blocking inter-container traffic (~218 tok)
 - `health-check.sh` (~402 tok)
@@ -1111,7 +1115,7 @@
 - `2026-04-12-bookmarks-mobile-overflow-fix.md` — Mobile Overflow Fix + Bookmarks Mobile Adaptation — Implementation Plan (~5592 tok)
 - `2026-04-12-dashboard-live-pipeline.md` — Dashboard Live Pipeline Monitoring Implementation Plan (~6201 tok)
 - `2026-04-12-nftables-permanent-fix.md` — nftables Permanent Fix Implementation Plan (~8783 tok)
-- `2026-04-14-embed-server-extraction.md` — Embed Server Extraction Implementation Plan (~7252 tok)
+- `2026-04-14-embed-server-extraction.md` — Embed Server Extraction Implementation Plan (~7543 tok)
 
 ## docs/superpowers/specs/
 

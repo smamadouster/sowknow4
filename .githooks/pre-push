@@ -1,0 +1,61 @@
+#!/bin/bash
+# Daytona Production Gate: Pre-Push Blockade
+# Prevents pushing to master/production with uncommitted changes or out-of-sync state.
+
+# Colors for the Jury's Verdict
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Production branch name
+PROTECTED_BRANCH="master"
+REMOTE_NAME="devrepo"
+
+while read local_ref local_sha remote_ref remote_sha; do
+    # Check if we are pushing to the PROTECTED_BRANCH
+    if [[ "${remote_ref##refs/heads/}" == "$PROTECTED_BRANCH" ]]; then
+
+        echo -e "${YELLOW}🔍 Daytona Gate: Scanning for runway hazards before push to $PROTECTED_BRANCH...${NC}"
+
+        # Gate 1: Uncommitted Changes Check
+        if ! git diff --quiet HEAD; then
+            COUNT=$(git diff --name-only HEAD | wc -l | tr -d ' ')
+            echo -e "${RED}🚨 BLOCKADE! Uncommitted changes detected.${NC}"
+            echo -e "${RED}   Files changed but not staged/committed: $COUNT${NC}"
+            echo -e "${YELLOW}   ➜ Action required: 'git add .' and 'git commit -m \"<message>\"'${NC}"
+            exit 1
+        fi
+
+        # Gate 2: Staged but uncommitted
+        if ! git diff --cached --quiet; then
+            COUNT=$(git diff --cached --name-only | wc -l | tr -d ' ')
+            echo -e "${RED}🚨 BLOCKADE! Staged but uncommitted changes detected.${NC}"
+            echo -e "${RED}   Files staged but not committed: $COUNT${NC}"
+            echo -e "${YELLOW}   ➜ Action required: 'git commit -m \"<message>\"'${NC}"
+            exit 1
+        fi
+
+        # Gate 3: Untracked Files Warning (not a blocker, just a notice)
+        UNTRACKED_COUNT=$(git status --porcelain | grep '^??' | wc -l | tr -d ' ')
+        if [ "$UNTRACKED_COUNT" -gt 0 ]; then
+            echo -e "${YELLOW}⚠️  Notice: $UNTRACKED_COUNT untracked files present (not blocking push).${NC}"
+            echo -e "${YELLOW}   They won't be pushed. Add to .gitignore if intentional.${NC}"
+            echo -e "${YELLOW}   List them with: git status --porcelain | grep '^??'${NC}"
+        fi
+
+        # Gate 4: Check if local branch is behind remote (Prevents non-fast-forward)
+        git fetch "$REMOTE_NAME" "$PROTECTED_BRANCH" --quiet 2>/dev/null
+        if ! git merge-base --is-ancestor "$REMOTE_NAME/$PROTECTED_BRANCH" HEAD 2>/dev/null; then
+            echo -e "${RED}🚨 BLOCKADE! Your branch is behind $REMOTE_NAME/$PROTECTED_BRANCH.${NC}"
+            echo -e "${RED}   You must pull latest changes before pushing.${NC}"
+            echo -e "${YELLOW}   ➜ Action required: 'git pull --rebase $REMOTE_NAME $PROTECTED_BRANCH'${NC}"
+            exit 1
+        fi
+
+        echo -e "${GREEN}✅ Daytona Gate Clear: No uncommitted changes. Branch is up-to-date.${NC}"
+        echo -e "${GREEN}   Runway is smooth. Pushing to $PROTECTED_BRANCH...${NC}"
+    fi
+done
+
+exit 0

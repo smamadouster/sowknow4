@@ -3211,6 +3211,30 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-04-14T18:42:35.347Z"
+    },
+    {
+      "id": "bug-202",
+      "timestamp": "2026-04-16T12:15:00Z",
+      "error_message": "Self-healer alert: Telegram bot polling task is dead — not receiving messages (false positive)",
+      "file": "ghostshell/backend/app/infrastructure/probes.py:353",
+      "root_cause": "probe_telegram_liveness imported app.api.routes.telegram.telegram_bot and checked telegram_bot._polling_task.done(), but the bot runs in a separate container (sowknow4-telegram-bot) — telegram_bot was None/unavailable in ghostshell-api, so polling_alive was always False and the probe always returned FAIL, even though the bot was polling getUpdates every 10s successfully.",
+      "fix": "Rewrote probe to check external signals: (1) sowknow4-telegram-bot container status via docker SDK (running+healthy); (2) Telegram API reachability via getMe. No longer relies on in-process bot object. Applied to ghostshell repo at backend/app/infrastructure/probes.py and patched into live ghostshell-api. Verified PASS 2026-04-16 12:26 UTC.",
+      "tags": ["probe", "false-positive", "telegram", "self-healer", "ghostshell", "monitoring"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-16T12:26:00Z"
+    },
+    {
+      "id": "bug-203",
+      "timestamp": "2026-04-16T12:15:00Z",
+      "error_message": "User reports auth not working; 4 rapid successful POST /auth/login (200) + /auth/me (200) from Safari at 12:05-12:06 UTC, then user gave up",
+      "file": "frontend/public/sw.js",
+      "root_cause": "Server-side auth verified fully functional (tested end-to-end with fresh user: login 200 + Set-Cookie HttpOnly+Secure+SameSite=lax, /auth/me 200, protected routes 200 with cookie, 302 to /login without). The 4-login loop was client-side: Safari was not persisting/sending cookies across navigations. The PWA service worker NetworkFirst handler for / converts opaqueredirect responses into 200s and caches them — if the cached root was a redirect-to-login, subsequent visits served that cached pseudo-200, causing the loop. Other contributing factors: Safari ITP, stale SW cache.",
+      "fix": "Cache-busted the live PWA service worker inside sowknow4-frontend by appending a version comment to /app/public/sw.js (md5 7afea5f6 → e4185d85). Clients fetching sw.js on next load detect the byte diff, install the new SW, and cleanupOutdatedCaches()+skipWaiting() purge all precached routes immediately. Follow-up: remove the NetworkFirst opaqueredirect→200 converter in the next-pwa config to prevent this pattern from recurring.",
+      "tags": ["auth", "safari", "pwa", "service-worker", "cookies", "cache-bust"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-16T12:30:00Z"
     }
   ]
 }

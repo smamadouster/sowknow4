@@ -1534,3 +1534,26 @@
 | 18:42 | Edited ../../../../../var/docker/sowknow4/backend/app/api/voice.py | exists() → clients() | ~691 |
 | 18:43 | fix: Safari OGG playback — transcode to MP3 on-the-fly via ffmpeg | backend/app/api/voice.py | fixed | ~800 |
 | 18:43 | Session end: 2 writes across 1 files (voice.py) | 4 reads | ~15276 tok |
+| 18:45 | Session end: 2 writes across 1 files (voice.py) | 5 reads | ~15276 tok |
+| 18:46 | Session end: 2 writes across 1 files (voice.py) | 5 reads | ~15276 tok |
+| 18:51 | Edited ../../../../../var/docker/sowknow4/frontend/app/[locale]/journal/page.tsx | 3→4 lines | ~76 |
+| 18:51 | Edited ../../../../../var/docker/sowknow4/frontend/app/[locale]/journal/page.tsx | added error handling | ~233 |
+| 18:51 | Edited ../../../../../var/docker/sowknow4/frontend/app/[locale]/journal/page.tsx | expanded (+7 lines) | ~258 |
+| 18:54 | Session end: 5 writes across 2 files (voice.py, page.tsx) | 5 reads | ~15843 tok |
+| 18:57 | Edited ../../../../../var/docker/sowknow4/frontend/app/[locale]/journal/page.tsx | 9→14 lines | ~182 |
+| 18:59 | Session end: 6 writes across 2 files (voice.py, page.tsx) | 5 reads | ~16025 tok |
+| 19:02 | Edited ../../../../../var/docker/sowknow4/frontend/next.config.js | 1→2 lines | ~33 |
+| 19:02 | Edited ../../../../../var/docker/sowknow4/frontend/app/[locale]/journal/page.tsx | 12→7 lines | ~96 |
+| 19:04 | Session end: 8 writes across 3 files (voice.py, page.tsx, next.config.js) | 6 reads | ~16154 tok |
+
+## Session: 2026-04-16 12:08
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:17 | Created ../../../../../tmp/mkuser.py | — | ~279 |
+| 12:19 | auth probe + telegram probe investigation | buglog.json | found auth works server-side; telegram probe is false positive | ~5k |
+| 12:20 | Session end: 1 writes across 1 files (mkuser.py) | 5 reads | ~279 tok |
+| 12:25 | Edited ../ghostshell/backend/app/infrastructure/probes.py | modified probe_telegram_liveness() | ~882 |
+| 12:27 | fix ghostshell telegram_liveness probe | ghostshell/backend/app/infrastructure/probes.py | probe now PASS, no more false alerts | ~2k |
+| 12:27 | cache-bust PWA SW to evict stale client caches | frontend public/sw.js | md5 changed, clients get new SW on next fetch | ~1k |
+| 12:27 | Session end: 2 writes across 2 files (mkuser.py, probes.py) | 6 reads | ~1161 tok |

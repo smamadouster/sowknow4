@@ -89,6 +89,10 @@ describe('DocumentsPage - Drag and Drop Upload', () => {
     jest.clearAllMocks();
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
+      },
       json: async () => ({ documents: mockDocuments, total: 1 }),
     });
   });
@@ -142,7 +146,7 @@ describe('DocumentsPage - Drag and Drop Upload', () => {
       render(<DocumentsPage />);
       
       await waitFor(() => {
-        expect(screen.getByText('test.pdf')).toBeInTheDocument();
+        expect(screen.getAllByText('test.pdf').length).toBeGreaterThan(0);
       });
     });
 

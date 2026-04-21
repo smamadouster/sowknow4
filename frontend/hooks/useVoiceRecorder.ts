@@ -2,12 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type RecordingState = 'idle' | 'recording' | 'preview' | 'transcribing';
 
-// Single source of truth for locale ↔ language-tag conversion.
-// Web Speech expects BCP-47 (fr-FR); whisper.cpp expects ISO 639-1 (fr).
+// Locale → BCP-47 for Web Speech API (e.g. fr → fr-FR)
 const BCP47: Record<string, string> = { fr: 'fr-FR', en: 'en-US' };
-const ISO6391: Record<string, string> = { fr: 'fr', 'fr-FR': 'fr', en: 'en', 'en-US': 'en' };
 const toBcp47 = (l?: string) => (l && BCP47[l]) ?? l;
-const toWhisperLang = (l?: string) => (l && ISO6391[l]) ?? l ?? 'auto';
 
 interface UseVoiceRecorderOptions {
   onTranscript?: (text: string) => void;
@@ -183,14 +180,15 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
 
     // Always use backend whisper for accuracy. iOS Safari Web Speech API
     // is unreliable with non-default languages — sending FR audio comes
-    // back as EN text. Whisper.cpp with explicit `language` is consistent.
+    // back as EN text. Whisper auto-detects the spoken language so we
+    // always send 'auto' rather than locking to the UI locale.
     setState('transcribing');
     let finalTranscript = transcript;
     try {
       const formData = new FormData();
       const ext = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
       formData.append('file', audioBlob, `voice.${ext}`);
-      formData.append('language', toWhisperLang(lang));
+      formData.append('language', 'auto');
       const res = await fetch(`${apiBaseUrl}/api/v1/voice/transcribe`, {
         method: 'POST',
         body: formData,
@@ -217,7 +215,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
     setAudioUrl(null);
     setAudioBlob(null);
     setTranscript('');
-  }, [audioBlob, transcript, lang, apiBaseUrl, onTranscript, onAudioReady, cleanup, audioUrl]);
+  }, [audioBlob, transcript, apiBaseUrl, onTranscript, onAudioReady, cleanup, audioUrl]);
 
   const reRecord = useCallback(() => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);

@@ -1,6 +1,6 @@
 """Unified pipeline sweeper — finds stuck documents and resumes or parks them."""
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_
 
@@ -37,7 +37,7 @@ def pipeline_sweeper() -> dict:
     stalled_dispatched = 0
 
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # ── 1. Find stages stuck in RUNNING state ──
         for stage in StageEnum:

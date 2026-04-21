@@ -4,6 +4,7 @@ Run inside backend container: docker exec -it sowknow4-backend python scripts/re
 """
 
 import sys
+
 sys.path.insert(0, "/app")
 
 from app.database import SessionLocal

@@ -6,8 +6,13 @@ from celery import chain
 
 from app.models.pipeline import StageEnum
 from app.tasks.pipeline_tasks import (
-    article_stage, chunk_stage, embed_stage, entity_stage,
-    finalize_stage, index_stage, ocr_stage,
+    article_stage,
+    chunk_stage,
+    embed_stage,
+    entity_stage,
+    finalize_stage,
+    index_stage,
+    ocr_stage,
 )
 
 logger = logging.getLogger(__name__)

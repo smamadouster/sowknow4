@@ -8,7 +8,10 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.bookmark import (
-    BookmarkCreate, BookmarkListResponse, BookmarkResponse, BookmarkUpdate,
+    BookmarkCreate,
+    BookmarkListResponse,
+    BookmarkResponse,
+    BookmarkUpdate,
 )
 from app.schemas.tag import TagResponse
 from app.services.bookmark_service import bookmark_service

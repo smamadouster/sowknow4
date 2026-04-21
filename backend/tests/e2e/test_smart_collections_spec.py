@@ -12,16 +12,17 @@ Verifies implementation matches user specification:
 - Admin requests on confidential documents route through Ollama
 """
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.schemas.collection import CollectionCreate, CollectionPreviewRequest, ReportFormat
+import pytest
+
 from app.models.collection import Collection
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
+from app.schemas.collection import CollectionCreate, CollectionPreviewRequest, ReportFormat
 from app.services.collection_service import collection_service
-from app.services.intent_parser import intent_parser_service, ParsedIntent
+from app.services.intent_parser import ParsedIntent, intent_parser_service
 from app.services.report_service import ReportService
 
 
@@ -48,7 +49,7 @@ class TestQueryLengthValidation:
 
         frontend_path = "/home/development/src/active/sowknow4/frontend/app/[locale]/collections/page.tsx"
         if os.path.exists(frontend_path):
-            with open(frontend_path, "r") as f:
+            with open(frontend_path) as f:
                 content = f.read()
             # Check if the file has the problematic 50 char truncation
             # Current code has: newQuery.slice(0, 50) for name - this is WRONG
@@ -365,8 +366,9 @@ class TestCollectionExport:
 
     def test_export_supports_pdf_format(self):
         """Export should support PDF format"""
-        from app.api.collections import export_collection
         import inspect
+
+        from app.api.collections import export_collection
 
         source = inspect.getsource(export_collection)
         assert "pdf" in source.lower() or "format" in source.lower()

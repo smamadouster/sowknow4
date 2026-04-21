@@ -360,7 +360,7 @@ Generate the article now:"""
             return ""
         except Exception as e:
             logger.error(f"OpenRouter fallback generation error: {e}")
-            return f"Unable to generate content. Both MiniMax and OpenRouter failed."
+            return "Unable to generate content. Both MiniMax and OpenRouter failed."
 
 
 # Global smart folder service instance

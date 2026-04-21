@@ -9,7 +9,6 @@ from collections.abc import AsyncGenerator
 
 import httpx
 
-
 from app.services.base_llm_service import BaseLLMService
 
 logger = logging.getLogger(__name__)

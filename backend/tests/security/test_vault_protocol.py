@@ -42,7 +42,6 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 # ---------------------------------------------------------------------------
 # Import real modules that already exist
 # ---------------------------------------------------------------------------
-from app.services.pii_detection_service import PIIDetectionService, pii_detection_service
 from app.services.agent_identity import (
     ANSWER_IDENTITY,
     CLARIFICATION_IDENTITY,
@@ -52,6 +51,7 @@ from app.services.agent_identity import (
     VERIFIER_IDENTITY,
     build_identity_block,
 )
+from app.services.pii_detection_service import PIIDetectionService, pii_detection_service
 
 # ---------------------------------------------------------------------------
 # Stub / contract types for InputGuard and ContextBlockService
@@ -83,7 +83,7 @@ class InputGuard:
 
     def __init__(
         self,
-        pii_service: Optional[PIIDetectionService] = None,
+        pii_service: PIIDetectionService | None = None,
         redis_client=None,
         max_query_tokens: int = 2048,
         dedup_window_seconds: int = 30,
@@ -97,9 +97,9 @@ class InputGuard:
     async def evaluate(
         self,
         query: str,
-        document_ids: Optional[list[int]] = None,
-        document_buckets: Optional[list[str]] = None,
-        user_id: Optional[str] = None,
+        document_ids: list[int] | None = None,
+        document_buckets: list[str] | None = None,
+        user_id: str | None = None,
     ) -> GuardResult:
         """Evaluate a query and return routing hints.
 
@@ -179,7 +179,7 @@ class InputGuard:
             return "search"
         return "chat"
 
-    def _check_duplicate(self, query: str, user_id: Optional[str] = None) -> bool:
+    def _check_duplicate(self, query: str, user_id: str | None = None) -> bool:
         """Check if the same query was issued recently."""
         key = f"{user_id or 'anon'}:{query}"
         now = time.time()

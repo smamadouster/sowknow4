@@ -9,7 +9,10 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.note import (
-    NoteCreate, NoteListResponse, NoteResponse, NoteUpdate,
+    NoteCreate,
+    NoteListResponse,
+    NoteResponse,
+    NoteUpdate,
 )
 from app.schemas.tag import TagResponse
 from app.services.note_service import note_service
@@ -147,6 +150,7 @@ async def upload_note_audio(
     import os
     import uuid as uuid_mod
     from datetime import datetime
+
     from app.models.note import Note
     from app.models.note_audio import NoteAudio
 

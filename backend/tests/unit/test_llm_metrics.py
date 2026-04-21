@@ -1,7 +1,7 @@
 """Tests for LLM request metrics."""
 from app.services.prometheus_metrics import (
-    Histogram,
     Counter,
+    Histogram,
     get_metrics,
     llm_request_duration,
     llm_request_total,

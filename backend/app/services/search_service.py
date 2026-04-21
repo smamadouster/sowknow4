@@ -11,10 +11,6 @@ from sqlalchemy import desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document, DocumentBucket, DocumentChunk
-from app.models.bookmark import Bookmark, BookmarkBucket
-from app.models.note import Note, NoteBucket
-from app.models.space import Space, SpaceBucket
-from app.models.tag import Tag, TargetType
 from app.models.user import User, UserRole
 from app.services.embed_client import embedding_service
 from app.services.pii_detection_service import pii_detection_service
@@ -1107,7 +1103,7 @@ class HybridSearchService:
         if tasks:
             coros = [t[1] for t in tasks]
             results = await asyncio.gather(*coros, return_exceptions=True)
-            for (type_name, _), result in zip(tasks, results):
+            for (type_name, _), result in zip(tasks, results, strict=False):
                 if isinstance(result, Exception):
                     logger.warning("search_all_types: %s search failed: %s", type_name, result)
                     continue

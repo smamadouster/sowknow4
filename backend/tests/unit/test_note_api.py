@@ -1,4 +1,5 @@
 import pytest
+
 from app.models.note import Note, NoteBucket
 
 

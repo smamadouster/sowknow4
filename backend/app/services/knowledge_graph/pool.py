@@ -15,6 +15,7 @@ Usage in a Celery task:
 from __future__ import annotations
 
 import os
+
 import asyncpg
 
 _pool: asyncpg.Pool | None = None

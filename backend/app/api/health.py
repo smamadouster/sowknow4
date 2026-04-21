@@ -157,7 +157,6 @@ async def deep_health(db=None) -> JSONResponse:
     Returns internal state: DB connectivity, active connections, last write,
     Celery ping, and JWT validity. HTTP 503 when DB is unreachable.
     """
-    from app.database import AsyncSession, get_db
 
     result = {
         "db_connected": False,

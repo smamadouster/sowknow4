@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from app.schemas.tag import TagResponse

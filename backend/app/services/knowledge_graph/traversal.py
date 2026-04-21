@@ -10,16 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 
 import asyncpg
 
 from .models import (
     ConnectionQuery,
-    ExtractionMethod,
     GraphEdge,
     GraphNode,
-    NodeType,
     PathResult,
 )
 
@@ -138,7 +135,7 @@ class GraphTraversalService:
 
     async def resolve_entity(
         self, name: str, *, include_confidential: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Map a natural-language entity name to a graph_nodes.id.
         Strategy: synonym table → full-text → embedding similarity.

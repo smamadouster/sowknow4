@@ -12,7 +12,6 @@ import pytest
 
 from app.models.pipeline import PipelineStage, StageEnum, StageStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -212,7 +211,7 @@ class TestOcrStage:
             mock_self = MagicMock()
             mock_self.request.id = "fake-task-id"
 
-            result = task.run.__func__(mock_self, doc_id) if hasattr(task, "run") else _call_task(task, doc_id)
+            result = task.run.__func__(mock_self, doc_id)
 
         # Verify result
         assert result == doc_id
@@ -242,6 +241,7 @@ class TestOcrStage:
     def test_rejects_when_max_attempts_exhausted(self):
         """Raises Reject when attempt count >= max_attempts."""
         from celery.exceptions import Reject
+
         from app.tasks.pipeline_tasks import _stage_task
 
         doc_id = str(uuid.uuid4())

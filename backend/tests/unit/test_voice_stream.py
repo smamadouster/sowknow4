@@ -26,7 +26,6 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
-
 # ---------------------------------------------------------------------------
 # Helpers / minimal fake data
 # ---------------------------------------------------------------------------
@@ -52,12 +51,12 @@ class TestGetMimeTypeOggNormalization:
 
     def test_application_ogg_normalized_to_audio_ogg(self):
         """Magic returns application/ogg → must be stored as audio/ogg."""
-        with patch("app.api.documents._magic_available", True), \
-             patch("app.api.documents._magic") as mock_magic:
+        import app.api.documents as _docs
+        with patch.object(_docs, "_magic_available", True), \
+             patch.object(_docs, "_magic") as mock_magic:
             mock_magic.from_buffer.return_value = "application/ogg"
 
-            from app.api.documents import get_mime_type
-            result = get_mime_type("voice_123_abc.ogg", FAKE_OGG_BYTES)
+            result = _docs.get_mime_type("voice_123_abc.ogg", FAKE_OGG_BYTES)
 
         assert result == "audio/ogg", (
             f"Expected 'audio/ogg' but got '{result}'. "
@@ -67,39 +66,39 @@ class TestGetMimeTypeOggNormalization:
 
     def test_audio_ogg_passed_through_unchanged(self):
         """audio/ogg must not be mangled."""
-        with patch("app.api.documents._magic_available", True), \
-             patch("app.api.documents._magic") as mock_magic:
+        import app.api.documents as _docs
+        with patch.object(_docs, "_magic_available", True), \
+             patch.object(_docs, "_magic") as mock_magic:
             mock_magic.from_buffer.return_value = "audio/ogg"
 
-            from app.api.documents import get_mime_type
-            result = get_mime_type("voice.ogg", FAKE_OGG_BYTES)
+            result = _docs.get_mime_type("voice.ogg", FAKE_OGG_BYTES)
 
         assert result == "audio/ogg"
 
     def test_audio_webm_not_affected(self):
         """Other audio MIME types must not be touched."""
-        with patch("app.api.documents._magic_available", True), \
-             patch("app.api.documents._magic") as mock_magic:
+        import app.api.documents as _docs
+        with patch.object(_docs, "_magic_available", True), \
+             patch.object(_docs, "_magic") as mock_magic:
             mock_magic.from_buffer.return_value = "audio/webm"
 
-            from app.api.documents import get_mime_type
-            result = get_mime_type("voice.webm", b"webm bytes")
+            result = _docs.get_mime_type("voice.webm", b"webm bytes")
 
         assert result == "audio/webm"
 
     def test_magic_unavailable_falls_back_to_mimetypes(self):
         """When magic is not installed, mimetypes.guess_type must return audio/ogg for .ogg."""
-        with patch("app.api.documents._magic_available", False):
-            from app.api.documents import get_mime_type
-            result = get_mime_type("voice.ogg", b"")
+        import app.api.documents as _docs
+        with patch.object(_docs, "_magic_available", False):
+            result = _docs.get_mime_type("voice.ogg", b"")
 
         assert result == "audio/ogg"
 
     def test_magic_returns_application_ogg_no_content(self):
         """Even without content, filename-based detection returns audio/ogg for .ogg files."""
-        with patch("app.api.documents._magic_available", False):
-            from app.api.documents import get_mime_type
-            result = get_mime_type("voice_216601573_AgADliIAAjk96VI.ogg", b"")
+        import app.api.documents as _docs
+        with patch.object(_docs, "_magic_available", False):
+            result = _docs.get_mime_type("voice_216601573_AgADliIAAjk96VI.ogg", b"")
 
         assert result == "audio/ogg"
 
@@ -153,26 +152,28 @@ class TestStreamAudioFileHelper:
                     svc._fernet = make_fernet()
                 return svc
 
-    def test_plain_ogg_served_as_file_response(self, plain_ogg, tmp_dir):
+    @pytest.mark.asyncio
+    async def test_plain_ogg_served_as_file_response(self, plain_ogg, tmp_dir):
         """Unencrypted .ogg → FileResponse with audio/ogg."""
         from fastapi.responses import FileResponse
         svc = self._make_storage(tmp_dir, enabled=True)
 
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import _stream_audio_file
-            response = _stream_audio_file(plain_ogg)
+            response = await _stream_audio_file(plain_ogg)
 
         assert isinstance(response, FileResponse)
         assert response.media_type == "audio/ogg"
 
-    def test_encrypted_ogg_decrypted_and_streamed(self, encrypted_ogg, tmp_dir):
+    @pytest.mark.asyncio
+    async def test_encrypted_ogg_decrypted_and_streamed(self, encrypted_ogg, tmp_dir):
         """Encrypted .ogg.encrypted → StreamingResponse with decrypted bytes, audio/ogg."""
         from fastapi.responses import StreamingResponse
         svc = self._make_storage(tmp_dir, enabled=True)
 
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import _stream_audio_file
-            response = _stream_audio_file(encrypted_ogg)
+            response = await _stream_audio_file(encrypted_ogg)
 
         assert isinstance(response, StreamingResponse), (
             "Expected StreamingResponse for encrypted file but got FileResponse. "
@@ -187,35 +188,38 @@ class TestStreamAudioFileHelper:
                 chunks.append(chunk)
             return b"".join(chunks)
 
-        body = _asyncio.get_event_loop().run_until_complete(_collect())
+        body = await _collect()
         assert body == FAKE_OGG_BYTES, (
             "Decrypted bytes do not match original audio. Decryption is broken."
         )
 
-    def test_encrypted_ogg_content_length_header(self, encrypted_ogg, tmp_dir):
+    @pytest.mark.asyncio
+    async def test_encrypted_ogg_content_length_header(self, encrypted_ogg, tmp_dir):
         """Content-Length header must reflect decrypted size."""
         svc = self._make_storage(tmp_dir, enabled=True)
 
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import _stream_audio_file
-            response = _stream_audio_file(encrypted_ogg)
+            response = await _stream_audio_file(encrypted_ogg)
 
         assert "Content-Length" in response.headers
         assert int(response.headers["Content-Length"]) == len(FAKE_OGG_BYTES)
 
-    def test_encryption_disabled_encrypted_file_served_raw(self, encrypted_ogg, tmp_dir):
+    @pytest.mark.asyncio
+    async def test_encryption_disabled_encrypted_file_served_raw(self, encrypted_ogg, tmp_dir):
         """When encryption key not set, .encrypted file is served as FileResponse (no key = no decrypt)."""
         svc = self._make_storage(tmp_dir, enabled=False)
 
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import _stream_audio_file
-            response = _stream_audio_file(encrypted_ogg)
+            response = await _stream_audio_file(encrypted_ogg)
 
         # encryption_enabled is False → fallback to FileResponse
         from fastapi.responses import FileResponse
         assert isinstance(response, FileResponse)
 
-    def test_webm_extension_returns_correct_mime(self, tmp_dir):
+    @pytest.mark.asyncio
+    async def test_webm_extension_returns_correct_mime(self, tmp_dir):
         """audio/webm MIME for .webm files."""
         path = os.path.join(tmp_dir, "public", "voice.webm")
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -224,11 +228,12 @@ class TestStreamAudioFileHelper:
 
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import _stream_audio_file
-            response = _stream_audio_file(path)
+            response = await _stream_audio_file(path)
 
         assert response.media_type == "audio/webm"
 
-    def test_mp3_extension_returns_correct_mime(self, tmp_dir):
+    @pytest.mark.asyncio
+    async def test_mp3_extension_returns_correct_mime(self, tmp_dir):
         """audio/mpeg MIME for .mp3 files."""
         path = os.path.join(tmp_dir, "public", "voice.mp3")
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -237,11 +242,12 @@ class TestStreamAudioFileHelper:
 
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import _stream_audio_file
-            response = _stream_audio_file(path)
+            response = await _stream_audio_file(path)
 
         assert response.media_type == "audio/mpeg"
 
-    def test_encrypted_ogg_extension_stripped_correctly(self, tmp_dir):
+    @pytest.mark.asyncio
+    async def test_encrypted_ogg_extension_stripped_correctly(self, tmp_dir):
         """.ogg.encrypted → real ext is .ogg → audio/ogg not audio/encrypted."""
         conf_dir = os.path.join(tmp_dir, "confidential")
         os.makedirs(conf_dir, exist_ok=True)
@@ -252,7 +258,7 @@ class TestStreamAudioFileHelper:
 
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import _stream_audio_file
-            response = _stream_audio_file(enc_path)
+            response = await _stream_audio_file(enc_path)
 
         assert response.media_type == "audio/ogg", (
             f"Got '{response.media_type}'. Extension strip logic is broken: "
@@ -472,10 +478,14 @@ class TestStreamAudioEndpoint:
         mock_storage = MagicMock()
         mock_storage.encryption_enabled = False
 
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = ""
+
         with patch("app.api.voice.storage_service", mock_storage):
             from app.api.voice import stream_audio
             response = await stream_audio(
                 audio_id=str(doc.id),
+                request=mock_request,
                 current_user=self._make_user("admin"),
                 db=mock_db,
             )
@@ -511,10 +521,14 @@ class TestStreamAudioEndpoint:
             svc.public_path = tmp_path / "public"
             svc._fernet = make_fernet()
 
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = ""
+
         with patch("app.api.voice.storage_service", svc):
             from app.api.voice import stream_audio
             response = await stream_audio(
                 audio_id=str(doc.id),
+                request=mock_request,
                 current_user=self._make_user("admin"),
                 db=mock_db,
             )
@@ -543,10 +557,14 @@ class TestStreamAudioEndpoint:
         mock_db = AsyncMock()
         mock_db.execute.return_value.scalar_one_or_none = MagicMock(return_value=doc)
 
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = ""
+
         from app.api.voice import stream_audio
         with pytest.raises(HTTPException) as exc_info:
             await stream_audio(
                 audio_id=str(doc.id),
+                request=mock_request,
                 current_user=self._make_user("user"),
                 db=mock_db,
             )
@@ -557,10 +575,14 @@ class TestStreamAudioEndpoint:
     async def test_invalid_uuid_returns_404(self):
         """Non-UUID audio_id must return 404 not 500."""
         mock_db = AsyncMock()
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = ""
+
         from app.api.voice import stream_audio
         with pytest.raises(HTTPException) as exc_info:
             await stream_audio(
                 audio_id="not-a-uuid",
+                request=mock_request,
                 current_user=self._make_user(),
                 db=mock_db,
             )
@@ -580,11 +602,15 @@ class TestStreamAudioEndpoint:
         mock_storage = MagicMock()
         mock_storage.encryption_enabled = False
 
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = ""
+
         with patch("app.api.voice.storage_service", mock_storage):
             from app.api.voice import stream_audio
             with pytest.raises(HTTPException) as exc_info:
                 await stream_audio(
                     audio_id=str(doc.id),
+                    request=mock_request,
                     current_user=self._make_user("admin"),
                     db=mock_db,
                 )

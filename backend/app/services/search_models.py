@@ -4,17 +4,16 @@ All data contracts for the search pipeline, API, and agent state.
 """
 
 from datetime import datetime
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.document import DocumentBucket
-from app.models.user import UserRole
 
 
-class QueryIntent(str, Enum):
+class QueryIntent(StrEnum):
     FACTUAL = "factual"
     TEMPORAL = "temporal"
     COMPARATIVE = "comparative"
@@ -27,14 +26,14 @@ class QueryIntent(str, Enum):
     UNKNOWN = "unknown"
 
 
-class RelevanceLabel(str, Enum):
+class RelevanceLabel(StrEnum):
     HIGHLY_RELEVANT = "highly_relevant"
     RELEVANT = "relevant"
     PARTIALLY = "partially"
     MARGINAL = "marginal"
 
 
-class SearchMode(str, Enum):
+class SearchMode(StrEnum):
     FAST = "fast"
     DEEP = "deep"
     AUTO = "auto"
@@ -44,12 +43,12 @@ class AgenticSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000)
     mode: SearchMode = SearchMode.AUTO
     top_k: int = Field(default=10, ge=1, le=50)
-    date_from: Optional[datetime] = None
-    date_to: Optional[datetime] = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
     filter_tags: list[str] = Field(default_factory=list)
     filter_doc_types: list[str] = Field(default_factory=list)
     scope_document_ids: list[UUID] = Field(default_factory=list)
-    language: Optional[str] = Field(default=None)
+    language: str | None = Field(default=None)
     include_suggestions: bool = True
     journal_only: bool = False
 
@@ -69,7 +68,7 @@ class ParsedIntent(BaseModel):
     sub_queries: list[str] = Field(default_factory=list)
     detected_language: str = "fr"
     requires_synthesis: bool = False
-    temporal_range: Optional[dict[str, Any]] = None
+    temporal_range: dict[str, Any] | None = None
 
 
 class RawChunk(BaseModel):
@@ -79,12 +78,12 @@ class RawChunk(BaseModel):
     document_bucket: DocumentBucket
     document_type: str
     chunk_index: int
-    page_number: Optional[int]
+    page_number: int | None
     text: str
     semantic_score: float = 0.0
     fts_rank: float = 0.0
     rrf_score: float = 0.0
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
     tags: list[str] = Field(default_factory=list)
 
 
@@ -93,7 +92,7 @@ class Citation(BaseModel):
     document_title: str
     document_type: str
     bucket: DocumentBucket
-    page_number: Optional[int]
+    page_number: int | None
     chunk_excerpt: str
     relevance_score: float
 
@@ -109,8 +108,8 @@ class SearchResult(BaseModel):
     excerpt: str
     highlights: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
-    page_number: Optional[int] = None
-    document_date: Optional[datetime] = None
+    page_number: int | None = None
+    document_date: datetime | None = None
     match_reason: str
     is_confidential: bool = False
 
@@ -136,14 +135,14 @@ class AgentTrace(BaseModel):
 class AgenticSearchResponse(BaseModel):
     query: str
     parsed_intent: QueryIntent
-    answer_synthesis: Optional[str] = None
+    answer_synthesis: str | None = None
     answer_language: str = "fr"
     results: list[SearchResult]
     citations: list[Citation]
     suggestions: list[SearchSuggestion] = Field(default_factory=list)
     total_found: int
     has_confidential_results: bool = False
-    llm_model_used: Optional[str] = None
-    agent_trace: Optional[AgentTrace] = None
+    llm_model_used: str | None = None
+    agent_trace: AgentTrace | None = None
     search_time_ms: int
     performed_at: datetime = Field(default_factory=datetime.utcnow)

@@ -16,7 +16,6 @@ import sys
 import uuid
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -222,7 +221,8 @@ class TestRouterInvalidateCollectionCacheHelper:
             )
         except Exception:
             # Router import may fail in minimal env; fall back to source-level check
-            import ast, pathlib
+            import ast
+            import pathlib
             router_path = pathlib.Path(__file__).parent.parent.parent / "app/api/collections.py"
             src = router_path.read_text()
             assert "_invalidate_collection_cache" in src
@@ -230,7 +230,8 @@ class TestRouterInvalidateCollectionCacheHelper:
 
     def test_router_helper_catches_exceptions(self):
         """_invalidate_collection_cache must have exception handling (try/except)."""
-        import ast, pathlib
+        import ast
+        import pathlib
         router_path = pathlib.Path(__file__).parent.parent.parent / "app/api/collections.py"
         src = router_path.read_text()
         # Parse AST and find the function

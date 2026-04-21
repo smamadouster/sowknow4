@@ -4,6 +4,7 @@ Run: pytest backend/tests/test_search_agent.py -v
 """
 
 import pytest
+
 from app.services.search_models import (
     AgenticSearchRequest,
     SearchMode,
@@ -37,18 +38,18 @@ from uuid import uuid4
 
 from app.models.document import DocumentBucket
 from app.models.user import UserRole
-from app.services.search_models import (
-    ParsedIntent,
-    QueryIntent,
-    RawChunk,
-    RelevanceLabel,
-)
 from app.services.search_agent import (
     _fallback_intent,
     _score_to_label,
     build_citations,
     build_search_queries,
     rerank_and_build_results,
+)
+from app.services.search_models import (
+    ParsedIntent,
+    QueryIntent,
+    RawChunk,
+    RelevanceLabel,
 )
 
 

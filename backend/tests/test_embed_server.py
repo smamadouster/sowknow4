@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.sqlite_safe
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(monkeypatch):
     """TestClient with model loading bypassed (no GPU/model in CI)."""
     from unittest.mock import MagicMock, patch
@@ -68,6 +68,7 @@ def test_embed_returns_503_when_model_not_loaded():
 
     with patch("embed_server.main.svc", mock_svc):
         import importlib
+
         import embed_server.main as m
         importlib.reload(m)
         c = TestClient(m.app)

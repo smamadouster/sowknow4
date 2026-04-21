@@ -1,5 +1,6 @@
 """Unit tests for /admin/pipeline-stats assembler logic."""
 import pytest
+
 from app.models.pipeline import StageEnum, StageStatus
 from app.schemas.admin import PipelineStageStats, PipelineStatsResponse
 

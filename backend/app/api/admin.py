@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_admin_only
 from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
-from app.models.pipeline import PipelineStage, StageEnum, StageStatus
 from app.models.chat import ChatSession
 from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.pipeline import PipelineStage, StageEnum, StageStatus
 from app.models.processing import ProcessingQueue, TaskStatus
 from app.models.user import User, UserRole
 from app.schemas.admin import (

@@ -2,6 +2,7 @@
 from app.models.article import Article, ArticleStatus
 from app.models.audit import AuditAction, AuditLog
 from app.models.base import Base
+from app.models.bookmark import Bookmark, BookmarkBucket  # noqa: F401
 from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.collection import (
     Collection,
@@ -20,13 +21,12 @@ from app.models.knowledge_graph import (
     RelationType,
     TimelineEvent,
 )
-from app.models.processing import ProcessingQueue, TaskStatus, TaskType
-from app.models.tag import Tag, TagType, TargetType  # noqa: F401
-from app.models.bookmark import Bookmark, BookmarkBucket  # noqa: F401
 from app.models.note import Note, NoteBucket  # noqa: F401
 from app.models.note_audio import NoteAudio  # noqa: F401
-from app.models.space import Space, SpaceBucket, SpaceItem, SpaceItemType, SpaceRule, SpaceRuleType  # noqa: F401
 from app.models.pipeline import PipelineStage, StageEnum, StageStatus
+from app.models.processing import ProcessingQueue, TaskStatus, TaskType
+from app.models.space import Space, SpaceBucket, SpaceItem, SpaceItemType, SpaceRule, SpaceRuleType  # noqa: F401
+from app.models.tag import Tag, TagType, TargetType  # noqa: F401
 from app.models.user import User
 
 __all__ = [

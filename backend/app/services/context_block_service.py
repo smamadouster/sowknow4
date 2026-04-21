@@ -6,18 +6,15 @@ static knowledge base information every agent needs.  The block is assembled
 once and cached in Redis, not regenerated per query.
 """
 
-import json
 import logging
-import os
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import redis as _redis
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis_url import safe_redis_url
-from app.models.document import Document, DocumentBucket, DocumentStatus
+from app.models.document import DocumentBucket
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +24,10 @@ logger = logging.getLogger(__name__)
 CONTEXT_BLOCK_KEY = "sowknow:context_block"
 CONTEXT_BLOCK_TTL = 3600  # 1 hour
 
-_redis_client: Optional[_redis.Redis] = None
+_redis_client: _redis.Redis | None = None
 
 
-def _get_redis() -> Optional[_redis.Redis]:
+def _get_redis() -> _redis.Redis | None:
     """Lazy-initialise and return a Redis client.  Returns None on failure."""
     global _redis_client
     if _redis_client is not None:
@@ -129,7 +126,7 @@ def invalidate_context_block() -> None:
 async def _build_block(db: AsyncSession) -> str:
     """Assemble the context block from live database data."""
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     # -- Document stats by bucket -------------------------------------------
     public_count, public_pages = await _doc_stats(db, DocumentBucket.PUBLIC)
@@ -199,7 +196,7 @@ async def _doc_stats(db: AsyncSession, bucket: DocumentBucket) -> tuple[int, int
     return 0, 0
 
 
-async def _date_range(db: AsyncSession) -> tuple[Optional[str], Optional[str]]:
+async def _date_range(db: AsyncSession) -> tuple[str | None, str | None]:
     """Return (earliest_date, latest_date) as ISO strings."""
     try:
         result = await db.execute(

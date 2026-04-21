@@ -12,11 +12,9 @@ After a document is chunked and embedded, this module:
 
 from __future__ import annotations
 
-import asyncio
 import itertools
 import json
 import logging
-from typing import Optional
 
 import asyncpg
 
@@ -26,6 +24,20 @@ logger = logging.getLogger("sowknow.graph.extraction")
 
 # Schema prefix
 _S = "sowknow"
+
+
+def _vec_to_str(vec: list[float] | None) -> str | None:
+    """Convert an embedding vector to a pgvector string literal.
+
+    asyncpg does not ship with a codec for the ``vector`` type, so passing a
+    Python list directly makes asyncpg fall back to text encoding and raises
+    *expected str, got list*.  Returning ``'[1.0,2.0,...]'`` lets PostgreSQL
+    cast the text parameter to ``vector`` via ``::vector`` in SQL.
+    """
+    if vec is None:
+        return None
+    return "[" + ",".join(str(v) for v in vec) + "]"
+
 
 # ── spaCy NER type → SOWKNOW NodeType mapping ────────────────────
 
@@ -54,7 +66,7 @@ _FINANCIAL_KEYWORDS = {
     "dettes", "liabilities",
     "actif", "assets",
     "amortissement", "depreciation",
-    "provisions", "provisions",
+    "provisions",
 }
 
 
@@ -249,6 +261,10 @@ class EntityExtractor:
         """
         canonical = surface_form.strip().lower()
 
+        # Pre-compute embedding so we don't hold a DB connection during the HTTP call
+        embedding = await self._embed(surface_form) if self._embed else None
+        embedding_str = _vec_to_str(embedding)
+
         async with self._pool.acquire() as conn:
             # Check synonym table
             row = await conn.fetchrow(
@@ -272,8 +288,7 @@ class EntityExtractor:
                 return str(row["canonical_id"]), False
 
             # Check embedding similarity if available
-            if self._embed:
-                vec = await self._embed(surface_form)
+            if embedding_str:
                 similar = await conn.fetchrow(
                     f"""
                     SELECT id, canonical_name,
@@ -284,7 +299,7 @@ class EntityExtractor:
                     ORDER BY embedding <=> $1::vector
                     LIMIT 1
                     """,
-                    vec, node_type.value,
+                    embedding_str, node_type.value,
                 )
                 if similar and similar["score"] >= 0.85:
                     node_id = similar["id"]
@@ -303,17 +318,16 @@ class EntityExtractor:
                     return str(node_id), False
 
             # Create new node
-            embedding = await self._embed(surface_form) if self._embed else None
             new_id = await conn.fetchval(
                 f"""
                 INSERT INTO {_S}.graph_nodes (canonical_name, aliases, node_type, embedding, bucket)
-                VALUES ($1, $2, $3, $4, $5)
+                VALUES ($1, $2, $3, $4::vector, $5)
                 RETURNING id
                 """,
                 canonical,
                 [surface_form],
                 node_type.value,
-                embedding,
+                embedding_str,
                 bucket,
             )
             await conn.execute(

@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.models.document import Document, DocumentBucket, DocumentChunk
+from app.models.document import Document, DocumentChunk
 from app.models.knowledge_graph import (
     Entity,
     EntityMention,

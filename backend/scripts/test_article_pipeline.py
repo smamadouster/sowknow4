@@ -14,7 +14,6 @@ Run inside the celery worker container:
 
 import sys
 import time
-import uuid
 
 from app.database import SessionLocal
 from app.models.article import Article, ArticleStatus
@@ -139,7 +138,7 @@ def main():
             # Validate individual doc
             if d.original_filename == "acte-uniforme-revise-portant-droit-commercial-general-2010_1.pdf":
                 # This doc has extraction issues — should be ERROR
-                if not check(d.status == DocumentStatus.ERROR, f"acte-uniforme: expected ERROR status"):
+                if not check(d.status == DocumentStatus.ERROR, "acte-uniforme: expected ERROR status"):
                     failures += 1
             else:
                 if not check(d.status == DocumentStatus.INDEXED, f"{d.original_filename[:30]}: expected INDEXED"):
@@ -232,7 +231,7 @@ def main():
 
             if not check(title_ok, f"Title length > 5: '{a.title[:60]}'"):
                 failures += 1
-            if not check(summary_ok, f"Summary length > 10"):
+            if not check(summary_ok, "Summary length > 10"):
                 failures += 1
             if not check(body_ok, f"Body length > 50 (got {len(a.body)})"):
                 failures += 1

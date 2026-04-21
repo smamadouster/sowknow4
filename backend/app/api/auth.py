@@ -79,9 +79,9 @@ SAMESITE_VALUE = "lax"
 # =============================================================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
-TELEGRAM_ADMIN_USER_IDS = set(
+TELEGRAM_ADMIN_USER_IDS = {
     int(x.strip()) for x in os.getenv("TELEGRAM_ADMIN_USER_IDS", "").split(",") if x.strip()
-)
+}
 
 
 async def verify_telegram_user(telegram_user_id: int, bot_token: str) -> bool:

@@ -128,7 +128,7 @@ class TextExtractor:
         """Extract text from legacy DOC file using antiword, with python-docx fallback"""
         # Try antiword first (handles binary .doc format)
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 ["antiword", "-w", "0", file_path],
                 capture_output=True,
                 text=True,

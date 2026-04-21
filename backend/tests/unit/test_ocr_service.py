@@ -11,9 +11,9 @@ Tests cover:
 """
 
 import io
-import tempfile
 import os
-from unittest.mock import patch, AsyncMock
+import tempfile
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from PIL import Image

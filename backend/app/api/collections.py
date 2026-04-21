@@ -15,12 +15,13 @@ from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, require_superuser_or_admin
+from app.api.deps import require_superuser_or_admin
 from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
 from app.models.collection import (
     Collection,
     CollectionItem,
+    CollectionStatus,
     CollectionType,
     CollectionVisibility,
 )
@@ -44,11 +45,11 @@ from app.schemas.collection import (
     ExportFormat,
     ParsedIntentResponse,
 )
-from app.models.collection import CollectionStatus
 from app.services.collection_chat_service import collection_chat_service
 from app.services.collection_service import collection_service
 from app.services.input_guard import input_guard
 from app.tasks.document_tasks import build_smart_collection
+
 
 # Cache invalidation helper — best-effort, never raises
 def _invalidate_collection_cache(collection_id) -> None:
@@ -748,7 +749,6 @@ async def export_collection(
     import io
     from datetime import datetime
 
-    from fastapi.responses import StreamingResponse
 
     visibility_filter = collection_service._get_user_visibility_filter(current_user)
 

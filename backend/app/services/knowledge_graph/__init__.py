@@ -2,6 +2,7 @@
 SOWKNOW Knowledge Graph Module
 """
 
+from .extraction import EntityExtractor
 from .models import (
     ConnectionQuery,
     EdgeType,
@@ -11,7 +12,6 @@ from .models import (
     NodeType,
     PathResult,
 )
-from .extraction import EntityExtractor
 from .traversal import GraphTraversalService
 
 __all__ = [

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document, DocumentChunk
 from app.models.user import User, UserRole
+
 logger = logging.getLogger(__name__)
 
 

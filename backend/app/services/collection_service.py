@@ -27,8 +27,6 @@ try:
 except ImportError:
     _cache_invalidation_enabled = False
 
-from app.services.agent_identity import build_service_prompt
-
 from app.models.collection import (
     Collection,
     CollectionItem,
@@ -38,6 +36,7 @@ from app.models.collection import (
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
 from app.schemas.collection import CollectionCreate
+from app.services.agent_identity import build_service_prompt
 from app.services.intent_parser import (
     ParsedIntent as ParsedIntentModel,
 )
@@ -211,14 +210,14 @@ class CollectionService:
                 )
 
             # Create CollectionItems with article_id when available
-            from uuid import UUID as UUIDType
+            import uuid
             for idx, r in enumerate(results):
                 doc_id = r["document_id"]
                 art_id = r.get("article_id")
                 item = CollectionItem(
                     collection_id=collection.id,
-                    document_id=UUIDType(doc_id) if isinstance(doc_id, str) else doc_id,
-                    article_id=UUIDType(art_id) if isinstance(art_id, str) and art_id else None,
+                    document_id=uuid.UUID(doc_id) if isinstance(doc_id, str) else doc_id,
+                    article_id=uuid.UUID(art_id) if isinstance(art_id, str) and art_id else None,
                     relevance_score=min(int((r.get("relevance_score") or 0.5) * 100), 100),
                     order_index=idx,
                     added_by="ai",
@@ -339,14 +338,14 @@ class CollectionService:
         await db.execute(sql_delete(CollectionItem).where(CollectionItem.collection_id == collection_id))
 
         # Add new items with article_id
-        from uuid import UUID as UUIDType
+        import uuid
         for idx, r in enumerate(results):
             doc_id = r["document_id"]
             art_id = r.get("article_id")
             item = CollectionItem(
                 collection_id=collection.id,
-                document_id=UUIDType(doc_id) if isinstance(doc_id, str) else doc_id,
-                article_id=UUIDType(art_id) if isinstance(art_id, str) and art_id else None,
+                document_id=uuid.UUID(doc_id) if isinstance(doc_id, str) else doc_id,
+                article_id=uuid.UUID(art_id) if isinstance(art_id, str) and art_id else None,
                 relevance_score=min(int((r.get("relevance_score") or 0.5) * 100), 100),
                 order_index=idx,
                 added_by="ai",

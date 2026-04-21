@@ -8,9 +8,16 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.space import (
-    SpaceCreate, SpaceDetailResponse, SpaceItemAdd, SpaceItemResponse,
-    SpaceListResponse, SpaceResponse, SpaceRuleCreate, SpaceRuleResponse,
-    SpaceRuleUpdate, SpaceUpdate,
+    SpaceCreate,
+    SpaceDetailResponse,
+    SpaceItemAdd,
+    SpaceItemResponse,
+    SpaceListResponse,
+    SpaceResponse,
+    SpaceRuleCreate,
+    SpaceRuleResponse,
+    SpaceRuleUpdate,
+    SpaceUpdate,
 )
 from app.schemas.tag import TagResponse
 from app.services.space_service import space_service

@@ -10,14 +10,12 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
-
 # ── Node types ────────────────────────────────────────────────────────
 
-class NodeType(str, enum.Enum):
+class NodeType(enum.StrEnum):
     """Every entity extracted from the corpus maps to exactly one type."""
 
     PERSON = "person"
@@ -33,7 +31,7 @@ class NodeType(str, enum.Enum):
 
 # ── Edge types ────────────────────────────────────────────────────────
 
-class EdgeType(str, enum.Enum):
+class EdgeType(enum.StrEnum):
     """
     Relationship types between nodes.
     Split into EXTRACTED (from NER / rules) and INFERRED (LLM or computation).
@@ -62,7 +60,7 @@ class EdgeType(str, enum.Enum):
     CONTRADICTS = "contradicts"            # conflicting information across docs
 
 
-class ExtractionMethod(str, enum.Enum):
+class ExtractionMethod(enum.StrEnum):
     """How an edge was created — critical for confidence scoring."""
 
     NER = "ner"                  # spaCy / NER pipeline
@@ -83,7 +81,7 @@ class GraphNode(BaseModel):
     node_type: NodeType
     language: str = "fr"           # iso-639-1 of the primary surface form
     metadata: dict = Field(default_factory=dict)
-    embedding: Optional[list[float]] = None   # 1024-dim from multilingual-e5-large
+    embedding: list[float] | None = None   # 1024-dim from multilingual-e5-large
     bucket: str = "public"         # "public" | "confidential"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -100,8 +98,8 @@ class GraphEdge(BaseModel):
     edge_type: EdgeType
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
     extraction_method: ExtractionMethod
-    source_document_id: Optional[str] = None   # which doc produced this edge
-    source_chunk_id: Optional[str] = None       # which chunk specifically
+    source_document_id: str | None = None   # which doc produced this edge
+    source_chunk_id: str | None = None       # which chunk specifically
     metadata: dict = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

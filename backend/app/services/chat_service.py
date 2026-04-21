@@ -23,16 +23,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.user import User
-from app.services.deferred_query_service import deferred_query_service
+from app.services.agent_identity import build_service_prompt
+from app.services.context_block_service import get_cached_context_block
 from app.services.llm_router import llm_router
 from app.services.pii_detection_service import pii_detection_service
 from app.services.prometheus_metrics import (
     llm_request_duration,
     llm_request_total,
-    llm_retry_total,
 )
-from app.services.agent_identity import build_service_prompt
-from app.services.context_block_service import get_cached_context_block
 from app.services.search_service import search_service
 
 # Import all LLM services
@@ -223,9 +221,10 @@ class ChatService:
         confidential_doc_ids = [r.document_id for r in top_results if r.document_bucket == "confidential"]
         doc_metadata: dict = {}
         if confidential_doc_ids:
-            from app.models.document import Document, DocumentTag
-            from app.database import AsyncSessionLocal
             from sqlalchemy.orm import selectinload
+
+            from app.database import AsyncSessionLocal
+            from app.models.document import Document
 
             async with AsyncSessionLocal() as meta_db:
                 result = await meta_db.execute(
@@ -418,7 +417,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
             _elapsed = _time.monotonic() - _start
             llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
             llm_request_total.inc(labels={"provider": _provider_name, "status": "success"})
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _elapsed = _time.monotonic() - _start
             llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
             llm_request_total.inc(labels={"provider": _provider_name, "status": "error"})

@@ -4,6 +4,7 @@ No database required.
 """
 
 import pytest
+
 from app.services.agents.researcher_agent import ResearcherAgent
 
 

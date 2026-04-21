@@ -3,7 +3,7 @@ Celery tasks for anomaly detection and scheduled reports
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from celery import shared_task
 
@@ -541,7 +541,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
     failed = []
 
     try:
-        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=max_processing_minutes)
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=max_processing_minutes)
 
         # Find documents stuck in processing state — LIMIT to prevent queue bombs
         stuck_documents = (
@@ -561,7 +561,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                 processing_task = db.query(ProcessingQueue).filter(ProcessingQueue.document_id == doc.id).first()
 
                 # Check if this is a real stuck document or just slow processing
-                stuck_duration = (datetime.now(timezone.utc) - doc.updated_at).total_seconds() / 60
+                stuck_duration = (datetime.now(UTC) - doc.updated_at).total_seconds() / 60
 
                 logger.warning(
                     f"Document {doc.id} ({doc.filename}) stuck in processing for {stuck_duration:.1f} minutes"
@@ -594,7 +594,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                         "recovery_count": recovery_count,
                         "recovered_from_stuck": True,
                         "stuck_duration_minutes": stuck_duration,
-                        "recovered_at": datetime.now(timezone.utc).isoformat(),
+                        "recovered_at": datetime.now(UTC).isoformat(),
                         "processing_error": (
                             f"Permanently failed: stuck in processing after {recovery_count} recovery attempts"
                         ),
@@ -622,7 +622,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                     "recovery_count": recovery_count,
                     "recovered_from_stuck": True,
                     "stuck_duration_minutes": stuck_duration,
-                    "recovered_at": datetime.now(timezone.utc).isoformat(),
+                    "recovered_at": datetime.now(UTC).isoformat(),
                 }
 
                 if processing_task:
@@ -702,7 +702,7 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
     try:
         MAX_RECOVERY_PER_RUN = 10  # Never flood the queue
 
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=pending_threshold_minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=pending_threshold_minutes)
 
         pending_docs = (
             db.query(Document)
@@ -807,7 +807,7 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
                     "pending_recovery_count": recovery_count,
                     "celery_task_id": task.id,
                     "recovered_from_pending": True,
-                    "recovered_at": datetime.now(timezone.utc).isoformat(),
+                    "recovered_at": datetime.now(UTC).isoformat(),
                 }
                 db.commit()
 
@@ -837,7 +837,7 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
                 failed.append({"document_id": str(doc.id), "error": str(e)})
 
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "pending_threshold_minutes": pending_threshold_minutes,
             "total_found": len(pending_docs),
             "recovered": recovered,
@@ -904,7 +904,7 @@ def fail_stuck_processing_documents(max_processing_minutes: int = 30) -> dict:
     try:
         from app.celery_app import celery_app
 
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_processing_minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=max_processing_minutes)
 
         stuck_docs = (
             db.query(Document)
@@ -922,10 +922,10 @@ def fail_stuck_processing_documents(max_processing_minutes: int = 30) -> dict:
         reserved_tasks = inspect.reserved() or {}
 
         active_ids = set()
-        for worker, tasks in active_tasks.items():
+        for _worker, tasks in active_tasks.items():
             for t in tasks:
                 active_ids.add(t.get("id"))
-        for worker, tasks in reserved_tasks.items():
+        for _worker, tasks in reserved_tasks.items():
             for t in tasks:
                 active_ids.add(t.get("id"))
 
@@ -952,7 +952,7 @@ def fail_stuck_processing_documents(max_processing_minutes: int = 30) -> dict:
             doc.document_metadata = {
                 **existing_meta,
                 "failure_reason": f"Processing stuck > {max_processing_minutes} minutes, task {'not found in broker' if celery_task_id else 'never queued'}",
-                "failed_at": datetime.now(timezone.utc).isoformat(),
+                "failed_at": datetime.now(UTC).isoformat(),
                 "actual_error": actual_error or "No traceback available",
             }
             failed.append(
@@ -968,7 +968,7 @@ def fail_stuck_processing_documents(max_processing_minutes: int = 30) -> dict:
             db.commit()
 
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "max_processing_minutes": max_processing_minutes,
             "total_checked": len(stuck_docs),
             "ok": len(ok),

@@ -3,7 +3,7 @@ Unit tests for backfill tasks.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 import pytest
@@ -22,8 +22,8 @@ def _make_indexed_doc(db: Session, embedding_generated: bool = False, articles_g
         size=1024,
         bucket=DocumentBucket.PUBLIC,
         status=DocumentStatus.INDEXED,
-        created_at=datetime.now(timezone.utc) - timedelta(days=3),
-        updated_at=datetime.now(timezone.utc) - timedelta(days=3),
+        created_at=datetime.now(UTC) - timedelta(days=3),
+        updated_at=datetime.now(UTC) - timedelta(days=3),
         ocr_processed=True,
         embedding_generated=embedding_generated,
         articles_generated=articles_generated,
@@ -45,8 +45,8 @@ def _make_error_doc(db: Session, created_at: datetime = None) -> Document:
         size=2048,
         bucket=DocumentBucket.PUBLIC,
         status=DocumentStatus.ERROR,
-        created_at=created_at or datetime(2026, 4, 3, tzinfo=timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=created_at or datetime(2026, 4, 3, tzinfo=UTC),
+        updated_at=datetime.now(UTC),
         document_metadata={
             "processing_error": "Permanently failed: stuck in processing after 4 recovery attempts",
             "recovery_count": 5,
@@ -61,7 +61,7 @@ class TestReprocessFailedDocuments:
     def test_resets_error_docs_to_pending(self, db: Session):
         from app.tasks.backfill_tasks import reprocess_failed_documents
 
-        doc = _make_error_doc(db, created_at=datetime(2026, 4, 3, tzinfo=timezone.utc))
+        doc = _make_error_doc(db, created_at=datetime(2026, 4, 3, tzinfo=UTC))
 
         mock_pd = Mock()
         mock_task = Mock()

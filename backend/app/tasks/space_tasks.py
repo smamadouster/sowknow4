@@ -1,6 +1,7 @@
 import logging
 
 from celery import shared_task
+
 from app.tasks.base import log_task_memory
 
 logger = logging.getLogger(__name__)
@@ -12,8 +13,10 @@ def sync_space_rules_task(self, space_id: str):
     log_task_memory("sync_space_rules", "start")
     try:
         import asyncio
-        from app.database import AsyncSessionLocal
+
         from sqlalchemy import select as sa_select
+
+        from app.database import AsyncSessionLocal
         from app.models.space import Space as SpaceModel
         from app.services.space_service import space_service
 

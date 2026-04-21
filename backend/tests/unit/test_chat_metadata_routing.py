@@ -1,9 +1,10 @@
 """Tests for metadata-only confidential routing in chat service."""
 
-import pytest
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from datetime import datetime, timezone
+
+import pytest
 
 
 def _make_search_result(bucket="public", chunk_text="Some content", doc_name="test.pdf"):
@@ -26,7 +27,7 @@ def _make_document(doc_id, filename="test.pdf", page_count=3, mime_type="applica
     doc.filename = filename
     doc.page_count = page_count
     doc.mime_type = mime_type
-    doc.created_at = created_at or datetime(2026, 3, 28, tzinfo=timezone.utc)
+    doc.created_at = created_at or datetime(2026, 3, 28, tzinfo=UTC)
     doc.tags = tags or []
     return doc
 
@@ -98,16 +99,23 @@ class TestRetrieveRelevantChunksMetadata:
             tags=[_make_tag("identity"), _make_tag("passport")],
         )
 
+        mock_meta_db = AsyncMock()
+        mock_doc_result = MagicMock()
+        mock_doc_result.scalars.return_value.all.return_value = [mock_doc]
+        mock_meta_db.execute.return_value = mock_doc_result
+        mock_async_session = AsyncMock()
+        mock_async_session.__aenter__ = AsyncMock(return_value=mock_meta_db)
+        mock_async_session.__aexit__ = AsyncMock(return_value=False)
+
         with patch("app.services.chat_service.search_service") as mock_search, \
-             patch("app.services.chat_service.pii_detection_service") as mock_pii:
+             patch("app.services.chat_service.pii_detection_service") as mock_pii, \
+             patch("app.database.AsyncSessionLocal", return_value=mock_async_session):
             mock_pii.detect_pii.return_value = False
             mock_search.hybrid_search = AsyncMock(return_value={
                 "results": [conf_result],
             })
             mock_session_result = MagicMock()
             mock_session_result.scalar_one_or_none.return_value = None
-            mock_doc_result = MagicMock()
-            mock_doc_result.scalars.return_value.all.return_value = [mock_doc]
             mock_db.execute = AsyncMock(side_effect=[mock_session_result, mock_doc_result])
 
             sources, has_confidential = await svc.retrieve_relevant_chunks(
@@ -147,16 +155,23 @@ class TestRetrieveRelevantChunksMetadata:
             tags=[_make_tag("correspondence")],
         )
 
+        mock_meta_db = AsyncMock()
+        mock_doc_result = MagicMock()
+        mock_doc_result.scalars.return_value.all.return_value = [mock_doc]
+        mock_meta_db.execute.return_value = mock_doc_result
+        mock_async_session = AsyncMock()
+        mock_async_session.__aenter__ = AsyncMock(return_value=mock_meta_db)
+        mock_async_session.__aexit__ = AsyncMock(return_value=False)
+
         with patch("app.services.chat_service.search_service") as mock_search, \
-             patch("app.services.chat_service.pii_detection_service") as mock_pii:
+             patch("app.services.chat_service.pii_detection_service") as mock_pii, \
+             patch("app.database.AsyncSessionLocal", return_value=mock_async_session):
             mock_pii.detect_pii.return_value = False
             mock_search.hybrid_search = AsyncMock(return_value={
                 "results": [public_result, conf_result],
             })
             mock_session_result = MagicMock()
             mock_session_result.scalar_one_or_none.return_value = None
-            mock_doc_result = MagicMock()
-            mock_doc_result.scalars.return_value.all.return_value = [mock_doc]
             mock_db.execute = AsyncMock(side_effect=[mock_session_result, mock_doc_result])
 
             sources, has_confidential = await svc.retrieve_relevant_chunks(
@@ -216,7 +231,7 @@ class TestBuildRagContext:
         messages = svc.build_rag_context("query", sources, [])
 
         system_content = messages[0]["content"]
-        assert "do not fabricate" in system_content.lower() or "Do not fabricate" in system_content
+        assert "fabricate" in system_content.lower()
 
     def test_mixed_sources_both_labeled(self):
         from app.services.chat_service import ChatService

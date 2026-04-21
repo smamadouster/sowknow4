@@ -2,6 +2,7 @@
 Chat API endpoints for AI-powered conversations with RAG
 """
 
+import logging
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -24,8 +25,6 @@ from app.schemas.chat import (
 )
 from app.services.chat_service import chat_service
 from app.services.input_guard import input_guard
-
-import logging
 
 logger = logging.getLogger(__name__)
 

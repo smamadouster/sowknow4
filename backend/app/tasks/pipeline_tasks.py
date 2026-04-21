@@ -15,7 +15,7 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from celery.exceptions import Reject
 
@@ -53,7 +53,7 @@ def update_stage(
     transaction.
     """
     from app.database import SessionLocal
-    from app.models.pipeline import PipelineStage, StageEnum, StageStatus
+    from app.models.pipeline import PipelineStage, StageStatus
 
     _own_session = db is None
     if _own_session:
@@ -91,11 +91,11 @@ def update_stage(
 
         if status == StageStatus.RUNNING:
             row.attempt = (row.attempt or 0) + 1
-            row.started_at = datetime.now(timezone.utc)
+            row.started_at = datetime.now(UTC)
             row.error_message = None  # clear previous error on retry
 
         elif status == StageStatus.COMPLETED:
-            row.completed_at = datetime.now(timezone.utc)
+            row.completed_at = datetime.now(UTC)
 
         elif status == StageStatus.FAILED:
             if error:
@@ -251,7 +251,7 @@ def _run_chunk(document_id: str) -> None:
         if not os.path.exists(txt_path):
             raise FileNotFoundError(f"Sidecar text file not found: {txt_path}")
 
-        with open(txt_path, "r", encoding="utf-8") as fh:
+        with open(txt_path, encoding="utf-8") as fh:
             text = fh.read()
 
         if not text.strip():
@@ -339,7 +339,7 @@ def _run_embed(document_id: str) -> None:
             batch = chunks[i : i + batch_size]
             texts = [c.chunk_text for c in batch]
             vectors = embedding_service.encode(texts=texts, batch_size=batch_size)
-            for chunk, vec in zip(batch, vectors):
+            for chunk, vec in zip(batch, vectors, strict=False):
                 chunk.embedding_vector = vec
 
         db.commit()
@@ -444,12 +444,21 @@ def _run_entities(document_id: str) -> None:
             .all()
         )
 
-        # Step 1: Existing LLM-based entity extraction (SQLAlchemy ORM)
+        # Step 1: LLM-based entity extraction (sync DB, async LLM call only)
         entity_extraction_service.extract_entities_from_document_sync(doc, chunks, db)
 
-        # Step 2: New graph extraction (asyncpg, spaCy NER + financial rules)
+        # Step 2: Graph extraction — wrapped in try/except so it doesn't
+        # kill the whole task if the graph pipeline has issues
         bucket = doc.bucket.value if hasattr(doc.bucket, "value") else str(doc.bucket)
-        asyncio.run(_graph_extract_document(document_id, chunks, bucket))
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(_graph_extract_document(document_id, chunks, bucket))
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.warning("Graph extraction failed for doc %s: %s", document_id, e)
 
     finally:
         db.close()
@@ -469,7 +478,8 @@ async def _graph_extract_document(document_id: str, chunks, bucket: str) -> None
     pool = await get_graph_pool()
 
     async def embedding_fn(text: str) -> list[float]:
-        return embedding_service.encode_single(text)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, embedding_service.encode_single, text)
 
     extractor = EntityExtractor(
         pool=pool,

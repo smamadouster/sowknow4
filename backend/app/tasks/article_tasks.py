@@ -11,7 +11,6 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime
 
 import httpx
 from celery import shared_task
@@ -126,7 +125,7 @@ def generate_articles_for_document(self, document_id: str, force: bool = False) 
     """
     from app.database import SessionLocal
     from app.models.article import Article, ArticleStatus
-    from app.models.document import Document, DocumentBucket, DocumentChunk, DocumentStatus
+    from app.models.document import Document, DocumentChunk, DocumentStatus
 
     db = SessionLocal()
     try:

@@ -2,11 +2,11 @@
 Integration tests for the async collection creation pipeline.
 Tests: 202 response, status polling, Celery dispatch, list filtering.
 """
-import pytest
 from datetime import datetime
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 

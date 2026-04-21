@@ -5,8 +5,6 @@ Provides the base identity block that every agent and service prompt inherits fr
 Ensures consistent WHY/WHO/HOW framework and vault protocol across all LLM interactions.
 """
 
-from typing import Optional
-
 
 VAULT_PROTOCOL = """## Vault Protocol
 - Documents marked CONFIDENTIAL must NEVER be referenced in responses routed through cloud LLMs (OpenRouter, MiniMax)
@@ -24,7 +22,7 @@ def build_identity_block(
     persona: str,
     constraints: str,
     include_vault_protocol: bool = True,
-    extra_sections: Optional[str] = None,
+    extra_sections: str | None = None,
 ) -> str:
     """Build a complete SOWKNOW agent identity block.
 
@@ -180,7 +178,7 @@ def build_service_prompt(
     mission: str,
     constraints: str,
     task_prompt: str,
-    persona: Optional[str] = None,
+    persona: str | None = None,
     include_vault_protocol: bool = True,
 ) -> str:
     """Build a complete prompt for a service-level LLM call.

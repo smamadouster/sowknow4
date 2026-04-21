@@ -1,7 +1,8 @@
 import os
-import pytest
+from unittest.mock import MagicMock, patch
+
 import httpx
-from unittest.mock import patch, MagicMock
+import pytest
 
 pytestmark = pytest.mark.sqlite_safe
 

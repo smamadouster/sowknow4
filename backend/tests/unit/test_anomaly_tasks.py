@@ -3,7 +3,7 @@ Unit tests for anomaly recovery tasks.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 import pytest
@@ -24,8 +24,8 @@ def _make_pending_doc(db: Session, created_minutes_ago: int = 10) -> Document:
         mime_type="application/pdf",
         bucket=DocumentBucket.PUBLIC,
         status=DocumentStatus.PENDING,
-        created_at=datetime.now(timezone.utc) - timedelta(minutes=created_minutes_ago),
-        updated_at=datetime.now(timezone.utc) - timedelta(minutes=created_minutes_ago),
+        created_at=datetime.now(UTC) - timedelta(minutes=created_minutes_ago),
+        updated_at=datetime.now(UTC) - timedelta(minutes=created_minutes_ago),
         document_metadata={},
     )
     db.add(doc)

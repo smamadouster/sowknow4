@@ -1,6 +1,6 @@
 """Unit tests for pipeline_sweeper — unified recovery task."""
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 
@@ -19,7 +19,7 @@ def _make_stage(
     ps.status = status_enum
     ps.attempt = attempt
     ps.max_attempts = max_attempts
-    ps.started_at = started_at or (datetime.now(timezone.utc) - timedelta(hours=2))
+    ps.started_at = started_at or (datetime.now(UTC) - timedelta(hours=2))
     ps.error_message = None
     return ps
 

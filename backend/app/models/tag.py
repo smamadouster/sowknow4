@@ -1,9 +1,8 @@
 import enum
 import uuid
 
-from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, Index, Integer, String, func
-)
+from sqlalchemy import Boolean, Column, DateTime, Enum, Index, Integer, String, func
+
 from app.models.base import Base, GUIDType
 
 

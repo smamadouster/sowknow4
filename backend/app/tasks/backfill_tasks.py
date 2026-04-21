@@ -6,7 +6,7 @@ to fix batches of documents that missed processing stages.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from celery import shared_task
 
@@ -90,7 +90,7 @@ def classify_and_recover_errors(
             doc.pipeline_stage = "indexed"
             doc.pipeline_error = None
             meta = doc.document_metadata or {}
-            meta["auto_recovered_at"] = datetime.now(timezone.utc).isoformat()
+            meta["auto_recovered_at"] = datetime.now(UTC).isoformat()
             meta["recovery_type"] = "status_fix"
             doc.document_metadata = meta
             fixed += 1
@@ -125,7 +125,7 @@ def classify_and_recover_errors(
             doc.pipeline_retry_count = 0
             meta = doc.document_metadata or {}
             meta["recovery_type"] = "full_reprocess"
-            meta["backfill_reset_at"] = datetime.now(timezone.utc).isoformat()
+            meta["backfill_reset_at"] = datetime.now(UTC).isoformat()
             meta["original_error"] = meta.get("processing_error", "unknown")
             doc.document_metadata = meta
             db.commit()
@@ -176,8 +176,8 @@ def reprocess_failed_documents(
 
     db = SessionLocal()
     try:
-        from_dt = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc)
-        to_dt = datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc)
+        from_dt = datetime.fromisoformat(date_from).replace(tzinfo=UTC)
+        to_dt = datetime.fromisoformat(date_to).replace(tzinfo=UTC)
 
         docs = (
             db.query(Document)
@@ -200,7 +200,7 @@ def reprocess_failed_documents(
                 **meta,
                 "recovery_count": 0,
                 "pending_recovery_count": 0,
-                "backfill_reset_at": datetime.now(timezone.utc).isoformat(),
+                "backfill_reset_at": datetime.now(UTC).isoformat(),
                 "original_error": meta.get("processing_error", "unknown"),
             }
             db.commit()

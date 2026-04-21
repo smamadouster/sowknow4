@@ -57,7 +57,7 @@ preflight_checks() {
 
     # Check required environment variables
     source .env
-    REQUIRED_VARS=("DATABASE_PASSWORD" "JWT_SECRET" "KIMI_API_KEY" "TELEGRAM_BOT_TOKEN")
+    REQUIRED_VARS=("DATABASE_PASSWORD" "JWT_SECRET" "MOONSHOT_API_KEY" "TELEGRAM_BOT_TOKEN")
     MISSING_VARS=()
 
     for var in "${REQUIRED_VARS[@]}"; do

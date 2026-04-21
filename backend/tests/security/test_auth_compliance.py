@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from jose import jwt
+from jose import jwt  # noqa: E402,I001
 
 from app.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -32,7 +32,7 @@ from app.utils.security import (
     create_refresh_token,
     decode_token,
 )
-from app.utils.security import SECRET_KEY as _jwt_signing_key  # noqa: N812 - alias avoids pre-commit false positive
+from app.utils.security import SECRET_KEY as _jwt_signing_key  # noqa: N811,N812 - alias avoids pre-commit false positive
 
 
 class TestFrontendTokenStorageCompliance:

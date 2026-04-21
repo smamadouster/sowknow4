@@ -5,7 +5,7 @@ import json
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.document import DocumentBucket
 from app.models.user import User, UserRole
+from app.services.input_guard import input_guard
 from app.services.search_agent import (
     build_citations,
     build_search_queries,
@@ -30,7 +31,6 @@ from app.services.search_models import (
     RawChunk,
     SearchMode,
 )
-from app.services.input_guard import input_guard
 from app.services.search_service import HybridSearchService
 
 logger = logging.getLogger(__name__)

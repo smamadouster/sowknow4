@@ -3,7 +3,6 @@ import enum
 import uuid
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.sql import func
 
 from app.models.base import Base, GUIDType, TimestampMixin
 

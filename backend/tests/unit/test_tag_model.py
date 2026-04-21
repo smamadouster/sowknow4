@@ -1,5 +1,7 @@
 import enum
+
 import pytest
+
 from app.models.tag import Tag, TagType, TargetType
 
 

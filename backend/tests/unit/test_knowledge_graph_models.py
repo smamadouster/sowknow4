@@ -3,8 +3,9 @@ Unit tests for knowledge graph Pydantic models.
 No database or network required.
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from app.services.knowledge_graph.models import (
     ConnectionQuery,

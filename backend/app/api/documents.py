@@ -8,7 +8,7 @@ import logging
 import mimetypes
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import (
@@ -22,8 +22,8 @@ from fastapi import (
     UploadFile,
     status,
 )
-from pydantic import BaseModel, Field
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -382,9 +382,9 @@ async def _do_upload_document(
             )
         metadata = {"document_type": document_type}
         if document_type == "journal":
-            from datetime import datetime as dt, timezone
+            from datetime import datetime as dt
 
-            metadata["journal_timestamp"] = dt.now(timezone.utc).isoformat()
+            metadata["journal_timestamp"] = dt.now(UTC).isoformat()
         document.document_metadata = metadata
 
     # Store voice transcript if provided (skips OCR pipeline for audio with transcript)
@@ -556,9 +556,9 @@ async def create_journal_entry(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
 
     # Save text as a .txt file
-    from datetime import datetime as dt, timezone
+    from datetime import datetime as dt
 
-    now = dt.now(timezone.utc)
+    now = dt.now(UTC)
     timestamp = entry.timestamp or now.isoformat()
     content = entry.text.encode("utf-8")
     filename = f"journal_{now.strftime('%Y%m%d_%H%M%S')}.txt"

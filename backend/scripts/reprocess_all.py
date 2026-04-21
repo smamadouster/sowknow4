@@ -9,7 +9,6 @@ Run inside the backend container:
     python /app/scripts/reprocess_all.py --embeddings-only   # just backfill embeddings
 """
 import argparse
-import sys
 
 from app.database import SessionLocal
 from app.models.document import Document, DocumentChunk, DocumentStatus

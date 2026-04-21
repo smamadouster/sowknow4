@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from sqlalchemy import func, select, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.note import Note, NoteBucket

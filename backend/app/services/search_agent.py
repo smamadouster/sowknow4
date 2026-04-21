@@ -4,23 +4,23 @@ SOWKNOW Agentic Search Pipeline
 6-stage agent for ranked, cited, synthesized answers with RBAC enforcement.
 """
 
-import asyncio
 import json
 import logging
 import re
 import time
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy import select as sa_select
 from app.models.document import Document, DocumentBucket
 from app.models.user import UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
 from app.services.llm_router import llm_router
 from app.services.search_service import HybridSearchService
+
 from .search_models import (
     AgenticSearchRequest,
     AgenticSearchResponse,
@@ -542,7 +542,7 @@ async def run_agentic_search(
     logger.info("Re-ranked to %d results | confidential=%s", len(results), has_confidential)
 
     # Stage 5: Synthesis
-    answer_synthesis: Optional[str] = None
+    answer_synthesis: str | None = None
     model_used = "none"
 
     should_synthesize = (

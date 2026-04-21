@@ -6,7 +6,7 @@ that exposes them in OpenAI-compatible function calling format.
 """
 
 from datetime import date
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,10 +17,10 @@ class DocumentSearchTool(BaseModel):
     query: str = Field(description="Natural language search query")
     bucket: Literal["public", "confidential", "all"] = Field(default="public")
     limit: int = Field(default=10, ge=1, le=100)
-    date_from: Optional[date] = Field(
+    date_from: date | None = Field(
         default=None, description="Filter by date range start"
     )
-    date_to: Optional[date] = Field(
+    date_to: date | None = Field(
         default=None, description="Filter by date range end"
     )
     language: Literal["fr", "en", "auto"] = Field(default="auto")

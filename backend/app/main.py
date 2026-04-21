@@ -39,7 +39,6 @@ from app.api import health as health_router
 from app.api import status as status_router
 from app.database import create_all_tables, engine, init_pgvector
 from app.limiter import limiter
-from app.services.openrouter_service import openrouter_service
 from app.services.prometheus_metrics import get_metrics
 
 # Load environment variables

@@ -2,9 +2,11 @@
 Tests for async collection creation pipeline.
 Covers: status transitions, Celery task dispatch, error handling.
 """
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
+import pytest
+
 from app.models.collection import Collection, CollectionStatus
 
 
@@ -180,9 +182,9 @@ class TestHybridSearchTimeout:
     @pytest.mark.asyncio
     async def test_gather_passes_20s_timeout(self, db):
         """_gather_documents_for_intent must call hybrid_search with timeout >= 20."""
-        from app.services.intent_parser import ParsedIntent
         from app.models.user import User, UserRole
         from app.services.collection_service import collection_service
+        from app.services.intent_parser import ParsedIntent
 
         user = db.query(User).first()
         if not user:

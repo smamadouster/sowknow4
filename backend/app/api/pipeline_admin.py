@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin_only
 from app.database import get_db
-from app.models.pipeline import PipelineStage, StageEnum, StageStatus
+from app.models.pipeline import PipelineStage, StageEnum
 
 router = APIRouter(prefix="/admin/pipeline", tags=["admin-pipeline"])
 
@@ -34,6 +34,7 @@ async def pipeline_status(db: AsyncSession = Depends(get_db)) -> dict:
     queues = {}
     try:
         import redis
+
         from app.core.redis_url import safe_redis_url
         from app.tasks.pipeline_orchestrator import MAX_QUEUE_DEPTH
 

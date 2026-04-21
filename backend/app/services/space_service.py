@@ -1,11 +1,11 @@
 import logging
 import uuid
 
-from sqlalchemy import func, select, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bookmark import Bookmark
-from app.models.document import Document, DocumentBucket, DocumentChunk
+from app.models.document import Document, DocumentChunk
 from app.models.note import Note
 from app.models.space import Space, SpaceBucket, SpaceItem, SpaceItemType, SpaceRule, SpaceRuleType
 from app.models.tag import Tag, TargetType

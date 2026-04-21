@@ -1,5 +1,6 @@
 import pytest
-from app.models.space import Space, SpaceItem, SpaceRule, SpaceBucket, SpaceItemType, SpaceRuleType
+
+from app.models.space import Space, SpaceBucket, SpaceItem, SpaceItemType, SpaceRule, SpaceRuleType
 
 
 class TestSpaceEnums:

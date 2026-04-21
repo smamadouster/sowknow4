@@ -15,7 +15,7 @@ class TestCollectionQueryOptimization:
             "..", "..", "app", "api", "collections.py",
         )
         module_path = os.path.abspath(module_path)
-        with open(module_path, "r") as f:
+        with open(module_path) as f:
             source = f.read()
 
         assert "selectinload" in source or "joinedload" in source, (

@@ -388,7 +388,7 @@ export default function SmartFoldersPage() {
                     onClick={() => setTopic(example)}
                     className="text-sm text-blue-700 dark:text-blue-300 hover:underline"
                   >
-                    "{example}"
+                    {`"${example}"`}
                   </button>
                 </li>
               ))}

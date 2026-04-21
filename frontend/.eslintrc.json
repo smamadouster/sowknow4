@@ -1,4 +1,4 @@
 {
-  "extends": ["next/core-web-libraries"],
+  "extends": ["next/core-web-vitals"],
   "rules": {}
 }

@@ -8,6 +8,9 @@ WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small")
 # Shares the model cache volume already mounted at /models in worker containers
 WHISPER_MODEL_DIR = os.getenv("HF_HOME", "/models")
 
+# Valid model sizes for runtime switching
+VALID_MODEL_SIZES = {"tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3"}
+
 
 class WhisperService:
     """Audio transcription using faster-whisper (CTranslate2, CPU int8).
@@ -17,13 +20,40 @@ class WhisperService:
     """
 
     _model = None
+    _current_size = WHISPER_MODEL_SIZE
+
+    @property
+    def current_model_size(self) -> str:
+        return self._current_size
+
+    def reload_model(self, size: str) -> None:
+        """Unload current model and load a new one. Call this sparingly."""
+        size = size.strip().lower()
+        if size not in VALID_MODEL_SIZES:
+            raise ValueError(f"Invalid model size '{size}'. Valid: {VALID_MODEL_SIZES}")
+
+        if self._model is not None:
+            logger.info("Unloading current whisper model: %s", self._current_size)
+            del self._model
+            self._model = None
+
+        from faster_whisper import WhisperModel
+        logger.info("Loading whisper model: %s (this may take a moment)", size)
+        self._model = WhisperModel(
+            size,
+            device="cpu",
+            compute_type="int8",
+            download_root=WHISPER_MODEL_DIR,
+        )
+        self._current_size = size
+        logger.info("Whisper model ready: %s", size)
 
     def _get_model(self):
         if self._model is None:
             from faster_whisper import WhisperModel
-            logger.info("Loading whisper model: %s (this may take a moment on first run)", WHISPER_MODEL_SIZE)
+            logger.info("Loading whisper model: %s (this may take a moment on first run)", self._current_size)
             self._model = WhisperModel(
-                WHISPER_MODEL_SIZE,
+                self._current_size,
                 device="cpu",
                 compute_type="int8",
                 download_root=WHISPER_MODEL_DIR,
@@ -39,7 +69,9 @@ class WhisperService:
             language=lang,
             condition_on_previous_text=False,  # prevents "BonjourBonjour..." hallucination
             vad_filter=True,                   # skip silence, reduces hallucination on short clips
-            vad_parameters={"min_silence_duration_ms": 300},
+            vad_parameters={"min_silence_duration_ms": 150},  # faster VAD, less clipping on short phrases
+            beam_size=1,                       # greedy decoding — much faster, slight accuracy trade-off
+            best_of=1,
         )
         transcript = " ".join(seg.text.strip() for seg in segments).strip()
         logger.info(

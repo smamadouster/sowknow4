@@ -3,19 +3,34 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
+import { api } from '@/lib/api';
 
 interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const recentSearches = [
-  { icon: 'clock', label: '' },
-];
+interface SuggestionItem {
+  id: string;
+  title: string;
+  type: 'document' | 'bookmark' | 'note' | 'tag';
+  bucket?: string | null;
+}
+
+const TYPE_ICONS: Record<string, string> = {
+  document: '📄',
+  bookmark: '🔖',
+  note: '📝',
+  tag: '🏷️',
+};
 
 export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations('search_modal');
@@ -23,6 +38,9 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   useEffect(() => {
     if (isOpen) {
       setQuery('');
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setActiveIndex(-1);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
@@ -35,6 +53,87 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isOpen, onClose]);
+
+  const fetchSuggestions = useCallback(async (value: string) => {
+    if (!value.trim()) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    try {
+      const res = await api.suggest(value.trim(), 5);
+      if (res.data && res.data.suggestions) {
+        setSuggestions(res.data.suggestions);
+        setShowSuggestions(res.data.suggestions.length > 0);
+        setActiveIndex(-1);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, []);
+
+  const handleInputChange = useCallback((value: string) => {
+    setQuery(value);
+    setActiveIndex(-1);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim().length >= 1) {
+      debounceRef.current = setTimeout(() => {
+        fetchSuggestions(value);
+      }, 150);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [fetchSuggestions]);
+
+  const navigateToSuggestion = useCallback((item: SuggestionItem) => {
+    if (item.type === 'document') {
+      router.push(`/${locale}/documents/${item.id}`);
+    } else if (item.type === 'bookmark') {
+      router.push(`/${locale}/bookmarks`);
+    } else if (item.type === 'note') {
+      router.push(`/${locale}/notes/${item.id}`);
+    } else if (item.type === 'tag') {
+      router.push(`/${locale}/documents?tag=${encodeURIComponent(item.title)}`);
+    }
+    onClose();
+  }, [router, locale, onClose]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (query.trim()) {
+          router.push(`/${locale}/search?q=${encodeURIComponent(query.trim())}`);
+          onClose();
+        }
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev - 1 + suggestions.length) % suggestions.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && activeIndex < suggestions.length) {
+        navigateToSuggestion(suggestions[activeIndex]);
+      } else if (query.trim()) {
+        router.push(`/${locale}/search?q=${encodeURIComponent(query.trim())}`);
+        onClose();
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setActiveIndex(-1);
+    }
+  }, [showSuggestions, suggestions, activeIndex, query, router, locale, onClose, navigateToSuggestion]);
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -89,9 +188,14 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
                 ref={inputRef}
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => handleInputChange(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder={t('placeholder')}
                 className="flex-1 bg-transparent text-text-primary text-base placeholder:text-text-muted/60 outline-none font-sans"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 bg-vault-800 border border-white/[0.08] rounded-md text-[10px] text-text-muted font-mono">
                 ESC
@@ -99,29 +203,63 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
             </div>
           </form>
 
-          {/* Quick navigation */}
-          <div className="px-3 py-3">
-            <p className="px-2 mb-2 text-[10px] font-semibold text-text-muted/60 uppercase tracking-widest">
-              {t('navigate')}
-            </p>
-            <div className="space-y-0.5">
-              {quickLinks.map((link) => (
-                <button
-                  key={link.href}
-                  onClick={() => { router.push(link.href); onClose(); }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-text-secondary hover:text-text-primary hover:bg-white/[0.04] transition-colors duration-150 group"
-                >
-                  <span className="text-text-muted group-hover:text-amber-400 transition-colors">
-                    {link.icon}
-                  </span>
-                  <span>{link.label}</span>
-                  <svg className="w-3.5 h-3.5 ml-auto text-text-muted/40 group-hover:text-text-muted transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              ))}
+          {/* Suggestions dropdown */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="px-3 py-2 border-b border-white/[0.06]">
+              <p className="px-2 mb-1.5 text-[10px] font-semibold text-text-muted/60 uppercase tracking-widest">
+                Suggestions
+              </p>
+              <div className="space-y-0.5">
+                {suggestions.map((s, idx) => (
+                  <button
+                    key={`${s.type}-${s.id}`}
+                    onClick={() => navigateToSuggestion(s)}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 group text-left ${
+                      idx === activeIndex
+                        ? 'bg-white/[0.08] text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <span className="text-base shrink-0">{TYPE_ICONS[s.type] || '•'}</span>
+                    <span className="flex-1 truncate">{s.title}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-text-muted/50 shrink-0">
+                      {s.type}
+                    </span>
+                    {s.bucket === 'confidential' && (
+                      <span className="text-[10px] text-amber-400 shrink-0">🔒</span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Quick navigation */}
+          {!showSuggestions && (
+            <div className="px-3 py-3">
+              <p className="px-2 mb-2 text-[10px] font-semibold text-text-muted/60 uppercase tracking-widest">
+                {t('navigate')}
+              </p>
+              <div className="space-y-0.5">
+                {quickLinks.map((link) => (
+                  <button
+                    key={link.href}
+                    onClick={() => { router.push(link.href); onClose(); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-text-secondary hover:text-text-primary hover:bg-white/[0.04] transition-colors duration-150 group"
+                  >
+                    <span className="text-text-muted group-hover:text-amber-400 transition-colors">
+                      {link.icon}
+                    </span>
+                    <span>{link.label}</span>
+                    <svg className="w-3.5 h-3.5 ml-auto text-text-muted/40 group-hover:text-text-muted transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Footer hint */}
           <div className="px-5 py-3 border-t border-white/[0.06] bg-vault-950/50 flex items-center justify-between">

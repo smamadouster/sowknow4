@@ -47,6 +47,8 @@ export default function JournalPage() {
   const [contentSearch, setContentSearch] = useState('');
   const [contentSearchResults, setContentSearchResults] = useState<Map<string, number[]>>(new Map());
   const [audioBlobUrls, setAudioBlobUrls] = useState<Record<string, string>>({});
+  const [audioErrors, setAudioErrors] = useState<Record<string, string>>({});
+  const [pendingVoiceEntries, setPendingVoiceEntries] = useState<JournalEntry[]>([]);
   const PAGE_SIZE = 20;
 
   // Debounce search
@@ -98,7 +100,7 @@ export default function JournalPage() {
     mimeType.startsWith('image/');
 
   const isAudio = (mimeType: string) =>
-    mimeType.startsWith('audio/') || mimeType === 'application/ogg';
+    mimeType.startsWith('audio/') || mimeType.startsWith('video/webm') || mimeType === 'application/ogg';
 
   const hasMore = page * PAGE_SIZE < total;
 
@@ -126,14 +128,23 @@ export default function JournalPage() {
       if (!isImage(entry.mime_type) && !isAudio(entry.mime_type) && !entryContents[entry.id]) {
         fetchEntryContent(entry.id);
       }
-      if (isAudio(entry.mime_type) && !audioBlobUrls[entry.id]) {
+      if (isAudio(entry.mime_type) && !audioBlobUrls[entry.id] && !audioErrors[entry.id]) {
         fetch(api.getAudioStreamUrl(entry.id), { credentials: 'include' })
-          .then(r => r.blob())
+          .then(async r => {
+            if (!r.ok) {
+              const text = await r.text().catch(() => 'Audio load failed');
+              throw new Error(text);
+            }
+            return r.blob();
+          })
           .then(blob => {
             const url = URL.createObjectURL(blob);
             setAudioBlobUrls(prev => ({ ...prev, [entry.id]: url }));
           })
-          .catch(err => console.error('Failed to load audio:', err));
+          .catch(err => {
+            console.error('Failed to load audio:', err);
+            setAudioErrors(prev => ({ ...prev, [entry.id]: err instanceof Error ? err.message : 'Failed to load audio' }));
+          });
       }
     }
     setExpandedEntry(expanded ? null : entry.id);
@@ -217,14 +228,34 @@ export default function JournalPage() {
           <VoiceRecorder
             mode="journal"
             lang={locale}
-            onAudioReady={async (blob, transcript) => {
+            onAudioReady={async (blob, _transcript) => {
+              const tempId = `pending-${Date.now()}`;
+              const now = new Date().toISOString();
+              // Optimistically show a pending entry
+              const pendingEntry: JournalEntry = {
+                id: tempId,
+                original_filename: 'voice-entry',
+                mime_type: 'text/plain',
+                metadata: { journal_text: 'Transcribing...', journal_timestamp: now },
+                tags: [{ id: 'voice', tag_name: 'voice-note', tag_type: 'user', auto_generated: false }],
+                created_at: now,
+                status: 'pending',
+                size: 0,
+              };
+              setPendingVoiceEntries(prev => [pendingEntry, ...prev]);
+              setShowRecorder(false);
+
               try {
-                await api.uploadAudioDocument(blob, 'confidential', transcript, 'journal', 'voice-note');
-                setShowRecorder(false);
+                await api.createJournalEntryFromVoice(blob, locale);
+                // Remove pending entry and refresh list to get the real one
+                setPendingVoiceEntries(prev => prev.filter(e => e.id !== tempId));
                 setPage(1);
                 fetchEntries();
               } catch (e) {
-                console.error('Error uploading voice entry:', e);
+                console.error('Error creating journal entry:', e);
+                // Remove pending entry on error
+                setPendingVoiceEntries(prev => prev.filter(e => e.id !== tempId));
+                // Optionally show an error toast here
               }
             }}
             onCancel={() => setShowRecorder(false)}
@@ -261,7 +292,7 @@ export default function JournalPage() {
       )}
 
       {/* Empty state */}
-      {!loading && filteredEntries.length === 0 && (
+      {!loading && filteredEntries.length === 0 && pendingVoiceEntries.length === 0 && (
         <div className="text-center py-12">
           <svg
             className="w-16 h-16 mx-auto text-gray-300 mb-4"
@@ -301,11 +332,35 @@ export default function JournalPage() {
       )}
 
       {/* Timeline */}
-      {!loading && filteredEntries.length > 0 && (
+      {!loading && (filteredEntries.length > 0 || pendingVoiceEntries.length > 0) && (
         <div className="space-y-4">
+          {/* Pending voice entries (optimistic UI) */}
+          {pendingVoiceEntries.map((entry) => {
+            const journalText = entry.metadata?.journal_text || 'Transcribing...';
+            const journalTimestamp = entry.metadata?.journal_timestamp || entry.created_at;
+            return (
+              <div
+                key={entry.id}
+                className="bg-white/80 border border-blue-200 rounded-xl p-5 shadow-sm opacity-70"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <time className="text-sm font-medium text-blue-600">
+                    {formatJournalDate(journalTimestamp)}
+                  </time>
+                  <span className="text-xs text-blue-500 uppercase flex items-center gap-1">
+                    <span className="inline-block w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                    {t('entry_text')}
+                  </span>
+                </div>
+                <div className="text-gray-500 italic">
+                  {journalText}
+                </div>
+              </div>
+            );
+          })}
           {filteredEntries.map((entry) => {
             const journalText =
-              entry.metadata?.journal_text || entry.original_filename;
+              entry.metadata?.extracted_text || entry.metadata?.journal_text || entry.original_filename;
             const journalTimestamp =
               entry.metadata?.journal_timestamp || entry.created_at;
             const expanded = expandedEntry === entry.id;
@@ -351,14 +406,19 @@ export default function JournalPage() {
                         controls
                         className="w-full"
                       />
+                    ) : audioErrors[entry.id] ? (
+                      <div className="flex items-center gap-2 text-red-400 py-3 text-sm">
+                        <span>⚠</span>
+                        <span>{audioErrors[entry.id]}</span>
+                      </div>
                     ) : (
                       <div className="flex items-center gap-2 text-gray-400 py-3">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500"></div>
                         <span className="text-sm">Chargement audio…</span>
                       </div>
                     )}
-                    {entry.metadata?.transcript && (
-                      <p className="mt-2 text-sm text-gray-600 italic">{entry.metadata.transcript}</p>
+                    {(entry.metadata?.extracted_text || entry.metadata?.transcript) && (
+                      <p className="mt-2 text-sm text-gray-600 italic">{entry.metadata?.extracted_text || entry.metadata?.transcript}</p>
                     )}
                   </div>
                 )}

@@ -14,6 +14,8 @@ from app.models.document import Document, DocumentBucket, DocumentChunk
 from app.models.user import User, UserRole
 from app.services.embed_client import embedding_service
 from app.services.pii_detection_service import pii_detection_service
+from app.services.rerank_service import rerank_passages
+from app.services.search_cache import SearchCache
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,22 @@ class SearchResult:
         self.article_id = article_id
         self.article_title = article_title
         self.article_summary = article_summary
+
+
+LANGUAGE_MAP = {
+    "fr": "french",
+    "en": "english",
+    "de": "german",
+    "es": "spanish",
+    "it": "italian",
+}
+
+
+def _get_regconfig(language_code: str | None) -> str:
+    """Map a language code to a PostgreSQL text-search config."""
+    if not language_code:
+        return "simple"
+    return LANGUAGE_MAP.get(language_code.lower(), "simple")
 
 
 class HybridSearchService:
@@ -142,8 +160,13 @@ class HybridSearchService:
             )
             return []
 
-        # Generate query embedding
-        query_embedding = embedding_service.encode_query(query)
+        # Generate query embedding (with cache)
+        cached_embedding = SearchCache.get_embedding(query)
+        if cached_embedding is not None:
+            query_embedding = cached_embedding
+        else:
+            query_embedding = embedding_service.encode_query(query)
+            SearchCache.set_embedding(query, query_embedding)
         embedding_array = ",".join(map(str, query_embedding))
 
         # Get user bucket filter
@@ -205,6 +228,7 @@ class HybridSearchService:
         offset: int = 0,
         db: AsyncSession = None,
         user: User = None,
+        regconfig: str = "simple",
     ) -> list[SearchResult]:
         """
         Perform keyword full-text search using PostgreSQL tsvector.
@@ -219,6 +243,7 @@ class HybridSearchService:
             offset: Number of results to skip
             db: Database session
             user: Current user for access control
+            regconfig: PostgreSQL text-search config (e.g. 'english', 'french', 'simple')
 
         Returns:
             List of search results ordered by ts_rank_cd descending
@@ -227,8 +252,7 @@ class HybridSearchService:
 
         # plainto_tsquery converts free-form text to a tsquery (automatic AND,
         # stemming, stop-word removal) — safe with parameterised input.
-        # Using the per-row search_language regconfig ensures correct stemming
-        # for each document's language (french, english, etc.).
+        # regconfig is now passed from the caller based on detected query language.
         sql_query = text("""
             SELECT
                 dc.id          AS chunk_id,
@@ -241,7 +265,7 @@ class HybridSearchService:
                 ts_rank_cd(
                     dc.search_vector,
                     plainto_tsquery(
-                        COALESCE(dc.search_language, 'french')::regconfig,
+                        :regconfig::regconfig,
                         :query
                     ),
                     32
@@ -251,7 +275,7 @@ class HybridSearchService:
             WHERE d.bucket = ANY(:buckets)
               AND dc.search_vector IS NOT NULL
               AND dc.search_vector @@ plainto_tsquery(
-                      COALESCE(dc.search_language, 'french')::regconfig,
+                      :regconfig::regconfig,
                       :query
                   )
             ORDER BY rank DESC
@@ -262,6 +286,7 @@ class HybridSearchService:
             sql_query,
             {
                 "query": query,
+                "regconfig": regconfig,
                 "buckets": bucket_filter,
                 "limit": limit,
                 "offset": offset,
@@ -284,6 +309,16 @@ class HybridSearchService:
                     final_score=float(row.rank),  # Will be recalculated by hybrid_search
                 )
             )
+
+        # Fallback: trigram similarity for typos when tsvector returns <3 results
+        if len(search_results) < 3 and len(query.strip()) >= 2:
+            fallback = await self._trigram_fallback_search(
+                query=query, limit=limit, db=db, user=user
+            )
+            seen = {r.chunk_id for r in search_results}
+            for r in fallback:
+                if r.chunk_id not in seen:
+                    search_results.append(r)
 
         return search_results
 
@@ -428,12 +463,78 @@ class HybridSearchService:
             for row in result
         ]
 
+    async def _trigram_fallback_search(
+        self,
+        query: str,
+        limit: int = 50,
+        db: AsyncSession = None,
+        user: User = None,
+    ) -> list[SearchResult]:
+        """
+        Fallback keyword search using pg_trgm similarity for typo tolerance.
+        Only called when standard tsvector search returns very few results.
+        """
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+        sql_query = text("""
+            SELECT
+                dc.id as chunk_id,
+                dc.document_id,
+                COALESCE(d.original_filename, d.filename) as document_name,
+                d.bucket as document_bucket,
+                dc.chunk_text,
+                dc.chunk_index,
+                dc.page_number,
+                GREATEST(
+                    similarity(COALESCE(d.original_filename, d.filename), :query),
+                    similarity(COALESCE(d.title, ''), :query),
+                    similarity(dc.chunk_text, :query)
+                ) as rank
+            FROM sowknow.document_chunks dc
+            JOIN sowknow.documents d ON dc.document_id = d.id
+            WHERE d.bucket = ANY(:buckets)
+              AND dc.search_vector IS NOT NULL
+              AND (
+                  COALESCE(d.original_filename, d.filename) % :query
+                  OR COALESCE(d.title, '') % :query
+                  OR dc.chunk_text % :query
+              )
+            ORDER BY rank DESC
+            LIMIT :limit
+        """)
+
+        result = await db.execute(
+            sql_query,
+            {
+                "query": query,
+                "buckets": bucket_filter,
+                "limit": limit,
+            },
+        )
+
+        return [
+            SearchResult(
+                chunk_id=str(row.chunk_id),
+                document_id=str(row.document_id),
+                document_name=row.document_name,
+                document_bucket=row.document_bucket,
+                chunk_text=row.chunk_text,
+                chunk_index=row.chunk_index,
+                page_number=row.page_number,
+                semantic_score=0.0,
+                keyword_score=float(row.rank),
+                final_score=float(row.rank),
+            )
+            for row in result
+        ]
+
     async def article_keyword_search(
         self,
         query: str,
         limit: int = 30,
         db: AsyncSession = None,
         user: User = None,
+        regconfig: str = "simple",
     ) -> list[SearchResult]:
         """Full-text search over articles using tsvector."""
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
@@ -450,7 +551,7 @@ class HybridSearchService:
                 ts_rank_cd(
                     a.search_vector,
                     plainto_tsquery(
-                        COALESCE(a.search_language, 'french')::regconfig,
+                        :regconfig::regconfig,
                         :query
                     ),
                     32
@@ -460,7 +561,7 @@ class HybridSearchService:
             WHERE a.bucket = ANY(:buckets)
               AND a.search_vector IS NOT NULL
               AND a.search_vector @@ plainto_tsquery(
-                      COALESCE(a.search_language, 'french')::regconfig,
+                      :regconfig::regconfig,
                       :query
                   )
             ORDER BY rank DESC
@@ -471,6 +572,7 @@ class HybridSearchService:
             sql_query,
             {
                 "query": query,
+                "regconfig": regconfig,
                 "buckets": bucket_filter,
                 "limit": limit,
             },
@@ -504,6 +606,8 @@ class HybridSearchService:
         db: AsyncSession = None,
         user: User = None,
         timeout: float = 8.0,
+        regconfig: str = "simple",
+        rerank: bool = True,
     ) -> dict[str, Any]:
         """
         Perform hybrid search combining semantic and keyword results.
@@ -538,13 +642,13 @@ class HybridSearchService:
             self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
         keyword_task = asyncio.create_task(
-            self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
+            self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user, regconfig=regconfig)
         )
         article_semantic_task = asyncio.create_task(
             self.article_semantic_search(query=query, limit=limit, db=db, user=user)
         )
         article_keyword_task = asyncio.create_task(
-            self.article_keyword_search(query=query, limit=limit, db=db, user=user)
+            self.article_keyword_search(query=query, limit=limit, db=db, user=user, regconfig=regconfig)
         )
         tag_task = asyncio.create_task(self.tag_search(query=query, limit=limit, offset=0, db=db, user=user))
 
@@ -557,22 +661,42 @@ class HybridSearchService:
         for task in pending:
             task.cancel()
 
+        def _task_name(task: asyncio.Task) -> str:
+            if task is semantic_task:
+                return "semantic"
+            if task is keyword_task:
+                return "keyword"
+            if task is article_semantic_task:
+                return "article_semantic"
+            if task is article_keyword_task:
+                return "article_keyword"
+            if task is tag_task:
+                return "tag"
+            return "unknown"
+
+        def _safe_result(task: asyncio.Task) -> list[SearchResult]:
+            if task not in done:
+                return []
+            try:
+                return task.result()
+            except Exception as exc:
+                logger.warning("Search sub-task %s failed: %s", _task_name(task), exc)
+                return []
+
         is_partial = bool(pending)
         if is_partial:
-            completed_names = ["semantic" if t is semantic_task else "keyword" for t in done]
-            missed_names = ["semantic" if t is semantic_task else "keyword" for t in pending]
+            completed_names = [_task_name(t) for t in done]
+            missed_names = [_task_name(t) for t in pending]
             logger.warning(
-                f"Search timeout ({timeout}s): completed={completed_names}, "
-                f"cancelled={missed_names}. Returning partial results."
+                "Search timeout (%ss): completed=%s, cancelled=%s. Returning partial results.",
+                timeout, completed_names, missed_names,
             )
 
-        semantic_results: list[SearchResult] = semantic_task.result() if semantic_task in done else []
-        keyword_results: list[SearchResult] = keyword_task.result() if keyword_task in done else []
-        article_sem_results: list[SearchResult] = (
-            article_semantic_task.result() if article_semantic_task in done else []
-        )
-        article_kw_results: list[SearchResult] = article_keyword_task.result() if article_keyword_task in done else []
-        tag_results: list[SearchResult] = tag_task.result() if tag_task in done else []
+        semantic_results: list[SearchResult] = _safe_result(semantic_task)
+        keyword_results: list[SearchResult] = _safe_result(keyword_task)
+        article_sem_results: list[SearchResult] = _safe_result(article_semantic_task)
+        article_kw_results: list[SearchResult] = _safe_result(article_keyword_task)
+        tag_results: list[SearchResult] = _safe_result(tag_task)
 
         # Merge results using RRF (Reciprocal Rank Fusion)
         merged_scores = {}
@@ -678,6 +802,12 @@ class HybridSearchService:
         else:
             sem_w, kw_w = self.semantic_weight, self.keyword_weight
 
+        # Dynamic minimum threshold: stricter for short queries
+        if word_count <= 3:
+            min_threshold = max(self.min_score_threshold, 0.25)
+        else:
+            min_threshold = max(self.min_score_threshold, 0.15)
+
         # Calculate final scores
         for _chunk_id, data in merged_scores.items():
             result = data["result"]
@@ -688,8 +818,27 @@ class HybridSearchService:
             final_score = sem_w * semantic + kw_w * keyword
             result.final_score = final_score
 
+        # Cross-encoder re-ranking on top candidates (optional, graceful fallback)
+        if rerank and len(merged_scores) > 1:
+            try:
+                top_items = sorted(
+                    merged_scores.items(),
+                    key=lambda x: x[1]["result"].final_score,
+                    reverse=True,
+                )[:50]
+                passages = [item[1]["result"].chunk_text for item in top_items]
+                rerank_scores = await rerank_passages(query, passages)
+                if rerank_scores:
+                    for idx, score in rerank_scores:
+                        key = top_items[idx][0]
+                        # Blend RRF score with cross-encoder score
+                        old_score = merged_scores[key]["result"].final_score
+                        merged_scores[key]["result"].final_score = 0.7 * old_score + 0.3 * score
+            except Exception as exc:
+                logger.debug("Re-ranking skipped: %s", exc)
+
         # Filter out low-relevance results
-        filtered = {k: v for k, v in merged_scores.items() if v["result"].final_score >= self.min_score_threshold}
+        filtered = {k: v for k, v in merged_scores.items() if v["result"].final_score >= min_threshold}
 
         # Sort by final score and apply pagination
         sorted_results = sorted(filtered.values(), key=lambda x: x["result"].final_score, reverse=True)
@@ -736,7 +885,7 @@ class HybridSearchService:
         db: AsyncSession,
         user: User,
         limit: int = 50,
-        language: str = "french",
+        regconfig: str = "simple",
     ) -> list:
         """ORM-style tsvector keyword search.
 
@@ -748,11 +897,11 @@ class HybridSearchService:
         organization_id == user.organization_id to scope results.
 
         Args:
-            query:    Raw search string (will be sanitized).
-            db:       Active SQLAlchemy async session.
-            user:     Authenticated user for RBAC filtering.
-            limit:    Maximum rows to return.
-            language: Default text-search config (per-row config is preferred).
+            query:     Raw search string (will be sanitized).
+            db:        Active SQLAlchemy async session.
+            user:      Authenticated user for RBAC filtering.
+            limit:     Maximum rows to return.
+            regconfig: PostgreSQL text-search config (e.g. 'english', 'simple').
 
         Returns:
             List of (DocumentChunk, Document, rank) tuples ordered by rank DESC.
@@ -761,7 +910,7 @@ class HybridSearchService:
         if not sanitized_query:
             return []
 
-        tsquery = func.plainto_tsquery(language, sanitized_query)
+        tsquery = func.plainto_tsquery(regconfig, sanitized_query)
 
         rank_expr = func.ts_rank_cd(
             DocumentChunk.search_vector,
@@ -790,7 +939,7 @@ class HybridSearchService:
         db: AsyncSession,
         user: User,
         limit: int = 50,
-        language: str = "french",
+        regconfig: str = "simple",
     ) -> list:
         """Keyword search across both chunk_text and JSONB metadata fields.
 
@@ -799,11 +948,11 @@ class HybridSearchService:
         highest of the two scores per row.
 
         Args:
-            query:    Raw search string.
-            db:       Active SQLAlchemy async session.
-            user:     Authenticated user for RBAC filtering.
-            limit:    Maximum rows to return.
-            language: Default text-search config.
+            query:     Raw search string.
+            db:        Active SQLAlchemy async session.
+            user:      Authenticated user for RBAC filtering.
+            limit:     Maximum rows to return.
+            regconfig: PostgreSQL text-search config.
 
         Returns:
             List of (DocumentChunk, Document, combined_rank) tuples.
@@ -812,7 +961,7 @@ class HybridSearchService:
         if not sanitized_query:
             return []
 
-        tsquery = func.plainto_tsquery(language, sanitized_query)
+        tsquery = func.plainto_tsquery(regconfig, sanitized_query)
 
         text_rank = func.ts_rank_cd(
             DocumentChunk.search_vector,
@@ -821,7 +970,7 @@ class HybridSearchService:
         )
         meta_rank = func.ts_rank_cd(
             func.to_tsvector(
-                language,
+                regconfig,
                 func.coalesce(DocumentChunk.document_metadata["title"].astext, "")
                 + " "
                 + func.coalesce(DocumentChunk.document_metadata["source"].astext, ""),

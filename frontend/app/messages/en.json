@@ -110,7 +110,11 @@
     "public": "Public",
     "confidential": "Confidential",
     "queue_breakdown": "Queue Status Breakdown",
-    "uploads_trend": "Uploads — Last 7 Days"
+    "uploads_trend": "Uploads — Last 7 Days",
+    "total_articles": "Total Articles",
+    "articles_status": "Articles Status",
+    "articles_breakdown": "Articles Breakdown",
+    "articles_trend": "Articles — Last 7 Days"
   },
   "documents": {
     "title": "Documents",
@@ -386,7 +390,11 @@
     "stuck_documents": "Stuck Documents",
     "hours_stuck": "{hours}h stuck",
     "error_message": "Error",
-    "last_task": "Last Task"
+    "last_task": "Last Task",
+    "indexed_articles": "Indexed",
+    "pending_articles": "Pending",
+    "generating_articles": "Generating",
+    "error_articles": "Errors"
   },
   "roles": {
     "user": "User",
@@ -560,7 +568,7 @@
     "quick_documents": "Documents",
     "quick_chat": "AI Assistant",
     "quick_collections": "Collections",
-    "enter": "\u23ce",
+    "enter": "⏎",
     "to_search": "search",
     "to_close": "close",
     "search_hint": "Search or jump to..."
@@ -574,14 +582,10 @@
     "send": "Send",
     "cancel": "Cancel",
     "reRecord": "Re-record",
-    "slideToCancel": "\u2190 Slide to cancel",
-    "releaseToCancel": "Release to cancel",
+    "tapToRecord": "Tap to record",
+    "tapToStop": "Tap to stop",
+    "recording": "Recording...",
     "transcribing": "Transcribing...",
-    "privateTranscription": "Private transcription",
-    "cloudTranscription": "Fast transcription",
-    "privateOn": "Local transcription enabled \u2014 no data sent to cloud",
-    "privateOff": "Browser transcription \u2014 faster but data passes through cloud",
-    "privateHint": "Local transcription \u2014 will be available after sending",
     "micNotSupported": "Microphone not available in this browser",
     "micPermission": "Microphone access required",
     "addVoiceEntry": "Add voice entry",

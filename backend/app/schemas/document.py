@@ -56,6 +56,7 @@ class DocumentResponse(BaseModel):
     ocr_processed: bool = False
     embedding_generated: bool = False
     chunk_count: int = 0
+    metadata: dict | None = Field(default=None, alias="document_metadata")
     created_at: datetime
     updated_at: datetime
 

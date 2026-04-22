@@ -184,6 +184,7 @@ services:
       - HF_HOME=/models
       - WHISPER_MODEL_SIZE=small
       - EMBED_SERVER_URL=http://embed-server:8000
+      - RERANK_SERVER_URL=http://rerank-server:8000
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -204,6 +205,8 @@ services:
         condition: service_healthy
       embed-server:
         condition: service_healthy
+      rerank-server:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -217,7 +220,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1536M
           cpus: '1.0'
     networks:
       - sowknow-net
@@ -251,6 +254,39 @@ services:
         limits:
           memory: 3072M
           cpus: '2.0'
+    networks:
+      - sowknow-net
+
+  rerank-server:
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    build:
+      context: ./backend/rerank_server
+      dockerfile: Dockerfile
+    container_name: sowknow4-rerank-server
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - RERANK_PORT=8000
+      - RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
+    volumes:
+      - sowknow-model-cache:/models
+    # NO ports — internal only. Access: http://rerank-server:8000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: '1.0'
     networks:
       - sowknow-net
 

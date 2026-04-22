@@ -209,3 +209,20 @@ class UploadsHistoryPoint(BaseModel):
 
 class UploadsHistoryResponse(BaseModel):
     history: list[UploadsHistoryPoint]
+
+
+class ArticlesHistoryPoint(BaseModel):
+    day: str  # "YYYY-MM-DD"
+    count: int
+
+
+class ArticlesHistoryResponse(BaseModel):
+    history: list[ArticlesHistoryPoint]
+
+
+class ArticlesStats(BaseModel):
+    total_articles: int
+    indexed_articles: int
+    pending_articles: int
+    generating_articles: int
+    error_articles: int

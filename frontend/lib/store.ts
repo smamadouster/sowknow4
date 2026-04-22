@@ -359,3 +359,62 @@ export const useUploadStore = create<UploadState>()((set) => ({
   isUploading: false,
   setIsUploading: (value) => set({ isUploading: value }),
 }));
+
+/**
+ * Search cache store — caches recent search results for instant revisits.
+ * TTL: 2 minutes. Stores up to 20 entries.
+ */
+interface CachedSearch {
+  query: string;
+  results: unknown[];
+  globalResults: unknown[];
+  synthesis: string | null;
+  citations: unknown[];
+  timestamp: number;
+}
+
+interface SearchCacheState {
+  cache: Record<string, CachedSearch>;
+  getCachedSearch: (query: string) => CachedSearch | null;
+  setCachedSearch: (query: string, data: Omit<CachedSearch, 'timestamp'>) => void;
+  invalidateSearchCache: () => void;
+}
+
+const CACHE_TTL_MS = 120000; // 2 minutes
+const MAX_CACHE_ENTRIES = 20;
+
+export const useSearchCacheStore = create<SearchCacheState>()((set, get) => ({
+  cache: {},
+
+  getCachedSearch: (query: string) => {
+    const key = query.toLowerCase().trim();
+    const entry = get().cache[key];
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+      // Expired — clean up
+      const { [key]: _, ...rest } = get().cache;
+      set({ cache: rest });
+      return null;
+    }
+    return entry;
+  },
+
+  setCachedSearch: (query, data) => {
+    const key = query.toLowerCase().trim();
+    const newCache = {
+      ...get().cache,
+      [key]: { ...data, timestamp: Date.now() },
+    };
+    // Evict oldest if over limit
+    const entries = Object.entries(newCache);
+    if (entries.length > MAX_CACHE_ENTRIES) {
+      entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const trimmed = entries.slice(entries.length - MAX_CACHE_ENTRIES);
+      set({ cache: Object.fromEntries(trimmed) });
+    } else {
+      set({ cache: newCache });
+    }
+  },
+
+  invalidateSearchCache: () => set({ cache: {} }),
+}));

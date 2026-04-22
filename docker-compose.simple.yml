@@ -35,6 +35,8 @@ services:
     build:
       context: ./backend
     container_name: sowknow4-backend
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://sowknow:${DATABASE_PASSWORD}@postgres:5432/sowknow
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -43,7 +45,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       OLLAMA_BASE_URL: http://host.docker.internal:11434
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8000"
     depends_on:
       - postgres
       - redis
@@ -84,6 +86,9 @@ services:
     build:
       context: ./frontend
     container_name: sowknow4-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=/api
+      - JWT_SECRET=${JWT_SECRET}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

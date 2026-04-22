@@ -66,7 +66,10 @@ class ApiClient {
     };
 
     // Only set Content-Type if not already set (e.g., for FormData)
-    if (!headers['Content-Type']) {
+    // Don't override for FormData/Blob — browser must set multipart boundary
+    const body = options.body;
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (!headers['Content-Type'] && !isFormData) {
       headers['Content-Type'] = 'application/json';
     }
 
@@ -197,7 +200,14 @@ class ApiClient {
 
   async uploadAudioDocument(audioBlob: Blob, bucket: string, transcript: string, documentType: string = 'journal', tags: string = '') {
     const formData = new FormData();
-    formData.append('file', audioBlob, 'voice-note.webm');
+    const type = audioBlob.type || 'audio/webm';
+    let ext = 'webm';
+    if (type.includes('mp4') || type.includes('m4a')) ext = 'm4a';
+    else if (type.includes('ogg')) ext = 'ogg';
+    else if (type.includes('wav')) ext = 'wav';
+    else if (type.includes('mpeg') || type.includes('mp3')) ext = 'mp3';
+    else if (type.includes('aac')) ext = 'aac';
+    formData.append('file', audioBlob, `voice-note.${ext}`);
     formData.append('bucket', bucket);
     formData.append('document_type', documentType);
     formData.append('transcript', transcript);
@@ -212,7 +222,14 @@ class ApiClient {
 
   async uploadNoteAudio(noteId: string, audioBlob: Blob, transcript: string) {
     const formData = new FormData();
-    formData.append('file', audioBlob, 'voice-note.webm');
+    const type = audioBlob.type || 'audio/webm';
+    let ext = 'webm';
+    if (type.includes('mp4') || type.includes('m4a')) ext = 'm4a';
+    else if (type.includes('ogg')) ext = 'ogg';
+    else if (type.includes('wav')) ext = 'wav';
+    else if (type.includes('mpeg') || type.includes('mp3')) ext = 'mp3';
+    else if (type.includes('aac')) ext = 'aac';
+    formData.append('file', audioBlob, `voice-note.${ext}`);
     if (transcript) formData.append('transcript', transcript);
 
     return this.request<{ audio_id: string; url: string; transcript: string }>(`/v1/notes/${noteId}/audio`, {
@@ -222,9 +239,45 @@ class ApiClient {
     });
   }
 
+  async createJournalEntry(text: string, title?: string, tags: string[] = []) {
+    return this.request<{ document_id: string; filename: string; status: string; message: string }>('/v1/documents/journal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, title, tags }),
+    });
+  }
+
+  async createJournalEntryFromVoice(audioBlob: Blob, lang?: string) {
+    const formData = new FormData();
+    const type = audioBlob.type || 'audio/webm';
+    let ext = 'webm';
+    if (type.includes('mp4') || type.includes('m4a')) ext = 'm4a';
+    else if (type.includes('ogg')) ext = 'ogg';
+    else if (type.includes('wav')) ext = 'wav';
+    else if (type.includes('mpeg') || type.includes('mp3')) ext = 'mp3';
+    else if (type.includes('aac')) ext = 'aac';
+    formData.append('file', audioBlob, `voice-journal.${ext}`);
+    if (lang && lang !== 'auto') {
+      formData.append('language', lang);
+    }
+
+    return this.request<{ document_id: string; filename: string; status: string; message: string }>('/v1/documents/journal/voice', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  }
+
   async transcribeAudio(audioBlob: Blob) {
     const formData = new FormData();
-    formData.append('file', audioBlob, 'voice.webm');
+    const type = audioBlob.type || 'audio/webm';
+    let ext = 'webm';
+    if (type.includes('mp4') || type.includes('m4a')) ext = 'm4a';
+    else if (type.includes('ogg')) ext = 'ogg';
+    else if (type.includes('wav')) ext = 'wav';
+    else if (type.includes('mpeg') || type.includes('mp3')) ext = 'mp3';
+    else if (type.includes('aac')) ext = 'aac';
+    formData.append('file', audioBlob, `voice.${ext}`);
 
     return this.request<{ transcript: string }>('/v1/voice/transcribe', {
       method: 'POST',
@@ -291,6 +344,20 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ query, limit, offset }),
     });
+  }
+
+  async suggest(q: string, limit: number = 5) {
+    interface SuggestResponse {
+      query: string;
+      suggestions: Array<{
+        id: string;
+        title: string;
+        type: 'document' | 'bookmark' | 'note' | 'tag';
+        bucket?: string | null;
+      }>;
+    }
+    const params = new URLSearchParams({ q, limit: limit.toString() });
+    return this.request<SuggestResponse>(`/v1/search/suggest?${params.toString()}`);
   }
 
   // Chat endpoints

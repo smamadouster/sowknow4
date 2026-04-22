@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   PieChart, Pie, Cell, Tooltip as ReTooltip, Legend, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList,
   AreaChart, Area,
 } from 'recharts';
 
@@ -20,13 +20,17 @@ interface Stats {
   error_documents: number;
 }
 
-interface QueueStats {
-  pending_tasks: number;
-  in_progress_tasks: number;
-  completed_tasks: number;
-  failed_tasks: number;
-  average_wait_time: number | null;
-  longest_running_task: string | null;
+interface ArticlesStats {
+  total_articles: number;
+  indexed_articles: number;
+  pending_articles: number;
+  generating_articles: number;
+  error_articles: number;
+}
+
+interface ArticlesPoint {
+  day: string;
+  count: number;
 }
 
 interface UploadsPoint {
@@ -79,7 +83,8 @@ export default function DashboardPage() {
   const tCommon = useTranslations('common');
 
   const [stats, setStats] = useState<Stats | null>(null);
-  const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
+  const [articlesStats, setArticlesStats] = useState<ArticlesStats | null>(null);
+  const [articlesHistory, setArticlesHistory] = useState<ArticlesPoint[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [uploadsHistory, setUploadsHistory] = useState<UploadsPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,10 +95,11 @@ export default function DashboardPage() {
 
   const loadSlowStats = async () => {
     try {
-      const [statsRes, anomaliesRes, historyRes] = await Promise.all([
-        fetch(`${API_BASE}/v1/admin/stats`, { credentials: 'include' }),
-        fetch(`${API_BASE}/v1/admin/anomalies`, { credentials: 'include' }),
-        fetch(`${API_BASE}/v1/admin/uploads-history`, { credentials: 'include' }),
+      const [statsRes, anomaliesRes, historyRes, articlesHistoryRes] = await Promise.all([
+        fetch(`${API_BASE}/v1/admin/stats`, { credentials: 'include', cache: 'no-store' }),
+        fetch(`${API_BASE}/v1/admin/anomalies`, { credentials: 'include', cache: 'no-store' }),
+        fetch(`${API_BASE}/v1/admin/uploads-history`, { credentials: 'include', cache: 'no-store' }),
+        fetch(`${API_BASE}/v1/admin/articles-history`, { credentials: 'include', cache: 'no-store' }),
       ]);
 
       if (statsRes.ok) setStats(await statsRes.json());
@@ -105,6 +111,10 @@ export default function DashboardPage() {
         const data = await historyRes.json();
         setUploadsHistory(data.history || []);
       }
+      if (articlesHistoryRes.ok) {
+        const data = await articlesHistoryRes.json();
+        setArticlesHistory(data.history || []);
+      }
       setLastUpdated(new Date());
     } catch (e) {
       console.error('Error loading slow stats:', e);
@@ -114,12 +124,12 @@ export default function DashboardPage() {
 
   const loadLiveStats = async () => {
     try {
-      const [queueRes, pipelineRes] = await Promise.all([
-        fetch(`${API_BASE}/v1/admin/queue-stats`, { credentials: 'include' }),
-        fetch(`${API_BASE}/v1/admin/pipeline-stats`, { credentials: 'include' }),
+      const [articlesRes, pipelineRes] = await Promise.all([
+        fetch(`${API_BASE}/v1/admin/articles-stats`, { credentials: 'include', cache: 'no-store' }),
+        fetch(`${API_BASE}/v1/admin/pipeline-stats`, { credentials: 'include', cache: 'no-store' }),
       ]);
 
-      if (queueRes.ok) setQueueStats(await queueRes.json());
+      if (articlesRes.ok) setArticlesStats(await articlesRes.json());
       if (pipelineRes.ok) setPipelineStats(await pipelineRes.json());
       setLastPipelineUpdate(new Date());
     } catch (e) {
@@ -216,48 +226,52 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">{t('processing_queue')}</p>
-              <p className="text-3xl font-bold text-gray-900">{queueStats ? queueStats.pending_tasks + queueStats.in_progress_tasks + queueStats.failed_tasks : '-'}</p>
+              <p className="text-sm text-gray-500">{t('total_articles')}</p>
+              <p className="text-3xl font-bold text-gray-900">{articlesStats?.total_articles ?? '-'}</p>
             </div>
             <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
           </div>
           <div className="mt-4 flex gap-4 text-sm">
-            <span className="text-yellow-600">{queueStats?.pending_tasks ?? 0} pending</span>
-            <span className="text-blue-600">{queueStats?.in_progress_tasks ?? 0} processing</span>
-            <span className="text-red-600">{queueStats?.failed_tasks ?? 0} failed</span>
+            <span className="text-green-600">{articlesStats?.indexed_articles ?? 0} indexed</span>
+            <span className="text-blue-600">{articlesStats?.generating_articles ?? 0} generating</span>
+            <span className="text-red-600">{articlesStats?.error_articles ?? 0} error</span>
           </div>
         </div>
       </div>
 
-      {/* Queue Status */}
+      {/* Articles Status */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('processing_queue')}</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('articles_status')}</h2>
         <div className="w-full bg-gray-200 rounded-full h-4 mb-4">
           <div
             className="bg-blue-600 h-4 rounded-full transition-all"
             style={{
-              width: queueStats && (queueStats.pending_tasks + queueStats.in_progress_tasks + queueStats.failed_tasks) > 0
-                ? `${((queueStats.in_progress_tasks / (queueStats.pending_tasks + queueStats.in_progress_tasks + queueStats.failed_tasks)) * 100)}%`
+              width: articlesStats && articlesStats.total_articles > 0
+                ? `${((articlesStats.indexed_articles / articlesStats.total_articles) * 100)}%`
                 : '0%'
             }}
           ></div>
         </div>
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="grid grid-cols-4 gap-4 text-center">
           <div>
-            <p className="text-2xl font-bold text-yellow-600">{queueStats?.pending_tasks ?? 0}</p>
-            <p className="text-sm text-gray-500">{tAdmin('pending_tasks')}</p>
+            <p className="text-2xl font-bold text-green-600">{articlesStats?.indexed_articles ?? 0}</p>
+            <p className="text-sm text-gray-500">{tAdmin('indexed_articles')}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-blue-600">{queueStats?.in_progress_tasks ?? 0}</p>
-            <p className="text-sm text-gray-500">{tAdmin('in_progress_tasks')}</p>
+            <p className="text-2xl font-bold text-yellow-600">{articlesStats?.pending_articles ?? 0}</p>
+            <p className="text-sm text-gray-500">{tAdmin('pending_articles')}</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-red-600">{queueStats?.failed_tasks ?? 0}</p>
-            <p className="text-sm text-gray-500">{tAdmin('failed_tasks')}</p>
+            <p className="text-2xl font-bold text-blue-600">{articlesStats?.generating_articles ?? 0}</p>
+            <p className="text-sm text-gray-500">{tAdmin('generating_articles')}</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-red-600">{articlesStats?.error_articles ?? 0}</p>
+            <p className="text-sm text-gray-500">{tAdmin('error_articles')}</p>
           </div>
         </div>
       </div>
@@ -298,36 +312,59 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Queue Status Breakdown */}
+        {/* Articles Breakdown */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('queue_breakdown')}</h2>
-          {queueStats ? (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart
-                data={[
-                  { name: tAdmin('pending_tasks'), value: queueStats.pending_tasks, fill: '#eab308' },
-                  { name: tAdmin('in_progress_tasks'), value: queueStats.in_progress_tasks, fill: '#3b82f6' },
-                  { name: tAdmin('failed_tasks'), value: queueStats.failed_tasks, fill: '#ef4444' },
-                ]}
-                margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <ReTooltip />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {[
-                    <Cell key="pending" fill="#eab308" />,
-                    <Cell key="in_progress" fill="#3b82f6" />,
-                    <Cell key="failed" fill="#ef4444" />,
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('articles_breakdown')}</h2>
+          {articlesStats ? (
+            <>
+              <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+                <div className="bg-green-50 rounded-lg p-2">
+                  <p className="text-lg font-bold text-green-700">{articlesStats.indexed_articles.toLocaleString()}</p>
+                  <p className="text-xs text-green-600">{tAdmin('indexed_articles')}</p>
+                </div>
+                <div className="bg-yellow-50 rounded-lg p-2">
+                  <p className="text-lg font-bold text-yellow-700">{articlesStats.pending_articles.toLocaleString()}</p>
+                  <p className="text-xs text-yellow-600">{tAdmin('pending_articles')}</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-2">
+                  <p className="text-lg font-bold text-blue-700">{articlesStats.generating_articles.toLocaleString()}</p>
+                  <p className="text-xs text-blue-600">{tAdmin('generating_articles')}</p>
+                </div>
+                <div className="bg-red-50 rounded-lg p-2">
+                  <p className="text-lg font-bold text-red-700">{articlesStats.error_articles.toLocaleString()}</p>
+                  <p className="text-xs text-red-600">{tAdmin('error_articles')}</p>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart
+                  data={[
+                    { name: tAdmin('indexed_articles'), value: articlesStats.indexed_articles, fill: '#22c55e' },
+                    { name: tAdmin('pending_articles'), value: articlesStats.pending_articles, fill: '#eab308' },
+                    { name: tAdmin('generating_articles'), value: articlesStats.generating_articles, fill: '#3b82f6' },
+                    { name: tAdmin('error_articles'), value: articlesStats.error_articles, fill: '#ef4444' },
                   ]}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  margin={{ top: 20, right: 16, left: 0, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#374151' }} />
+                  <ReTooltip />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {[
+                      <Cell key="indexed" fill="#22c55e" />,
+                      <Cell key="pending" fill="#eab308" />,
+                      <Cell key="generating" fill="#3b82f6" />,
+                      <Cell key="error" fill="#ef4444" />,
+                    ]}
+                    <LabelList dataKey="value" position="top" fill="#111827" fontSize={13} fontWeight={700} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </>
           ) : (
             <div className="h-60 flex items-center justify-center gap-4">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="animate-pulse bg-gray-200 rounded w-16" style={{ height: `${i * 40}px` }} />
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="animate-pulse bg-gray-200 rounded w-16" style={{ height: `${i * 30}px` }} />
               ))}
             </div>
           )}
@@ -359,6 +396,48 @@ export default function DashboardPage() {
               />
             </AreaChart>
           </ResponsiveContainer>
+        ) : (
+          <div className="h-56 flex items-center justify-center">
+            <div className="animate-pulse bg-gray-200 rounded w-full h-full" />
+          </div>
+        )}
+      </div>
+
+      {/* Articles Trend */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('articles_trend')}</h2>
+        {articlesHistory.length > 0 ? (
+          <>
+            <div className="flex flex-wrap gap-3 mb-4">
+              {articlesHistory.map((pt) => (
+                <div key={pt.day} className="bg-violet-50 rounded-lg px-3 py-2 text-center min-w-[80px]">
+                  <p className="text-sm font-bold text-violet-800">{pt.count.toLocaleString()}</p>
+                  <p className="text-xs text-violet-600">{pt.day.slice(5)}</p>
+                </div>
+              ))}
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={articlesHistory} margin={{ top: 20, right: 16, left: 0, bottom: 8 }}>
+                <defs>
+                  <linearGradient id="articlesGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6D28D9" stopOpacity={0.95} />
+                    <stop offset="95%" stopColor="#6D28D9" stopOpacity={0.35} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#374151' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#374151' }} />
+                <ReTooltip />
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#4C1D95"
+                  strokeWidth={3}
+                  fill="url(#articlesGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </>
         ) : (
           <div className="h-56 flex items-center justify-center">
             <div className="animate-pulse bg-gray-200 rounded w-full h-full" />

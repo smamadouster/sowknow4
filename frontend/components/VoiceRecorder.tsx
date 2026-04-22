@@ -1,16 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { useVoiceRecorder, RecordingState } from '@/hooks/useVoiceRecorder';
+import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 
 interface VoiceRecorderProps {
   mode: 'journal' | 'note' | 'search';
-  onTranscript?: (text: string) => void;
   onAudioReady?: (blob: Blob, transcript: string) => void;
   onCancel?: () => void;
   className?: string;
   lang?: string;
+}
+
+function formatTime(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const s = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
 }
 
 function WaveformBars({ analyserNode }: { analyserNode: AnalyserNode | null }) {
@@ -55,75 +62,44 @@ function WaveformBars({ analyserNode }: { analyserNode: AnalyserNode | null }) {
   );
 }
 
-export default function VoiceRecorder({ mode, onTranscript, onAudioReady, onCancel, className = '', lang }: VoiceRecorderProps) {
+export default function VoiceRecorder({ mode, onAudioReady, onCancel, className = '', lang }: VoiceRecorderProps) {
   const t = useTranslations('voice');
-  const [privateMode, setPrivateMode] = useState(mode === 'journal');
-  const [isHolding, setIsHolding] = useState(false);
-  const [slideCancel, setSlideCancel] = useState(false);
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startXRef = useRef(0);
 
   const {
-    state, transcript, interimTranscript, audioBlob, audioUrl,
-    analyserNode, startRecording, stopRecording, cancelRecording,
-    send, reRecord, isSupported, error,
+    state,
+    audioBlob,
+    audioUrl,
+    analyserNode,
+    recordingSeconds,
+    engineName,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    send,
+    isSupported,
+    error,
   } = useVoiceRecorder({
-    privateMode,
-    onTranscript: mode === 'search' ? onTranscript : undefined,
-    onAudioReady: mode !== 'search' ? onAudioReady : undefined,
+    onAudioReady,
     lang,
   });
 
-  const handleStopForSearch = useCallback(() => {
-    stopRecording();
-    if (mode === 'search') {
-      setTimeout(() => {
-        onTranscript?.(transcript || interimTranscript);
-      }, 300);
+  const handleToggle = useCallback(() => {
+    if (state === 'idle' || state === 'requesting') {
+      startRecording();
+    } else if (state === 'recording') {
+      stopRecording();
     }
-  }, [mode, stopRecording, onTranscript, transcript, interimTranscript]);
+  }, [state, startRecording, stopRecording]);
 
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (state === 'recording') {
-      if (mode === 'search') handleStopForSearch();
-      else stopRecording();
-      return;
-    }
-    if (state !== 'idle') return;
+  const handleSend = useCallback(async () => {
+    await send();
+  }, [send]);
 
-    startXRef.current = e.clientX;
-    setSlideCancel(false);
-
-    holdTimerRef.current = setTimeout(() => {
-      setIsHolding(true);
-    }, 200);
-    startRecording();
-  }, [state, startRecording, stopRecording, handleStopForSearch, mode]);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isHolding || state !== 'recording') return;
-    const dx = startXRef.current - e.clientX;
-    setSlideCancel(dx > 80);
-  }, [isHolding, state]);
-
-  const handlePointerUp = useCallback(() => {
-    if (holdTimerRef.current) {
-      clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
-    }
-
-    if (isHolding && state === 'recording') {
-      if (slideCancel) {
-        cancelRecording();
-      } else if (mode === 'search') {
-        handleStopForSearch();
-      } else {
-        stopRecording();
-      }
-      setIsHolding(false);
-      setSlideCancel(false);
-    }
-  }, [isHolding, state, slideCancel, cancelRecording, stopRecording, handleStopForSearch, mode]);
+  const handleReRecord = useCallback(() => {
+    cancelRecording();
+    // Small delay to let the browser release the mic before re-acquiring
+    setTimeout(() => startRecording(), 150);
+  }, [cancelRecording, startRecording]);
 
   if (!isSupported) {
     return (
@@ -134,46 +110,44 @@ export default function VoiceRecorder({ mode, onTranscript, onAudioReady, onCanc
   }
 
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
-      {error && <p className="text-red-400 text-xs">{error}</p>}
-
-      {/* Privacy toggle (journal & notes only) */}
-      {mode !== 'search' && state === 'idle' && (
-        <button
-          onClick={() => setPrivateMode(!privateMode)}
-          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full w-fit transition-colors ${
-            privateMode ? 'bg-green-900/30 text-green-400' : 'bg-vault-800 text-vault-400'
-          }`}
-          title={privateMode ? t('privateOn') : t('privateOff')}
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-          {privateMode ? t('privateTranscription') : t('cloudTranscription')}
-        </button>
+    <div className={`flex flex-col gap-3 ${className}`}>
+      {error && (
+        <div className="flex items-start gap-2 text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+          <span className="mt-0.5 flex-shrink-0">⚠</span>
+          <span>{error}</span>
+        </div>
       )}
 
-      {/* Main recording area */}
       <div className="flex items-center gap-3">
+        {/* Main record / stop button */}
         <button
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-          className={`relative flex items-center justify-center w-12 h-12 rounded-full transition-all select-none touch-none ${
+          onClick={handleToggle}
+          disabled={state === 'transcribing'}
+          className={`relative flex items-center justify-center w-14 h-14 rounded-full transition-all select-none touch-manipulation ${
             state === 'recording'
               ? 'bg-red-500 shadow-lg shadow-red-500/30 animate-pulse-slow'
+              : state === 'requesting'
+              ? 'bg-amber-450/60 cursor-wait'
               : state === 'transcribing'
               ? 'bg-vault-700 cursor-wait'
               : 'bg-amber-450 hover:bg-amber-400 cursor-pointer'
           }`}
-          disabled={state === 'transcribing' || state === 'preview'}
+          style={{ touchAction: 'manipulation' }}
+          aria-label={state === 'recording' ? t('tapToStop') : t('tapToRecord')}
         >
-          {state === 'transcribing' ? (
+          {state === 'requesting' ? (
             <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : state === 'transcribing' ? (
+            <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : state === 'recording' ? (
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
           ) : (
             <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -183,52 +157,66 @@ export default function VoiceRecorder({ mode, onTranscript, onAudioReady, onCanc
           )}
         </button>
 
-        {/* Waveform + slide-to-cancel */}
+        {/* Recording state: waveform + timer */}
         {state === 'recording' && (
-          <div className="flex items-center gap-3 flex-1">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             <WaveformBars analyserNode={analyserNode} />
-            {isHolding && (
-              <span className={`text-xs transition-colors ${slideCancel ? 'text-red-400' : 'text-vault-400'}`}>
-                {slideCancel ? t('releaseToCancel') : t('slideToCancel')}
+            <span className="text-sm font-mono text-red-400 flex-shrink-0 tabular-nums">
+              {formatTime(recordingSeconds)}
+            </span>
+            <span className="text-xs text-vault-400 flex-shrink-0 hidden sm:inline">
+              {t('tapToStop')}
+            </span>
+            {engineName && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-vault-800 text-vault-500 flex-shrink-0">
+                {engineName}
               </span>
             )}
           </div>
         )}
 
-        {/* Preview state */}
+        {/* Requesting state */}
+        {state === 'requesting' && (
+          <span className="text-vault-400 text-sm animate-pulse">{t('recording')}</span>
+        )}
+
+        {/* Transcribing state */}
+        {state === 'transcribing' && (
+          <span className="text-vault-400 text-sm animate-pulse">{t('transcribing')}</span>
+        )}
+
+        {/* Preview state: audio player + actions */}
         {state === 'preview' && audioUrl && (
-          <div className="flex items-center gap-2 flex-1">
-            <audio src={audioUrl} controls className="h-8 flex-1" />
-            <button onClick={send} className="px-3 py-1.5 bg-amber-450 text-white rounded-lg text-sm font-medium hover:bg-amber-400">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <audio src={audioUrl} controls className="h-8 flex-1 min-w-0" />
+            <button
+              onClick={handleSend}
+              className="px-3 py-1.5 bg-amber-450 text-white rounded-lg text-sm font-medium hover:bg-amber-400 flex-shrink-0"
+            >
               {t('send')}
             </button>
-            <button onClick={reRecord} className="px-3 py-1.5 bg-vault-700 text-vault-300 rounded-lg text-sm hover:bg-vault-600">
+            <button
+              onClick={handleReRecord}
+              className="px-3 py-1.5 bg-vault-700 text-vault-300 rounded-lg text-sm hover:bg-vault-600 flex-shrink-0"
+            >
               {t('reRecord')}
             </button>
-            <button onClick={cancelRecording} className="px-2 py-1.5 text-vault-500 hover:text-red-400 text-sm">
+            <button
+              onClick={() => {
+                cancelRecording();
+                onCancel?.();
+              }}
+              className="px-2 py-1.5 text-vault-500 hover:text-red-400 text-sm flex-shrink-0"
+            >
               {t('cancel')}
             </button>
           </div>
         )}
-
-        {state === 'transcribing' && (
-          <span className="text-vault-400 text-sm animate-pulse">{t('transcribing')}</span>
-        )}
       </div>
 
-      {/* Transcript display */}
-      {(state === 'recording' || state === 'preview') && (transcript || interimTranscript) && (
-        <div className="text-sm pl-15">
-          {transcript && <span className="text-vault-200">{transcript}</span>}
-          {interimTranscript && <span className="text-vault-500 italic"> {interimTranscript}</span>}
-        </div>
-      )}
-
-      {/* Private mode hint during recording */}
-      {state === 'recording' && privateMode && (
-        <p className="text-xs text-vault-500 pl-15">
-          {t('privateHint')}
-        </p>
+      {/* Idle helper text */}
+      {state === 'idle' && !error && (
+        <p className="text-xs text-vault-500 pl-[4.25rem]">{t('tapToRecord')}</p>
       )}
     </div>
   );

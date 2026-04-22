@@ -24,6 +24,9 @@ from app.schemas.admin import (
     AdminStatsResponse,
     AnomalyBucketResponse,
     AnomalyDocument,
+    ArticlesHistoryPoint,
+    ArticlesHistoryResponse,
+    ArticlesStats,
     AuditLogEntry,
     AuditLogResponse,
     DashboardResponse,
@@ -782,6 +785,69 @@ async def get_uploads_history(
     return UploadsHistoryResponse(history=history)
 
 
+@router.get("/articles-stats", response_model=ArticlesStats)
+async def get_articles_stats(
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
+) -> ArticlesStats:
+    """Get article generation statistics (Admin only)."""
+    from app.models.article import Article, ArticleStatus
+
+    async def count(stmt) -> int:
+        r = await db.execute(stmt)
+        return r.scalar_one()
+
+    total_articles = await count(select(func.count(Article.id)))
+    indexed_articles = await count(
+        select(func.count(Article.id)).where(func.lower(Article.status) == ArticleStatus.INDEXED.value)
+    )
+    pending_articles = await count(
+        select(func.count(Article.id)).where(func.lower(Article.status) == ArticleStatus.PENDING.value)
+    )
+    generating_articles = await count(
+        select(func.count(Article.id)).where(func.lower(Article.status) == ArticleStatus.GENERATING.value)
+    )
+    error_articles = await count(
+        select(func.count(Article.id)).where(func.lower(Article.status) == ArticleStatus.ERROR.value)
+    )
+
+    return ArticlesStats(
+        total_articles=total_articles,
+        indexed_articles=indexed_articles,
+        pending_articles=pending_articles,
+        generating_articles=generating_articles,
+        error_articles=error_articles,
+    )
+
+
+@router.get("/articles-history", response_model=ArticlesHistoryResponse)
+async def get_articles_history(
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
+) -> ArticlesHistoryResponse:
+    """7-day articles generation history grouped by day (Admin only)."""
+    from app.models.article import Article
+
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+
+    result = await db.execute(
+        select(
+            func.date(Article.created_at).label("day"),
+            func.count().label("count"),
+        )
+        .where(Article.created_at >= seven_days_ago)
+        .group_by(func.date(Article.created_at))
+        .order_by(func.date(Article.created_at))
+    )
+    rows = result.all()
+
+    history = [
+        ArticlesHistoryPoint(day=str(row.day), count=row.count)
+        for row in rows
+    ]
+    return ArticlesHistoryResponse(history=history)
+
+
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     current_user: User = Depends(require_admin_only),
@@ -1034,4 +1100,67 @@ async def recover_failed_uploads(
         "recovered": len(recovered),
         "document_ids": recovered,
         "message": f"Re-queued {len(recovered)} documents for processing",
+    }
+
+
+@router.get("/whisper-model", dependencies=[Depends(require_admin_only)])
+async def get_whisper_model() -> dict[str, Any]:
+    """Get current Whisper model size and available options."""
+    from app.services.whisper_service import VALID_MODEL_SIZES, whisper_service
+    return {
+        "current_model": whisper_service.current_model_size,
+        "available_models": sorted(VALID_MODEL_SIZES),
+        "recommended_for_speed": ["tiny", "tiny.en", "base", "base.en"],
+        "recommended_for_accuracy": ["small", "small.en", "medium", "medium.en", "large-v3"],
+    }
+
+
+@router.post("/whisper-model", dependencies=[Depends(require_admin_only)])
+async def set_whisper_model(
+    request: Request,
+    size: str = Query(..., description="Model size to load (e.g. 'base', 'tiny', 'small')"),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Hot-reload the Whisper model to a different size. Call sparingly — loading takes time."""
+    from app.services.whisper_service import VALID_MODEL_SIZES, whisper_service
+    from app.models.audit import AuditAction
+
+    size = size.strip().lower()
+    if size not in VALID_MODEL_SIZES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid model size '{size}'. Valid: {sorted(VALID_MODEL_SIZES)}",
+        )
+
+    previous = whisper_service.current_model_size
+    if previous == size:
+        return {"message": f"Model already set to '{size}'", "model": size}
+
+    try:
+        whisper_service.reload_model(size)
+    except Exception as e:
+        logger.error("Failed to reload whisper model to %s: %s", size, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load model '{size}': {str(e)}",
+        )
+
+    # Audit log
+    try:
+        await create_audit_log(
+            db=db,
+            user_id=request.state.user.id if hasattr(request.state, "user") else None,
+            action=AuditAction.CONFIG_CHANGED,
+            resource_type="whisper_model",
+            details={"previous": previous, "new": size},
+            request=request,
+        )
+        await db.commit()
+    except Exception:
+        pass  # Don't fail the request if audit logging fails
+
+    return {
+        "message": f"Whisper model reloaded from '{previous}' to '{size}'",
+        "previous_model": previous,
+        "model": size,
     }

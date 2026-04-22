@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { getCsrfToken } from '@/lib/api';
-import { useAuthStore } from '@/lib/store';
+import { api, getCsrfToken } from '@/lib/api';
+import { useAuthStore, useSearchCacheStore } from '@/lib/store';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
@@ -30,6 +30,7 @@ interface StreamState {
 
 interface SearchResult {
   document_id: string | number;
+  chunk_id?: string | number;
   document_title?: string;
   document_name?: string;
   document_type?: string;
@@ -187,12 +188,53 @@ function SynthesisBlock({ text, model, synthesizedAnswerLabel, ollamaLabel, mini
   );
 }
 
-function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relevanceTierLabel, locale }: { result: SearchResult; rank: number; canSeeConfidential: boolean; confidentialLabel: string; relevanceTierLabel: string; locale: string }) {
+function SynthesisSkeleton({ synthesizedAnswerLabel }: { synthesizedAnswerLabel: string }) {
+  return (
+    <div className="bg-vault-800/40 border border-white/[0.06] rounded-xl mb-5 overflow-hidden animate-pulse">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-vault-800/30">
+        <div className="flex items-center gap-2">
+          <span className="text-emerald-400/50">⊕</span>
+          <span className="text-xs font-bold text-text-primary/50 uppercase tracking-wide">
+            {synthesizedAnswerLabel}
+          </span>
+        </div>
+      </div>
+      <div className="px-5 py-4 space-y-2">
+        <div className="h-3 bg-vault-700/50 rounded w-3/4" />
+        <div className="h-3 bg-vault-700/50 rounded w-1/2" />
+        <div className="h-3 bg-vault-700/50 rounded w-5/6" />
+      </div>
+    </div>
+  );
+}
+
+function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relevanceTierLabel, locale, query }: { result: SearchResult; rank: number; canSeeConfidential: boolean; confidentialLabel: string; relevanceTierLabel: string; locale: string; query: string }) {
   const tier = result.relevance_label || 'marginal';
   const colors = RELEVANCE_COLOR[tier] || RELEVANCE_COLOR.marginal;
   const title = result.document_title || result.document_name || '—';
   const excerpt = result.excerpt || result.chunk_text || '';
   const opacity = tier === 'marginal' ? 'opacity-75' : 'opacity-100';
+  const [feedback, setFeedback] = useState<'thumbs_up' | 'thumbs_down' | null>(null);
+
+  const submitFeedback = async (type: 'thumbs_up' | 'thumbs_down') => {
+    if (feedback) return;
+    setFeedback(type);
+    try {
+      await fetch('/api/v1/search/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+        credentials: 'include',
+        body: JSON.stringify({
+          query,
+          document_id: result.document_id,
+          chunk_id: result.chunk_id ?? null,
+          feedback_type: type,
+        }),
+      });
+    } catch (err) {
+      console.error('Feedback failed:', err);
+    }
+  };
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -257,6 +299,26 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
           ))}
         </div>
       )}
+      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/[0.04]">
+        <button
+          onClick={() => submitFeedback('thumbs_up')}
+          className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+            feedback === 'thumbs_up' ? 'bg-emerald-500/20 text-emerald-400' : 'text-text-muted/50 hover:text-emerald-400 hover:bg-emerald-500/10'
+          }`}
+          title="Relevant"
+        >
+          👍
+        </button>
+        <button
+          onClick={() => submitFeedback('thumbs_down')}
+          className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+            feedback === 'thumbs_down' ? 'bg-red-500/20 text-red-400' : 'text-text-muted/50 hover:text-red-400 hover:bg-red-500/10'
+          }`}
+          title="Not relevant"
+        >
+          👎
+        </button>
+      </div>
     </div>
   );
 }
@@ -381,9 +443,32 @@ export default function SearchPage() {
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const searchCache = useSearchCacheStore();
+
   const runSearchWithQuery = useCallback(async (searchQuery: string, updateUrl = true) => {
     if (!searchQuery.trim() || isSearching) return;
     if (updateUrl) { router.push(`/${locale}/search?q=${encodeURIComponent(searchQuery)}`); }
+
+    // Check client-side cache for instant revisit
+    const cached = searchCache.getCachedSearch(searchQuery);
+    if (cached) {
+      setStream({
+        stage: 'done',
+        stageMessage: '',
+        intent: null,
+        results: cached.results as SearchResult[],
+        synthesis: cached.synthesis,
+        citations: cached.citations as Citation[],
+        suggestions: [],
+        hasConfidential: false,
+        totalFound: (cached.results as SearchResult[]).length,
+        modelUsed: null,
+        globalResults: cached.globalResults as GlobalSearchResult[],
+      });
+      setIsSearching(false);
+      return;
+    }
+
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     setIsSearching(true);
@@ -477,6 +562,20 @@ export default function SearchPage() {
               setStream((prev) => ({ ...prev, hasConfidential: ((evt.has_confidential ?? evt.has_confidential_results) as boolean) }));
             }
 
+            // --- Cache results on done ---
+            if (lastEventName === 'done') {
+              setStream((prev) => {
+                searchCache.setCachedSearch(searchQuery, {
+                  query: searchQuery,
+                  results: prev.results,
+                  globalResults: prev.globalResults,
+                  synthesis: prev.synthesis,
+                  citations: prev.citations,
+                });
+                return prev;
+              });
+            }
+
             // --- Error: backend sends "message" field in error events ---
             if (lastEventName === 'error') {
               const errMsg = (evt.message as string) || (evt.error as string) || t('error');
@@ -503,6 +602,36 @@ export default function SearchPage() {
   const handleSuggestion = (text: string) => { setQuery(text); runSearchWithQuery(text); };
   const handleExampleClick = (text: string) => { setQuery(text); inputRef.current?.focus(); };
   const hasResults = stream.results.length > 0 || stream.globalResults.length > 0;
+
+  // Inline suggestions on search page
+  const [inlineSuggestions, setInlineSuggestions] = useState<Array<{id: string; title: string; type: string}>>([]);
+  const [showInlineSuggestions, setShowInlineSuggestions] = useState(false);
+  const suggestDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const fetchInlineSuggestions = useCallback(async (value: string) => {
+    if (!value.trim()) { setInlineSuggestions([]); setShowInlineSuggestions(false); return; }
+    try {
+      const res = await api.suggest(value.trim(), 5);
+      if (res.data?.suggestions?.length) {
+        setInlineSuggestions(res.data.suggestions);
+        setShowInlineSuggestions(true);
+      } else {
+        setInlineSuggestions([]);
+        setShowInlineSuggestions(false);
+      }
+    } catch { setInlineSuggestions([]); setShowInlineSuggestions(false); }
+  }, []);
+
+  const handleQueryChange = useCallback((value: string) => {
+    setQuery(value);
+    if (suggestDebounceRef.current) clearTimeout(suggestDebounceRef.current);
+    if (value.trim().length >= 1) {
+      suggestDebounceRef.current = setTimeout(() => fetchInlineSuggestions(value), 200);
+    } else {
+      setInlineSuggestions([]);
+      setShowInlineSuggestions(false);
+    }
+  }, [fetchInlineSuggestions]);
   const typeCounts: Record<string, number> = { document: stream.results.length };
   for (const gr of stream.globalResults) { typeCounts[gr.result_type] = (typeCounts[gr.result_type] || 0) + 1; }
   const filteredGlobalResults = typeFilter === 'all' || typeFilter === 'document' ? stream.globalResults : stream.globalResults.filter((r) => r.result_type === typeFilter);
@@ -526,10 +655,10 @@ export default function SearchPage() {
         </div>
 
         {/* Search form */}
-        <form onSubmit={handleSubmit} className="mb-2">
+        <form onSubmit={handleSubmit} className="mb-2 relative">
           <div className="flex items-center bg-vault-800/50 border border-white/[0.08] rounded-xl px-4 shadow-card focus-within:border-amber-400/30 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all">
             <span className="text-lg text-text-muted/40 mr-2 flex-shrink-0">⌕</span>
-            <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSearchWithQuery(query); } }} placeholder={t('placeholder')} disabled={isSearching} autoFocus className="flex-1 border-none outline-none bg-transparent text-sm text-text-primary py-3.5 placeholder:text-text-muted/40" />
+            <input ref={inputRef} type="text" value={query} onChange={(e) => handleQueryChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setShowInlineSuggestions(false); runSearchWithQuery(query); } }} placeholder={t('placeholder')} disabled={isSearching} autoFocus className="flex-1 border-none outline-none bg-transparent text-sm text-text-primary py-3.5 placeholder:text-text-muted/40" />
             <button
               type="button"
               onClick={() => setShowVoiceSearch((v) => !v)}
@@ -553,6 +682,28 @@ export default function SearchPage() {
               </button>
             )}
           </div>
+          {/* Inline suggestions dropdown */}
+          {showInlineSuggestions && inlineSuggestions.length > 0 && (
+            <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-vault-900 border border-white/[0.08] rounded-xl shadow-xl overflow-hidden">
+              {inlineSuggestions.map((s) => (
+                <button
+                  key={`${s.type}-${s.id}`}
+                  type="button"
+                  onClick={() => {
+                    if (s.type === 'document') router.push(`/${locale}/documents/${s.id}`);
+                    else if (s.type === 'bookmark') router.push(`/${locale}/bookmarks`);
+                    else if (s.type === 'note') router.push(`/${locale}/notes/${s.id}`);
+                    else if (s.type === 'tag') router.push(`/${locale}/documents?tag=${encodeURIComponent(s.title)}`);
+                    setShowInlineSuggestions(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-white/[0.04] hover:text-text-primary transition-colors text-left"
+                >
+                  <span className="text-xs uppercase tracking-wider text-text-muted/50 w-16 shrink-0">{s.type}</span>
+                  <span className="flex-1 truncate">{s.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {stream.intent && (
             <IntentBadge intent={stream.intent} confidenceLabel={t('confidence')} intentLabel={t((`intent.${INTENT_TYPES.includes(stream.intent.type) ? stream.intent.type : 'unknown'}`) as Parameters<typeof t>[0])} />
           )}
@@ -563,11 +714,11 @@ export default function SearchPage() {
             <VoiceRecorder
               mode="search"
               lang={locale}
-              onTranscript={(text) => {
-                if (text.trim()) {
-                  setQuery(text);
+              onAudioReady={(_blob, transcript) => {
+                if (transcript.trim()) {
+                  setQuery(transcript);
                   setShowVoiceSearch(false);
-                  runSearchWithQuery(text);
+                  runSearchWithQuery(transcript);
                 }
               }}
               onCancel={() => setShowVoiceSearch(false)}
@@ -598,6 +749,9 @@ export default function SearchPage() {
               {stream.synthesis && (
                 <SynthesisBlock text={stream.synthesis} model={stream.modelUsed} synthesizedAnswerLabel={t('synthesizedAnswer')} ollamaLabel={t('model.ollama')} minimaxLabel={t('model.minimax')} />
               )}
+              {stream.stage === 'synthesis' && !stream.synthesis && (
+                <SynthesisSkeleton synthesizedAnswerLabel={t('synthesizedAnswer')} />
+              )}
 
               {showDocumentResults && RELEVANCE_TIERS.map((tier) => {
                 const tierResults = stream.results.filter((r) => r.relevance_label === tier);
@@ -612,7 +766,7 @@ export default function SearchPage() {
                       <span className="ml-1.5 bg-vault-800 rounded-full px-1.5 py-0.5 text-text-muted">{tierResults.length}</span>
                     </div>
                     {tierResults.map((result, idx) => (
-                      <ResultCard key={String(result.document_id) + idx} result={result} rank={result.rank ?? idx + 1} canSeeConfidential={!!canSeeConfidential} confidentialLabel={t('confidential')} relevanceTierLabel={t(labelKey)} locale={locale} />
+                      <ResultCard key={String(result.document_id) + idx} result={result} rank={result.rank ?? idx + 1} canSeeConfidential={!!canSeeConfidential} confidentialLabel={t('confidential')} relevanceTierLabel={t(labelKey)} locale={locale} query={query} />
                     ))}
                   </div>
                 );

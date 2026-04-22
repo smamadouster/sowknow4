@@ -30,6 +30,8 @@ from app.api import (
     knowledge_graph,
     notes,
     search_agent_router,
+    search_feedback,
+    search_suggest,
     smart_folders,
     spaces,
     tags,
@@ -327,6 +329,8 @@ app.include_router(smart_folders.router, prefix="/api/v1")
 app.include_router(knowledge_graph.router, prefix="/api/v1")
 app.include_router(graph_rag.router, prefix="/api/v1")
 app.include_router(search_agent_router.router, prefix="/api/v1")
+app.include_router(search_suggest.router, prefix="/api/v1")
+app.include_router(search_feedback.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/api/v1")
 app.include_router(tags.router, prefix="/api/v1")

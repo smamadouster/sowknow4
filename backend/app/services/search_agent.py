@@ -4,6 +4,7 @@ SOWKNOW Agentic Search Pipeline
 6-stage agent for ranked, cited, synthesized answers with RBAC enforcement.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -19,7 +20,7 @@ from app.models.user import UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
 from app.services.llm_router import llm_router
-from app.services.search_service import HybridSearchService
+from app.services.search_service import HybridSearchService, _get_regconfig
 
 from .search_models import (
     AgenticSearchRequest,
@@ -475,28 +476,48 @@ async def run_agentic_search(
     if mode == SearchMode.AUTO:
         mode = SearchMode.FAST if len(request.query.split()) <= 5 else SearchMode.DEEP
 
-    # Stage 1: Intent
-    intent = await parse_intent(request.query)
-    logger.info("Intent: %s (%.2f) | sub_queries: %d", intent.intent, intent.confidence, len(intent.sub_queries))
+    # Stage 1: Intent (fast path for short/simple queries)
+    words = request.query.strip().split()
+    is_simple = (
+        len(words) <= 3
+        and not any(w in request.query.lower() for w in [
+            "evolution", "trend", "compare", "difference",
+            "bilan", "balance sheet", "resume", "synthese",
+            "synthesis", "summary", "overview",
+        ])
+        and request.mode != SearchMode.DEEP
+    )
+
+    if is_simple:
+        intent = _fallback_intent(request.query)
+        intent.confidence = 0.6
+        logger.info("Fast path: skipped LLM intent for simple query '%s'", request.query)
+    else:
+        intent = await parse_intent(request.query)
+        logger.info("Intent: %s (%.2f) | sub_queries: %d", intent.intent, intent.confidence, len(intent.sub_queries))
+
     if request.language:
         intent.detected_language = request.language
 
     # Stage 2: Query expansion
     queries = build_search_queries(intent, request.query)
 
-    # Stage 3: Hybrid retrieval
+    # Stage 3: Hybrid retrieval (parallel sub-queries)
     search_service = HybridSearchService()
     all_chunks: list[RawChunk] = []
-    for query_text in queries:
+
+    async def _search_one(query_text: str) -> list[RawChunk]:
         result = await search_service.hybrid_search(
             query=query_text,
             limit=request.top_k * 3,
             offset=0,
             db=db,
             user=user,
+            regconfig=_get_regconfig(intent.detected_language),
         )
+        chunks: list[RawChunk] = []
         for sr in result.get("results", []):
-            all_chunks.append(RawChunk(
+            chunks.append(RawChunk(
                 chunk_id=sr.chunk_id,
                 document_id=sr.document_id,
                 document_title=sr.document_name,
@@ -510,6 +531,14 @@ async def run_agentic_search(
                 rrf_score=sr.final_score,
                 tags=[],
             ))
+        return chunks
+
+    sub_results = await asyncio.gather(*[_search_one(qt) for qt in queries], return_exceptions=True)
+    for res in sub_results:
+        if isinstance(res, Exception):
+            logger.warning("Sub-query search failed: %s", res)
+            continue
+        all_chunks.extend(res)
 
     # Stage 3b: Filter to journal entries if requested
     if request.journal_only:

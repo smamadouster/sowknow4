@@ -21,7 +21,7 @@ from app.services.whisper_service import whisper_service
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
 
-ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/wav", "audio/mpeg", "audio/mp4"}
+ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/x-m4a"}
 
 # Maps audio file extension to browser-compatible MIME type.
 # .ogg.encrypted → strip .encrypted first, then look up .ogg
@@ -126,7 +126,10 @@ async def transcribe_audio(
     `language` is an ISO 639-1 code (e.g. 'fr', 'en') or 'auto' for detection.
     Returns: {"transcript": str}
     """
-    if file.content_type not in ALLOWED_AUDIO_TYPES:
+    # Browsers append codec parameters (e.g. audio/webm;codecs=opus) — check prefix
+    if not file.content_type or not any(
+        file.content_type.startswith(allowed) for allowed in ALLOWED_AUDIO_TYPES
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid audio type: {file.content_type}. Allowed: {', '.join(ALLOWED_AUDIO_TYPES)}",
@@ -184,8 +187,8 @@ async def stream_audio(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
         # application/ogg is what python-magic returns for Telegram OGG Opus files.
-        # Both audio/* and application/ogg are valid audio MIME types.
-        _AUDIO_MIME_PREFIXES = ("audio/", "application/ogg")
+        # video/webm is what mimetypes returns for .webm files (browser MediaRecorder).
+        _AUDIO_MIME_PREFIXES = ("audio/", "application/ogg", "video/webm")
         is_audio_mime = doc.mime_type and any(doc.mime_type.startswith(p) for p in _AUDIO_MIME_PREFIXES)
         # Web-recorded notes store path in audio_file_path; Telegram OGGs use file_path
         audio_path = doc.audio_file_path or (doc.file_path if is_audio_mime else None)

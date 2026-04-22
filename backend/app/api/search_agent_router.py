@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,7 +32,7 @@ from app.services.search_models import (
     RawChunk,
     SearchMode,
 )
-from app.services.search_service import HybridSearchService
+from app.services.search_service import HybridSearchService, _get_regconfig
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/search", tags=["Search"])
@@ -55,11 +56,15 @@ def _convert_search_results_to_chunks(search_results) -> list[RawChunk]:
     """Convert search_service.SearchResult objects to RawChunk models."""
     chunks = []
     for sr in search_results:
+        try:
+            bucket = DocumentBucket(sr.document_bucket) if sr.document_bucket else DocumentBucket.PUBLIC
+        except Exception:
+            bucket = DocumentBucket.PUBLIC
         chunks.append(RawChunk(
             chunk_id=sr.chunk_id,
             document_id=sr.document_id,
             document_title=sr.document_name,
-            document_bucket=DocumentBucket(sr.document_bucket),
+            document_bucket=bucket,
             document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
             chunk_index=sr.chunk_index,
             page_number=sr.page_number,
@@ -176,6 +181,7 @@ async def search_stream(
         logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
 
     async def event_generator():
+        start = time.monotonic()
         try:
             yield _sse_event("stage", {"stage": "intent", "message": "Analyse de votre requete..."})
             intent = await parse_intent(request.query)
@@ -194,13 +200,22 @@ async def search_stream(
             yield _sse_event("stage", {"stage": "retrieval", "message": f"Recherche dans {len(queries)} requete(s)..."})
 
             search_service = HybridSearchService()
-            all_chunks: list[RawChunk] = []
-            for query_text in queries:
+
+            async def _search_one(query_text: str) -> list[RawChunk]:
                 result = await search_service.hybrid_search(
                     query=query_text, limit=request.top_k * 3,
                     offset=0, db=db, user=current_user,
+                    regconfig=_get_regconfig(intent.detected_language),
                 )
-                all_chunks.extend(_convert_search_results_to_chunks(result.get("results", [])))
+                return _convert_search_results_to_chunks(result.get("results", []))
+
+            sub_results = await asyncio.gather(*[_search_one(qt) for qt in queries], return_exceptions=True)
+            all_chunks: list[RawChunk] = []
+            for res in sub_results:
+                if isinstance(res, Exception):
+                    logger.warning("Streaming sub-query failed: %s", res)
+                    continue
+                all_chunks.extend(res)
 
             all_chunks = _deduplicate_chunks(all_chunks)
 
@@ -243,8 +258,12 @@ async def search_stream(
             citations = build_citations(results, all_chunks)
             yield _sse_event("citations", {"citations": [c.model_dump() for c in citations]})
 
+            elapsed_ms = int((time.monotonic() - start) * 1000)
             yield _sse_event("done", {
-                "total_found": len(results), "model": model_used, "has_confidential": has_confidential,
+                "total_found": len(results),
+                "model": model_used,
+                "has_confidential": has_confidential,
+                "search_time_ms": elapsed_ms,
             })
 
         except Exception as exc:

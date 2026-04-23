@@ -269,10 +269,12 @@ def _run_chunk(document_id: str) -> None:
         db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid).delete()
 
         for chunk_data in chunks:
+            # Defensive: strip NUL bytes that PostgreSQL rejects
+            clean_text = chunk_data["text"].replace("\x00", "")
             chunk = DocumentChunk(
                 document_id=doc_uuid,
                 chunk_index=chunk_data["index"],
-                chunk_text=chunk_data["text"],
+                chunk_text=clean_text,
                 token_count=chunk_data.get("token_count"),
                 search_language=search_lang,
                 document_metadata=chunk_data.get("metadata", {}),

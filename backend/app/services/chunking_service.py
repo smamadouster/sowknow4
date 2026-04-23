@@ -51,6 +51,8 @@ class ChunkingService:
                     break
 
             chunk_text = text[current_position:best_break].strip()
+            # Strip NUL bytes that PostgreSQL rejects in text columns
+            chunk_text = chunk_text.replace("\x00", "")
 
             if chunk_text:
                 chunks.append(

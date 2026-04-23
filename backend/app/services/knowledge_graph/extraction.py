@@ -273,6 +273,10 @@ class EntityExtractor:
         # Pre-compute embedding so we don't hold a DB connection during the HTTP call
         embedding = await self._embed(surface_form) if self._embed else None
         embedding_str = _vec_to_str(embedding)
+        # Defensive: asyncpg has no vector codec — ensure we always pass a string or None
+        if embedding_str is not None and not isinstance(embedding_str, str):
+            logger.warning("Embedding is not a string for '%s', skipping similarity", surface_form)
+            embedding_str = None
 
         async with self._pool.acquire() as conn:
             # Check synonym table

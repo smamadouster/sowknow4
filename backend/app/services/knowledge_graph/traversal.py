@@ -13,6 +13,7 @@ import logging
 
 import asyncpg
 
+from .extraction import _vec_to_str
 from .models import (
     ConnectionQuery,
     GraphEdge,
@@ -157,7 +158,9 @@ class GraphTraversalService:
             # Fall back to embedding similarity
             if self._embed:
                 vec = await self._embed(name)
-                rows = await conn.fetch(_RESOLVE_BY_EMBEDDING_SQL, vec)
+                rows = await conn.fetch(
+                    _RESOLVE_BY_EMBEDDING_SQL, _vec_to_str(vec)
+                )
                 if not include_confidential:
                     rows = [r for r in rows if r["bucket"] != "confidential"]
                 if rows and rows[0]["score"] >= 0.75:

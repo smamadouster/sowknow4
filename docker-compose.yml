@@ -519,7 +519,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.telegram
     container_name: sowknow4-telegram-bot
-    restart: unless-stopped
+    restart: on-failure
     logging: *default-logging
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}

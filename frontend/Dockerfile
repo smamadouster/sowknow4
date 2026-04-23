@@ -2,6 +2,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Accept build-time env vars that Next.js middleware needs inlined
+ARG JWT_SECRET
+ARG NEXT_PUBLIC_API_URL
+ENV JWT_SECRET=${JWT_SECRET}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 # Copy package files
 COPY package*.json ./
 

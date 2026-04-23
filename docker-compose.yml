@@ -486,6 +486,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - JWT_SECRET=${JWT_SECRET}
+        - NEXT_PUBLIC_API_URL=/api
     container_name: sowknow4-frontend
     restart: unless-stopped
     logging: *default-logging

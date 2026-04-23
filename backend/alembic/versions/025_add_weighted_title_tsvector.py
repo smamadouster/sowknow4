@@ -20,12 +20,12 @@ depends_on = None
 
 def upgrade() -> None:
     # Add generated tsvector column on documents
+    # Uses original_filename (user-friendly name) with weight A.
     op.execute("""
         ALTER TABLE sowknow.documents
         ADD COLUMN IF NOT EXISTS title_search_vector TSVECTOR
         GENERATED ALWAYS AS (
-            setweight(to_tsvector('simple', COALESCE(title, '')), 'A') ||
-            setweight(to_tsvector('simple', COALESCE(original_filename, '')), 'A')
+            setweight(to_tsvector('simple', COALESCE(original_filename, filename, '')), 'A')
         ) STORED
     """)
 

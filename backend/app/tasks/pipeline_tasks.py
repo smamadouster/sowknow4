@@ -462,6 +462,12 @@ def _run_entities(document_id: str) -> None:
 
     finally:
         db.close()
+
+    # Force garbage collection after heavy NLP + graph work to release memory
+    # in Celery prefork workers before the next task.
+    import gc
+    gc.collect()
+
     logger.info("Entities extracted for doc %s", document_id)
 
 
@@ -473,7 +479,7 @@ async def _graph_extract_document(document_id: str, chunks, bucket: str) -> None
     """
     from app.services.embed_client import embedding_service
     from app.services.knowledge_graph.extraction import EntityExtractor
-    from app.services.knowledge_graph.pool import get_graph_pool
+    from app.services.knowledge_graph.pool import get_graph_pool, close_graph_pool
 
     pool = await get_graph_pool()
 
@@ -488,15 +494,21 @@ async def _graph_extract_document(document_id: str, chunks, bucket: str) -> None
     )
 
     total = {"nodes_created": 0, "edges_created": 0, "nodes_merged": 0}
-    for chunk in chunks:
-        stats = await extractor.process_chunk(
-            chunk_text=chunk.chunk_text,
-            document_id=document_id,
-            chunk_id=str(chunk.id),
-            bucket=bucket,
-        )
-        for k in total:
-            total[k] += stats.get(k, 0)
+    try:
+        for chunk in chunks:
+            stats = await extractor.process_chunk(
+                chunk_text=chunk.chunk_text,
+                document_id=document_id,
+                chunk_id=str(chunk.id),
+                bucket=bucket,
+            )
+            for k in total:
+                total[k] += stats.get(k, 0)
+    finally:
+        # Explicitly drop the extractor reference so spaCy docs/tensors can be GC'd
+        del extractor
+        # Close the dedicated asyncpg pool to release DB connections per-task
+        await close_graph_pool()
 
     logger.info(
         "Graph extraction done for doc %s — nodes_created=%d merged=%d edges=%d",

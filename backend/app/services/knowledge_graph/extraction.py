@@ -25,6 +25,10 @@ logger = logging.getLogger("sowknow.graph.extraction")
 # Schema prefix
 _S = "sowknow"
 
+# Module-level spaCy model cache — loaded once per process (saves ~400-500MB
+# per document when running in Celery prefork workers).
+_SPACY_NLP_CACHE: dict = {}
+
 
 def _vec_to_str(vec: list[float] | None) -> str | None:
     """Convert an embedding vector to a pgvector string literal.
@@ -93,23 +97,28 @@ class EntityExtractor:
         self._pool = pool
         self._embed = embedding_fn
         self._llm = llm_fn
-        self._nlp = None
 
-        try:
-            import spacy
-            self._nlp = spacy.load(spacy_model)
-        except ImportError:
-            logger.warning(
-                "spaCy not installed. NER extraction disabled. "
-                "Install with: pip install spacy && python -m spacy download %s",
-                spacy_model,
-            )
-        except OSError:
-            logger.warning(
-                "spaCy model '%s' not found. Download with: "
-                "python -m spacy download %s",
-                spacy_model, spacy_model,
-            )
+        # Use module-level cache so the ~400-500MB model is loaded once per worker
+        if spacy_model not in _SPACY_NLP_CACHE:
+            try:
+                import spacy
+                _SPACY_NLP_CACHE[spacy_model] = spacy.load(spacy_model)
+                logger.info("Loaded spaCy model '%s' into process cache", spacy_model)
+            except ImportError:
+                logger.warning(
+                    "spaCy not installed. NER extraction disabled. "
+                    "Install with: pip install spacy && python -m spacy download %s",
+                    spacy_model,
+                )
+                _SPACY_NLP_CACHE[spacy_model] = None
+            except OSError:
+                logger.warning(
+                    "spaCy model '%s' not found. Download with: "
+                    "python -m spacy download %s",
+                    spacy_model, spacy_model,
+                )
+                _SPACY_NLP_CACHE[spacy_model] = None
+        self._nlp = _SPACY_NLP_CACHE.get(spacy_model)
 
     # ── Main pipeline entry point ─────────────────────────────────
 

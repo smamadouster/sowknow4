@@ -341,7 +341,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2048M
+          memory: 3072M
           cpus: '1.0'
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=2

@@ -37,7 +37,7 @@ app = FastAPI(title="SOWKNOW Embed Server", version="1.0.0", lifespan=lifespan)
 
 class EmbedRequest(BaseModel):
     texts: list[str]
-    batch_size: int = Field(default=32, ge=1, le=512)
+    batch_size: int = Field(default=32, ge=1, le=128)
 
 
 class EmbedQueryRequest(BaseModel):

@@ -66,6 +66,10 @@ class EmbeddingService:
             try:
                 import torch
 
+                # Limit PyTorch internal threads to reduce memory fragmentation
+                torch.set_num_threads(1)
+                torch.set_num_interop_threads(1)
+
                 if torch.cuda.is_available():
                     self._device = "cuda"
                     logger.info("Using CUDA for embeddings")
@@ -166,14 +170,30 @@ class EmbeddingService:
             # The e5 model expects "query:" prefix for queries and "passage:" for passages
             processed_texts = [f"passage: {text}" for text in texts]
 
-            # Generate embeddings
-            embeddings = self.model.encode(
-                processed_texts,
-                batch_size=batch_size,
-                show_progress_bar=show_progress,
-                convert_to_numpy=True,
-                normalize_embeddings=True,  # L2 normalization
-            )
+            # Generate embeddings — disable gradient tracking to save memory
+            import gc
+            try:
+                import torch
+                with torch.no_grad():
+                    embeddings = self.model.encode(
+                        processed_texts,
+                        batch_size=batch_size,
+                        show_progress_bar=show_progress,
+                        convert_to_numpy=True,
+                        normalize_embeddings=True,  # L2 normalization
+                    )
+            except ImportError:
+                embeddings = self.model.encode(
+                    processed_texts,
+                    batch_size=batch_size,
+                    show_progress_bar=show_progress,
+                    convert_to_numpy=True,
+                    normalize_embeddings=True,
+                )
+
+            # Force garbage collection after large batches to release memory
+            if len(texts) > 50:
+                gc.collect()
 
             # Convert to list of lists
             return embeddings.tolist()
@@ -208,11 +228,20 @@ class EmbeddingService:
             return [0.0] * self.embedding_dim
 
         try:
-            embeddings = self.model.encode(
-                [f"query: {text}"],
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-            )
+            try:
+                import torch
+                with torch.no_grad():
+                    embeddings = self.model.encode(
+                        [f"query: {text}"],
+                        convert_to_numpy=True,
+                        normalize_embeddings=True,
+                    )
+            except ImportError:
+                embeddings = self.model.encode(
+                    [f"query: {text}"],
+                    convert_to_numpy=True,
+                    normalize_embeddings=True,
+                )
             return embeddings[0].tolist()
         except Exception as e:
             logger.error(f"Error generating query embedding: {e}")

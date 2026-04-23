@@ -455,31 +455,31 @@ export default function DashboardPage() {
             {pipelineStats && (
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold ${
-                  pipelineStats.overall_health === 'green'
+                  (pipelineStats.overall_health || 'green') === 'green'
                     ? 'bg-green-100 text-green-800'
-                    : pipelineStats.overall_health === 'yellow'
+                    : (pipelineStats.overall_health || 'green') === 'yellow'
                     ? 'bg-yellow-100 text-yellow-800'
                     : 'bg-red-100 text-red-800'
                 }`}
               >
-                {pipelineStats.overall_health === 'green' && (
+                {(pipelineStats.overall_health || 'green') === 'green' && (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 )}
-                {pipelineStats.overall_health === 'yellow' && (
+                {(pipelineStats.overall_health || 'green') === 'yellow' && (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 )}
-                {pipelineStats.overall_health === 'red' && (
+                {(pipelineStats.overall_health || 'green') === 'red' && (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 )}
-                {pipelineStats.overall_health === 'green'
+                {(pipelineStats.overall_health || 'green') === 'green'
                   ? 'Healthy'
-                  : pipelineStats.overall_health === 'yellow'
+                  : (pipelineStats.overall_health || 'green') === 'yellow'
                   ? 'Congested'
                   : 'Blocked'}
               </span>
@@ -497,7 +497,7 @@ export default function DashboardPage() {
               return pipelineStats.stages.map((stage, idx) => {
                 const isLast = idx === pipelineStats.stages.length - 1;
                 const barWidth = Math.min(Math.round((stage.pending / maxPending) * 100), 100);
-                const health = stage.health;
+                const health = stage.health || 'green';
 
                 const healthStyles = {
                   green: {

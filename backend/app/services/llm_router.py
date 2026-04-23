@@ -7,7 +7,8 @@ this module instead of embedding routing logic inline.
 
 Routing strategy
 ----------------
-* Confidential docs or PII detected → Ollama only (privacy guarantee)
+* Confidential docs or PII detected → Ollama → OpenRouter → MiniMax
+  (Ollama preferred for privacy but removed 2026-04-14; OpenRouter is current fallback)
 * Public docs (RAG)                 → MiniMax M2.7 → OpenRouter (mistral-small-2603) → Ollama
 * General chat (no docs)            → MiniMax M2.7 → OpenRouter (mistral-small-2603) → Ollama
 """
@@ -75,7 +76,7 @@ class LLMRouter:
     # Fallback chains per routing scenario.
     # Each chain is an ordered list of provider names tried left-to-right.
     fallback_chains: dict[str, list[str]] = {
-        "confidential": ["ollama"],
+        "confidential": ["ollama", "openrouter", "minimax"],
         "public_docs": ["minimax", "openrouter", "ollama"],
         "general_chat": ["minimax", "openrouter", "ollama"],
     }
@@ -174,9 +175,8 @@ class LLMRouter:
         caller) to skip the PII / bucket scan.  If omitted, sensitivity is
         detected from *query* and *context_chunks*.
 
-        When confidential routing is selected and Ollama is unreachable this
-        method raises :class:`RuntimeError` — the caller must handle that and
-        return an appropriate user-facing error.
+        Confidential queries prefer Ollama (local inference) but fall back to
+        OpenRouter and then MiniMax when Ollama is unavailable.
         """
         context_chunks = context_chunks or []
 
@@ -187,25 +187,40 @@ class LLMRouter:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
-        # --- Confidential path: Ollama only ---
+        # --- Confidential path: Ollama → OpenRouter → MiniMax ---
+        # Ollama is preferred for privacy (local inference), but since it was
+        # removed from infrastructure on 2026-04-14 we fall back to OpenRouter.
         if is_sensitive:
-            if self._ollama is None:
-                raise RuntimeError("Ollama service not configured.")
-
-            health = await self._ollama.health_check()
-            if health.get("status") != "healthy":
-                raise RuntimeError(f"Ollama unavailable for confidential query: {health.get('error', 'unknown')}")
-
             reason = (
                 RoutingReason.CONFIDENTIAL_DOCS if "confidential" in sensitivity_reason else RoutingReason.PII_DETECTED
             )
-            logger.info(f"LLM routing → ollama ({reason.value})")
-            return RoutingDecision(
-                provider_name="ollama",
-                reason=reason,
-                service=self._ollama,
-                metadata={"sensitivity_reason": sensitivity_reason, "ollama_health": health},
-            )
+            chain = [
+                ("ollama", self._ollama, lambda s: s is not None),
+                ("openrouter", self._openrouter, lambda s: s is not None),
+                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
+            ]
+            for name, service, available in chain:
+                if available(service):
+                    if name == "ollama":
+                        health = await self._ollama.health_check()
+                        if health.get("status") != "healthy":
+                            logger.warning(f"Ollama unhealthy for confidential query: {health.get('error', 'unknown')}")
+                            continue
+                        logger.info(f"LLM routing → ollama ({reason.value})")
+                        return RoutingDecision(
+                            provider_name="ollama",
+                            reason=reason,
+                            service=self._ollama,
+                            metadata={"sensitivity_reason": sensitivity_reason, "ollama_health": health},
+                        )
+                    logger.info(f"LLM routing → {name} ({reason.value})")
+                    return RoutingDecision(
+                        provider_name=name,
+                        reason=reason,
+                        service=service,
+                        metadata={"chain": [n for n, _, _ in chain]},
+                    )
+            raise RuntimeError("No LLM provider available for confidential query.")
 
         # --- Public path ---
         has_context = bool(context_chunks)

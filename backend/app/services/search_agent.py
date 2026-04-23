@@ -14,12 +14,14 @@ from uuid import UUID
 
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.document import Document, DocumentBucket
 from app.models.user import UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
 from app.services.llm_router import llm_router
+from app.services.search_cache import SearchCache
 from app.services.search_service import HybridSearchService, _get_regconfig
 
 from .search_models import (
@@ -42,6 +44,9 @@ RRF_K = 60
 HIGHLY_RELEVANT_THRESHOLD = 0.82
 RELEVANT_THRESHOLD = 0.65
 PARTIALLY_THRESHOLD = 0.45
+# Floor for RRF score normalization: prevents weak absolute scores from being
+# inflated to near-1.0 when all results are poor (≈ top-1 from a single list).
+MIN_RRF_NORM_FLOOR = 0.015
 
 
 def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]:
@@ -58,6 +63,26 @@ def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]
     return result
 
 
+# Conversational filler words that harm embedding quality
+_FILLER_WORDS = frozenset([
+    "tell", "me", "about", "what", "is", "are", "the", "how", "do", "i",
+    "can", "you", "explain", "describe", "give", "information", "details",
+    "please", "show", "find", "look", "search", "for", "some", "any",
+    "need", "want", "would", "like", "could", "should", "will", "did",
+    "was", "were", "has", "have", "had", "been", "being", "be", "get",
+])
+
+
+def _sanitize_search_query(query: str) -> str:
+    """Strip conversational filler words to improve embedding/keyword accuracy."""
+    words = query.lower().strip().split()
+    kept = [w for w in words if w.strip("?.,!;:-") not in _FILLER_WORDS]
+    if not kept:
+        # If everything was filler, keep the original longest words
+        kept = sorted(words, key=len, reverse=True)[:3]
+    return " ".join(kept)
+
+
 def rerank_and_build_results(
     chunks: list[RawChunk],
     query: str,
@@ -72,6 +97,8 @@ def rerank_and_build_results(
     results: list[SearchResult] = []
     has_confidential = False
     max_rrf = max((c.rrf_score for c in chunks), default=1.0) or 1.0
+    # Don't inflate weak absolute scores to high relative scores
+    max_rrf = max(max_rrf, MIN_RRF_NORM_FLOOR)
 
     for doc_id, doc_chunks in doc_map.items():
         sorted_chunks = sorted(doc_chunks, key=lambda c: c.rrf_score, reverse=True)
@@ -273,7 +300,8 @@ Regles imperatives :
 5. Termine par une section "Points cles" avec 3-5 bullet points.
 6. Reponds dans la meme langue que la question de l'utilisateur.
 7. Si les documents ne contiennent pas d'information pertinente, dis-le clairement.
-8. NE PAS inventer d'informations non presentes dans les extraits.""",
+8. NE PAS inventer d'informations non presentes dans les extraits.
+9. Certains documents confidentiels apparaissent sous la forme "[Confidential document — content not sent to AI]" avec leurs metadonnees (type, pages, tags, date). Mentionne-les par nom, indique qu'ils sont confidentiels, et suggere a l'utilisateur de les consulter directement. Ne dis JAMAIS "je ne peux pas acceder" ou "aucun document trouve" lorsque des documents confidentiels sont listes.""",
 )
 
 SUGGESTION_SYSTEM_PROMPT = build_service_prompt(
@@ -336,17 +364,30 @@ def _clean_json(raw: str) -> str:
 
 # ---- STAGE 1: INTENT AGENT ----
 
+# Simple in-memory intent cache (LRU-like, no TTL — intents are stable)
+_intent_cache: dict[str, ParsedIntent] = {}
+_MAX_INTENT_CACHE = 200
+
+
 async def parse_intent(query: str) -> ParsedIntent:
+    cache_key = query.lower().strip()
+    if cache_key in _intent_cache:
+        logger.info("Intent cache hit for '%s'", query)
+        return _intent_cache[cache_key]
+
     try:
-        raw, _ = await _call_llm(
-            messages=[{"role": "user", "content": f"Requete : {query}"}],
-            system=INTENT_SYSTEM_PROMPT,
-            has_confidential=False,
-            temperature=0.0,
-            max_tokens=512,
+        raw, _ = await asyncio.wait_for(
+            _call_llm(
+                messages=[{"role": "user", "content": f"Requete : {query}"}],
+                system=INTENT_SYSTEM_PROMPT,
+                has_confidential=False,
+                temperature=0.0,
+                max_tokens=512,
+            ),
+            timeout=6.0,
         )
         data = json.loads(_clean_json(raw))
-        return ParsedIntent(
+        intent = ParsedIntent(
             intent=QueryIntent(data.get("intent", "unknown")),
             confidence=float(data.get("confidence", 0.5)),
             entities=data.get("entities", []),
@@ -358,6 +399,14 @@ async def parse_intent(query: str) -> ParsedIntent:
             requires_synthesis=bool(data.get("requires_synthesis", False)),
             temporal_range=data.get("temporal_range"),
         )
+        # Cache the result
+        if len(_intent_cache) >= _MAX_INTENT_CACHE:
+            _intent_cache.pop(next(iter(_intent_cache)))
+        _intent_cache[cache_key] = intent
+        return intent
+    except asyncio.TimeoutError:
+        logger.warning("Intent parsing timed out after 6s for '%s', using fallback", query)
+        return _fallback_intent(query)
     except Exception as exc:
         logger.warning("Intent parsing failed, using fallback: %s", exc)
         return _fallback_intent(query)
@@ -374,7 +423,17 @@ async def synthesize_answer(
     language: str,
     context_block: str | None = None,
 ) -> tuple[str, str]:
-    top_chunks = sorted(raw_chunks, key=lambda c: c.rrf_score, reverse=True)[:5]
+    # Prioritize public chunks with actual content for synthesis accuracy
+    public_chunks = [c for c in raw_chunks if c.document_bucket != DocumentBucket.CONFIDENTIAL]
+    confidential_chunks = [c for c in raw_chunks if c.document_bucket == DocumentBucket.CONFIDENTIAL]
+
+    # Take top public chunks + top confidential chunks, up to 8 total
+    top_public = sorted(public_chunks, key=lambda c: c.rrf_score, reverse=True)[:5]
+    top_confidential = sorted(confidential_chunks, key=lambda c: c.rrf_score, reverse=True)[:3]
+
+    # Merge and re-sort by score so highest relevance appears first
+    top_chunks = sorted(top_public + top_confidential, key=lambda c: c.rrf_score, reverse=True)[:8]
+
     context_parts = []
     for i, chunk in enumerate(top_chunks, 1):
         bucket_label = "[CONFIDENTIEL]" if chunk.document_bucket == DocumentBucket.CONFIDENTIAL else "[PUBLIC]"
@@ -453,6 +512,65 @@ def _fallback_suggestions(query: str, intent: ParsedIntent) -> list[SearchSugges
     return suggestions
 
 
+async def _strip_confidential_chunks(
+    chunks: list[RawChunk],
+    _db: AsyncSession,
+) -> list[RawChunk]:
+    """Replace full text with metadata-only summary for confidential chunks.
+
+    Uses a FRESH session because the search session may be corrupted by
+    asyncio.wait task cancellations or failed sub-queries.
+    """
+    confidential_doc_ids = [
+        str(c.document_id)
+        for c in chunks
+        if c.document_bucket == DocumentBucket.CONFIDENTIAL
+    ]
+    if not confidential_doc_ids:
+        return chunks
+
+    from app.database import AsyncSessionLocal
+
+    doc_metadata: dict = {}
+    async with AsyncSessionLocal() as meta_db:
+        result = await meta_db.execute(
+            sa_select(Document)
+            .options(selectinload(Document.tags))
+            .where(Document.id.in_(confidential_doc_ids))
+        )
+        doc_metadata = {str(doc.id): doc for doc in result.scalars().all()}
+
+    stripped: list[RawChunk] = []
+    for chunk in chunks:
+        if chunk.document_bucket != DocumentBucket.CONFIDENTIAL:
+            stripped.append(chunk)
+            continue
+
+        doc = doc_metadata.get(str(chunk.document_id))
+        tags = [t.tag_name for t in doc.tags] if doc and doc.tags else []
+        page_count = doc.page_count if doc else None
+        mime_type = doc.mime_type if doc else "unknown"
+        created_at = (
+            doc.created_at.strftime("%Y-%m-%d")
+            if doc and doc.created_at
+            else "unknown"
+        )
+
+        metadata_summary = (
+            f"[Confidential document — content not sent to AI] "
+            f"pages: {page_count or 'N/A'} | type: {mime_type} | "
+            f"uploaded: {created_at}"
+        )
+        if tags:
+            metadata_summary += f" | tags: {', '.join(tags)}"
+
+        stripped.append(
+            chunk.model_copy(update={"text": metadata_summary})
+        )
+
+    return stripped
+
+
 # ---- MAIN ORCHESTRATOR ----
 
 async def run_agentic_search(
@@ -464,6 +582,13 @@ async def run_agentic_search(
 ) -> AgenticSearchResponse:
     start_ms = time.monotonic()
     logger.info("Agentic search started | user=%s role=%s query='%s'", user_id, user_role, request.query)
+
+    # --- Result cache check ---
+    bucket_filter = HybridSearchService()._get_user_bucket_filter(user) if user else ["public"]
+    cached = SearchCache.get_result(request.query, user_role.value, request.top_k, bucket_filter)
+    if cached:
+        logger.info("Cache hit for query='%s'", request.query)
+        return AgenticSearchResponse(**cached)
 
     # Fetch working memory context block once for all LLM calls
     _context_block: str | None = None
@@ -499,8 +624,12 @@ async def run_agentic_search(
     if request.language:
         intent.detected_language = request.language
 
+    # Sanitize query for embedding/keyword search (strip conversational filler)
+    search_query = _sanitize_search_query(request.query)
+    logger.info("Sanitized query: '%s' → '%s'", request.query, search_query)
+
     # Stage 2: Query expansion
-    queries = build_search_queries(intent, request.query)
+    queries = build_search_queries(intent, search_query)
 
     # Stage 3: Hybrid retrieval (parallel sub-queries)
     search_service = HybridSearchService()
@@ -583,24 +712,48 @@ async def run_agentic_search(
         )
     ) and len(results) > 0
 
-    if should_synthesize:
-        answer_synthesis, model_used = await synthesize_answer(
-            query=request.query,
-            results=results,
-            raw_chunks=all_chunks,
-            intent=intent,
-            has_confidential=has_confidential,
-            language=intent.detected_language,
-            context_block=_context_block,
-        )
+    # Skip synthesis for FAST mode — users get instant ranked results
+    if mode == SearchMode.FAST:
+        should_synthesize = False
+        logger.info("FAST mode: skipping synthesis for query='%s'", request.query)
 
-    # Stage 6: Suggestions
+    if should_synthesize:
+        # Strip confidential chunk text before sending to cloud LLM
+        synthesis_chunks = await _strip_confidential_chunks(all_chunks, db)
+        try:
+            answer_synthesis, model_used = await asyncio.wait_for(
+                synthesize_answer(
+                    query=request.query,
+                    results=results,
+                    raw_chunks=synthesis_chunks,
+                    intent=intent,
+                    has_confidential=has_confidential,
+                    language=intent.detected_language,
+                    context_block=_context_block,
+                ),
+                timeout=8.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Synthesis timed out after 8s for query='%s'", request.query)
+            answer_synthesis = None
+            model_used = "timeout"
+
+    # Stage 6: Suggestions (skipped in FAST mode for speed)
     suggestions: list[SearchSuggestion] = []
-    if request.include_suggestions and results:
-        suggestions = await generate_suggestions(
-            request.query, results, intent, has_confidential,
-            context_block=_context_block,
-        )
+    if request.include_suggestions and results and mode != SearchMode.FAST:
+        try:
+            suggestions = await asyncio.wait_for(
+                generate_suggestions(
+                    request.query, results, intent, has_confidential,
+                    context_block=_context_block,
+                ),
+                timeout=5.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Suggestion generation timed out for query='%s'", request.query)
+            suggestions = _fallback_suggestions(request.query, intent)
+    elif mode == SearchMode.FAST:
+        suggestions = _fallback_suggestions(request.query, intent)
 
     citations = build_citations(results, all_chunks)
     elapsed_ms = int((time.monotonic() - start_ms) * 1000)
@@ -617,7 +770,7 @@ async def run_agentic_search(
         synthesis_performed=bool(answer_synthesis),
     )
 
-    return AgenticSearchResponse(
+    response = AgenticSearchResponse(
         query=request.query,
         parsed_intent=intent.intent,
         answer_synthesis=answer_synthesis,
@@ -631,3 +784,10 @@ async def run_agentic_search(
         agent_trace=trace,
         search_time_ms=elapsed_ms,
     )
+
+    # --- Store result in cache ---
+    SearchCache.set_result(
+        request.query, user_role.value, request.top_k, bucket_filter, response.model_dump(mode="json")
+    )
+
+    return response

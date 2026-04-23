@@ -29,6 +29,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/graph-rag", tags=["graph-rag"])
 
 
+def _search_results_to_dicts(results: list[Any]) -> list[dict[str, Any]]:
+    """Convert search_service.SearchResult objects to plain dicts for graph_rag_service."""
+    return [
+        {
+            "id": r.chunk_id,
+            "document_id": r.document_id,
+            "filename": r.document_name,
+            "bucket": r.document_bucket,
+            "content": r.chunk_text,
+            "score": r.final_score,
+            "semantic_score": r.semantic_score,
+            "keyword_score": r.keyword_score,
+            "chunk_index": r.chunk_index,
+            "page_number": r.page_number,
+            "result_type": r.result_type,
+        }
+        for r in results
+    ]
+
+
 async def create_audit_log(
     db: AsyncSession,
     user_id: UUID,
@@ -71,12 +91,12 @@ async def graph_augmented_search(
     from app.services.search_service import search_service
 
     # First perform initial search
-    initial_results = await search_service.search(query=query, limit=top_k, offset=0, user=current_user, db=db)
+    initial_results = await search_service.hybrid_search(query=query, limit=top_k, offset=0, user=current_user, db=db)
 
     # Enhance with graph
     enhanced = await graph_rag_service.enhance_search_with_graph(
         query=query,
-        initial_results=initial_results.get("results", []),
+        initial_results=_search_results_to_dicts(initial_results.get("results", [])),
         db=db,
         top_k_entities=10,
         expansion_depth=expansion_depth,
@@ -101,11 +121,11 @@ async def graph_aware_answer(
     from app.services.search_service import search_service
 
     # Get search results
-    search_results = await search_service.search(query=query, limit=10, offset=0, user=current_user, db=db)
+    search_results = await search_service.hybrid_search(query=query, limit=10, offset=0, user=current_user, db=db)
 
     # Enhance with graph
     enhanced = await graph_rag_service.enhance_search_with_graph(
-        query=query, initial_results=search_results.get("results", []), db=db
+        query=query, initial_results=_search_results_to_dicts(search_results.get("results", [])), db=db
     )
 
     # Generate answer
@@ -344,11 +364,11 @@ async def progressive_search(
     from app.services.search_service import search_service
 
     # Get raw search results
-    raw_results = await search_service.search(query=query, limit=50, offset=0, user=current_user, db=db)
+    raw_results = await search_service.hybrid_search(query=query, limit=50, offset=0, user=current_user, db=db)
 
     # Apply progressive disclosure
     progressive_results = await progressive_revelation_service.get_progressive_search_results(
-        query=query, user=current_user, results=raw_results.get("results", []), db=db
+        query=query, user=current_user, results=_search_results_to_dicts(raw_results.get("results", [])), db=db
     )
 
     return progressive_results

@@ -167,7 +167,7 @@ class HybridSearchService:
         else:
             query_embedding = embedding_service.encode_query(query)
             SearchCache.set_embedding(query, query_embedding)
-        embedding_array = ",".join(map(str, query_embedding))
+        embedding_array = "[" + ",".join(map(str, query_embedding)) + "]"
 
         # Get user bucket filter
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
@@ -183,12 +183,12 @@ class HybridSearchService:
                 dc.chunk_text,
                 dc.chunk_index,
                 dc.page_number,
-                1 - (dc.embedding_vector <=> :embedding::vector) as similarity
+                1 - (dc.embedding_vector <=> CAST(:embedding AS vector)) as similarity
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
-            WHERE d.bucket = ANY(:buckets)
+            WHERE d.bucket::text = ANY(:buckets)
             AND dc.embedding_vector IS NOT NULL
-            ORDER BY dc.embedding_vector <=> :embedding::vector
+            ORDER BY dc.embedding_vector <=> CAST(:embedding AS vector)
             LIMIT :limit OFFSET :offset
         """)
 
@@ -265,17 +265,17 @@ class HybridSearchService:
                 ts_rank_cd(
                     dc.search_vector,
                     plainto_tsquery(
-                        :regconfig::regconfig,
+                        CAST(:regconfig AS regconfig),
                         :query
                     ),
                     32
                 ) AS rank
             FROM sowknow.document_chunks dc
             JOIN sowknow.documents d ON dc.document_id = d.id
-            WHERE d.bucket = ANY(:buckets)
+            WHERE d.bucket::text = ANY(:buckets)
               AND dc.search_vector IS NOT NULL
               AND dc.search_vector @@ plainto_tsquery(
-                      :regconfig::regconfig,
+                      CAST(:regconfig AS regconfig),
                       :query
                   )
             ORDER BY rank DESC
@@ -363,7 +363,7 @@ class HybridSearchService:
                 1.0 AS similarity
             FROM sowknow.documents d
             JOIN sowknow.tags t ON d.id = t.target_id AND t.target_type = 'document'
-            WHERE d.bucket = ANY(:buckets)
+            WHERE d.bucket::text = ANY(:buckets)
               AND d.status != 'error'
               AND LOWER(t.tag_name) LIKE LOWER(:query_pattern)
             ORDER BY t.tag_type, t.tag_name
@@ -412,7 +412,7 @@ class HybridSearchService:
             return []
 
         query_embedding = embedding_service.encode_query(query)
-        embedding_array = ",".join(map(str, query_embedding))
+        embedding_array = "[" + ",".join(map(str, query_embedding)) + "]"
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
         sql_query = text("""
@@ -424,13 +424,13 @@ class HybridSearchService:
                 a.title,
                 a.summary,
                 a.body,
-                1 - (a.embedding_vector <=> :embedding::vector) as similarity
+                1 - (a.embedding_vector <=> CAST(:embedding AS vector)) as similarity
             FROM sowknow.articles a
             JOIN sowknow.documents d ON a.document_id = d.id
             WHERE a.bucket = ANY(:buckets)
             AND a.embedding_vector IS NOT NULL
             AND a.status = 'indexed'
-            ORDER BY a.embedding_vector <=> :embedding::vector
+            ORDER BY a.embedding_vector <=> CAST(:embedding AS vector)
             LIMIT :limit
         """)
 
@@ -487,16 +487,14 @@ class HybridSearchService:
                 dc.page_number,
                 GREATEST(
                     similarity(COALESCE(d.original_filename, d.filename), :query),
-                    similarity(COALESCE(d.title, ''), :query),
                     similarity(dc.chunk_text, :query)
                 ) as rank
             FROM sowknow.document_chunks dc
             JOIN sowknow.documents d ON dc.document_id = d.id
-            WHERE d.bucket = ANY(:buckets)
+            WHERE d.bucket::text = ANY(:buckets)
               AND dc.search_vector IS NOT NULL
               AND (
                   COALESCE(d.original_filename, d.filename) % :query
-                  OR COALESCE(d.title, '') % :query
                   OR dc.chunk_text % :query
               )
             ORDER BY rank DESC
@@ -551,7 +549,7 @@ class HybridSearchService:
                 ts_rank_cd(
                     a.search_vector,
                     plainto_tsquery(
-                        :regconfig::regconfig,
+                        CAST(:regconfig AS regconfig),
                         :query
                     ),
                     32
@@ -561,7 +559,7 @@ class HybridSearchService:
             WHERE a.bucket = ANY(:buckets)
               AND a.search_vector IS NOT NULL
               AND a.search_vector @@ plainto_tsquery(
-                      :regconfig::regconfig,
+                      CAST(:regconfig AS regconfig),
                       :query
                   )
             ORDER BY rank DESC
@@ -1021,7 +1019,7 @@ class HybridSearchService:
                     SELECT ts_headline(
                         :lang::regconfig,
                         :content,
-                        plainto_tsquery(:lang::regconfig, :query),
+                        plainto_tsquery(CAST(:lang AS regconfig), :query),
                         'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15'
                     )
                     """
@@ -1061,7 +1059,7 @@ class HybridSearchService:
                    b.created_at
             FROM sowknow.bookmarks b
             WHERE b.user_id = :user_id
-              AND b.bucket = ANY(:buckets)
+              AND b.bucket::text = ANY(:buckets)
               AND (
                   b.title ILIKE :pattern
                   OR b.description ILIKE :pattern
@@ -1120,7 +1118,7 @@ class HybridSearchService:
             SELECT DISTINCT n.id, n.title, n.content, n.bucket, n.created_at
             FROM sowknow.notes n
             WHERE n.user_id = :user_id
-              AND n.bucket = ANY(:buckets)
+              AND n.bucket::text = ANY(:buckets)
               AND (
                   n.title ILIKE :pattern
                   OR n.content ILIKE :pattern
@@ -1176,7 +1174,7 @@ class HybridSearchService:
             SELECT s.id, s.name, s.description, s.icon, s.bucket, s.created_at
             FROM sowknow.spaces s
             WHERE s.user_id = :user_id
-              AND s.bucket = ANY(:buckets)
+              AND s.bucket::text = ANY(:buckets)
               AND (
                   s.name ILIKE :pattern
                   OR s.description ILIKE :pattern

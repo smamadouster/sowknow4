@@ -57,13 +57,12 @@ async def search_suggest(
                 id,
                 COALESCE(original_filename, filename) as display_title,
                 'document' as type,
-                bucket
+                bucket::text as bucket
             FROM sowknow.documents
             WHERE status = 'indexed'
-              AND bucket = ANY(:buckets)
+              AND bucket::text = ANY(:buckets)
               AND (
-                  title ILIKE :prefix_pattern
-                  OR original_filename ILIKE :prefix_pattern
+                  original_filename ILIKE :prefix_pattern
                   OR filename ILIKE :prefix_pattern
               )
             UNION ALL
@@ -119,7 +118,7 @@ async def search_suggest(
                 bucket
             FROM sowknow.documents
             WHERE status = 'indexed'
-              AND bucket = ANY(:buckets)
+              AND bucket::text = ANY(:buckets)
               AND (
                   title % :prefix
                   OR original_filename % :prefix

@@ -118,6 +118,80 @@ class SearchCache:
         except Exception as exc:
             logger.debug("search_cache set_result error: %s", exc)
 
+    # ── Collection build cache ──
+    INTENT_TTL = 3600      # 1 hour
+    GATHER_TTL = 300       # 5 minutes
+
+    @classmethod
+    def _collection_intent_key(cls, query: str) -> str:
+        h = hashlib.sha256(query.lower().strip().encode()).hexdigest()[:16]
+        return f"sowknow:collection:intent:{h}"
+
+    @classmethod
+    def _collection_gather_key(cls, query: str, user_role: str) -> str:
+        h = hashlib.sha256(
+            f"{query.lower().strip()}:{user_role}".encode()
+        ).hexdigest()[:16]
+        return f"sowknow:collection:gather:{h}"
+
+    @classmethod
+    def get_collection_intent(cls, query: str) -> dict | None:
+        """Retrieve cached parsed intent for collection builds."""
+        redis = _get_redis()
+        if not redis:
+            return None
+        try:
+            raw = redis.get(cls._collection_intent_key(query))
+            if raw:
+                return json.loads(raw)
+        except Exception as exc:
+            logger.debug("search_cache get_collection_intent error: %s", exc)
+        return None
+
+    @classmethod
+    def set_collection_intent(cls, query: str, intent_data: dict) -> None:
+        """Cache parsed intent for collection builds."""
+        redis = _get_redis()
+        if not redis:
+            return
+        try:
+            redis.setex(
+                cls._collection_intent_key(query),
+                cls.INTENT_TTL,
+                json.dumps(intent_data, default=str),
+            )
+        except Exception as exc:
+            logger.debug("search_cache set_collection_intent error: %s", exc)
+
+    @classmethod
+    def get_collection_gather(cls, query: str, user_role: str) -> list[dict] | None:
+        """Retrieve cached gather results for collection builds."""
+        redis = _get_redis()
+        if not redis:
+            return None
+        try:
+            raw = redis.get(cls._collection_gather_key(query, user_role))
+            if raw:
+                return json.loads(raw)
+        except Exception as exc:
+            logger.debug("search_cache get_collection_gather error: %s", exc)
+        return None
+
+    @classmethod
+    def set_collection_gather(cls, query: str, user_role: str, results: list[dict]) -> None:
+        """Cache gather results for collection builds."""
+        redis = _get_redis()
+        if not redis:
+            return
+        try:
+            redis.setex(
+                cls._collection_gather_key(query, user_role),
+                cls.GATHER_TTL,
+                json.dumps(results, default=str),
+            )
+        except Exception as exc:
+            logger.debug("search_cache set_collection_gather error: %s", exc)
+
     @classmethod
     def invalidate_results(cls) -> None:
         """Invalidate all search result caches (e.g., after document upload)."""

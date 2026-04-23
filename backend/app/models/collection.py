@@ -49,7 +49,6 @@ class Collection(Base, TimestampMixin):
     """
 
     __tablename__ = "collections"
-    __table_args__ = {"schema": "sowknow"}
 
     id = Column(GUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, nullable=False)
 
@@ -118,7 +117,6 @@ class Collection(Base, TimestampMixin):
     chat_session = relationship("ChatSession")  # No back_populates - ChatSession doesn't reference Collection directly
     items = relationship("CollectionItem", back_populates="collection", cascade="all, delete-orphan")
 
-    # Indexes
     __table_args__ = (
         Index("ix_collections_user_id", "user_id"),
         Index("ix_collections_visibility_pinned", "visibility", "is_pinned"),

@@ -13,11 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.api.deps import require_superuser_or_admin
 from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
+from app.models.article import Article
 from app.models.collection import (
     Collection,
     CollectionItem,
@@ -247,7 +248,12 @@ async def get_collection(
     # Get collection items with document info — selectinload avoids N+1 on item.document
     items_result = await db.execute(
         select(CollectionItem)
-        .options(selectinload(CollectionItem.document), selectinload(CollectionItem.article))
+        .options(
+            selectinload(CollectionItem.document),
+            selectinload(CollectionItem.article).load_only(
+                Article.id, Article.title, Article.summary
+            ),
+        )
         .where(CollectionItem.collection_id == collection_id)
         .order_by(CollectionItem.order_index)
     )
@@ -277,12 +283,13 @@ async def get_collection(
     enriched_items = []
     for item in items:
         item_dict = CollectionItemResponse.model_validate(item).model_dump()
-        # Add basic document info (bucket intentionally excluded for privacy)
+        # Add basic document info
         if item.document:
             item_dict["document"] = {
                 "id": str(item.document.id),
                 "filename": item.document.filename,
                 "mime_type": getattr(item.document, "mime_type", None),
+                "bucket": item.document.bucket.value,
                 "created_at": item.document.created_at.isoformat(),
             }
         if item.article:

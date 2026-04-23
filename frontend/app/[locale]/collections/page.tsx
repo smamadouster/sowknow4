@@ -308,6 +308,7 @@ export default function CollectionsPage() {
                       <button
                         onClick={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           togglePin(collection.id);
                         }}
                         className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
@@ -318,6 +319,7 @@ export default function CollectionsPage() {
                       <button
                         onClick={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           toggleFavorite(collection.id);
                         }}
                         className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"

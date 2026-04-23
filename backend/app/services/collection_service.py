@@ -45,6 +45,7 @@ from app.services.intent_parser import (
 )
 from app.services.minimax_service import minimax_service
 from app.services.ollama_service import ollama_service
+from app.services.search_cache import SearchCache
 from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
@@ -194,7 +195,7 @@ class CollectionService:
 
         try:
             # Stage 1: UNDERSTAND
-            parsed_intent, strategy = await self._understand_query(collection.query)
+            parsed_intent, strategy = await self._understand_query(collection.query, user)
 
             # Stage 2: GATHER + VERIFY
             results = await self._gather_and_verify(parsed_intent, strategy, user, db)
@@ -328,7 +329,7 @@ class CollectionService:
             raise ValueError(f"Collection {collection_id} not found")
 
         # Stage 1: UNDERSTAND
-        parsed_intent, strategy = await self._understand_query(collection.query)
+        parsed_intent, strategy = await self._understand_query(collection.query, user)
 
         # Stage 2: GATHER + VERIFY
         results = await self._gather_and_verify(parsed_intent, strategy, user, db)
@@ -375,10 +376,11 @@ class CollectionService:
         logger.info(f"Refreshed collection '{collection.name}' with {len(results)} items")
         return collection
 
-    async def _understand_query(self, query: str) -> tuple[ParsedIntentModel, str]:
+    async def _understand_query(self, query: str, user: User | None = None) -> tuple[ParsedIntentModel, str]:
         """
         Stage 1: UNDERSTAND — Parse intent and pick search strategy.
         Always uses MiniMax (never Ollama). Retries on low confidence.
+        Results are cached for 1 hour to avoid redundant LLM calls.
 
         Returns:
             (ParsedIntent, strategy) where strategy is one of:
@@ -386,23 +388,32 @@ class CollectionService:
             - "date_filtered": query specifies date ranges
             - "broad_hybrid": generic query
         """
-        # Always MiniMax — never Ollama for collections
-        intent = await self.intent_parser.parse_intent(
-            query=query, user_language="en", use_ollama=False,
-        )
-
-        # Quality gate: retry on low confidence
-        if intent.confidence < 0.5:
-            logger.info(f"Low confidence ({intent.confidence}) for '{query}', retrying")
-            retry_intent = await self.intent_parser.parse_intent(
+        # Check cache first
+        cached = SearchCache.get_collection_intent(query)
+        if cached:
+            logger.info(f"Intent cache hit for query: {query[:50]}")
+            intent = ParsedIntentModel(**cached)
+        else:
+            # Always MiniMax — never Ollama for collections
+            intent = await self.intent_parser.parse_intent(
                 query=query, user_language="en", use_ollama=False,
             )
-            if retry_intent.confidence > intent.confidence:
-                intent = retry_intent
 
-            # If still low, fall back to rule-based parsing
+            # Quality gate: retry on low confidence
             if intent.confidence < 0.5:
-                intent = self.intent_parser._fallback_parse(query)
+                logger.info(f"Low confidence ({intent.confidence}) for '{query}', retrying")
+                retry_intent = await self.intent_parser.parse_intent(
+                    query=query, user_language="en", use_ollama=False,
+                )
+                if retry_intent.confidence > intent.confidence:
+                    intent = retry_intent
+
+                # If still low, fall back to rule-based parsing
+                if intent.confidence < 0.5:
+                    intent = self.intent_parser._fallback_parse(query)
+
+            # Cache the parsed intent
+            SearchCache.set_collection_intent(query, intent.to_dict())
 
         # Pick search strategy based on intent content
         strategy = "broad_hybrid"
@@ -419,8 +430,8 @@ class CollectionService:
         """
         Stage 2: GATHER + VERIFY — Articles-first hybrid search with quality gates.
 
-        Runs 5 concurrent searches, merges with RRF, groups by document_id
-        (preferring articles), retries with broader queries if results < 3.
+        Runs core searches first, falls back to tag search only if needed.
+        Results are cached for 5 minutes to avoid redundant DB load.
 
         Returns list of dicts: {document_id, article_id, article_title, article_summary,
                                 document_name, relevance_score, result_type}
@@ -428,31 +439,52 @@ class CollectionService:
         import asyncio
 
         search_query = " ".join(intent.keywords) if intent.keywords else intent.query
-        max_attempts = 3
+        user_role = user.role.value if user and hasattr(user, "role") else "user"
+
+        # Check cache first
+        cached = SearchCache.get_collection_gather(search_query, user_role)
+        if cached:
+            logger.info(f"Gather cache hit for query: {search_query[:50]}")
+            return cached
+
+        max_attempts = 2
         min_results = 3
         results = []
 
         for attempt in range(max_attempts):
-            # Run all 5 searches concurrently
-            tasks = [
-                asyncio.create_task(self.search_service.article_semantic_search(query=search_query, limit=50, db=db, user=user)),
-                asyncio.create_task(self.search_service.article_keyword_search(query=search_query, limit=50, db=db, user=user)),
-                asyncio.create_task(self.search_service.semantic_search(query=search_query, limit=50, offset=0, db=db, user=user)),
-                asyncio.create_task(self.search_service.keyword_search(query=search_query, limit=50, offset=0, db=db, user=user)),
-                asyncio.create_task(self.search_service.tag_search(query=search_query, limit=50, offset=0, db=db, user=user)),
+            # Phase 1: Run the 4 core searches concurrently (fast)
+            core_tasks = [
+                asyncio.create_task(self.search_service.article_semantic_search(query=search_query, limit=25, db=db, user=user)),
+                asyncio.create_task(self.search_service.article_keyword_search(query=search_query, limit=25, db=db, user=user)),
+                asyncio.create_task(self.search_service.semantic_search(query=search_query, limit=25, offset=0, db=db, user=user)),
+                asyncio.create_task(self.search_service.keyword_search(query=search_query, limit=25, offset=0, db=db, user=user)),
             ]
 
-            done, pending = await asyncio.wait(tasks, timeout=20.0)
+            done, pending = await asyncio.wait(core_tasks, timeout=12.0)
             for task in pending:
                 task.cancel()
 
-            # Collect results
+            # Collect core results
             all_results = []
             for task in done:
                 try:
                     all_results.extend(task.result())
                 except Exception as e:
                     logger.warning(f"Search task failed: {e}")
+
+            # Phase 2: If still low, run tag search (slower LIKE scan)
+            if len(all_results) < min_results * 3:
+                tag_task = asyncio.create_task(
+                    self.search_service.tag_search(query=search_query, limit=25, offset=0, db=db, user=user)
+                )
+                tag_done, tag_pending = await asyncio.wait([tag_task], timeout=8.0)
+                for task in tag_pending:
+                    task.cancel()
+                for task in tag_done:
+                    try:
+                        all_results.extend(task.result())
+                    except Exception as e:
+                        logger.warning(f"Tag search failed: {e}")
 
             # Group by document_id, prefer articles
             grouped = {}
@@ -464,7 +496,7 @@ class CollectionService:
                 # RRF boost
                 if is_article:
                     score *= 1.2
-                if r.result_type == "tag":
+                if r.result_type == "tag_match":
                     score *= 1.5
 
                 existing = grouped.get(doc_id)
@@ -479,20 +511,20 @@ class CollectionService:
                         "result_type": r.result_type,
                     }
 
-            results = sorted(grouped.values(), key=lambda x: x["relevance_score"], reverse=True)[:100]
+            results = sorted(grouped.values(), key=lambda x: x["relevance_score"], reverse=True)[:50]
 
             if len(results) >= min_results:
                 logger.info(f"Stage 2: Found {len(results)} results on attempt {attempt + 1}")
+                SearchCache.set_collection_gather(search_query, user_role, results)
                 return results
 
             # Broaden search for retry
             logger.info(f"Stage 2: Only {len(results)} results on attempt {attempt + 1}, broadening")
             if attempt == 0:
                 search_query = intent.query  # Use full query text
-            elif attempt == 1:
-                search_query = " ".join(intent.keywords[:2]) if intent.keywords else intent.query
 
         logger.info(f"Stage 2: Returning {len(results)} results after {max_attempts} attempts")
+        SearchCache.set_collection_gather(search_query, user_role, results)
         return results
 
     async def _gather_documents_for_intent(self, intent: ParsedIntentModel, user: User, db: Session) -> list[Document]:

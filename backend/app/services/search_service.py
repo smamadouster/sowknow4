@@ -423,7 +423,6 @@ class HybridSearchService:
                 a.bucket as document_bucket,
                 a.title,
                 a.summary,
-                a.body,
                 1 - (a.embedding_vector <=> CAST(:embedding AS vector)) as similarity
             FROM sowknow.articles a
             JOIN sowknow.documents d ON a.document_id = d.id
@@ -449,7 +448,7 @@ class HybridSearchService:
                 document_id=str(row.document_id),
                 document_name=row.document_name,
                 document_bucket=row.document_bucket,
-                chunk_text=row.body,
+                chunk_text=row.summary,
                 chunk_index=0,
                 page_number=None,
                 semantic_score=float(row.similarity),
@@ -545,7 +544,6 @@ class HybridSearchService:
                 a.bucket as document_bucket,
                 a.title,
                 a.summary,
-                a.body,
                 ts_rank_cd(
                     a.search_vector,
                     plainto_tsquery(
@@ -582,7 +580,7 @@ class HybridSearchService:
                 document_id=str(row.document_id),
                 document_name=row.document_name,
                 document_bucket=row.document_bucket,
-                chunk_text=row.body,
+                chunk_text=row.summary,
                 chunk_index=0,
                 page_number=None,
                 semantic_score=0.0,

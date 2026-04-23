@@ -752,10 +752,39 @@ async def get_pipeline_stats(
     if max_pending > 0:
         bottleneck = next(s.stage for s in stages if s.pending == max_pending)
 
+    # Compute per-stage health
+    RED_FAILED = 1
+    RED_STALL_PENDING = 10
+    YELLOW_PENDING = 100
+    YELLOW_BOTTLENECK_PENDING = 20
+
+    def _stage_health(s: PipelineStageStats) -> str:
+        if s.failed >= RED_FAILED:
+            return "red"
+        if s.pending > RED_STALL_PENDING and s.running == 0 and s.throughput_per_hour == 0:
+            return "red"
+        if s.pending >= YELLOW_PENDING:
+            return "yellow"
+        if bottleneck and s.stage == bottleneck and s.pending > YELLOW_BOTTLENECK_PENDING:
+            return "yellow"
+        return "green"
+
+    for s in stages:
+        s.health = _stage_health(s)
+
+    overall_health = "green"
+    for s in stages:
+        if s.health == "red":
+            overall_health = "red"
+            break
+        elif s.health == "yellow" and overall_health == "green":
+            overall_health = "yellow"
+
     return PipelineStatsResponse(
         stages=stages,
         total_active=total_active,
         bottleneck_stage=bottleneck,
+        overall_health=overall_health,
     )
 
 

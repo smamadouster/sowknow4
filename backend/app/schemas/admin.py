@@ -192,6 +192,7 @@ class PipelineStageStats(BaseModel):
     failed: int
     throughput_per_hour: int
     throughput_per_10min: int
+    health: str = "green"  # green | yellow | red
 
 
 class PipelineStatsResponse(BaseModel):
@@ -200,6 +201,7 @@ class PipelineStatsResponse(BaseModel):
     stages: list[PipelineStageStats]
     total_active: int  # sum of all running counts
     bottleneck_stage: str | None  # stage with highest pending count, or None
+    overall_health: str = "green"  # green | yellow | red
 
 
 class UploadsHistoryPoint(BaseModel):

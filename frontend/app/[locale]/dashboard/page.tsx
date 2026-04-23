@@ -56,12 +56,14 @@ interface PipelineStageData {
   failed: number;
   throughput_per_hour: number;
   throughput_per_10min: number;
+  health: 'green' | 'yellow' | 'red';
 }
 
 interface PipelineStats {
   stages: PipelineStageData[];
   total_active: number;
   bottleneck_stage: string | null;
+  overall_health: 'green' | 'yellow' | 'red';
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -445,14 +447,41 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Pipeline Funnel */}
+      {/* Pipeline Health */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Pipeline</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Pipeline Health</h2>
             {pipelineStats && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                {pipelineStats.total_active} active
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold ${
+                  pipelineStats.overall_health === 'green'
+                    ? 'bg-green-100 text-green-800'
+                    : pipelineStats.overall_health === 'yellow'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-red-100 text-red-800'
+                }`}
+              >
+                {pipelineStats.overall_health === 'green' && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                {pipelineStats.overall_health === 'yellow' && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                )}
+                {pipelineStats.overall_health === 'red' && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {pipelineStats.overall_health === 'green'
+                  ? 'Healthy'
+                  : pipelineStats.overall_health === 'yellow'
+                  ? 'Congested'
+                  : 'Blocked'}
               </span>
             )}
           </div>
@@ -465,50 +494,116 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {(() => {
               const maxPending = Math.max(...pipelineStats.stages.map(s => s.pending), 1);
-              return pipelineStats.stages.map((stage) => {
-                const isBottleneck = stage.stage === pipelineStats.bottleneck_stage;
-                const barWidth = Math.round((stage.pending / maxPending) * 100);
+              return pipelineStats.stages.map((stage, idx) => {
+                const isLast = idx === pipelineStats.stages.length - 1;
+                const barWidth = Math.min(Math.round((stage.pending / maxPending) * 100), 100);
+                const health = stage.health;
+
+                const healthStyles = {
+                  green: {
+                    border: 'border-green-200',
+                    bg: 'bg-green-50',
+                    bar: 'bg-green-400',
+                    icon: (
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    ),
+                    label: 'OK',
+                    labelColor: 'text-green-700',
+                  },
+                  yellow: {
+                    border: 'border-yellow-200',
+                    bg: 'bg-yellow-50',
+                    bar: 'bg-yellow-400',
+                    icon: (
+                      <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    ),
+                    label: 'Backlog',
+                    labelColor: 'text-yellow-700',
+                  },
+                  red: {
+                    border: 'border-red-200',
+                    bg: 'bg-red-50',
+                    bar: 'bg-red-400',
+                    icon: (
+                      <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    ),
+                    label: 'Needs Attention',
+                    labelColor: 'text-red-700',
+                  },
+                };
+                const style = healthStyles[health];
 
                 return (
-                  <div
-                    key={stage.stage}
-                    className={`flex items-center gap-4 p-3 rounded-lg ${isBottleneck ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'}`}
-                  >
-                    {/* Stage label */}
-                    <div className="w-24 shrink-0">
-                      <span className="text-sm font-medium text-gray-700">
-                        {STAGE_LABELS[stage.stage] ?? stage.stage}
-                      </span>
-                      {isBottleneck && (
-                        <span className="ml-1 text-xs text-amber-600">⚡</span>
-                      )}
+                  <div key={stage.stage}>
+                    <div
+                      className={`flex items-center gap-4 p-3 rounded-lg border ${style.border} ${style.bg}`}
+                    >
+                      {/* Status icon */}
+                      <div className="shrink-0">{style.icon}</div>
+
+                      {/* Stage label */}
+                      <div className="w-28 shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-semibold text-gray-800">
+                            {STAGE_LABELS[stage.stage] ?? stage.stage}
+                          </span>
+                          <span className={`text-xs font-medium ${style.labelColor}`}>
+                            {style.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Pending bar */}
+                      <div className="flex-1">
+                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-2 rounded-full transition-all ${style.bar}`}
+                            style={{ width: `${barWidth}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                          <span>0</span>
+                          <span>{maxPending.toLocaleString()} max</span>
+                        </div>
+                      </div>
+
+                      {/* Counts */}
+                      <div className="flex items-center gap-3 text-xs shrink-0">
+                        <div className="text-right">
+                          <p className="font-bold text-gray-800">{stage.pending.toLocaleString()}</p>
+                          <p className="text-gray-500">pending</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-gray-800">{stage.running}</p>
+                          <p className="text-gray-500">running</p>
+                        </div>
+                        {stage.failed > 0 && (
+                          <div className="text-right">
+                            <p className="font-bold text-red-600">{stage.failed}</p>
+                            <p className="text-red-500">failed</p>
+                          </div>
+                        )}
+                        <div className="text-right w-20">
+                          <p className="font-bold text-gray-800">{stage.throughput_per_hour}</p>
+                          <p className="text-gray-500">/hr</p>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Pending bar */}
-                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-2 rounded-full transition-all ${isBottleneck ? 'bg-amber-400' : 'bg-blue-400'}`}
-                        style={{ width: `${barWidth}%` }}
-                      />
-                    </div>
-
-                    {/* Counts */}
-                    <div className="flex items-center gap-3 text-xs shrink-0">
-                      <span className="text-yellow-700 font-medium w-16 text-right">
-                        {stage.pending.toLocaleString()} pending
-                      </span>
-                      <span className="text-blue-700 w-16 text-right">
-                        {stage.running} running
-                      </span>
-                      {stage.failed > 0 && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-                          {stage.failed} failed
-                        </span>
-                      )}
-                      <span className="text-gray-400 w-28 text-right">
-                        {stage.throughput_per_hour}/hr · {stage.throughput_per_10min}/10min
-                      </span>
-                    </div>
+                    {/* Arrow connector */}
+                    {!isLast && (
+                      <div className="flex justify-center py-1">
+                        <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                        </svg>
+                      </div>
+                    )}
                   </div>
                 );
               });

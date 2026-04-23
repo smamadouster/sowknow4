@@ -144,6 +144,8 @@
     "no_documents": "Aucun document trouvé",
     "delete_confirm": "Êtes-vous sûr de vouloir supprimer ce document?",
     "delete_success": "Document supprimé",
+    "reprocess": "Réindexer",
+    "reprocess_success": "Document remis en file d'attente",
     "drop_files_here": "Déposez les fichiers ici pour télécharger",
     "drag_drop_hint": "Glissez-déposez les fichiers ici ou cliquez pour sélectionner",
     "max_file_size": "Taille max par fichier: {size}",

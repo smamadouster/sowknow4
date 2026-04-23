@@ -449,7 +449,7 @@ export default function DashboardPage() {
 
       {/* Pipeline Health */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-gray-900">Pipeline Health</h2>
             {pipelineStats && (
@@ -491,123 +491,82 @@ export default function DashboardPage() {
         </div>
 
         {pipelineStats ? (
-          <div className="space-y-3">
-            {(() => {
-              const maxPending = Math.max(...pipelineStats.stages.map(s => s.pending), 1);
-              return pipelineStats.stages.map((stage, idx) => {
-                const isLast = idx === pipelineStats.stages.length - 1;
-                const barWidth = Math.min(Math.round((stage.pending / maxPending) * 100), 100);
-                const health = stage.health || 'green';
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-2.5 pr-4 font-semibold text-gray-600 w-28">Stage</th>
+                  <th className="text-left py-2.5 pr-4 font-semibold text-gray-600 w-40">Status</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-gray-600 w-24">Pending</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-gray-600 w-24">Running</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-gray-600 w-20">Failed</th>
+                  <th className="text-right py-2.5 pl-3 font-semibold text-gray-600 w-28">Throughput</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pipelineStats.stages.map((stage) => {
+                  const health = stage.health || 'green';
+                  const rowBg =
+                    health === 'red'
+                      ? 'bg-red-50/60'
+                      : health === 'yellow'
+                      ? 'bg-yellow-50/40'
+                      : '';
+                  const leftBorder =
+                    health === 'red'
+                      ? 'border-l-4 border-l-red-400'
+                      : health === 'yellow'
+                      ? 'border-l-4 border-l-yellow-400'
+                      : 'border-l-4 border-l-green-400';
 
-                const healthStyles = {
-                  green: {
-                    border: 'border-green-200',
-                    bg: 'bg-green-50',
-                    bar: 'bg-green-400',
-                    icon: (
-                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    ),
-                    label: 'OK',
-                    labelColor: 'text-green-700',
-                  },
-                  yellow: {
-                    border: 'border-yellow-200',
-                    bg: 'bg-yellow-50',
-                    bar: 'bg-yellow-400',
-                    icon: (
-                      <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                    ),
-                    label: 'Backlog',
-                    labelColor: 'text-yellow-700',
-                  },
-                  red: {
-                    border: 'border-red-200',
-                    bg: 'bg-red-50',
-                    bar: 'bg-red-400',
-                    icon: (
-                      <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    ),
-                    label: 'Needs Attention',
-                    labelColor: 'text-red-700',
-                  },
-                };
-                const style = healthStyles[health];
+                  const statusIcon =
+                    health === 'green' ? (
+                      <span className="inline-flex items-center gap-2 text-green-700 font-medium">
+                        <span>🟢</span>
+                        OK
+                      </span>
+                    ) : health === 'yellow' ? (
+                      <span className="inline-flex items-center gap-2 text-yellow-700 font-medium">
+                        <span>🟡</span>
+                        Backlog
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-2 text-red-700 font-medium">
+                        <span>🔴</span>
+                        Needs Attention
+                      </span>
+                    );
 
-                return (
-                  <div key={stage.stage}>
-                    <div
-                      className={`flex items-center gap-4 p-3 rounded-lg border ${style.border} ${style.bg}`}
+                  return (
+                    <tr
+                      key={stage.stage}
+                      className={`border-b border-gray-100 ${rowBg} ${leftBorder}`}
                     >
-                      {/* Status icon */}
-                      <div className="shrink-0">{style.icon}</div>
-
-                      {/* Stage label */}
-                      <div className="w-28 shrink-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-semibold text-gray-800">
-                            {STAGE_LABELS[stage.stage] ?? stage.stage}
-                          </span>
-                          <span className={`text-xs font-medium ${style.labelColor}`}>
-                            {style.label}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Pending bar */}
-                      <div className="flex-1">
-                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className={`h-2 rounded-full transition-all ${style.bar}`}
-                            style={{ width: `${barWidth}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-                          <span>0</span>
-                          <span>{maxPending.toLocaleString()} max</span>
-                        </div>
-                      </div>
-
-                      {/* Counts */}
-                      <div className="flex items-center gap-3 text-xs shrink-0">
-                        <div className="text-right">
-                          <p className="font-bold text-gray-800">{stage.pending.toLocaleString()}</p>
-                          <p className="text-gray-500">pending</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-gray-800">{stage.running}</p>
-                          <p className="text-gray-500">running</p>
-                        </div>
-                        {stage.failed > 0 && (
-                          <div className="text-right">
-                            <p className="font-bold text-red-600">{stage.failed}</p>
-                            <p className="text-red-500">failed</p>
-                          </div>
+                      <td className="py-3 pr-4 font-semibold text-gray-800">
+                        {STAGE_LABELS[stage.stage] ?? stage.stage}
+                      </td>
+                      <td className="py-3 pr-4">{statusIcon}</td>
+                      <td className="py-3 px-3 text-right font-mono text-gray-700">
+                        {stage.pending.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-gray-700">
+                        {stage.running.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono">
+                        {stage.failed > 0 ? (
+                          <span className="text-red-600 font-semibold">{stage.failed}</span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
                         )}
-                        <div className="text-right w-20">
-                          <p className="font-bold text-gray-800">{stage.throughput_per_hour}</p>
-                          <p className="text-gray-500">/hr</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Arrow connector */}
-                    {!isLast && (
-                      <div className="flex justify-center py-1">
-                        <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                );
-              });
-            })()}
+                      </td>
+                      <td className="py-3 pl-3 text-right font-mono text-gray-700">
+                        {stage.throughput_per_hour}/hr
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="space-y-2">

@@ -333,6 +333,14 @@ class ApiClient {
     });
   }
 
+  async reprocessDocument(id: string, force: boolean = false) {
+    return this.request<{ document_id: string; status: string; task_id: string; message: string }>(`/v1/documents/${id}/reprocess`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
+    });
+  }
+
   async downloadDocument(id: string) {
     const url = `${this.baseUrl}/v1/documents/${id}/download`;
     window.open(url, '_blank');
@@ -527,6 +535,13 @@ class ApiClient {
 
   async getCollection(id: string) {
     return this.request(`/v1/collections/${id}`);
+  }
+
+  async updateCollection(id: string, data: { name?: string; description?: string | null; visibility?: string; is_pinned?: boolean; is_favorite?: boolean }) {
+    return this.request(`/v1/collections/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   }
 
   async deleteCollection(id: string) {

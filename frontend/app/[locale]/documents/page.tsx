@@ -398,6 +398,23 @@ export default function DocumentsPage() {
     }
   };
 
+  const handleReprocess = async (docId: string) => {
+    try {
+      const response = await api.reprocessDocument(docId);
+
+      if (response.status === 200) {
+        setSuccess(t('reprocess_success'));
+        setTimeout(() => setSuccess(null), 3000);
+        refreshDocuments();
+      } else {
+        setError(response.error || tCommon('error'));
+        setTimeout(() => setError(null), 3000);
+      }
+    } catch (e) {
+      console.error('Reprocess error:', e);
+    }
+  };
+
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'indexed':
@@ -722,6 +739,18 @@ export default function DocumentsPage() {
                       </svg>
                       {tCommon('download')}
                     </button>
+                    {isAdmin && (doc.status === 'error' || doc.status === 'pending') && (
+                      <button
+                        type="button"
+                        onClick={() => handleReprocess(doc.id)}
+                        className="flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-400 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        {t('reprocess')}
+                      </button>
+                    )}
                     {isAdmin && (
                       <button
                         onClick={() => handleDelete(doc.id)}
@@ -838,6 +867,18 @@ export default function DocumentsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                             </svg>
                           </button>
+                          {isAdmin && (doc.status === 'error' || doc.status === 'pending') && (
+                            <button
+                              type="button"
+                              onClick={() => handleReprocess(doc.id)}
+                              className="p-1.5 text-text-muted hover:text-amber-400 hover:bg-amber-500/5 rounded-lg transition-all"
+                              title={t('reprocess')}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                            </button>
+                          )}
                           {isAdmin && (
                             <button
                               onClick={() => handleDelete(doc.id)}

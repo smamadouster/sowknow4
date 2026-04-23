@@ -65,7 +65,7 @@ const nextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
               "media-src 'self' blob:",
-              "connect-src 'self' https://static.cloudflareinsights.com",
+              "connect-src 'self' https://sowknow.gollamtech.com https://static.cloudflareinsights.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

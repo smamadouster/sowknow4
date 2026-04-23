@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useTranslations, useLocale } from "next-intl";
 import { Link as IntlLink } from "@/i18n/routing";
-import { getCsrfToken } from "@/lib/api";
+import { api, getCsrfToken } from "@/lib/api";
 
 // Disable static optimization for this client component
 export const dynamic = 'force-dynamic';
@@ -41,6 +41,7 @@ export default function CollectionsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newQuery, setNewQuery] = useState("");
   const [buildingCollections, setBuildingCollections] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCollections();
@@ -173,6 +174,24 @@ export default function CollectionsPage() {
       fetchCollections();
     } catch (error) {
       console.error("Error toggling favorite:", error);
+    }
+  };
+
+  const handleDelete = async (collectionId: string) => {
+    if (!confirm(t('delete_confirm') || 'Are you sure you want to delete this collection?')) return;
+    setDeletingId(collectionId);
+    try {
+      const res = await api.deleteCollection(collectionId);
+      if (!res.error) {
+        fetchCollections();
+      } else {
+        alert(res.error || 'Failed to delete collection');
+      }
+    } catch (error) {
+      console.error('Error deleting collection:', error);
+      alert('Error deleting collection');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -326,6 +345,18 @@ export default function CollectionsPage() {
                         title={collection.is_favorite ? t('unfavorite') : t('favorite')}
                       >
                         ❤️
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDelete(collection.id);
+                        }}
+                        disabled={deletingId === collection.id}
+                        className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-500"
+                        title={t('delete') || 'Delete'}
+                      >
+                        {deletingId === collection.id ? '⏳' : '🗑️'}
                       </button>
                     </div>
                   </div>

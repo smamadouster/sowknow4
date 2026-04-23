@@ -144,6 +144,8 @@
     "no_documents": "No documents found",
     "delete_confirm": "Are you sure you want to delete this document?",
     "delete_success": "Document deleted",
+    "reprocess": "Re-index",
+    "reprocess_success": "Document queued for reprocessing",
     "drop_files_here": "Drop files here to upload",
     "drag_drop_hint": "Drag and drop files here or click to select",
     "max_file_size": "Max file size: {size}",

@@ -99,7 +99,7 @@ class CollectionItemResponse(BaseModel):
     created_at: datetime
 
     # Article info (set after ORM validation)
-    article_id: str | None = None
+    article_id: UUID | str | None = None
     article_title: str | None = None
     article_summary: str | None = None
 

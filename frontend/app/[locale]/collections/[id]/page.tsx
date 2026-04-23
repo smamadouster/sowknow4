@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { getCsrfToken } from "@/lib/api";
+import { api, getCsrfToken } from "@/lib/api";
 
 interface CollectionItem {
   id: string;
@@ -32,6 +32,7 @@ interface CollectionDetail {
   document_count: number;
   is_pinned: boolean;
   is_favorite: boolean;
+  visibility: string;
   created_at: string;
   last_refreshed_at: string | null;
   items: CollectionItem[];
@@ -49,6 +50,13 @@ export default function CollectionDetailPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'error' | 'success'} | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editVisibility, setEditVisibility] = useState("private");
+  const [editLoading, setEditLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     fetchCollection();
@@ -57,7 +65,7 @@ export default function CollectionDetailPage() {
   const fetchCollection = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/collections/${params.id}`,
         {
           credentials: 'include',
         }
@@ -83,7 +91,7 @@ export default function CollectionDetailPage() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}/refresh`,
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/collections/${params.id}/refresh`,
         {
           method: "POST",
           headers: { "X-CSRF-Token": getCsrfToken() },
@@ -165,7 +173,7 @@ export default function CollectionDetailPage() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/collections/${params.id}/chat`,
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/collections/${params.id}/chat`,
         {
           method: "POST",
           credentials: "include",
@@ -191,6 +199,60 @@ export default function CollectionDetailPage() {
       ]);
     } finally {
       setChatLoading(false);
+    }
+  };
+
+  const openEditModal = () => {
+    if (!collection) return;
+    setEditName(collection.name);
+    setEditDescription(collection.description || "");
+    setEditVisibility(collection.visibility || "private");
+    setShowEditModal(true);
+  };
+
+  const handleUpdate = async () => {
+    if (!collection || !editName.trim()) return;
+    setEditLoading(true);
+    try {
+      const res = await api.updateCollection(collection.id, {
+        name: editName.trim(),
+        description: editDescription.trim() || null,
+        visibility: editVisibility,
+      });
+      if (!res.error) {
+        setShowEditModal(false);
+        setToast({ message: "Collection updated successfully", type: "success" });
+        fetchCollection();
+      } else {
+        setToast({ message: res.error || "Failed to update", type: "error" });
+      }
+    } catch (err) {
+      setToast({ message: "Error updating collection", type: "error" });
+    } finally {
+      setEditLoading(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!collection) return;
+    setDeleteLoading(true);
+    try {
+      const res = await api.deleteCollection(collection.id);
+      if (!res.error) {
+        setShowDeleteConfirm(false);
+        router.push(`/${params.locale}/collections`);
+      } else {
+        setToast({ message: res.error || "Failed to delete", type: "error" });
+        setDeleteLoading(false);
+        setShowDeleteConfirm(false);
+        setTimeout(() => setToast(null), 5000);
+      }
+    } catch (err) {
+      setToast({ message: "Error deleting collection", type: "error" });
+      setDeleteLoading(false);
+      setShowDeleteConfirm(false);
+      setTimeout(() => setToast(null), 5000);
     }
   };
 
@@ -248,6 +310,18 @@ export default function CollectionDetailPage() {
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
             >
               Refresh
+            </button>
+            <button
+              onClick={openEditModal}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+            >
+              Delete
             </button>
             <button
               onClick={handleExportPdf}
@@ -382,7 +456,7 @@ export default function CollectionDetailPage() {
                               </svg>
                             </a>
                             <a
-                              href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/documents/${item.document.id}/download`}
+                              href={`${process.env.NEXT_PUBLIC_API_URL}/v1/documents/${item.document.id}/download`}
                               className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
                               title={t('collections.download')}
                             >
@@ -466,6 +540,99 @@ export default function CollectionDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && collection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-lg w-full p-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+              Edit Collection
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Visibility
+                </label>
+                <select
+                  value={editVisibility}
+                  onChange={(e) => setEditVisibility(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="private">Private</option>
+                  <option value="shared">Shared</option>
+                  <option value="public">Public</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdate}
+                disabled={editLoading || !editName.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {editLoading ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && collection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-red-600 mb-2">
+              Delete Collection
+            </h2>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">
+              Are you sure you want to delete <strong>&quot;{collection.name}&quot;</strong>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteLoading ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

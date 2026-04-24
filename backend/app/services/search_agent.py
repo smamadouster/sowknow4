@@ -46,7 +46,9 @@ RELEVANT_THRESHOLD = 0.65
 PARTIALLY_THRESHOLD = 0.45
 # Floor for RRF score normalization: prevents weak absolute scores from being
 # inflated to near-1.0 when all results are poor (≈ top-1 from a single list).
-MIN_RRF_NORM_FLOOR = 0.015
+# Raised from 0.015 → 0.08 to suppress boilerplate/footer matches that cluster
+# around 0.82 after relative normalization.
+MIN_RRF_NORM_FLOOR = 0.08
 
 
 def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]:
@@ -155,11 +157,15 @@ def _build_excerpt(text: str, keywords: list[str]) -> str:
     if not keywords:
         return text[:400]
     sentences = re.split(r'(?<=[.!?])\s+', text)
-    best_sent = max(
-        sentences,
-        key=lambda s: sum(1 for kw in keywords if kw.lower() in s.lower()),
-        default=text,
-    )
+
+    def _keyword_count(sentence: str) -> int:
+        return sum(
+            1
+            for kw in keywords
+            if re.search(rf"\b{re.escape(kw.lower())}\b", sentence.lower())
+        )
+
+    best_sent = max(sentences, key=_keyword_count, default=text)
     return best_sent[:400]
 
 
@@ -170,7 +176,11 @@ def _extract_highlights(chunks: list[RawChunk], keywords: list[str]) -> list[str
     for chunk in chunks:
         sentences = re.split(r'(?<=[.!?])\s+', chunk.text)
         for s in sentences:
-            score = sum(1 for kw in keywords if kw.lower() in s.lower())
+            score = sum(
+                1
+                for kw in keywords
+                if re.search(rf"\b{re.escape(kw.lower())}\b", s.lower())
+            )
             if score > 0:
                 candidates.append((score, s.strip()))
     candidates.sort(reverse=True, key=lambda x: x[0])
@@ -183,11 +193,17 @@ def _build_match_reason(chunk: RawChunk, intent: ParsedIntent) -> str:
         reasons.append("forte similarite semantique")
     if chunk.fts_rank > 0.3:
         reasons.append("correspondance textuelle exacte")
-    matched_kw = [kw for kw in intent.keywords if kw.lower() in chunk.text.lower()]
+    matched_kw = [
+        kw for kw in intent.keywords
+        if re.search(rf"\b{re.escape(kw.lower())}\b", chunk.text.lower())
+    ]
     if matched_kw:
         reasons.append(f"mots-cles: {', '.join(matched_kw[:3])}")
     if intent.entities:
-        matched_ent = [e for e in intent.entities if e.lower() in chunk.text.lower()]
+        matched_ent = [
+            e for e in intent.entities
+            if re.search(rf"\b{re.escape(e.lower())}\b", chunk.text.lower())
+        ]
         if matched_ent:
             reasons.append(f"entites: {', '.join(matched_ent[:2])}")
     return " | ".join(reasons) if reasons else "correspondance globale"

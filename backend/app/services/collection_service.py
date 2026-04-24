@@ -449,6 +449,12 @@ class CollectionService:
 
         max_attempts = 2
         min_results = 3
+        # Minimum raw score a single result must have to be considered relevant.
+        # ts_rank_cd / cosine scores below this are treated as boilerplate/noise.
+        MIN_RAW_SCORE = 0.15
+        # Floor for collection score normalization (prevents inflation when all
+        # results are weak, e.g. footer matches).
+        MIN_COLLECTION_NORM_FLOOR = 0.10
         results = []
 
         for attempt in range(max_attempts):
@@ -491,7 +497,19 @@ class CollectionService:
             for r in all_results:
                 doc_id = str(r.document_id)
                 is_article = r.result_type == "article"
-                score = r.final_score or r.semantic_score or r.keyword_score or 0
+                # Explicit None-check so a raw score of 0.0 is preserved
+                if r.final_score is not None and r.final_score > 0:
+                    score = r.final_score
+                elif r.semantic_score is not None and r.semantic_score > 0:
+                    score = r.semantic_score
+                elif r.keyword_score is not None and r.keyword_score > 0:
+                    score = r.keyword_score
+                else:
+                    score = 0.0
+
+                # Discard very weak matches immediately (boilerplate / footer noise)
+                if score < MIN_RAW_SCORE:
+                    continue
 
                 # RRF boost
                 if is_article:
@@ -511,7 +529,20 @@ class CollectionService:
                         "result_type": r.result_type,
                     }
 
-            results = sorted(grouped.values(), key=lambda x: x["relevance_score"], reverse=True)[:50]
+            # Normalize scores relative to the best match so they map to a 0-1 scale,
+            # but enforce a floor so weak overall result sets don't inflate to 80%+.
+            if grouped:
+                max_score = max(item["relevance_score"] for item in grouped.values())
+                max_score = max(max_score, MIN_COLLECTION_NORM_FLOOR)
+                for item in grouped.values():
+                    item["relevance_score"] = min(item["relevance_score"] / max_score, 1.0)
+
+            # Filter out documents that are still marginal after normalization
+            results = sorted(
+                [item for item in grouped.values() if item["relevance_score"] >= 0.35],
+                key=lambda x: x["relevance_score"],
+                reverse=True,
+            )[:50]
 
             if len(results) >= min_results:
                 logger.info(f"Stage 2: Found {len(results)} results on attempt {attempt + 1}")

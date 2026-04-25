@@ -110,9 +110,14 @@ class MiniMaxService(BaseLLMService):
                     ) as response:
                         response.raise_for_status()
                         async for line in response.aiter_lines():
-                            if line.strip():
+                            if not line.strip():
+                                continue
+                            if line.startswith("data: "):
+                                data_str = line[6:]
+                                if data_str == "[DONE]":
+                                    break
                                 try:
-                                    data = json.loads(line)
+                                    data = json.loads(data_str)
                                     if "choices" in data and len(data["choices"]) > 0:
                                         delta = data["choices"][0].get("delta", {})
                                         content = delta.get("content", "")

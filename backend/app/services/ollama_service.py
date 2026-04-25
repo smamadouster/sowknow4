@@ -85,7 +85,7 @@ class OllamaService(BaseLLMService):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=600.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 if stream:
                     async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                         response.raise_for_status()
@@ -145,7 +145,7 @@ class OllamaService(BaseLLMService):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=600.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(f"{self.base_url}/api/generate", json=payload)
                 response.raise_for_status()
                 result = response.json()

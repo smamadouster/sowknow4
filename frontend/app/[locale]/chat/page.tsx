@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/routing';
 import ReactMarkdown from 'react-markdown';
@@ -14,7 +14,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  sources?: { id: string; filename: string; relevance: number }[];
+  sources?: { document_id: string; document_name: string; relevance_score: number }[];
   llm_used?: string;
   cache_hit?: boolean;
   created_at?: string;
@@ -42,6 +42,7 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingLlm, setStreamingLlm] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -147,6 +148,37 @@ export default function ChatPage() {
     }
   };
 
+  const autoResizeTextarea = () => {
+    const el = inputRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  };
+
+  const copyToClipboard = useCallback(async (text: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(messageId);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const regenerateMessage = async () => {
+    if (!currentSession || isStreaming) return;
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMessage) return;
+    // Remove the last assistant message
+    const lastAssistantIndex = messages.findLastIndex(m => m.role === 'assistant');
+    if (lastAssistantIndex >= 0) {
+      setMessages(prev => prev.slice(0, lastAssistantIndex));
+    }
+    setInput(lastUserMessage.content);
+    setTimeout(() => sendMessage(), 50);
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || !currentSession || isStreaming) return;
 
@@ -158,6 +190,7 @@ export default function ChatPage() {
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     setIsLoading(true);
     setIsStreaming(true);
     setError(null);
@@ -381,7 +414,7 @@ export default function ChatPage() {
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[75%] rounded-2xl p-4 ${
+                  className={`max-w-[75%] rounded-2xl p-4 group ${
                     message.role === 'user'
                       ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-vault-1000 shadow-lg shadow-amber-500/20'
                       : 'bg-vault-800/60 border border-white/[0.06] text-text-primary'
@@ -438,18 +471,58 @@ export default function ChatPage() {
                       <p className="text-xs font-semibold mb-2 opacity-75 font-display">{t('sources')}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {message.sources.map((source, idx) => (
-                          <span
+                          <Link
                             key={idx}
-                            className={`text-xs px-2 py-1 rounded-lg ${
+                            href={`/documents/${source.document_id}`}
+                            className={`text-xs px-2 py-1 rounded-lg transition-colors hover:opacity-80 ${
                               message.role === 'user'
                                 ? 'bg-amber-400/20 text-amber-100'
-                                : 'bg-vault-900/80 text-text-secondary border border-white/[0.06]'
+                                : 'bg-vault-900/80 text-text-secondary border border-white/[0.06] hover:border-amber-500/30 hover:text-amber-400'
                             }`}
+                            title={source.document_name}
                           >
-                            {source.filename} ({Math.round(source.relevance * 100)}%)
-                          </span>
+                            <span className="inline-flex items-center gap-1">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              {source.document_name}
+                            </span>
+                            <span className="opacity-60 ml-1">({Math.round(source.relevance_score * 100)}%)</span>
+                          </Link>
                         ))}
                       </div>
+                    </div>
+                  )}
+                  
+                  {message.role === 'assistant' && (
+                    <div className="mt-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => copyToClipboard(message.content, message.id)}
+                        className="text-xs text-text-muted hover:text-amber-400 flex items-center gap-1 transition-colors"
+                        title="Copy"
+                      >
+                        {copiedId === message.id ? (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            Copié
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            Copier
+                          </>
+                        )}
+                      </button>
+                      {message.id === messages[messages.length - 1]?.id && messages[messages.length - 1]?.role === 'assistant' && (
+                        <button
+                          onClick={regenerateMessage}
+                          className="text-xs text-text-muted hover:text-amber-400 flex items-center gap-1 transition-colors"
+                          title="Regenerate"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                          Régénérer
+                        </button>
+                      )}
                     </div>
                   )}
                   
@@ -474,18 +547,20 @@ export default function ChatPage() {
           
           {isStreaming && (
             <div className="flex justify-start" role="status" aria-live="polite">
-              <div className="bg-vault-800/60 border border-white/[0.06] rounded-2xl p-4">
-                <div className="flex items-center gap-2 text-text-muted">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 rounded-full bg-amber-400/60 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 rounded-full bg-amber-400/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 rounded-full bg-amber-400/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="bg-vault-800/60 border border-white/[0.06] rounded-2xl p-4 min-w-[240px]">
+                <div className="flex items-center gap-3 text-text-muted">
+                  <div className="relative w-5 h-5">
+                    <div className="absolute inset-0 rounded-full border-2 border-amber-400/20" />
+                    <div className="absolute inset-0 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
                   </div>
-                  <span className="text-sm">
-                    {streamingLlm?.toLowerCase().includes('ollama')
-                      ? '🛡️ Local LLM is thinking... (confidential mode)'
-                      : t('thinking')}
-                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-text-secondary">
+                      {streamingLlm?.toLowerCase().includes('ollama')
+                        ? 'Mode confidentiel — réponse locale...'
+                        : 'Recherche en cours...'}
+                    </span>
+                    <span className="text-[11px] opacity-60">Analyse des documents pertinents</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -508,7 +583,7 @@ export default function ChatPage() {
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => { setInput(e.target.value); autoResizeTextarea(); }}
               onKeyDown={handleKeyDown}
               placeholder={t('type_message')}
               aria-label={t('type_message')}

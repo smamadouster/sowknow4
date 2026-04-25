@@ -187,7 +187,7 @@ export default function SmartFoldersPage() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Generation Form */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6 mb-6">
           <div className="space-y-4">
             {/* Topic Input */}
             <div>
@@ -282,7 +282,7 @@ export default function SmartFoldersPage() {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
             {/* Result Header */}
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                     {result.topic}
@@ -291,7 +291,7 @@ export default function SmartFoldersPage() {
                     {result.word_count} {t('word_count')} • {result.llm_used === "minimax" ? t('llm_minimax') : t('llm_ollama')}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={viewCollection}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"

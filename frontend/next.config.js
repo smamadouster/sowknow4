@@ -52,6 +52,13 @@ const nextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
   },
   async headers() {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+    const connectSrc = ["'self'", 'https://static.cloudflareinsights.com'];
+    if (apiUrl && apiUrl.startsWith('http')) {
+      try { connectSrc.push(new URL(apiUrl).origin); } catch { /* ignore invalid URL */ }
+    }
+    connectSrc.push('https://sowknow.gollamtech.com');
+
     return [
       {
         source: '/(.*)',
@@ -65,7 +72,7 @@ const nextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
               "media-src 'self' blob:",
-              "connect-src 'self' https://sowknow.gollamtech.com https://static.cloudflareinsights.com",
+              `connect-src ${connectSrc.join(' ')}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

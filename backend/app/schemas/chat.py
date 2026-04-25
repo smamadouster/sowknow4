@@ -48,7 +48,7 @@ class SourceDocument(BaseModel):
     document_id: UUID
     document_name: str
     chunk_id: UUID
-    chunk_text: str
+    chunk_text: str | None = None
     relevance_score: float
 
 

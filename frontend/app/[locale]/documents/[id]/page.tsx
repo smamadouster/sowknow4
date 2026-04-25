@@ -169,7 +169,7 @@ function DocumentPreview({ docId, mimeType, apiBase }: { docId: string; mimeType
   if (!previewType) return null;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
       <button
         onClick={() => {
           setExpanded(v => !v);
@@ -467,7 +467,7 @@ export default function DocumentDetailPage() {
   // ---- Loading state ----
   if (loading) {
     return (
-      <div className="p-6 max-w-5xl mx-auto flex items-center justify-center py-24">
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto flex items-center justify-center py-24">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         <span className="ml-4 text-gray-500">{t('loading')}</span>
       </div>
@@ -477,7 +477,7 @@ export default function DocumentDetailPage() {
   // ---- Not found state ----
   if (notFound || !doc) {
     return (
-      <div className="p-6 max-w-5xl mx-auto">
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
         <Link
           href={`/${locale}/documents`}
           className="text-sm text-blue-600 hover:underline flex items-center gap-1 mb-6"
@@ -498,7 +498,7 @@ export default function DocumentDetailPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       {/* Back link + breadcrumb */}
       <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
         <Link
@@ -537,7 +537,7 @@ export default function DocumentDetailPage() {
       )}
 
       {/* Header card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold text-gray-900 break-words">
@@ -563,10 +563,10 @@ export default function DocumentDetailPage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2 flex-shrink-0">
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -576,7 +576,7 @@ export default function DocumentDetailPage() {
             {isAdmin && (
               <button
                 onClick={openEditModal}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -589,7 +589,7 @@ export default function DocumentDetailPage() {
       </div>
 
       {/* Metadata grid */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
           {t('metadata')}
         </h2>
@@ -668,7 +668,7 @@ export default function DocumentDetailPage() {
 
       {/* Processing metadata section — collapsible */}
       {metaKeys.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
           <button
             onClick={() => setMetaExpanded(v => !v)}
             className="flex items-center justify-between w-full"
@@ -694,7 +694,7 @@ export default function DocumentDetailPage() {
       )}
 
       {/* Text chunks placeholder */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
           {t('chunks')}
         </h2>
@@ -708,7 +708,7 @@ export default function DocumentDetailPage() {
 
       {/* Related documents — only shown for indexed documents */}
       {doc.status === 'indexed' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
             {t('related_documents')}
           </h2>

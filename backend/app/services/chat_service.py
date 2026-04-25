@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time as _time
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -31,7 +32,7 @@ from app.services.prometheus_metrics import (
     llm_request_duration,
     llm_request_total,
 )
-from app.services.search_service import search_service
+from app.services.search_service import search_service, _get_regconfig
 
 # Import all LLM services
 try:
@@ -59,7 +60,7 @@ logger = logging.getLogger(__name__)
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # Model configurations
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
 
 class OllamaService:
@@ -108,7 +109,7 @@ class OllamaService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 if stream:
                     async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                         response.raise_for_status()
@@ -156,7 +157,7 @@ class ChatService:
         self.ollama_service = OllamaService()
         self.kimi_service = kimi_service  # For chatbot/telegram/general chat
         self.minimax_service = minimax_service  # Default LLM for RAG (direct API)
-        self.max_context_messages = 10
+        self.max_context_messages = 20
 
     async def get_conversation_history(self, session_id: UUID, db) -> list[dict[str, str]]:
         """Get conversation history for context"""
@@ -201,24 +202,50 @@ class ChatService:
         # Get session to check document scope
         session = (await db.execute(select(ChatSession).where(ChatSession.id == session_id))).scalar_one_or_none()
 
+        # Detect query language so keyword search uses the same PostgreSQL
+        # text-search config that was used to index the documents.
+        detected_lang = (
+            "fr" if any(re.search(r'\b' + w + r'\b', query, re.IGNORECASE)
+                        for w in ["le", "la", "les", "des", "est", "sont"])
+            else "en"
+        )
+
         # Perform search
-        search_result = await search_service.hybrid_search(query=query, limit=10, offset=0, db=db, user=current_user)
+        search_result = await search_service.hybrid_search(
+            query=query, limit=30, offset=0, db=db, user=current_user,
+            regconfig=_get_regconfig(detected_lang),
+        )
 
         # Filter by document scope if specified
         if session and session.document_scope:
             scope_set = {str(doc_id) for doc_id in session.document_scope}
             search_result["results"] = [r for r in search_result["results"] if str(r.document_id) in scope_set]
 
-        top_results = search_result["results"][:5]
+        top_results = search_result["results"][:10]
+
+        # Deduplicate by document_id — keep the highest-scoring chunk per document
+        seen_docs: dict[str, Any] = {}
+        for r in top_results:
+            doc_id = str(r.document_id)
+            if doc_id not in seen_docs or r.final_score > seen_docs[doc_id].final_score:
+                seen_docs[doc_id] = r
+        top_results = list(seen_docs.values())
+
+        # Determine user access level to confidential content
+        user_is_admin = getattr(current_user, "is_superuser", False) or getattr(current_user, "can_access_confidential", False)
+
+        # Normal users: completely hide confidential documents
+        if not user_is_admin:
+            top_results = [r for r in top_results if r.document_bucket != "confidential"]
 
         # Check for confidential documents OR PII in query
         has_confidential = any(r.document_bucket == "confidential" for r in top_results) or has_pii
 
-        logger.warning("retrieve_relevant_chunks: %d results, has_confidential=%s", len(top_results), has_confidential)
+        logger.warning("retrieve_relevant_chunks: %d results, has_confidential=%s (admin=%s)", len(top_results), has_confidential, user_is_admin)
 
         # Batch-fetch metadata for confidential documents using a FRESH session
-        # (the search session may be corrupted by asyncio.wait task cancellations)
-        confidential_doc_ids = [r.document_id for r in top_results if r.document_bucket == "confidential"]
+        # (only needed when showing metadata summaries to non-admin users)
+        confidential_doc_ids = [r.document_id for r in top_results if r.document_bucket == "confidential" and not user_is_admin]
         doc_metadata: dict = {}
         if confidential_doc_ids:
             from sqlalchemy.orm import selectinload
@@ -236,8 +263,8 @@ class ChatService:
         # Format as source documents
         sources = []
         for r in top_results:
-            if r.document_bucket == "confidential":
-                # Metadata-only: strip chunk text, include document metadata
+            if r.document_bucket == "confidential" and not user_is_admin:
+                # Metadata-only for normal users
                 doc = doc_metadata.get(str(r.document_id))
                 tags = [t.tag_name for t in doc.tags] if doc and doc.tags else []
                 page_count = doc.page_count if doc else None
@@ -267,7 +294,7 @@ class ChatService:
                     }
                 )
             else:
-                # Public: full chunk text
+                # Public docs, or confidential docs for super admins (full text)
                 chunk_text = r.chunk_text
                 if has_pii:
                     chunk_text, _ = pii_detection_service.redact_pii(chunk_text)
@@ -279,7 +306,7 @@ class ChatService:
                         "chunk_id": r.chunk_id,
                         "chunk_text": chunk_text,
                         "relevance_score": r.final_score,
-                        "bucket": "public",
+                        "bucket": r.document_bucket,
                     }
                 )
 
@@ -308,32 +335,37 @@ class ChatService:
 
         context_text = "\n".join(context_parts) if context_parts else "No relevant documents found."
 
-        task_prompt = """Answer questions based on the provided context from documents.
-If the context doesn't contain enough information, say so clearly.
-Cite specific documents when providing information.
-Be conversational and helpful.
+        task_prompt = """RULE 1 — ALWAYS ACKNOWLEDGE RETRIEVED DOCUMENTS:
+The documents listed in the context below ARE the search results for the user's query. Even if the exact keyword doesn't appear in every chunk, these are the most relevant documents the system found. You MUST acknowledge them and briefly say what they contain. NEVER say "I found nothing", "aucun document", or "no documents" when documents are listed below.
 
-Some documents below are marked "Confidential, metadata only" — their content is kept private
-and only their name, type, and date are shown. You MUST still acknowledge these documents exist
-and list them by name. Do not say "no documents found" when confidential documents are listed.
-Instead, tell the user which confidential documents matched and suggest they review them
-directly in the vault. Never fabricate or guess their contents.
+RULE 2 — WARM GREETING:
+When the user asks about documents, start with a brief warm acknowledgment like "Ne bougez, je vous cherche ça..." or "Je regarde ce qu'on a..." then present what you found.
+
+RULE 3 — NATURAL CITATIONS:
+Mention documents conversationally, e.g. "J'ai trouvé dans [Document Name] que..." Don't list them like a robot.
+
+RULE 4 — NO CONFIDENTIAL APOLOGIES:
+Never apologize for not having access to documents. Never mention that documents are confidential or hidden. Just present what is available.
+
+Answer based ONLY on the provided document context below. If the context truly contains no documents at all, say so honestly. Otherwise, summarize what the retrieved documents contain.
+Respond in the same language as the user's last message.
 
 Context from documents:
 {context}
 
-Remember: You're helping users access their own knowledge. Be accurate but also conversational."""
+Remember: Be accurate, warm, and conversational — like a knowledgeable colleague, not a robot."""
 
         system_prompt = build_service_prompt(
             service_name="SOWKNOW Chat Service",
             mission="Provide intelligent, context-aware conversational responses using RAG over the SOWKNOW vault",
             constraints=(
-                "- You MUST cite source documents when referencing vault content\n"
-                "- You MUST maintain conversation context across turns\n"
-                "- You MUST NOT hallucinate information not in the retrieved documents\n"
-                "- For confidential documents, only reference their name and metadata \u2014 never invent content"
+                "- Cite source documents naturally when referencing vault content\n"
+                "- Maintain conversation context across turns\n"
+                "- Never hallucinate information not in the retrieved documents"
             ),
             task_prompt=task_prompt,
+            persona="You are a warm, knowledgeable colleague helping someone explore their document vault. You speak naturally, use a friendly tone, and never sound robotic.",
+            include_vault_protocol=False,
         )
 
         messages = [{"role": "system", "content": system_prompt.format(context=context_text)}]
@@ -552,13 +584,15 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                     _stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model}
                 )
                 llm_request_total.inc(labels={"provider": _stream_provider, "status": "success"})
-            except Exception:
+            except Exception as exc:
                 _stream_elapsed = _time.monotonic() - _stream_start
                 llm_request_duration.observe(
                     _stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model}
                 )
                 llm_request_total.inc(labels={"provider": _stream_provider, "status": "error"})
-                raise
+                logger.exception("Streaming LLM error: %s", exc)
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Le service IA est temporairement indisponible. / The AI service is temporarily unavailable.'})}\n\n"
+                return
 
         # Send sources
         formatted_sources = []
@@ -568,6 +602,7 @@ Remember: You're helping users access their own knowledge. Be accurate but also 
                     "document_id": str(source["document_id"]),
                     "document_name": source["document_name"],
                     "chunk_id": str(source["chunk_id"]),
+                    "chunk_text": source.get("chunk_text", "")[:200],
                     "relevance_score": source["relevance_score"],
                 }
             )

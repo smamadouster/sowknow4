@@ -163,8 +163,8 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">{t('title')}</h1>
         <div className="text-sm text-gray-500">
           Last updated: {lastUpdated.toLocaleTimeString()}
@@ -179,7 +179,7 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">{t('total_documents')}</p>
@@ -191,13 +191,13 @@ export default function DashboardPage() {
               </svg>
             </div>
           </div>
-          <div className="mt-4 flex gap-4 text-sm">
+          <div className="mt-4 flex flex-wrap gap-4 text-sm">
             <span className="text-green-600">{stats?.public_documents ?? 0} public</span>
             <span className="text-orange-600">{stats?.confidential_documents ?? 0} confidential</span>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">{t('uploads_today')}</p>
@@ -211,7 +211,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">{t('indexed_pages')}</p>
@@ -225,7 +225,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">{t('total_articles')}</p>
@@ -237,7 +237,7 @@ export default function DashboardPage() {
               </svg>
             </div>
           </div>
-          <div className="mt-4 flex gap-4 text-sm">
+          <div className="mt-4 flex flex-wrap gap-4 text-sm">
             <span className="text-green-600">{articlesStats?.indexed_articles ?? 0} indexed</span>
             <span className="text-blue-600">{articlesStats?.generating_articles ?? 0} generating</span>
             <span className="text-red-600">{articlesStats?.error_articles ?? 0} error</span>
@@ -246,7 +246,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Articles Status */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('articles_status')}</h2>
         <div className="w-full bg-gray-200 rounded-full h-4 mb-4">
           <div
@@ -258,7 +258,7 @@ export default function DashboardPage() {
             }}
           ></div>
         </div>
-        <div className="grid grid-cols-4 gap-4 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
           <div>
             <p className="text-2xl font-bold text-green-600">{articlesStats?.indexed_articles ?? 0}</p>
             <p className="text-sm text-gray-500">{tAdmin('indexed_articles')}</p>
@@ -281,7 +281,7 @@ export default function DashboardPage() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Document Type Distribution */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('document_distribution')}</h2>
           {stats ? (
             <ResponsiveContainer width="100%" height={240}>
@@ -315,11 +315,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Articles Breakdown */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('articles_breakdown')}</h2>
           {articlesStats ? (
             <>
-              <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-center">
                 <div className="bg-green-50 rounded-lg p-2">
                   <p className="text-lg font-bold text-green-700">{articlesStats.indexed_articles.toLocaleString()}</p>
                   <p className="text-xs text-green-600">{tAdmin('indexed_articles')}</p>
@@ -374,7 +374,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Uploads Trend */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('uploads_trend')}</h2>
         {uploadsHistory.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
@@ -406,7 +406,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Articles Trend */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('articles_trend')}</h2>
         {articlesHistory.length > 0 ? (
           <>
@@ -448,7 +448,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Pipeline Health */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-8">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-gray-900">Pipeline Health</h2>

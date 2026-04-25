@@ -161,8 +161,8 @@ function SynthesisBlock({ text, model, synthesizedAnswerLabel, ollamaLabel, mini
 
   return (
     <div className="bg-vault-800/40 border border-white/[0.06] rounded-xl mb-5 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-vault-800/30">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-vault-800/30 gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-emerald-400">⊕</span>
           <span className="text-xs font-bold text-text-primary uppercase tracking-wide">
             {synthesizedAnswerLabel}
@@ -191,8 +191,8 @@ function SynthesisBlock({ text, model, synthesizedAnswerLabel, ollamaLabel, mini
 function SynthesisSkeleton({ synthesizedAnswerLabel }: { synthesizedAnswerLabel: string }) {
   return (
     <div className="bg-vault-800/40 border border-white/[0.06] rounded-xl mb-5 overflow-hidden animate-pulse">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-vault-800/30">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-vault-800/30 gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-emerald-400/50">⊕</span>
           <span className="text-xs font-bold text-text-primary/50 uppercase tracking-wide">
             {synthesizedAnswerLabel}
@@ -254,7 +254,7 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
 
   return (
     <div className={`bg-vault-900/60 border border-white/[0.06] border-l-4 rounded-lg p-4 mb-2 transition-all hover:bg-vault-900/80 ${colors.border} ${opacity}`}>
-      <div className="flex items-start gap-2.5 mb-2">
+      <div className="flex flex-wrap items-start gap-2.5 mb-2">
         <span className={`text-text-primary rounded px-1.5 py-0.5 text-xs font-bold flex-shrink-0 mt-0.5 bg-vault-700`}>#{rank}</span>
         <div className="flex-1 min-w-0">
           <Link href={`/${locale}/documents/${result.document_id}`} className="block text-sm font-semibold text-text-primary truncate hover:text-amber-400 transition-colors">{title}</Link>
@@ -264,7 +264,7 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
             {result.document_date ? ` · ${new Date(result.document_date).getFullYear()}` : ''}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
           {result.is_confidential && canSeeConfidential && (
             <span className="bg-vault-1000 text-amber-400 rounded px-1.5 py-0.5 text-xs font-semibold border border-amber-400/20">🔒 {confidentialLabel}</span>
           )}
@@ -273,7 +273,7 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
             {relevanceTierLabel}
           </span>
           <span className="text-xs text-text-muted tabular-nums">{Math.round(result.relevance_score * 100)}%</span>
-          <div className="flex items-center gap-1 ml-1">
+          <div className="hidden sm:flex items-center gap-1 ml-1">
             <Link href={`/${locale}/documents/${result.document_id}`} className="p-1 text-text-muted hover:text-amber-400 rounded transition-colors" title="View document">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             </Link>
@@ -794,7 +794,9 @@ export default function SearchPage() {
               <Suggestions suggestions={stream.suggestions} onSelect={handleSuggestion} label={t('suggestions')} />
             </div>
 
-            <CitationsPanel citations={stream.citations} open={showCitations} onClose={() => setShowCitations(false)} sourcesLabel={t('sources')} relevanceLabel={t('relevance')} />
+            <div className="hidden md:block">
+              <CitationsPanel citations={stream.citations} open={showCitations} onClose={() => setShowCitations(false)} sourcesLabel={t('sources')} relevanceLabel={t('relevance')} />
+            </div>
           </div>
         </div>
       )}

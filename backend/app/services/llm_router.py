@@ -77,8 +77,8 @@ class LLMRouter:
     # Each chain is an ordered list of provider names tried left-to-right.
     fallback_chains: dict[str, list[str]] = {
         "confidential": ["ollama", "openrouter", "minimax"],
-        "public_docs": ["minimax", "openrouter", "ollama"],
-        "general_chat": ["minimax", "openrouter", "ollama"],
+        "public_docs": ["openrouter", "minimax", "ollama"],
+        "general_chat": ["openrouter", "minimax", "ollama"],
     }
 
     def __init__(
@@ -226,18 +226,18 @@ class LLMRouter:
         has_context = bool(context_chunks)
 
         if has_context:
-            # RAG query: MiniMax → OpenRouter → Ollama
+            # RAG query: OpenRouter → MiniMax → Ollama
             chain = [
-                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("openrouter", self._openrouter, lambda s: s is not None),
+                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("ollama", self._ollama, lambda s: s is not None),
             ]
             reason = RoutingReason.PUBLIC_DOCS_RAG
         else:
-            # General chat: MiniMax → OpenRouter → Ollama
+            # General chat: OpenRouter → MiniMax → Ollama
             chain = [
-                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("openrouter", self._openrouter, lambda s: s is not None),
+                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
                 ("ollama", self._ollama, lambda s: s is not None),
             ]
             reason = RoutingReason.GENERAL_CHAT
@@ -331,36 +331,36 @@ def _build_router() -> LLMRouter:
         from app.services.minimax_service import minimax_service as _m
 
         minimax_svc = _m
-    except Exception:
-        logger.warning("LLMRouter: minimax_service not available")
+    except Exception as exc:
+        logger.warning("LLMRouter: minimax_service not available: %s", exc, exc_info=True)
 
     try:
         from app.services.kimi_service import kimi_service as _k
 
         kimi_svc = _k
-    except Exception:
-        logger.warning("LLMRouter: kimi_service not available")
+    except Exception as exc:
+        logger.warning("LLMRouter: kimi_service not available: %s", exc, exc_info=True)
 
     try:
         from app.services.openrouter_service import openrouter_service as _or
 
         openrouter_svc = _or
-    except Exception:
-        logger.warning("LLMRouter: openrouter_service not available")
+    except Exception as exc:
+        logger.warning("LLMRouter: openrouter_service not available: %s", exc, exc_info=True)
 
     try:
         from app.services.ollama_service import ollama_service as _ol
 
         ollama_svc = _ol
-    except Exception:
-        logger.warning("LLMRouter: ollama_service not available")
+    except Exception as exc:
+        logger.warning("LLMRouter: ollama_service not available: %s", exc, exc_info=True)
 
     try:
         from app.services.pii_detection_service import pii_detection_service as _pii
 
         pii_svc = _pii
-    except Exception:
-        logger.warning("LLMRouter: pii_detection_service not available")
+    except Exception as exc:
+        logger.warning("LLMRouter: pii_detection_service not available: %s", exc, exc_info=True)
 
     return LLMRouter(
         minimax_service=minimax_svc,

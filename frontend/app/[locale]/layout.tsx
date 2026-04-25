@@ -71,8 +71,8 @@ export default async function LocaleLayout({
       <div className="flex" style={{ minHeight: 'calc(100dvh - 3.5rem)' }}>
         <Navigation />
 
-        <div className="flex-1 flex flex-col min-w-0 px-safe">
-          <main id="main-content" className="flex-1">
+        <div className="flex-1 flex flex-col min-w-0 px-safe overflow-x-hidden">
+          <main id="main-content" className="flex-1 min-w-0">
             {children}
           </main>
 

@@ -269,7 +269,16 @@ class HybridSearchService:
                         :query
                     ),
                     32
-                ) AS rank
+                ) + COALESCE(
+                    ts_rank_cd(
+                        dc.search_vector,
+                        phraseto_tsquery(
+                            CAST(:regconfig AS regconfig),
+                            :query
+                        ),
+                        32
+                    ), 0
+                ) * 3.0 AS rank
             FROM sowknow.document_chunks dc
             JOIN sowknow.documents d ON dc.document_id = d.id
             WHERE d.bucket::text = ANY(:buckets)
@@ -697,8 +706,8 @@ class HybridSearchService:
         # Merge results using RRF (Reciprocal Rank Fusion)
         merged_scores = {}
 
-        # Add semantic scores (k=60)
-        k = 60
+        # Add semantic scores (k=10 for sharper top-rank differentiation)
+        k = 10
         for rank, result in enumerate(semantic_results):
             score = 1 / (k + rank + 1)
             if result.chunk_id not in merged_scores:
@@ -715,7 +724,7 @@ class HybridSearchService:
                     result.semantic_score,
                 )
 
-        # Add keyword scores (k=60)
+        # Add keyword scores (k=10)
         for rank, result in enumerate(keyword_results):
             score = 1 / (k + rank + 1)
             if result.chunk_id not in merged_scores:
@@ -809,10 +818,15 @@ class HybridSearchService:
             result = data["result"]
             semantic = data["semantic_score"]
             keyword = data["keyword_score"]
+            rrf = data["rrf_score"]
 
-            # Combined score using weights
-            final_score = sem_w * semantic + kw_w * keyword
-            result.final_score = final_score
+            # Blend raw similarity with RRF (Reciprocal Rank Fusion).
+            # RRF provides rank-based differentiation; raw scores provide
+            # absolute quality. k=10 amplifies rank differences in the
+            # top results so source citations don't all show the same %.
+            raw_score = sem_w * semantic + kw_w * keyword
+            final_score = raw_score + rrf
+            result.final_score = min(final_score, 1.0)
 
         # Cross-encoder re-ranking on top candidates (optional, graceful fallback)
         if rerank and len(merged_scores) > 1:

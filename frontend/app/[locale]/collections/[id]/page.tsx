@@ -285,63 +285,67 @@ export default function CollectionDetailPage() {
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.back()}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-            >
-              ← {t("common.back")}
-            </button>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                {collection.is_pinned && <span>📌</span>}
-                {collection.is_favorite && <span>❤️</span>}
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {collection.name}
-                </h1>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.back()}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                ← {t("common.back")}
+              </button>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  {collection.is_pinned && <span>📌</span>}
+                  {collection.is_favorite && <span>❤️</span>}
+                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
+                    {collection.name}
+                  </h1>
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {collection.document_count} documents • Created{" "}
+                  {new Date(collection.created_at).toLocaleDateString()}
+                </p>
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {collection.document_count} documents • Created{" "}
-                {new Date(collection.created_at).toLocaleDateString()}
-              </p>
             </div>
-            <button
-              onClick={handleRefresh}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              Refresh
-            </button>
-            <button
-              onClick={openEditModal}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-            >
-              Delete
-            </button>
-            <button
-              onClick={handleExportPdf}
-              disabled={exportLoading || collection.items.length === 0}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {exportLoading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  {t('collections.exporting_pdf')}
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  {t('collections.export_pdf')}
-                </>
-              )}
-            </button>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              <button
+                onClick={handleRefresh}
+                className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={openEditModal}
+                className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+              >
+                Delete
+              </button>
+              <button
+                onClick={handleExportPdf}
+                disabled={exportLoading || collection.items.length === 0}
+                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+              >
+                {exportLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    {t('collections.exporting_pdf')}
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    {t('collections.export_pdf')}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -379,7 +383,7 @@ export default function CollectionDetailPage() {
           {/* Main Content - Documents */}
           <div className="lg:col-span-2">
             {/* Query & Summary */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6 mb-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                 Query
               </h2>
@@ -397,7 +401,7 @@ export default function CollectionDetailPage() {
 
             {/* Documents List */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                   Documents ({collection.items.length})
                 </h2>
@@ -410,9 +414,9 @@ export default function CollectionDetailPage() {
                       item.is_highlighted ? "bg-yellow-50 dark:bg-yellow-900/20" : ""
                     }`}
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {item.is_highlighted && <span>⭐</span>}
                           <h3 className="font-medium text-gray-900 dark:text-white truncate">
                             {item.article_title || item.document?.filename || "Unknown Document"}
@@ -439,7 +443,7 @@ export default function CollectionDetailPage() {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                      <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                           {item.relevance_score}%
                         </span>

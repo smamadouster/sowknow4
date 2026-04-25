@@ -102,11 +102,11 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">{tNav('settings')}</h1>
 
       {/* Tabs */}
-      <div className="flex gap-4 mb-6">
+      <div className="flex flex-wrap gap-4 mb-6">
         <button
           onClick={() => setActiveTab('users')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -142,32 +142,24 @@ export default function SettingsPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-3 px-6 text-sm font-medium text-gray-500">User</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Role</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Status</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Joined</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Mobile cards */}
+              <div className="block md:hidden divide-y divide-gray-100">
                 {users.map((user) => (
-                  <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-6">
-                      <div className="font-medium text-gray-900">{user.full_name}</div>
-                      <div className="text-sm text-gray-500">{user.email}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${getRoleBadge(user.role)}`}>
+                  <div key={user.id} className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-900 text-sm">{user.full_name}</div>
+                        <div className="text-xs text-gray-500 truncate">{user.email}</div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${getRoleBadge(user.role)}`}>
                         {tRoles(user.role)}
                       </span>
-                    </td>
-                    <td className="py-3 px-4">
+                    </div>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                       <button
                         onClick={() => toggleUserStatus(user.id, user.is_active)}
-                        className={`px-2 py-1 rounded text-xs font-medium ${
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
                           user.is_active
                             ? 'bg-green-100 text-green-700'
                             : 'bg-red-100 text-red-700'
@@ -175,23 +167,74 @@ export default function SettingsPage() {
                       >
                         {user.is_active ? 'Active' : 'Inactive'}
                       </button>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">
-                      {formatDateShort(user.created_at)}
-                    </td>
-                    <td className="py-3 px-4">
+                      <span>{formatDateShort(user.created_at)}</span>
+                    </div>
+                    <div className="mt-2">
                       <button
                         onClick={() => resetPassword(user.id)}
                         disabled={resettingPassword === user.id}
-                        className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-300 disabled:opacity-50"
+                        className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-300 disabled:opacity-50"
                       >
                         {resettingPassword === user.id ? 'Resetting...' : 'Reset Password'}
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full min-w-[640px]">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-6 text-sm font-medium text-gray-500">User</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Role</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Status</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Joined</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-6">
+                          <div className="font-medium text-gray-900">{user.full_name}</div>
+                          <div className="text-sm text-gray-500">{user.email}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${getRoleBadge(user.role)}`}>
+                            {tRoles(user.role)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <button
+                            onClick={() => toggleUserStatus(user.id, user.is_active)}
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              user.is_active
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {user.is_active ? 'Active' : 'Inactive'}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">
+                          {formatDateShort(user.created_at)}
+                        </td>
+                        <td className="py-3 px-4">
+                          <button
+                            onClick={() => resetPassword(user.id)}
+                            disabled={resettingPassword === user.id}
+                            className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-300 disabled:opacity-50"
+                          >
+                            {resettingPassword === user.id ? 'Resetting...' : 'Reset Password'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       ) : (

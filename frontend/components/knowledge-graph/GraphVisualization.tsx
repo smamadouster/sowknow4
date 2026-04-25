@@ -69,8 +69,8 @@ const ENTITY_LABELS: Record<string, string> = {
 export function GraphVisualization({
   nodes: initialNodes,
   edges,
-  width = 800,
-  height = 600,
+  width: propWidth = 800,
+  height: propHeight = 600,
   onNodeClick,
   onNodeHover,
 }: GraphVisualizationProps) {
@@ -79,9 +79,35 @@ export function GraphVisualization({
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [simulatedNodes, setSimulatedNodes] = useState<(GraphNode & { x: number; y: number; vx: number; vy: number })[]>([]);
+  const [containerSize, setContainerSize] = useState({ width: propWidth, height: propHeight });
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null);
+
+  const width = containerSize.width;
+  const height = containerSize.height;
+
+  // Measure container for responsive sizing
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect();
+      setContainerSize({ width: Math.max(320, rect.width), height: propHeight });
+    };
+
+    updateSize();
+
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(el);
+    window.addEventListener('resize', updateSize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateSize);
+    };
+  }, [propHeight]);
 
   // Initialize node positions
   useEffect(() => {
@@ -238,11 +264,13 @@ export function GraphVisualization({
   const getNodeRadius = (size: number) => Math.max(15, Math.min(40, 10 + size * 3));
 
   return (
-    <div className="relative w-full h-full bg-gray-50 rounded-lg overflow-hidden border border-gray-200">
+    <div ref={containerRef} className="relative w-full bg-gray-50 rounded-lg overflow-hidden border border-gray-200" style={{ height }}>
       <svg
         ref={svgRef}
-        width={width}
-        height={height}
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}

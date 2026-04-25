@@ -296,10 +296,10 @@ export default function NotesPage() {
   );
 
   return (
-    <div className="min-h-screen bg-vault-950 overflow-x-hidden">
+    <div className="min-h-screen bg-vault-950">
       <div className="max-w-6xl mx-auto px-4 py-8 pb-20 md:pb-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <h1 className="text-2xl font-bold text-text-primary font-display">{t('title')}</h1>
           <button
             onClick={() => openEditor()}

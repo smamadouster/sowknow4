@@ -133,12 +133,12 @@ export default function MonitoringPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('title')}</h1>
           <p className="text-sm text-gray-500 mt-1">{t('subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-gray-500">
             <input
               type="checkbox"
@@ -169,7 +169,7 @@ export default function MonitoringPage() {
                 : 'bg-gray-50 border-gray-200'
         }`}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-3">
             <div
               className={`w-4 h-4 rounded-full ${STATUS_COLORS[overallStatus] || 'bg-gray-400'} ${

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-small-2603")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "moonshotai/kimi-k2.6")
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamtech.com")
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
@@ -98,9 +98,9 @@ class OpenRouterService:
     def _generate_cache_key(self, model: str, messages: list[dict[str, str]]) -> str:
         """Generate a deterministic cache key from model and messages.
 
-        Cache key = SHA256(model + sorted messages content)
-        This ensures identical requests get the same cache key regardless of
-        message order while maintaining content-based uniqueness.
+        Cache key = SHA256(model + ordered messages content)
+        Message order is preserved so conversations with identical words in
+        different orders do not collide.
 
         Args:
             model: The model identifier
@@ -109,15 +109,8 @@ class OpenRouterService:
         Returns:
             SHA256 hash string prefixed with cache namespace
         """
-        # Sort messages by role+content for deterministic ordering
-        sorted_messages = sorted(messages, key=lambda m: f"{m.get('role', '')}:{m.get('content', '')}")
-
-        # Create a canonical string representation
-        cache_content = f"{model}:{json.dumps(sorted_messages, sort_keys=True)}"
-
-        # Generate SHA256 hash
+        cache_content = f"{model}:{json.dumps(messages, separators=(',', ':'), ensure_ascii=False)}"
         cache_hash = hashlib.sha256(cache_content.encode("utf-8")).hexdigest()
-
         return f"{CACHE_KEY_PREFIX}{cache_hash}"
 
     def check_cache(self, messages: list[dict[str, str]]) -> str | None:
@@ -290,7 +283,7 @@ class OpenRouterService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 if stream:
                     async with client.stream(
                         "POST",

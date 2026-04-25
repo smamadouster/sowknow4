@@ -2,6 +2,7 @@
 Chat API endpoints for AI-powered conversations with RAG
 """
 
+import json
 import logging
 from uuid import UUID, uuid4
 
@@ -163,9 +164,11 @@ async def send_message(
     await db.commit()
 
     if stream:
-        # Use a dedicated async session for the streaming generator so the lifecycle
-        # is tied to the generator itself, not the request dependency scope.
         async def _stream_with_session():
+            full_content_parts: list[str] = []
+            llm_used: str | None = None
+            sources: list[dict] | None = None
+
             async with AsyncSessionLocal() as stream_db:
                 async for chunk in chat_service.generate_chat_response_stream(
                     session_id=session_id,
@@ -174,6 +177,39 @@ async def send_message(
                     current_user=current_user,
                 ):
                     yield chunk
+                    # Parse SSE data lines to collect assistant response metadata
+                    if chunk.startswith("data: "):
+                        data_str = chunk[6:]
+                        if data_str == "[DONE]":
+                            continue
+                        try:
+                            parsed = json.loads(data_str)
+                            msg_type = parsed.get("type")
+                            if msg_type == "message":
+                                full_content_parts.append(parsed.get("content", ""))
+                            elif msg_type == "llm_info":
+                                llm_used = parsed.get("llm_used")
+                            elif msg_type == "sources":
+                                sources = parsed.get("sources")
+                        except Exception:
+                            # ignore malformed SSE data
+                            pass
+
+            # Persist the completed assistant message using a fresh session
+            try:
+                async with AsyncSessionLocal() as persist_db:
+                    assistant_message = ChatMessage(
+                        id=uuid4(),
+                        session_id=session_id,
+                        role=MessageRole.ASSISTANT,
+                        content="".join(full_content_parts),
+                        llm_used=llm_used,
+                        sources=sources,
+                    )
+                    persist_db.add(assistant_message)
+                    await persist_db.commit()
+            except Exception as e:
+                logger.exception("Failed to persist streaming assistant message: %s", e)
 
         return StreamingResponse(
             _stream_with_session(),

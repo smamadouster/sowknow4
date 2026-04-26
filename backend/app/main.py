@@ -117,7 +117,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_pgvector()  # Initialize pgvector extension
     await create_all_tables()
     print("Database tables created/verified")
+
+    # Startup: Initialize NATS messaging (optional — app runs without it)
+    try:
+        from app.services.messaging import get_messaging_client
+
+        await get_messaging_client()
+        print("NATS messaging connected")
+    except Exception as exc:
+        print(f"NATS messaging unavailable: {exc}")
+
     yield
+
     # Shutdown: release resources gracefully
     print("Shutting down...")
     try:
@@ -134,6 +145,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         print("Redis connection pool closed")
     except Exception as exc:
         print(f"Error closing Redis pool: {exc}")
+    try:
+        from app.services.messaging import close_messaging_client
+
+        await close_messaging_client()
+        print("NATS messaging disconnected")
+    except Exception as exc:
+        print(f"Error closing NATS: {exc}")
     print("Shutdown complete")
 
 

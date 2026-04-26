@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
@@ -14,6 +15,8 @@ from app.database import get_db
 from app.models.user import User, UserRole
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Security configuration
 SECRET_KEY = os.getenv("JWT_SECRET")
@@ -60,10 +63,11 @@ pwd_context = _BcryptContext()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hashed password"""
+    """Verify a plain password against a hashed password."""
     try:
         return _bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Password verification failed: %s", exc)
         return False
 
 

@@ -27,7 +27,7 @@ import redis
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -294,7 +294,7 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     Returns:
         User object if authenticated, False otherwise
     """
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(func.lower(User.email) == email.lower()))
     user = result.scalar_one_or_none()
     if not user:
         return False
@@ -345,8 +345,11 @@ async def register(request: Request, user_data: UserCreate, db: AsyncSession = D
     Raises:
         HTTPException 400: If user already exists or password validation fails
     """
+    # Normalize email to lowercase for consistent lookup
+    normalized_email = user_data.email.strip().lower()
+
     # Check if user already exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
+    result = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     existing_user = result.scalar_one_or_none()
     if existing_user:
         # Generic error message prevents email enumeration
@@ -355,12 +358,12 @@ async def register(request: Request, user_data: UserCreate, db: AsyncSession = D
             detail="User with this email already exists",
         )
 
-    # Hash password with bcrypt (auto-handled by passlib CryptContext)
+    # Hash password with bcrypt
     hashed_password = get_password_hash(user_data.password)
 
     # Create new user with default role
     db_user = User(
-        email=user_data.email,
+        email=normalized_email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
         role="user",  # Default role, can be upgraded by admin
@@ -410,7 +413,6 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:

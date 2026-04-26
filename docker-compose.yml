@@ -7,7 +7,8 @@
 #              Internal services (postgres, redis, vault, nats) are network-only.
 #
 # Memory Allocation:
-#   celery-light:    2048MB  (CPU/IO tasks, concurrency=2)
+#   celery-light:    3072MB  (CPU/IO tasks, concurrency=4)
+#   celery-entities:  4096MB  (pipeline.entities queue — spaCy NER + LLM, concurrency=4)
 #   celery-heavy:     512MB  (pipeline.embed queue — I/O-bound HTTP to embed-server)
 #   embed-server:    3072MB  (embedding model — 1.3GB model needs headroom during load)
 #   postgres:        1536MB  (pgvector, 5 concurrent users)
@@ -171,8 +172,6 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=gemma2:2b
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - VAULT_ADDR=http://vault:8200
       - VAULT_TOKEN=${VAULT_ROOT_TOKEN:?VAULT_ROOT_TOKEN must be set in .env}
@@ -310,8 +309,6 @@ services:
       - REDIS_HOST=redis
       - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=gemma2:2b
       - SENTENCE_TRANSFORMERS_HOME=/models
       - HF_HOME=/models
       - TRANSFORMERS_CACHE=/models
@@ -344,9 +341,65 @@ services:
           memory: 3072M
           cpus: '1.0'
     command: >-
-      celery -A app.celery_app worker --loglevel=info --concurrency=2
-      -Q celery,document_processing,scheduled,pipeline.ocr,pipeline.chunk,pipeline.index,pipeline.articles,pipeline.entities
+      celery -A app.celery_app worker --loglevel=info --concurrency=4
+      -Q celery,document_processing,scheduled,pipeline.ocr,pipeline.chunk,pipeline.index,pipeline.articles
       -n light@%h
+    networks:
+      - sowknow-net
+
+  celery-entities:
+    <<: *common-env
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: sowknow4-celery-entities
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_HOST=redis
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
+      - PADDLEOCR_HOME=/tmp/paddleocr
+      - SKIP_MODEL_DOWNLOAD=1
+      - EMBED_SERVER_URL=http://embed-server:8000
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+      - sowknow-audio-data:/data/audio
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      embed-server:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 4096M
+          cpus: '2.0'
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=4
+      --pool=prefork
+      -Q pipeline.entities
+      --prefetch-multiplier=1
+      -n entities@%h
     networks:
       - sowknow-net
 

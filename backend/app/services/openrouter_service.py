@@ -8,7 +8,7 @@ CONTEXT CACHING:
 - Cache key = SHA256(model + sorted messages content)
 - TTL = 1 hour for public document responses
 - Metrics tracked via cache_monitor service
-- Ollama (confidential) responses are NEVER cached - handled by caller
+- Confidential responses are NEVER cached - handled by caller
 """
 
 import hashlib

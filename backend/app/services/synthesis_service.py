@@ -1,9 +1,8 @@
 """
 Synthesis Pipeline Service for Knowledge Graph
 
-Uses Map-Reduce pattern with MiniMax (public documents) or Ollama
-(confidential documents) to synthesize information from multiple documents,
-creating comprehensive insights and summaries.
+Uses Map-Reduce pattern with OpenRouter to synthesize information from
+multiple documents, creating comprehensive insights and summaries.
 """
 
 import logging
@@ -78,15 +77,7 @@ class SynthesisPipelineService:
 
     def __init__(self):
         self.minimax_service = minimax_service
-        self._ollama_service = None
         self._openrouter_service = None
-
-    def _get_ollama_service(self):
-        if self._ollama_service is None:
-            from app.services.ollama_service import ollama_service
-
-            self._ollama_service = ollama_service
-        return self._ollama_service
 
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
@@ -131,6 +122,11 @@ class SynthesisPipelineService:
             # Step 2: Extract key information from each document (Map)
             if on_progress:
                 on_progress("Extracting key information...", 0.3)
+
+            # Commit read transaction before long-running LLM calls.
+            # _map_documents triggers the first LLM call; holding the
+            # connection idle-in-transaction causes proxy timeouts.
+            await db.commit()
 
             mapped_results = await self._map_documents(
                 documents, request.topic, request.synthesis_type, db, on_progress,
@@ -265,8 +261,7 @@ class SynthesisPipelineService:
                 "- You MUST process each document independently in the map phase\n"
                 "- You MUST reconcile conflicting information in the reduce phase\n"
                 "- You MUST cite source documents for all synthesized claims\n"
-                "- You MUST flag temporal inconsistencies across documents\n"
-                "- You MUST NOT include information from confidential documents in cloud-routed synthesis"
+                "- You MUST flag temporal inconsistencies across documents"
             ),
             task_prompt=f"""Extract the most relevant information from this document related to the topic.
 
@@ -301,9 +296,8 @@ Extract all relevant information about "{topic}" from this document:"""
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
-            # Determine LLM routing based on document bucket
-            use_ollama = doc.bucket == DocumentBucket.CONFIDENTIAL
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            # Always use OpenRouter for synthesis
+            llm_service = self._get_openrouter_service()
 
             response = []
             async for chunk in llm_service.chat_completion(
@@ -420,9 +414,6 @@ Extract all relevant information about "{topic}" from this document:"""
         if not successful:
             return "Unable to synthesize information from the provided documents."
 
-        # Determine bucket-based routing - use most restrictive (confidential if any)
-        use_ollama = any(r.get("bucket") == DocumentBucket.CONFIDENTIAL for r in successful)
-
         # Build context
         context_parts = []
 
@@ -477,8 +468,7 @@ Extract all relevant information about "{topic}" from this document:"""
                 "- You MUST process each document independently in the map phase\n"
                 "- You MUST reconcile conflicting information in the reduce phase\n"
                 "- You MUST cite source documents for all synthesized claims\n"
-                "- You MUST flag temporal inconsistencies across documents\n"
-                "- You MUST NOT include information from confidential documents in cloud-routed synthesis"
+                "- You MUST flag temporal inconsistencies across documents"
             ),
             task_prompt=f"""Create a comprehensive synthesis about the topic.
 
@@ -511,8 +501,8 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
-            # Determine LLM routing based on document bucket
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            # Always use OpenRouter for synthesis
+            llm_service = self._get_openrouter_service()
 
             response = []
             async for chunk in llm_service.chat_completion(
@@ -532,9 +522,6 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
         context_block: str | None = None,
     ) -> list[str]:
         """Extract key points from the synthesis"""
-        # Determine bucket-based routing
-        use_ollama = any(doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents)
-
         system_prompt = build_service_prompt(
             service_name="SOWKNOW Synthesis Key Points Agent",
             mission="Synthesize information from multiple documents using map-reduce analysis to extract key points, timelines, and comprehensive summaries",
@@ -542,8 +529,7 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
                 "- You MUST process each document independently in the map phase\n"
                 "- You MUST reconcile conflicting information in the reduce phase\n"
                 "- You MUST cite source documents for all synthesized claims\n"
-                "- You MUST flag temporal inconsistencies across documents\n"
-                "- You MUST NOT include information from confidential documents in cloud-routed synthesis"
+                "- You MUST flag temporal inconsistencies across documents"
             ),
             task_prompt="Extract the 3-7 most important key points from the text.\nReturn as a JSON array of strings, each being a key point.",
         )
@@ -565,7 +551,7 @@ Extract the key points:"""
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            llm_service = self._get_openrouter_service()
 
             response = []
             async for chunk in llm_service.chat_completion(

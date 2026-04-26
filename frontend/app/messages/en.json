@@ -350,6 +350,9 @@
     "length_long": "Long",
     "include_confidential": "Include Confidential Documents",
     "generating": "Generating...",
+    "queued": "Queued...",
+    "processing": "Processing...",
+    "poll_error": "Failed to check generation status",
     "generated_content": "Generated Content",
     "sources": "Sources",
     "view_collection": "View Collection",
@@ -357,6 +360,8 @@
     "word_count": "words",
     "llm_gemini": "Generated with Gemini Flash",
     "llm_ollama": "Generated with Ollama",
+    "llm_minimax": "Generated with MiniMax",
+    "untitled": "Untitled",
     "export_pdf": "Export PDF",
     "exporting_pdf": "Generating PDF...",
     "export_error": "Failed to generate PDF report"

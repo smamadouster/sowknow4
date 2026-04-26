@@ -1,9 +1,8 @@
 """
 Entity Extraction Service for Knowledge Graph
 
-Uses MiniMax (public documents) or Ollama (confidential documents) to extract
-entities (people, organizations, locations, concepts) from documents and build
-a knowledge graph for graph-augmented retrieval.
+Uses MiniMax/OpenRouter to extract entities (people, organizations, locations,
+concepts) from documents and build a knowledge graph for graph-augmented retrieval.
 """
 
 import json
@@ -73,15 +72,7 @@ class EntityExtractionService:
 
     def __init__(self):
         self.minimax_service = minimax_service
-        self._ollama_service = None
         self._openrouter_service = None
-
-    def _get_ollama_service(self):
-        if self._ollama_service is None:
-            from app.services.ollama_service import ollama_service
-
-            self._ollama_service = ollama_service
-        return self._ollama_service
 
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
@@ -94,7 +85,7 @@ class EntityExtractionService:
         self, document: Document, chunks: list[DocumentChunk], db: Session
     ) -> dict[str, Any]:
         """
-        Extract entities from a document using cloud LLM or Ollama (local)
+        Extract entities from a document using cloud LLM
 
         Args:
             document: Document to extract from
@@ -105,9 +96,7 @@ class EntityExtractionService:
             Dictionary with extraction results
         """
         try:
-            # Determine LLM routing based on document bucket
-            # Skip Ollama for entity extraction — it's too slow on CPU and blocks
-            # interactive chat queries. Entity extraction uses OpenRouter for all docs.
+            # Entity extraction uses OpenRouter for all docs.
             # The extracted entities (names, orgs, dates) are metadata, not document content.
             use_ollama = False
 
@@ -353,7 +342,7 @@ class EntityExtractionService:
         metadata: dict[str, Any],
         use_ollama: bool = False,
     ) -> dict[str, Any] | None:
-        """Extract entities using cloud LLM (MiniMax/Kimi) or Ollama based on document confidentiality"""
+        """Extract entities using cloud LLM (MiniMax/Kimi) via OpenRouter"""
 
         entity_task_prompt = """Extract structured information from documents.
 
@@ -438,28 +427,12 @@ Extract all entities, relationships, and dated events now:"""
         try:
             response_parts = []
 
-            # Route to appropriate LLM based on document confidentiality
-            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
-            warnings.warn(
-                "EntityExtractionService uses inline LLM routing. "
-                "Migrate to llm_router.select_provider() to remove this warning.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if use_ollama:
-                llm_service = self._get_ollama_service()
-                async for chunk in llm_service.chat_completion(
-                    messages=messages, stream=False, temperature=0.3, num_predict=2048
-                ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                        response_parts.append(chunk)
-            else:
-                llm_service = self._get_openrouter_service()
-                async for chunk in llm_service.chat_completion(
-                    messages=messages, stream=False, temperature=0.3, max_tokens=2048
-                ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                        response_parts.append(chunk)
+            llm_service = self._get_openrouter_service()
+            async for chunk in llm_service.chat_completion(
+                messages=messages, stream=False, temperature=0.3, max_tokens=2048
+            ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
 

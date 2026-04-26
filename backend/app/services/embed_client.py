@@ -9,8 +9,8 @@ Drop-in replacement for EmbeddingService — same interface:
   encode_async(texts)        →  Coroutine[list[list[float]]]
   health_check()             →  dict
 
-When the embed server is unreachable the client falls back to zero vectors,
-preserving the graceful-degradation behaviour of the original EmbeddingService.
+When the embed server is unreachable the client raises RuntimeError so callers
+can retry or fail fast rather than silently poisoning the index with zero vectors.
 """
 
 import logging
@@ -22,7 +22,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 EMBEDDING_DIM = 1024
-_ENCODE_TIMEOUT = 120.0   # large batches can be slow on CPU
+_ENCODE_TIMEOUT = 30.0     # batches on healthy embed-server finish in <5s
+_SINGLE_ENCODE_TIMEOUT = 10.0  # single text should be near-instant
 _QUERY_TIMEOUT = 30.0
 _HEALTH_TIMEOUT = 5.0
 _HEALTH_CACHE_TTL = 30.0
@@ -67,7 +68,7 @@ class EmbedClient:
             return {"status": "error", "detail": str(exc), "model_loaded": False}
 
     def encode(self, texts: list[str], batch_size: int = 32, show_progress: bool = False) -> list[list[float]]:
-        """Generate passage embeddings. Returns zero vectors on server failure."""
+        """Generate passage embeddings. Raises on server failure to prevent zero-vector poisoning."""
         if not texts:
             return []
         try:
@@ -79,21 +80,33 @@ class EmbedClient:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as exc:
-            logger.warning("EmbedClient.encode: server error %s; returning zero vectors", exc.response.status_code)
-            return [[0.0] * EMBEDDING_DIM for _ in texts]
+            logger.error("EmbedClient.encode: server error %s", exc.response.status_code)
+            raise RuntimeError(f"Embed server returned {exc.response.status_code}") from exc
         except Exception as exc:
-            logger.warning("EmbedClient.encode: server unreachable (%s); returning zero vectors", exc)
-            return [[0.0] * EMBEDDING_DIM for _ in texts]
+            logger.error("EmbedClient.encode: server unreachable (%s)", exc)
+            raise RuntimeError(f"Embed server unreachable: {exc}") from exc
 
     def encode_single(self, text: str) -> list[float]:
-        """Generate a passage embedding for a single text."""
+        """Generate a passage embedding for a single text. Raises on server failure."""
         if not text or not text.strip():
             return [0.0] * EMBEDDING_DIM
-        result = self.encode([text])
-        return result[0] if result else [0.0] * EMBEDDING_DIM
+        try:
+            resp = httpx.post(
+                f"{_base_url()}/embed",
+                json={"texts": [text], "batch_size": 1},
+                timeout=_SINGLE_ENCODE_TIMEOUT,
+            )
+            resp.raise_for_status()
+            return resp.json()[0]
+        except httpx.HTTPStatusError as exc:
+            logger.error("EmbedClient.encode_single: server error %s", exc.response.status_code)
+            raise RuntimeError(f"Embed server returned {exc.response.status_code}") from exc
+        except Exception as exc:
+            logger.error("EmbedClient.encode_single: server unreachable (%s)", exc)
+            raise RuntimeError(f"Embed server unreachable: {exc}") from exc
 
     def encode_query(self, text: str) -> list[float]:
-        """Generate a query embedding (uses 'query:' prefix internally)."""
+        """Generate a query embedding (uses 'query:' prefix internally). Raises on server failure."""
         if not text or not text.strip():
             return [0.0] * EMBEDDING_DIM
         try:
@@ -105,11 +118,11 @@ class EmbedClient:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as exc:
-            logger.warning("EmbedClient.encode_query: server error %s; returning zero vector", exc.response.status_code)
-            return [0.0] * EMBEDDING_DIM
+            logger.error("EmbedClient.encode_query: server error %s", exc.response.status_code)
+            raise RuntimeError(f"Embed server returned {exc.response.status_code}") from exc
         except Exception as exc:
-            logger.warning("EmbedClient.encode_query: server unreachable (%s); returning zero vector", exc)
-            return [0.0] * EMBEDDING_DIM
+            logger.error("EmbedClient.encode_query: server unreachable (%s)", exc)
+            raise RuntimeError(f"Embed server unreachable: {exc}") from exc
 
     async def encode_async(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """Async wrapper — runs encode() in a thread pool."""

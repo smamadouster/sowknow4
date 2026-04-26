@@ -11,7 +11,6 @@ from typing import Any
 
 from app.services.agent_identity import VERIFIER_IDENTITY
 from app.services.minimax_service import minimax_service
-from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +60,7 @@ class VerificationAgent:
     """
 
     def __init__(self):
-        self.ollama_service = ollama_service
         self.minimax_service = minimax_service
-
-    def _has_confidential_documents(self, sources: list[dict[str, Any]]) -> bool:
-        """Check if any sources contain confidential documents"""
-        if not sources:
-            return False
-        return any(source.get("document_bucket") == "confidential" for source in sources)
 
     async def verify(self, request: VerificationRequest) -> VerificationResult:
         """
@@ -80,11 +72,8 @@ class VerificationAgent:
         Returns:
             Verification result with evidence and confidence
         """
-        # Determine which LLM to use based on document confidentiality
-        self._use_ollama = self._has_confidential_documents(request.sources)
-        if self._use_ollama:
-            logger.info("VerificationAgent: Using Ollama for confidential documents")
-        self._llm_service = self.ollama_service if self._use_ollama else self.minimax_service
+        # Always use MiniMax
+        self._llm_service = self.minimax_service
 
         try:
             # Step 1: Analyze the claim
@@ -131,8 +120,8 @@ class VerificationAgent:
             # Step 6: Generate notes
             notes = await self._generate_verification_notes(request.claim, supporting, contradicting, reliability)
 
-            # Determine which LLM was used
-            llm_used = "ollama" if self._use_ollama else "minimax"
+            # MiniMax is always used
+            llm_used = "minimax"
 
             return VerificationResult(
                 claim=request.claim,

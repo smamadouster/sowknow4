@@ -306,9 +306,6 @@ def system_health_check() -> dict:
     Returns:
         dict with system health status
     """
-    import os
-
-    import httpx
     import redis
 
     from app.services.cache_monitor import cache_monitor
@@ -361,26 +358,6 @@ def system_health_check() -> dict:
                 "message": str(e),
             }
             health_status["overall_status"] = "degraded"
-
-        # Check Ollama connection
-        try:
-            ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-            response = httpx.get(f"{ollama_url}/api/tags", timeout=5)
-            if response.status_code == 200:
-                health_status["checks"]["ollama"] = {
-                    "status": "healthy",
-                    "message": "Ollama accessible",
-                }
-            else:
-                health_status["checks"]["ollama"] = {
-                    "status": "degraded",
-                    "message": f"Status {response.status_code}",
-                }
-        except Exception as e:
-            health_status["checks"]["ollama"] = {
-                "status": "unhealthy",
-                "message": str(e),
-            }
 
         # Check queue depth
         try:
@@ -737,11 +714,13 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
                         except Exception:
                             pass
 
+                    error_msg = f"Failed to queue after {MAX_RECOVERY_ATTEMPTS} attempts"
                     doc.status = DocumentStatus.ERROR
                     doc.document_metadata = {
                         **existing_meta,
                         "pending_recovery_count": recovery_count,
-                        "recovery_error": f"Failed to queue after {MAX_RECOVERY_ATTEMPTS} attempts",
+                        "recovery_error": error_msg,
+                        "processing_error": error_msg,
                         "actual_error": actual_error or "No traceback available",
                     }
                     db.commit()
@@ -948,10 +927,12 @@ def fail_stuck_processing_documents(max_processing_minutes: int = 30) -> dict:
                     pass
 
             existing_meta = doc.document_metadata or {}
+            error_msg = f"Processing stuck > {max_processing_minutes} minutes, task {'not found in broker' if celery_task_id else 'never queued'}"
             doc.status = DocumentStatus.ERROR
             doc.document_metadata = {
                 **existing_meta,
-                "failure_reason": f"Processing stuck > {max_processing_minutes} minutes, task {'not found in broker' if celery_task_id else 'never queued'}",
+                "failure_reason": error_msg,
+                "processing_error": error_msg,
                 "failed_at": datetime.now(UTC).isoformat(),
                 "actual_error": actual_error or "No traceback available",
             }

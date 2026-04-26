@@ -44,7 +44,6 @@ from app.services.intent_parser import (
     intent_parser_service,
 )
 from app.services.minimax_service import minimax_service
-from app.services.ollama_service import ollama_service
 from app.services.search_cache import SearchCache
 from app.services.search_service import search_service
 
@@ -58,7 +57,6 @@ class CollectionService:
         self.intent_parser = intent_parser_service
         self.search_service = search_service
         self.minimax_service = minimax_service
-        self.ollama_service = ollama_service
 
     def _get_user_visibility_filter(self, user: User) -> list[CollectionVisibility]:
         """Get allowed collection visibility levels for user"""
@@ -83,17 +81,11 @@ class CollectionService:
         Returns:
             Created Collection object
         """
-        # Determine if user has access to confidential documents (for LLM routing)
-        use_ollama = hasattr(user, "role") and user.role in [
-            UserRole.ADMIN,
-            UserRole.SUPERUSER,
-        ]
-
         # Parse intent from natural language query
         parsed_intent = await self.intent_parser.parse_intent(
             query=collection_data.query,
             user_language="en",  # TODO: Get from user profile
-            use_ollama=use_ollama,
+            use_ollama=False,
         )
 
         # Gather documents based on parsed intent
@@ -264,14 +256,8 @@ class CollectionService:
         Returns:
             Preview data with intent and documents
         """
-        # Determine if user has access to confidential documents (for LLM routing)
-        use_ollama = hasattr(user, "role") and user.role in [
-            UserRole.ADMIN,
-            UserRole.SUPERUSER,
-        ]
-
         # Parse intent
-        parsed_intent = await self.intent_parser.parse_intent(query=query, use_ollama=use_ollama)
+        parsed_intent = await self.intent_parser.parse_intent(query=query, use_ollama=False)
 
         # Gather documents
         documents = await self._gather_documents_for_intent(intent=parsed_intent, user=user, db=db)
@@ -729,18 +715,7 @@ Summarize what this collection contains and its key themes. Be specific about th
         Returns:
             Generated summary text
 
-        SECURITY: Routes to Ollama for confidential documents, MiniMax/Kimi for public only
         """
-        # Check for confidential documents - PRIVACY FIRST
-        has_confidential = any(doc.bucket == DocumentBucket.CONFIDENTIAL for doc in documents)
-
-        # Build document list for AI (filenames only for privacy)
-        doc_list = "\n".join(
-            [f"- {doc.filename} (created: {doc.created_at.strftime('%Y-%m-%d')})" for doc in documents]
-        )
-
-        entities_str = ", ".join([e["name"] for e in parsed_intent.entities]) if parsed_intent.entities else "None"
-
         collection_system_prompt = build_service_prompt(
             service_name="SOWKNOW Collection Service",
             mission="Create and manage smart collections of documents with AI-powered grouping and summarization",
@@ -752,12 +727,17 @@ Summarize what this collection contains and its key themes. Be specific about th
             task_prompt="Summarize document collections concisely in 2-3 sentences, describing contents and key themes.",
         )
 
+        # Build document list for AI (filenames only for privacy)
+        doc_list = "\n".join(
+            [f"- {doc.filename} (created: {doc.created_at.strftime('%Y-%m-%d')})" for doc in documents]
+        )
+
+        entities_str = ", ".join([e["name"] for e in parsed_intent.entities]) if parsed_intent.entities else "None"
+
         try:
-            if has_confidential:
-                # Use Ollama for confidential collections - keeps data local
-                logger.info(f"Collection summary using Ollama (confidential documents detected) for: {collection_name}")
+            logger.info(f"Collection summary using OpenRouter for: {collection_name}")
 
-                prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
+            prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
 
 Query: "{query}"
 
@@ -768,46 +748,24 @@ Entities found: {entities_str}
 
 Generate a concise summary describing what this collection contains and its key themes."""
 
-                response = await self.ollama_service.generate(
-                    prompt=prompt,
-                    system=collection_system_prompt,
-                    temperature=0.5,
-                )
-                return response.strip()
-            else:
-                # Use OpenRouter (MiniMax) for public collections - cost optimized
-                logger.info(f"Collection summary using OpenRouter (public documents only) for: {collection_name}")
+            messages = [
+                {
+                    "role": "system",
+                    "content": collection_system_prompt,
+                },
+                {"role": "user", "content": prompt},
+            ]
 
-                prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
+            response_parts = []
+            from app.services.openrouter_service import openrouter_service
 
-Query: "{query}"
+            async for chunk in openrouter_service.chat_completion(
+                messages=messages, stream=False, temperature=0.5, max_tokens=500
+            ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    response_parts.append(chunk)
 
-Documents in collection:
-{doc_list}
-
-Entities found: {entities_str}
-
-Generate a concise summary describing what this collection contains and its key themes."""
-
-                messages = [
-                    {
-                        "role": "system",
-                        "content": collection_system_prompt,
-                    },
-                    {"role": "user", "content": prompt},
-                ]
-
-                response_parts = []
-                # Use OpenRouter to route to MiniMax/Kimi for public documents
-                from app.services.openrouter_service import openrouter_service
-
-                async for chunk in openrouter_service.chat_completion(
-                    messages=messages, stream=False, temperature=0.5, max_tokens=500
-                ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                        response_parts.append(chunk)
-
-                return "".join(response_parts).strip()
+            return "".join(response_parts).strip()
 
         except Exception as e:
             logger.error(f"Failed to generate collection summary: {e}")

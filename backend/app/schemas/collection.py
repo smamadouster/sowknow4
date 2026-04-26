@@ -224,6 +224,7 @@ class SmartFolderGenerateRequest(BaseModel):
 
 class SmartFolderResponse(BaseModel):
     collection_id: UUID
+    topic: str
     generated_content: str
     sources_used: list[dict[str, Any]]
     word_count: int

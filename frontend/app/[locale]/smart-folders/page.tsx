@@ -38,6 +38,10 @@ export default function SmartFoldersPage() {
   const [error, setError] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'error' | 'success'} | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskStatus, setTaskStatus] = useState<string | null>(null);
+  const [reportTaskId, setReportTaskId] = useState<string | null>(null);
+  const [reportTaskStatus, setReportTaskStatus] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;
@@ -45,6 +49,8 @@ export default function SmartFoldersPage() {
     setGenerating(true);
     setError(null);
     setResult(null);
+    setTaskId(null);
+    setTaskStatus(null);
 
     try {
       const response = await fetch(
@@ -65,18 +71,55 @@ export default function SmartFoldersPage() {
       );
 
       if (response.ok) {
-        const data: GeneratedFolder = await response.json();
-        setResult(data);
+        const data = await response.json();
+        setTaskId(data.task_id);
+        setTaskStatus("pending");
       } else {
         const errorData = await response.json();
         setError(errorData.detail || tDocuments('upload_error'));
+        setGenerating(false);
       }
     } catch (err) {
       setError(tDocuments('upload_error'));
-    } finally {
       setGenerating(false);
     }
   };
+
+  // Poll for task status
+  useEffect(() => {
+    if (!taskId || !generating) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/v1/smart-folders/generate/status/${taskId}`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+
+        const data = await res.json();
+        setTaskStatus(data.status);
+
+        if (data.status === "completed") {
+          setResult(data.result as GeneratedFolder);
+          setGenerating(false);
+          setTaskId(null);
+        } else if (data.status === "failed") {
+          setError(data.error || tDocuments('upload_error'));
+          setGenerating(false);
+          setTaskId(null);
+        }
+      } catch {
+        setError(t('poll_error'));
+        setGenerating(false);
+        setTaskId(null);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 2500);
+    return () => clearInterval(interval);
+  }, [taskId, generating]);
 
   const viewCollection = () => {
     if (result) {
@@ -89,6 +132,8 @@ export default function SmartFoldersPage() {
 
     setExportLoading(true);
     setToast(null);
+    setReportTaskId(null);
+    setReportTaskStatus(null);
 
     try {
       const response = await fetch(
@@ -111,33 +156,69 @@ export default function SmartFoldersPage() {
 
       if (response.ok) {
         const data = await response.json();
-        
-        if (data.content) {
-          setToast({ message: t('collections.export_success'), type: 'success' });
-          
-          const filename = `${result.topic.replace(/[^a-z0-9]/gi, '_')}_report.pdf`;
-          const blob = new Blob([data.content], { type: 'text/plain' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }
+        setReportTaskId(data.task_id);
+        setReportTaskStatus("pending");
       } else {
         const errorData = await response.json();
         setToast({ message: errorData.detail || t('export_error'), type: 'error' });
+        setExportLoading(false);
       }
     } catch (error) {
       console.error("Error exporting PDF:", error);
       setToast({ message: t('export_error'), type: 'error' });
-    } finally {
       setExportLoading(false);
-      setTimeout(() => setToast(null), 5000);
     }
   };
+
+  // Poll for report task status
+  useEffect(() => {
+    if (!reportTaskId || !exportLoading) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/v1/smart-folders/reports/status/${reportTaskId}`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+
+        const data = await res.json();
+        setReportTaskStatus(data.status);
+
+        if (data.status === "completed") {
+          setExportLoading(false);
+          setReportTaskId(null);
+          setToast({ message: t('export_success') || t('collections.export_success'), type: 'success' });
+
+          const report = data.result;
+          if (report?.content && result) {
+            const filename = `${result.topic.replace(/[^a-z0-9]/gi, '_')}_report.txt`;
+            const blob = new Blob([report.content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
+        } else if (data.status === "failed") {
+          setExportLoading(false);
+          setReportTaskId(null);
+          setToast({ message: data.error || t('export_error'), type: 'error' });
+        }
+      } catch {
+        setExportLoading(false);
+        setReportTaskId(null);
+        setToast({ message: t('export_error'), type: 'error' });
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 2500);
+    return () => clearInterval(interval);
+  }, [reportTaskId, exportLoading]);
 
   useEffect(() => {
     if (result?.collection_id) {
@@ -265,7 +346,11 @@ export default function SmartFoldersPage() {
               disabled={generating || !topic.trim()}
               className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
             >
-              {generating ? t('generating') : t('generate')}
+              {generating
+                ? taskStatus === "pending"
+                  ? t('queued')
+                  : t('processing')
+                : t('generate')}
             </button>
           </div>
         </div>
@@ -285,7 +370,7 @@ export default function SmartFoldersPage() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    {result.topic}
+                    {result.topic || t('untitled')}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {result.word_count} {t('word_count')} • {result.llm_used === "minimax" ? t('llm_minimax') : t('llm_ollama')}
@@ -300,7 +385,7 @@ export default function SmartFoldersPage() {
                   </button>
                   <button
                     onClick={handleExportPdf}
-                    disabled={exportLoading || result.sources_used.length === 0}
+                    disabled={exportLoading || (result.sources_used?.length ?? 0) === 0}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {exportLoading ? (
@@ -336,13 +421,13 @@ export default function SmartFoldersPage() {
             </div>
 
             {/* Sources */}
-            {result.sources_used.length > 0 && (
+            {(result.sources_used?.length ?? 0) > 0 && (
               <div className="p-6 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  {t('sources')} ({result.sources_used.length})
+                  {t('sources')} ({result.sources_used?.length ?? 0})
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {result.sources_used.map((source) => (
+                  {result.sources_used?.map((source) => (
                     <div
                       key={source.id}
                       className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600"

@@ -9,7 +9,6 @@ Tasks:
 
 import asyncio
 import logging
-import time
 import uuid
 
 import httpx
@@ -18,88 +17,6 @@ from celery import shared_task
 from app.tasks.base import log_task_memory
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Ollama circuit breaker -- prevents hammering an overloaded/dead service
-# ---------------------------------------------------------------------------
-
-class OllamaCircuitBreaker:
-    """Simple circuit breaker for Ollama.
-
-    States:
-      CLOSED  — normal, requests go through
-      OPEN    — Ollama is down/overloaded, reject immediately
-      HALF    — allow one probe request to check recovery
-
-    Opens after `failure_threshold` consecutive failures.
-    Stays open for `recovery_timeout` seconds before probing.
-    """
-
-    CLOSED = "closed"
-    OPEN = "open"
-    HALF_OPEN = "half_open"
-
-    def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 120):
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.state = self.CLOSED
-        self.failures = 0
-        self.last_failure_time = 0.0
-
-    def record_success(self):
-        self.failures = 0
-        self.state = self.CLOSED
-
-    def record_failure(self):
-        self.failures += 1
-        self.last_failure_time = time.monotonic()
-        if self.failures >= self.failure_threshold:
-            self.state = self.OPEN
-            logger.warning(
-                "Ollama circuit breaker OPEN after %d failures — "
-                "blocking requests for %ds",
-                self.failures, self.recovery_timeout,
-            )
-
-    def allow_request(self) -> bool:
-        if self.state == self.CLOSED:
-            return True
-        if self.state == self.OPEN:
-            elapsed = time.monotonic() - self.last_failure_time
-            if elapsed >= self.recovery_timeout:
-                self.state = self.HALF_OPEN
-                logger.info("Ollama circuit breaker HALF_OPEN — probing")
-                return True
-            return False
-        # HALF_OPEN: allow one probe
-        return True
-
-
-_ollama_breaker = OllamaCircuitBreaker()
-
-
-def _check_ollama_health() -> bool:
-    """Synchronous Ollama health probe (used inside Celery tasks)."""
-    from app.services.ollama_service import OLLAMA_BASE_URL
-
-    if not _ollama_breaker.allow_request():
-        logger.info("Ollama circuit breaker is OPEN — skipping health check")
-        return False
-
-    try:
-        resp = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=10.0)
-        resp.raise_for_status()
-        _ollama_breaker.record_success()
-        return True
-    except Exception as e:
-        _ollama_breaker.record_failure()
-        logger.warning("Ollama health check failed: %s", e)
-        return False
-
-
-class OllamaUnavailableError(Exception):
-    """Raised when Ollama is down and the circuit breaker is open."""
 
 
 @shared_task(
@@ -320,7 +237,7 @@ def backfill_articles() -> dict:
 
     Dispatches in batches of 10, staggered 60s apart.
     Public documents are prioritised first (fast cloud APIs),
-    then confidential documents (slower Ollama).
+    then confidential documents.
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentBucket, DocumentStatus
@@ -388,7 +305,7 @@ def _get_llm_service():
     """Get LLM service for article generation.
 
     All documents (public + confidential) route through cloud APIs for
-    reliability and speed.  Preference: OpenRouter → MiniMax → Ollama fallback.
+    reliability and speed.  Preference: OpenRouter → MiniMax.
     """
     try:
         from app.services.openrouter_service import openrouter_service
@@ -401,12 +318,6 @@ def _get_llm_service():
         from app.services.minimax_service import minimax_service
         if getattr(minimax_service, "api_key", None):
             return minimax_service, "minimax"
-    except Exception:
-        pass
-
-    try:
-        from app.services.ollama_service import ollama_service
-        return ollama_service, "ollama"
     except Exception:
         pass
 

@@ -64,6 +64,19 @@ def pipeline_sweeper() -> dict:
                     db.commit()
                     stuck_failed += 1
                     logger.error(f"Sweeper: permanently failed doc={ps.document_id} stage={stage.name}")
+
+                    # Mirror the error to Document so the status API can see it
+                    from app.models.document import Document
+
+                    doc = db.query(Document).filter(Document.id == ps.document_id).first()
+                    if doc:
+                        error_text = ps.error_message
+                        doc.pipeline_error = error_text[:500]
+                        meta = doc.document_metadata or {}
+                        meta["processing_error"] = error_text[:500]
+                        meta["last_error_at"] = datetime.now(UTC).isoformat()
+                        doc.document_metadata = meta
+                        db.commit()
                 else:
                     ps.status = StageStatus.PENDING
                     ps.error_message = f"Sweeper: reset from stuck RUNNING (attempt {ps.attempt})"
@@ -110,7 +123,75 @@ def pipeline_sweeper() -> dict:
                     # Stop dispatching this stage pair — queue is full
                     break
 
-        # ── 3. Backpressured new uploads: UPLOADED completed but OCR not started ──
+        # ── 3. Clean up premature ENRICHED rows (entities not done yet) ──
+        premature_deleted = 0
+        premature_enriched = (
+            db.query(PipelineStage)
+            .filter(
+                PipelineStage.stage == StageEnum.ENRICHED,
+                PipelineStage.status == StageStatus.PENDING,
+            )
+            .all()
+        )
+        for ps in premature_enriched:
+            entity_row = (
+                db.query(PipelineStage)
+                .filter(
+                    PipelineStage.document_id == ps.document_id,
+                    PipelineStage.stage == StageEnum.ENTITIES,
+                )
+                .first()
+            )
+            if not entity_row or entity_row.status != StageStatus.COMPLETED:
+                db.delete(ps)
+                premature_deleted += 1
+        if premature_deleted:
+            db.commit()
+            logger.info(f"Sweeper deleted {premature_deleted} premature ENRICHED rows")
+
+        # ── 4. Missing terminal rows: ENTITIES completed but no ENRICHED row ──
+        missing_enriched_dispatched = 0
+        from sqlalchemy import exists
+        from sqlalchemy.orm import aliased
+
+        EnrichedAlias = aliased(PipelineStage)
+        missing_enriched = (
+            db.query(PipelineStage.document_id)
+            .filter(
+                PipelineStage.stage == StageEnum.ENTITIES,
+                PipelineStage.status == StageStatus.COMPLETED,
+            )
+            .filter(
+                ~exists().where(
+                    and_(
+                        EnrichedAlias.stage == StageEnum.ENRICHED,
+                        EnrichedAlias.document_id == PipelineStage.document_id,
+                    )
+                ).correlate(PipelineStage)
+            )
+            .limit(500)
+            .all()
+        )
+
+        for (doc_id,) in missing_enriched:
+            # Create the missing row so the dashboard tracks it
+            row = PipelineStage(
+                document_id=doc_id,
+                stage=StageEnum.ENRICHED,
+                status=StageStatus.PENDING,
+                attempt=0,
+                max_attempts=3,
+            )
+            db.add(row)
+            db.commit()
+
+            result = dispatch_document(str(doc_id), from_stage=StageEnum.ENRICHED)
+            if result == "dispatched":
+                missing_enriched_dispatched += 1
+            elif result.startswith("backpressure"):
+                break
+
+        # ── 4. Backpressured new uploads: UPLOADED completed but OCR not started ──
         backpressure_dispatched = 0
         uploaded_done = (
             db.query(PipelineStage)
@@ -142,6 +223,8 @@ def pipeline_sweeper() -> dict:
             "stuck_resumed": stuck_resumed,
             "stuck_failed": stuck_failed,
             "stalled_dispatched": stalled_dispatched,
+            "premature_deleted": premature_deleted,
+            "missing_enriched_dispatched": missing_enriched_dispatched,
             "backpressure_dispatched": backpressure_dispatched,
         }
         logger.info(f"Sweeper completed: {metrics}")

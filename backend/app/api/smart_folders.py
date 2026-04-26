@@ -19,13 +19,8 @@ from app.models.audit import AuditAction, AuditLog
 from app.models.user import User
 from app.schemas.collection import (
     CollectionReportRequest,
-    CollectionReportResponse,
     SmartFolderGenerateRequest,
-    SmartFolderResponse,
 )
-from app.services.report_service import ReportFormat as ReportFormatService
-from app.services.report_service import report_service
-from app.services.smart_folder_service import smart_folder_service
 
 router = APIRouter(prefix="/smart-folders", tags=["smart-folders"])
 logger = logging.getLogger(__name__)
@@ -55,140 +50,188 @@ async def create_audit_log(
         logger.error(f"Audit logging failed: {str(e)}")
 
 
-@router.post("/generate", response_model=SmartFolderResponse)
+@router.post("/generate")
 async def generate_smart_folder(
     request: SmartFolderGenerateRequest,
     current_user: User = Depends(require_superuser_or_admin),
-    db: AsyncSession = Depends(get_db),
-) -> SmartFolderResponse:
+) -> dict[str, Any]:
     """
-    Generate a Smart Folder with AI-created content
+    Queue a Smart Folder generation task
 
-    Creates a new collection with AI-generated article/content based on
-    the provided topic and documents gathered from the user's vault.
+    Enqueues an asynchronous Celery task that will:
+      1. Search for relevant documents
+      2. Generate AI content via MiniMax/OpenRouter
+      3. Create a new Collection of type FOLDER
+
+    Returns immediately with a task_id. Poll GET /generate/status/{task_id}
+    to retrieve the result.
 
     - **topic**: The subject to generate content about
-    - **include_confidential**: Include confidential documents (admin only)
     - **style**: Writing style (informative, creative, professional, casual)
     - **length**: Content length (short, medium, long)
     """
-    # Auto-include confidential docs based on user's RBAC role
+    from app.tasks.smart_folder_tasks import generate_smart_folder_task
+
     include_confidential = current_user.can_access_confidential
 
     try:
-        result = await smart_folder_service.generate_smart_folder(
+        task = generate_smart_folder_task.delay(
             topic=request.topic,
             style=request.style,
             length=request.length,
             include_confidential=include_confidential,
-            user=current_user,
-            db=db,
+            user_id=str(current_user.id),
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to queue smart folder generation: %s",
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to queue generation task. Please try again later.",
         )
 
-        # AUDIT LOG: Log confidential document access in smart folder generation
-        if include_confidential and result.get("documents"):
-            confidential_docs = [
-                {"id": doc.get("id"), "filename": doc.get("filename")}
-                for doc in result["documents"]
-                if doc.get("bucket") == "confidential"
-            ]
-            if confidential_docs:
-                await create_audit_log(
-                    db=db,
-                    user_id=current_user.id,
-                    action=AuditAction.CONFIDENTIAL_ACCESSED,
-                    resource_type="smart_folder",
-                    resource_id=str(result.get("collection_id", "unknown")),
-                    details={
-                        "topic": request.topic,
-                        "confidential_document_count": len(confidential_docs),
-                        "confidential_documents": confidential_docs,
-                        "action": "generate_smart_folder",
-                    },
-                )
-                logger.info(
-                    f"CONFIDENTIAL_ACCESSED: User {current_user.email} accessed confidential documents in smart folder generation"
-                )
+    logger.info(
+        "Smart folder generation queued | task_id=%s user=%s topic=%s",
+        task.id,
+        current_user.email,
+        request.topic,
+    )
 
-        return SmartFolderResponse(**result)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Generation error: {str(e)}")
+    return {
+        "task_id": task.id,
+        "status": "pending",
+        "status_url": f"/api/v1/smart-folders/generate/status/{task.id}",
+        "message": f"Smart folder generation queued (task_id={task.id})",
+    }
 
 
-@router.post("/reports/generate", response_model=CollectionReportResponse)
-async def generate_collection_report(
-    request: CollectionReportRequest, current_user: User = Depends(require_superuser_or_admin), db: AsyncSession = Depends(get_db)
-) -> CollectionReportResponse:
+@router.get("/generate/status/{task_id}")
+async def get_smart_folder_status(
+    task_id: str,
+    current_user: User = Depends(require_superuser_or_admin),
+) -> dict[str, Any]:
     """
-    Generate a PDF report from a collection
+    Poll the status of an async Smart Folder generation task.
 
-    Creates a professional report in the specified format with analysis,
-    findings, recommendations, and citations.
+    States:
+      - **pending**:   Task is still in the queue or being processed.
+      - **completed**: Task finished successfully — `result` contains the
+                       SmartFolderResponse payload.
+      - **failed**:    Task raised an exception — `error` contains details.
+    """
+    from celery.result import AsyncResult
+
+    from app.celery_app import celery_app
+
+    result = AsyncResult(task_id, app=celery_app)
+
+    if result.state == "PENDING":
+        return {"task_id": task_id, "status": "pending", "result": None}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "completed", "result": result.result}
+    if result.state == "FAILURE":
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(result.info),
+        }
+
+    return {"task_id": task_id, "status": result.state.lower(), "result": None}
+
+
+@router.post("/reports/generate")
+async def generate_collection_report(
+    request: CollectionReportRequest,
+    current_user: User = Depends(require_superuser_or_admin),
+) -> dict[str, Any]:
+    """
+    Queue a Collection Report generation task
+
+    Enqueues an asynchronous Celery task that will generate a professional
+    PDF report from the specified collection.
+
+    Returns immediately with a task_id. Poll GET /reports/status/{task_id}
+    to retrieve the result.
 
     - **collection_id**: The collection to generate report from
     - **format**: Report length (short, standard, comprehensive)
     - **include_citations**: Include document references
     - **language**: Report language (en, fr)
     """
-    # Map format enum
-    format_map = {
-        "short": ReportFormatService.SHORT,
-        "standard": ReportFormatService.STANDARD,
-        "comprehensive": ReportFormatService.COMPREHENSIVE,
-    }
-
-    report_format = format_map.get(request.format.value, ReportFormatService.STANDARD)
+    from app.tasks.collection_report_tasks import generate_collection_report_task
 
     try:
-        result = await report_service.generate_report(
-            collection_id=request.collection_id,
-            format=report_format,
+        task = generate_collection_report_task.delay(
+            collection_id=str(request.collection_id),
+            report_format=request.format.value,
             include_citations=request.include_citations,
             language=request.language,
-            user=current_user,
-            db=db,
+            user_id=str(current_user.id),
         )
-
-        # AUDIT LOG: Log confidential document access in report generation
-        if result.get("has_confidential"):
-            await create_audit_log(
-                db=db,
-                user_id=current_user.id,
-                action=AuditAction.CONFIDENTIAL_ACCESSED,
-                resource_type="report",
-                resource_id=str(request.collection_id),
-                details={
-                    "format": request.format.value,
-                    "language": request.language,
-                    "action": "generate_report",
-                    "has_confidential": True,
-                },
-            )
-            logger.info(
-                f"CONFIDENTIAL_ACCESSED: User {current_user.email} generated report with confidential documents"
-            )
-
-        return CollectionReportResponse(
-            report_id=UUID(result["report_id"]),
-            collection_id=request.collection_id,
-            format=request.format,
-            content=result["content"],
-            citations=result.get("citations", []),
-            generated_at=datetime.fromisoformat(result["generated_at"]),
-            file_url=result.get("file_url"),
+    except Exception as exc:
+        logger.error(
+            "Failed to queue collection report generation: %s",
+            exc,
+            exc_info=True,
         )
-
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Report generation error: {str(e)}"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to queue report generation. Please try again later.",
         )
 
+    logger.info(
+        "Collection report generation queued | task_id=%s user=%s collection=%s",
+        task.id,
+        current_user.email,
+        request.collection_id,
+    )
 
-from datetime import datetime
+    return {
+        "task_id": task.id,
+        "status": "pending",
+        "status_url": f"/api/v1/smart-folders/reports/status/{task.id}",
+        "message": f"Report generation queued (task_id={task.id})",
+    }
+
+
+@router.get("/reports/status/{task_id}")
+async def get_collection_report_status(
+    task_id: str,
+    current_user: User = Depends(require_superuser_or_admin),
+) -> dict[str, Any]:
+    """
+    Poll the status of an async Collection Report generation task.
+
+    States:
+      - **pending**:   Task is still in the queue or being processed.
+      - **completed**: Task finished successfully — `result` contains the
+                       CollectionReportResponse payload.
+      - **failed**:    Task raised an exception — `error` contains details.
+    """
+    from celery.result import AsyncResult
+
+    from app.celery_app import celery_app
+
+    result = AsyncResult(task_id, app=celery_app)
+
+    if result.state == "PENDING":
+        return {"task_id": task_id, "status": "pending", "result": None}
+    if result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "completed", "result": result.result}
+    if result.state == "FAILURE":
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(result.info),
+        }
+
+    return {"task_id": task_id, "status": result.state.lower(), "result": None}
+
+
+
 
 
 @router.get("/reports/templates")

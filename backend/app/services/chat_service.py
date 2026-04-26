@@ -5,22 +5,19 @@ LLM Routing Strategy:
 - Confidential chunks are stripped to metadata-only before reaching the LLM prompt
   (no document content ever leaves the server).
 - All queries (public and confidential) route through cloud LLMs via llm_router.
-- Fallback chain: MiniMax M2.7 (direct API) -> mistral-small-2603 (OpenRouter) -> Ollama
+- Fallback chain: MiniMax M2.7 (direct API) -> mistral-small-2603 (OpenRouter)
 """
 
 import asyncio
 import json
 import logging
-import os
 import re
 import time as _time
 from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import UUID
 
-import httpx
 from sqlalchemy import select
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.user import User
@@ -56,105 +53,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-# Configuration
-OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-
-# Model configurations
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-
-
-class OllamaService:
-    """Service for interacting with Ollama (local LLM)"""
-
-    def __init__(self):
-        self.base_url = OLLAMA_URL
-        self.model = OLLAMA_MODEL
-
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
-    async def chat_completion(
-        self,
-        messages: list[dict[str, str]],
-        stream: bool = False,
-        temperature: float = 0.7,
-        num_predict: int = 4096,
-    ) -> AsyncGenerator[str, None]:
-        """
-        Generate chat completion using Ollama
-
-        Args:
-            messages: List of message dicts with role and content
-            stream: Whether to stream the response
-            temperature: Sampling temperature
-            num_predict: Maximum tokens to generate
-
-        Yields:
-            Response text chunks if streaming
-        """
-        # Convert messages format for Ollama
-        ollama_messages = []
-        for msg in messages:
-            role_map = {"user": "user", "assistant": "assistant", "system": "system"}
-            ollama_messages.append(
-                {
-                    "role": role_map.get(msg.get("role", "user"), "user"),
-                    "content": msg.get("content", ""),
-                }
-            )
-
-        payload = {
-            "model": self.model,
-            "messages": ollama_messages,
-            "stream": stream,
-            "options": {"temperature": temperature, "num_predict": num_predict},
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                if stream:
-                    async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
-                        response.raise_for_status()
-
-                        async for line in response.aiter_lines():
-                            if line.strip():
-                                try:
-                                    data = json.loads(line)
-                                    if "message" in data:
-                                        content = data["message"].get("content", "")
-                                        if content:
-                                            yield content
-                                    elif "done" in data and data["done"]:
-                                        break
-                                except json.JSONDecodeError:
-                                    continue
-                else:
-                    response = await client.post(f"{self.base_url}/api/chat", json=payload)
-                    response.raise_for_status()
-                    result = response.json()
-
-                    content = result.get("message", {}).get("content", "")
-                    yield content
-
-        except httpx.HTTPError as e:
-            logger.error(f"Ollama error: {str(e)}")
-            yield "Error: Could not connect to Ollama service"
-
-    async def health_check(self) -> dict[str, Any]:
-        """Return Ollama reachability status."""
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{self.base_url}/api/tags")
-                response.raise_for_status()
-                return {"service": "ollama", "status": "healthy"}
-        except Exception as e:
-            return {"service": "ollama", "status": "unhealthy", "error": str(e)}
-
-
 class ChatService:
     """Service for managing chat sessions with RAG"""
 
     def __init__(self):
         self.openrouter_service = openrouter_service  # Fallback LLM
-        self.ollama_service = OllamaService()
         self.kimi_service = kimi_service  # For chatbot/telegram/general chat
         self.minimax_service = minimax_service  # Default LLM for RAG (direct API)
         self.max_context_messages = 20
@@ -421,10 +324,9 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
             if openrouter_service is not None:
                 llm_service = openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
+                routing_reason = "emergency_fallback"
             else:
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
-            routing_reason = "emergency_fallback"
+                raise RuntimeError("No LLM service available") from routing_err
 
         logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
@@ -534,10 +436,9 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
             if openrouter_service is not None:
                 llm_service = openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
+                routing_reason = "emergency_fallback"
             else:
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
-            routing_reason = "emergency_fallback"
+                raise RuntimeError("No LLM service available") from routing_err
 
         logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 

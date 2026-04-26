@@ -75,6 +75,7 @@ class SmartFolderService:
         if not documents:
             return {
                 "collection_id": str(uuid.uuid4()),
+                "topic": topic,
                 "generated_content": f"No relevant documents found for topic: {topic}",
                 "sources_used": [],
                 "word_count": 0,
@@ -83,6 +84,12 @@ class SmartFolderService:
 
         # Gather document context
         document_context = await self._build_document_context(documents, db)
+
+        # Commit the read transaction before the long-running LLM call.
+        # Holding a DB connection idle-in-transaction while waiting for an
+        # external API (60–120 s) causes PostgreSQL / proxy timeouts and
+        # leaves the connection in an invalid state (SQLAlchemy error 8s2b).
+        await db.commit()
 
         # Generate content using MiniMax, fallback to OpenRouter (Qwen) on failure
         generated = await self._generate_with_minimax(
@@ -148,6 +155,7 @@ class SmartFolderService:
                 {
                     "id": str(doc.id),
                     "filename": doc.filename,
+                    "bucket": doc.bucket.value if doc.bucket else "public",
                     "created_at": doc.created_at.isoformat(),
                 }
                 for doc in documents[:10]

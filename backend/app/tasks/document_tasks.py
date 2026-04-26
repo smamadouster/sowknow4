@@ -629,7 +629,11 @@ def on_process_document_failure(self, exc, task_id, args, kwargs, einfo) -> None
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if doc:
                 doc.status = DocumentStatus.ERROR
-                doc.metadata = {**(doc.metadata or {}), "failure_reason": str(exc)}
+                doc.pipeline_error = str(exc)[:500]
+                doc.document_metadata = {
+                    **(doc.document_metadata or {}),
+                    "processing_error": str(exc)[:500],
+                }
                 db.commit()
         finally:
             db.close()
@@ -677,7 +681,7 @@ def on_generate_embeddings_failure(self, exc, task_id, args, kwargs, einfo) -> N
     retry_backoff_max=120,
     soft_time_limit=600,
     time_limit=660,
-    rate_limit="1/m",  # Limit to 1/min so Ollama stays available for chat
+    rate_limit="1/m",
 )
 def extract_entities_for_document(self, document_id: str) -> dict:
     """

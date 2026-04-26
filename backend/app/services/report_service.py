@@ -2,8 +2,7 @@
 Report Generation Service for Smart Collections
 
 Generates PDF reports in Short/Standard/Comprehensive formats from collection
-data using OpenRouter/mistral-small-2603 (public documents) or Ollama (confidential documents) for
-analysis and synthesis.
+data using OpenRouter/mistral-small-2603 for analysis and synthesis.
 """
 
 import logging
@@ -20,7 +19,6 @@ from app.models.document import Document
 from app.models.user import User
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.ollama_service import ollama_service
 from app.services.openrouter_service import openrouter_service
 
 logger = logging.getLogger(__name__)
@@ -37,7 +35,6 @@ class ReportService:
 
     def __init__(self):
         self.openrouter_service = openrouter_service
-        self.ollama_service = ollama_service
 
     async def generate_report(
         self,
@@ -88,36 +85,7 @@ class ReportService:
         # Check for confidential documents
         has_confidential = any(item.document.bucket.value == "confidential" for item in items if item.document)
 
-        # Fetch working memory context block
-        _context_block: str | None = None
-        try:
-            _context_block = await get_cached_context_block(db)
-        except Exception:
-            pass
-
-        # Generate report content
-        if has_confidential:
-            report_content = await self._generate_report_with_ollama(
-                collection=collection,
-                document_context=document_context,
-                format=format,
-                include_citations=include_citations,
-                language=language,
-                context_block=_context_block,
-            )
-            llm_used = "ollama"
-        else:
-            report_content = await self._generate_report_with_openrouter(
-                collection=collection,
-                document_context=document_context,
-                format=format,
-                include_citations=include_citations,
-                language=language,
-                context_block=_context_block,
-            )
-            llm_used = "openrouter"
-
-        # Extract citations
+        # Extract citations while the session is still active
         citations = []
         if include_citations:
             citations = [
@@ -130,6 +98,30 @@ class ReportService:
                 for item in items[:10]
                 if item.document
             ]
+
+        # Fetch working memory context block
+        _context_block: str | None = None
+        try:
+            _context_block = await get_cached_context_block(db)
+        except Exception:
+            pass
+
+        # Commit the read transaction before the long-running LLM call.
+        # Holding a DB connection idle-in-transaction while waiting for an
+        # external API (up to 60 s) causes PostgreSQL / proxy timeouts and
+        # leaves the connection in an invalid state (SQLAlchemy error 8s2b).
+        await db.commit()
+
+        # Generate report content
+        report_content = await self._generate_report_with_openrouter(
+            collection=collection,
+            document_context=document_context,
+            format=format,
+            include_citations=include_citations,
+            language=language,
+            context_block=_context_block,
+        )
+        llm_used = "openrouter"
 
         # Generate report metadata
         report_metadata = {
@@ -304,65 +296,6 @@ Generate the complete report now:"""
 
         return "".join(response_parts).strip()
 
-    async def _generate_report_with_ollama(
-        self,
-        collection: Collection,
-        document_context: list[dict[str, Any]],
-        format: str,
-        include_citations: bool,
-        language: str,
-        context_block: str | None = None,
-    ) -> str:
-        """Generate report using Ollama for confidential collections"""
-
-        doc_list = "\n".join([f"- {doc['filename']}" for doc in document_context[:10]])
-
-        length_desc = {
-            ReportFormat.SHORT: "concise 1-2 page",
-            ReportFormat.STANDARD: "standard 3-5 page",
-            ReportFormat.COMPREHENSIVE: "detailed 6-10 page",
-        }.get(format, "standard 3-5 page")
-
-        prompt = f"""Generate a {length_desc} report about: {collection.name}
-
-Collection Query: {collection.query}
-Summary: {collection.ai_summary or "N/A"}
-
-Documents:
-{doc_list}
-
-Create a professional report with:
-- Executive Summary
-- Key Findings
-- Recommendations
-
-{"" if language == "en" else "Rédigez le rapport en français."}"""
-
-        try:
-            ollama_report_prompt = build_service_prompt(
-                service_name="SOWKNOW Report Service",
-                mission="Generate structured reports with sections, executive summaries, and formatted output from vault documents",
-                constraints=(
-                    "- You MUST structure reports with clear sections and headings\n"
-                    "- You MUST include an executive summary\n"
-                    "- You MUST cite source documents for all factual claims\n"
-                    "- You MUST NOT include confidential document content in cloud-generated reports"
-                ),
-                task_prompt="Create structured, insightful business reports from document collections.",
-            )
-            # Prepend working memory context block
-            if context_block:
-                ollama_report_prompt = context_block + "\n\n" + ollama_report_prompt
-
-            response = await self.ollama_service.generate(
-                prompt=prompt,
-                system=ollama_report_prompt,
-                temperature=0.5,
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Ollama report generation error: {e}")
-            return f"Report generation failed: {str(e)}"
 
     async def _generate_pdf_report(self, content: str, metadata: dict[str, Any], collection: Collection) -> str | None:
         """

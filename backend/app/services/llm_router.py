@@ -7,10 +7,9 @@ this module instead of embedding routing logic inline.
 
 Routing strategy
 ----------------
-* Confidential docs or PII detected → Ollama → OpenRouter → MiniMax
-  (Ollama preferred for privacy but removed 2026-04-14; OpenRouter is current fallback)
-* Public docs (RAG)                 → MiniMax M2.7 → OpenRouter (mistral-small-2603) → Ollama
-* General chat (no docs)            → MiniMax M2.7 → OpenRouter (mistral-small-2603) → Ollama
+* Confidential docs or PII detected → OpenRouter → MiniMax
+* Public docs (RAG)                 → OpenRouter (mistral-small-2603) → MiniMax
+* General chat (no docs)            → OpenRouter (mistral-small-2603) → MiniMax
 """
 
 import logging
@@ -32,7 +31,7 @@ class RoutingReason(StrEnum):
     PII_DETECTED = "pii_detected"
     PUBLIC_DOCS_RAG = "public_docs_rag"
     GENERAL_CHAT = "general_chat"
-    FINAL_FALLBACK = "final_fallback_ollama"
+    FINAL_FALLBACK = "final_fallback"
 
 
 class LLMProvider(StrEnum):
@@ -41,7 +40,6 @@ class LLMProvider(StrEnum):
     MINIMAX = "minimax"
     KIMI = "kimi"
     OPENROUTER = "openrouter"
-    OLLAMA = "ollama"
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +51,7 @@ class LLMProvider(StrEnum):
 class RoutingDecision:
     """Result of the LLM routing decision."""
 
-    provider_name: str  # e.g. "minimax", "ollama"
+    provider_name: str  # e.g. "minimax", "openrouter"
     reason: RoutingReason
     service: Any  # The actual service instance
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -76,9 +74,9 @@ class LLMRouter:
     # Fallback chains per routing scenario.
     # Each chain is an ordered list of provider names tried left-to-right.
     fallback_chains: dict[str, list[str]] = {
-        "confidential": ["ollama", "openrouter", "minimax"],
-        "public_docs": ["openrouter", "minimax", "ollama"],
-        "general_chat": ["openrouter", "minimax", "ollama"],
+        "confidential": ["openrouter", "minimax"],
+        "public_docs": ["openrouter", "minimax"],
+        "general_chat": ["openrouter", "minimax"],
     }
 
     def __init__(
@@ -87,13 +85,11 @@ class LLMRouter:
         minimax_service: Any = None,
         kimi_service: Any = None,
         openrouter_service: Any = None,
-        ollama_service: Any = None,
         pii_detection_service: Any = None,
     ) -> None:
         self._minimax = minimax_service
         self._kimi = kimi_service
         self._openrouter = openrouter_service
-        self._ollama = ollama_service
         self._pii = pii_detection_service
 
     # ------------------------------------------------------------------
@@ -175,8 +171,7 @@ class LLMRouter:
         caller) to skip the PII / bucket scan.  If omitted, sensitivity is
         detected from *query* and *context_chunks*.
 
-        Confidential queries prefer Ollama (local inference) but fall back to
-        OpenRouter and then MiniMax when Ollama is unavailable.
+        Confidential queries use OpenRouter, falling back to MiniMax.
         """
         context_chunks = context_chunks or []
 
@@ -187,32 +182,17 @@ class LLMRouter:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
-        # --- Confidential path: Ollama → OpenRouter → MiniMax ---
-        # Ollama is preferred for privacy (local inference), but since it was
-        # removed from infrastructure on 2026-04-14 we fall back to OpenRouter.
+        # --- Confidential path: OpenRouter → MiniMax ---
         if is_sensitive:
             reason = (
                 RoutingReason.CONFIDENTIAL_DOCS if "confidential" in sensitivity_reason else RoutingReason.PII_DETECTED
             )
             chain = [
-                ("ollama", self._ollama, lambda s: s is not None),
                 ("openrouter", self._openrouter, lambda s: s is not None),
                 ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
             ]
             for name, service, available in chain:
                 if available(service):
-                    if name == "ollama":
-                        health = await self._ollama.health_check()
-                        if health.get("status") != "healthy":
-                            logger.warning(f"Ollama unhealthy for confidential query: {health.get('error', 'unknown')}")
-                            continue
-                        logger.info(f"LLM routing → ollama ({reason.value})")
-                        return RoutingDecision(
-                            provider_name="ollama",
-                            reason=reason,
-                            service=self._ollama,
-                            metadata={"sensitivity_reason": sensitivity_reason, "ollama_health": health},
-                        )
                     logger.info(f"LLM routing → {name} ({reason.value})")
                     return RoutingDecision(
                         provider_name=name,
@@ -226,19 +206,17 @@ class LLMRouter:
         has_context = bool(context_chunks)
 
         if has_context:
-            # RAG query: OpenRouter → MiniMax → Ollama
+            # RAG query: OpenRouter → MiniMax
             chain = [
                 ("openrouter", self._openrouter, lambda s: s is not None),
                 ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
-                ("ollama", self._ollama, lambda s: s is not None),
             ]
             reason = RoutingReason.PUBLIC_DOCS_RAG
         else:
-            # General chat: OpenRouter → MiniMax → Ollama
+            # General chat: OpenRouter → MiniMax
             chain = [
                 ("openrouter", self._openrouter, lambda s: s is not None),
                 ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
-                ("ollama", self._ollama, lambda s: s is not None),
             ]
             reason = RoutingReason.GENERAL_CHAT
 
@@ -294,23 +272,13 @@ class LLMServiceAdapter:
         Dispatch to the underlying service's ``chat_completion``, translating
         parameter names as needed.
         """
-        if self._provider == "ollama":
-            # Ollama uses num_predict instead of max_tokens
-            async for chunk in self._service.chat_completion(
-                messages,
-                stream=stream,
-                temperature=temperature,
-                num_predict=max_tokens,
-            ):
-                yield chunk
-        else:
-            async for chunk in self._service.chat_completion(
-                messages,
-                stream=stream,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ):
-                yield chunk
+        async for chunk in self._service.chat_completion(
+            messages,
+            stream=stream,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            yield chunk
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +292,6 @@ def _build_router() -> LLMRouter:
     minimax_svc = None
     kimi_svc = None
     openrouter_svc = None
-    ollama_svc = None
     pii_svc = None
 
     try:
@@ -349,13 +316,6 @@ def _build_router() -> LLMRouter:
         logger.warning("LLMRouter: openrouter_service not available: %s", exc, exc_info=True)
 
     try:
-        from app.services.ollama_service import ollama_service as _ol
-
-        ollama_svc = _ol
-    except Exception as exc:
-        logger.warning("LLMRouter: ollama_service not available: %s", exc, exc_info=True)
-
-    try:
         from app.services.pii_detection_service import pii_detection_service as _pii
 
         pii_svc = _pii
@@ -366,7 +326,6 @@ def _build_router() -> LLMRouter:
         minimax_service=minimax_svc,
         kimi_service=kimi_svc,
         openrouter_service=openrouter_svc,
-        ollama_service=ollama_svc,
         pii_detection_service=pii_svc,
     )
 

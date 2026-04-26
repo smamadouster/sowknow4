@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.limiter import limiter
-from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
+from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.models.user import User
 from app.schemas.chat import (
     ChatMessageCreate,
@@ -30,18 +30,6 @@ from app.services.input_guard import input_guard
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-
-# Helper functions
-def determine_llm_provider(has_confidential: bool) -> LLMProvider:
-    """Determine which LLM to use based on document context.
-
-    Routes confidential queries to OLLAMA (privacy guarantee).
-    Public queries follow the llm_router fallback chain defined as:
-        "kimi" → "minimax" → "openrouter" → "ollama"
-    (see llm_router.fallback_chains["general_chat"]).
-    """
-    return LLMProvider.OLLAMA if has_confidential else LLMProvider.OPENROUTER
 
 
 @router.post("/sessions", response_model=ChatSessionResponse)

@@ -736,6 +736,11 @@ async def run_agentic_search(
     if should_synthesize:
         # Strip confidential chunk text before sending to cloud LLM
         synthesis_chunks = await _strip_confidential_chunks(all_chunks, db)
+
+        # Commit read transaction before LLM synthesis to avoid holding a
+        # DB connection idle-in-transaction during the external API call.
+        await db.commit()
+
         try:
             answer_synthesis, model_used = await asyncio.wait_for(
                 synthesize_answer(

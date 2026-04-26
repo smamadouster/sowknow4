@@ -90,7 +90,6 @@ class EntityExtractor:
             embedding_fn: async callable(text) -> list[float].
             llm_fn: async callable(prompt) -> str.
                     For LLM-assisted relationship extraction.
-                    Route to Kimi 2.5 for public, Ollama for confidential.
             spacy_model: spaCy model name. Use fr_core_news_lg for French,
                          en_core_web_trf for English.
         """

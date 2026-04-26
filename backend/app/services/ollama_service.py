@@ -23,16 +23,11 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
 if not os.getenv("OLLAMA_BASE_URL"):
-    # raise ValueError in strict mode; log warning in development so the service
-    # still starts with the default URL rather than crashing on import.
-    _env = os.getenv("APP_ENV", "development")
-    if _env == "production":
-        raise ValueError(
-            "OLLAMA_BASE_URL must be set in production. Add it to your .env file or docker-compose environment."
-        )
-    logger.warning(
-        "OLLAMA_BASE_URL not set — defaulting to http://ollama:11434. "
-        "Set OLLAMA_BASE_URL explicitly to suppress this warning."
+    # Ollama is optional — removed from docker-compose but code may still
+    # reference it lazily. Log once and continue with defaults.
+    logger.info(
+        "OLLAMA_BASE_URL not set — Ollama service is disabled. "
+        "Set OLLAMA_BASE_URL explicitly to re-enable."
     )
 
 

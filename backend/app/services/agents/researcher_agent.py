@@ -14,7 +14,6 @@ from typing import Any
 from app.services.agent_identity import RESEARCHER_IDENTITY
 from app.services.graph_rag_service import graph_rag_service
 from app.services.minimax_service import minimax_service
-from app.services.ollama_service import ollama_service
 from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
@@ -73,7 +72,6 @@ class ResearcherAgent:
     """
 
     def __init__(self):
-        self.ollama_service = ollama_service
         self.minimax_service = minimax_service
         self.search_service = search_service
         self.graph_rag_service = graph_rag_service
@@ -179,10 +177,7 @@ class ResearcherAgent:
         return any(finding.get("document_bucket") == "confidential" for finding in findings)
 
     def _get_llm_service(self, findings: list[dict[str, Any]]):
-        """Get appropriate LLM service based on document confidentiality"""
-        if self._has_confidential_documents(findings):
-            logger.info("Researcher: Using Ollama for confidential documents")
-            return self.ollama_service, "ollama"
+        """Get appropriate LLM service – always MiniMax."""
         return self.minimax_service, "minimax"
 
     async def research(self, request: ResearchQuery, user, db) -> ResearchResult:
@@ -253,8 +248,8 @@ class ResearcherAgent:
             # Step 3: Gather additional context
             context = await self._gather_context(search_query, findings, db)
 
-            # Determine which LLM was used based on document confidentiality
-            llm_used = "ollama" if self._has_confidential_documents(findings) else "minimax"
+            # MiniMax is always used
+            llm_used = "minimax"
 
             # Step 4: Identify gaps
             gaps = await self._identify_information_gaps(search_query, findings, context)
@@ -314,7 +309,7 @@ class ResearcherAgent:
             doc_type = finding.get("metadata", {}).get("document_type", "unknown")
             context["document_types"][doc_type] += 1
 
-        # Extract key themes using routed LLM (MiniMax for public, Ollama for confidential)
+        # Extract key themes using MiniMax
         try:
             themes = await self._extract_themes(query, findings)
             context["key_themes"] = themes

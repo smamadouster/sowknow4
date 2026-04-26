@@ -392,10 +392,10 @@ class TelegramBotClient:
             return {"error": str(e)}
 
     async def get_document_status(self, document_id: str, access_token: str) -> dict:
-        """Get the current status of a document"""
+        """Get the current processing status of a document"""
         try:
             response = await self._client.get(
-                f"/api/v1/documents/{document_id}",
+                f"/api/v1/documents/{document_id}/status",
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             response.raise_for_status()

@@ -203,7 +203,7 @@ class InputGuard:
         """Decide whether the query context is public or confidential.
 
         Rules (in priority order):
-          1. PII in query text -> confidential (forces Ollama routing).
+          1. PII in query text -> confidential.
           2. Any document_id marked confidential -> confidential.
           3. Otherwise -> public.
         """

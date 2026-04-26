@@ -527,7 +527,6 @@ async def get_extended_admin_stats(
         "database": "healthy",
         "redis": "unknown",
         "gemini": "unknown",
-        "ollama": "unknown",
     }
 
     try:
@@ -889,7 +888,6 @@ async def get_dashboard(
     health_status = {
         "database": "healthy",
         "redis": "unknown",
-        "ollama": "unknown",
         "kimi_api": "unknown",
     }
 
@@ -908,16 +906,6 @@ async def get_dashboard(
         health_status["redis"] = "healthy"
     except Exception:
         health_status["redis"] = "unhealthy"
-
-    try:
-        import httpx
-
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{ollama_url}/api/tags", timeout=2.0)
-            health_status["ollama"] = "healthy" if response.status_code == 200 else "degraded"
-    except Exception:
-        health_status["ollama"] = "unreachable"
 
     if os.getenv("KIMI_API_KEY"):
         health_status["kimi_api"] = "configured"

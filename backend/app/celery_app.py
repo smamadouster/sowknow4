@@ -44,6 +44,8 @@ celery_app = Celery(
         "app.tasks.pipeline_orchestrator",
         "app.tasks.pipeline_sweeper",
         "app.tasks.guardian_tasks",
+        "app.tasks.smart_folder_tasks",
+        "app.tasks.collection_report_tasks",
     ],
 )
 
@@ -95,8 +97,11 @@ celery_app.conf.update(
     result_expires=86400,  # 24 hours — document processing may be checked hours later
     # Reliability
     task_acks_late=True,
-    # Rate limiting (env-configurable)
-    task_default_rate_limit=os.getenv("CELERY_RATE_LIMIT", "10/m"),
+    # Rate limiting — disabled by default. Slow tasks (entity extraction, LLM
+    # calls) are naturally throttled by their own execution time. A global
+    # rate limit artificially starves fast pipeline stages (index, finalize)
+    # and causes massive queue build-up.
+    task_default_rate_limit=os.getenv("CELERY_RATE_LIMIT", None),
     # Task time limits (env-configurable)
     task_soft_time_limit=int(os.getenv("CELERY_SOFT_TIME_LIMIT", "300")),  # 5 min
     task_time_limit=_task_time_limit,

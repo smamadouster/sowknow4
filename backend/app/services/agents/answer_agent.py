@@ -11,7 +11,6 @@ from typing import Any
 
 from app.services.agent_identity import ANSWER_IDENTITY
 from app.services.minimax_service import minimax_service
-from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -63,21 +62,7 @@ class AnswerAgent:
     """
 
     def __init__(self):
-        self.ollama_service = ollama_service
         self.minimax_service = minimax_service
-
-    def _has_confidential_documents(self, findings: list[dict[str, Any]]) -> bool:
-        """Check if any findings contain confidential documents"""
-        if not findings:
-            return False
-        return any(finding.get("document_bucket") == "confidential" for finding in findings)
-
-    def _get_llm_service(self, findings: list[dict[str, Any]]):
-        """Get appropriate LLM service based on document confidentiality"""
-        if self._has_confidential_documents(findings):
-            logger.info("Answer: Using Ollama for confidential documents")
-            return self.ollama_service
-        return self.minimax_service
 
     async def generate_answer(self, request: AnswerRequest) -> AnswerResult:
         """
@@ -89,12 +74,8 @@ class AnswerAgent:
         Returns:
             Structured answer with sources and confidence
         """
-        # Determine which LLM to use based on document confidentiality
-        all_findings = request.research_findings + request.verification_results
-        self._use_ollama = self._has_confidential_documents(all_findings)
-        if self._use_ollama:
-            logger.info("AnswerAgent: Using Ollama for confidential documents")
-        self._llm_service = self.ollama_service if self._use_ollama else self.minimax_service
+        # Always use MiniMax
+        self._llm_service = self.minimax_service
 
         try:
             # Step 1: Analyze what type of answer is needed
@@ -128,8 +109,8 @@ class AnswerAgent:
             # Step 8: Calculate confidence
             confidence = self._calculate_answer_confidence(request.verification_results, generation_context)
 
-            # Determine which LLM was used
-            llm_used = "ollama" if self._use_ollama else "minimax"
+            # MiniMax is always used
+            llm_used = "minimax"
 
             return AnswerResult(
                 query=request.query,

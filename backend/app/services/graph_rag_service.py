@@ -31,15 +31,7 @@ class GraphRAGService:
 
     def __init__(self):
         self.minimax_service = minimax_service
-        self._ollama_service = None
         self._openrouter_service = None
-
-    def _get_ollama_service(self):
-        if self._ollama_service is None:
-            from app.services.ollama_service import ollama_service
-
-            self._ollama_service = ollama_service
-        return self._ollama_service
 
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
@@ -379,9 +371,6 @@ class GraphRAGService:
                 results = enhanced_results.get("results", [])
                 bucket = await self._extract_bucket_from_results(results, db)
 
-            # Determine LLM routing based on bucket
-            use_ollama = bucket == DocumentBucket.CONFIDENTIAL
-
             # Build context from graph
             graph_context = enhanced_results.get("graph_context", {})
             related_entities = enhanced_results.get("related_entities", [])
@@ -463,8 +452,8 @@ Key Principles:
             except Exception:
                 pass
 
-            # Get appropriate LLM service based on bucket
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            # Use OpenRouter for all documents
+            llm_service = self._get_openrouter_service()
 
             if stream:
                 return llm_service.chat_completion(messages=messages, stream=True, temperature=0.7, max_tokens=2048)

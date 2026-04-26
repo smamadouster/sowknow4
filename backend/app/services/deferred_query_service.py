@@ -1,26 +1,27 @@
 """
-Deferred Query Service — Ollama Unavailability Fallback.
+Deferred Query Service.
 
-When Ollama is down and a confidential query arrives, the query is enqueued
-here and retried once Ollama recovers.  Queries older than 24 hours are
+When a confidential query cannot be answered immediately, the query is
+enqueued here and retried later.  Queries older than 24 hours are
 automatically expired and cleaned up.
 
 Usage::
 
     from app.services.deferred_query_service import deferred_query_service
 
-    # Enqueue a query that could not be answered (Ollama was unavailable)
+    # Enqueue a query that could not be answered
     deferred_id = await deferred_query_service.enqueue(
         user_id=user_id,
         query_text=query,
         document_ids=[str(d.id) for d in docs],
     )
 
-    # Called by Celery beat / background task once Ollama recovers
+    # Called by Celery beat / background task
     await deferred_query_service.process_pending()
 """
 
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -68,7 +69,7 @@ class _InMemoryStore:
 
 class DeferredQueryService:
     """
-    Manage deferred (queued) LLM queries for when Ollama is unavailable.
+    Manage deferred (queued) LLM queries.
 
     Supports both an in-memory store (default) and can be extended to use
     the DeferredQuery SQLAlchemy model for persistence.
@@ -91,11 +92,14 @@ class DeferredQueryService:
         session_id: str | None = None,
     ) -> str:
         """
-        Enqueue a query that could not be processed because Ollama was down.
+        Enqueue a query that could not be processed.
 
         Returns the deferred query ID so the caller can inform the user.
         The query expires after 24 hours if not processed.
         """
+        if not os.getenv("OLLAMA_BASE_URL"):
+            raise ValueError("OLLAMA_BASE_URL is not set; deferred queries are disabled")
+
         now = datetime.utcnow()
         query_id = str(uuid4())
 
@@ -124,11 +128,15 @@ class DeferredQueryService:
 
     async def process_pending(self) -> dict[str, int]:
         """
-        Attempt to process all pending deferred queries using Ollama.
+        Attempt to process all pending deferred queries.
 
-        Called by a Celery periodic task once Ollama health is confirmed.
+        Called by a Celery periodic task.
         Returns counts of processed / failed / skipped queries.
         """
+        if not os.getenv("OLLAMA_BASE_URL"):
+            logger.warning("OLLAMA_BASE_URL is not set; skipping deferred query processing")
+            return {"processed": 0, "failed": 0, "expired": 0}
+
         # Expire stale queries first
         expired = self._store.expire_old()
         if expired:

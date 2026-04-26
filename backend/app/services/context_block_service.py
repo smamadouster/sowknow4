@@ -60,8 +60,7 @@ VAULT:
   Status: database unavailable — stats unknown
 
 ROUTING RULES:
-  Cloud LLMs (OpenRouter/MiniMax): Public documents only
-  Local LLM (Ollama): Confidential documents, PII queries
+  Cloud LLMs (OpenRouter/MiniMax): All documents
 """
 
 
@@ -170,8 +169,7 @@ async def _build_block(db: AsyncSession) -> str:
         f"  Format distribution: {format_dist or 'N/A'}",
         "",
         "ROUTING RULES:",
-        "  Cloud LLMs (OpenRouter/MiniMax): Public documents only",
-        "  Local LLM (Ollama): Confidential documents, PII queries",
+        "  Cloud LLMs (OpenRouter/MiniMax): All documents",
     ]
 
     return "\n".join(lines)

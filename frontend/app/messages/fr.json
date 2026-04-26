@@ -350,6 +350,9 @@
     "length_long": "Long",
     "include_confidential": "Inclure les documents confidentiels",
     "generating": "Génération...",
+    "queued": "En file d'attente...",
+    "processing": "Traitement...",
+    "poll_error": "Échec de la vérification du statut de génération",
     "generated_content": "Contenu généré",
     "sources": "Sources",
     "view_collection": "Voir la Collection",
@@ -357,6 +360,8 @@
     "word_count": "mots",
     "llm_gemini": "Généré avec Gemini Flash",
     "llm_ollama": "Généré avec Ollama",
+    "llm_minimax": "Généré avec MiniMax",
+    "untitled": "Sans titre",
     "export_pdf": "Exporter en PDF",
     "exporting_pdf": "Génération du PDF...",
     "export_error": "Échec de la génération du rapport PDF"

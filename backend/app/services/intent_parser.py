@@ -155,16 +155,7 @@ class IntentParserService:
         self._intent_prompt_template = self._get_intent_prompt_template()
 
         # Lazy imports for routing
-        self._ollama_service = None
         self._openrouter_service = None
-
-    def _get_ollama_service(self):
-        """Lazy load Ollama service"""
-        if self._ollama_service is None:
-            from app.services.ollama_service import ollama_service
-
-            self._ollama_service = ollama_service
-        return self._ollama_service
 
     def _get_openrouter_service(self):
         """Lazy load OpenRouter service"""
@@ -374,14 +365,13 @@ Now parse the user's query:"""
             raw_response="fallback_parsing",
         )
 
-    async def parse_intent(self, query: str, user_language: str = "en", use_ollama: bool = False) -> ParsedIntent:
+    async def parse_intent(self, query: str, user_language: str = "en") -> ParsedIntent:
         """
         Parse natural language query into structured intent
 
         Args:
             query: Natural language query from user
             user_language: User's preferred language (en/fr)
-            use_ollama: Whether to use Ollama (for confidential queries)
 
         Returns:
             ParsedIntent object with structured information
@@ -405,8 +395,7 @@ Now parse the user's query:"""
                 constraints=(
                     "- You MUST extract structured intent from natural language queries\n"
                     "- You MUST handle both French and English queries\n"
-                    "- You MUST identify temporal references and convert to date ranges\n"
-                    "- You MUST NOT expose query content to cloud LLMs when PII is detected"
+                    "- You MUST identify temporal references and convert to date ranges"
                 ),
                 task_prompt="You are a precise JSON-only intent parser. Respond only with valid JSON, no explanations or markdown.",
             )
@@ -427,20 +416,12 @@ Now parse the user's query:"""
                 stacklevel=2,
             )
             response_parts = []
-            if use_ollama:
-                llm_service = self._get_ollama_service()
-                async for chunk in llm_service.chat_completion(
-                    messages=messages, stream=False, temperature=0.3, num_predict=1024
-                ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                        response_parts.append(chunk)
-            else:
-                llm_service = self._get_openrouter_service()
-                async for chunk in llm_service.chat_completion(
-                    messages=messages, stream=False, temperature=0.3, max_tokens=1024
-                ):
-                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                        response_parts.append(chunk)
+            llm_service = self._get_openrouter_service()
+            async for chunk in llm_service.chat_completion(
+                messages=messages, stream=False, temperature=0.3, max_tokens=1024
+            ):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                    response_parts.append(chunk)
 
             response_text = "".join(response_parts).strip()
 

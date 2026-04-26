@@ -214,7 +214,8 @@ async def health():
 
     db_status = "disconnected"
     redis_status = "disconnected"
-    ollama_status = "disconnected"
+    ollama_url = os.getenv("OLLAMA_BASE_URL")
+    ollama_status = "disabled" if not ollama_url else "disconnected"
 
     try:
         with engine.connect() as conn:
@@ -232,16 +233,16 @@ async def health():
     except Exception as e:
         redis_status = f"error: {str(e)}"
 
-    try:
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
-            if response.status_code == 200:
-                ollama_status = "connected"
-            else:
-                ollama_status = f"error: {response.status_code}"
-    except Exception as e:
-        ollama_status = f"unavailable: {str(e)}"
+    if ollama_url:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{ollama_url}/api/tags", timeout=5.0)
+                if response.status_code == 200:
+                    ollama_status = "connected"
+                else:
+                    ollama_status = f"error: {response.status_code}"
+        except Exception as e:
+            ollama_status = f"unavailable: {str(e)}"
 
     overall_status = "healthy"
     if db_status != "connected" or redis_status != "connected":

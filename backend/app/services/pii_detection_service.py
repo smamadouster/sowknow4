@@ -2,7 +2,6 @@
 PII (Personally Identifiable Information) Detection Service
 
 Detects and redacts sensitive information to prevent PII from being sent to cloud APIs.
-Routes confidential documents to local Ollama when PII is detected.
 """
 
 import logging
@@ -17,7 +16,7 @@ class PIIDetectionService:
     Service for detecting and redacting PII in text content.
 
     Implements privacy-first architecture by detecting sensitive information
-    before it's sent to cloud APIs (Gemini Flash) and routing to local Ollama instead.
+    before it's sent to cloud APIs.
     """
 
     # Compiled regex patterns for PII detection
@@ -113,7 +112,7 @@ class PIIDetectionService:
         Initialize PII detection service.
 
         Args:
-            confidence_threshold: Number of PII matches needed to trigger routing to Ollama
+            confidence_threshold: Number of PII matches needed to trigger PII detection
         """
         self.confidence_threshold = confidence_threshold
 

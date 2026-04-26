@@ -244,19 +244,11 @@ class ArticleGenerationService:
         if not chunks:
             return []
 
-        # Adapt window size and concurrency for local vs cloud LLMs
-        is_local = provider_name == "ollama"
+        # Cloud-optimized settings for all providers
         MAX_WINDOWS = 50  # Cap to prevent huge docs from blocking workers for hours
-        if is_local:
-            # Local LLM: larger windows (fewer calls), sequential processing
-            window_size = 15
-            window_overlap = 3
-            concurrency = 1
-        else:
-            # Cloud LLM: larger windows for efficiency, parallel processing
-            window_size = 20
-            window_overlap = 5
-            concurrency = self.max_concurrent
+        window_size = 20
+        window_overlap = 5
+        concurrency = self.max_concurrent
 
         windows = self._create_windows(chunks, window_size, window_overlap)
         if len(windows) > MAX_WINDOWS:

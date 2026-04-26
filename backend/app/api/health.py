@@ -86,8 +86,10 @@ async def _check_nats() -> str:
 
 
 async def _check_ollama() -> str:
+    ollama_url = os.getenv("OLLAMA_BASE_URL")
+    if not ollama_url:
+        return "disabled"
     try:
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{ollama_url}/api/tags",

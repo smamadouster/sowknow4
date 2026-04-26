@@ -8,7 +8,6 @@ Ensures consistent WHY/WHO/HOW framework and vault protocol across all LLM inter
 
 VAULT_PROTOCOL = """## Vault Protocol
 - Documents marked CONFIDENTIAL must NEVER be referenced in responses routed through cloud LLMs (OpenRouter, MiniMax)
-- If the query context includes confidential documents, you MUST flag this for Ollama routing
 - NEVER include document IDs, file paths, or raw content from confidential documents in your output
 - Log every routing decision for audit"""
 

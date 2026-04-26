@@ -163,14 +163,54 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
         backoff_list = retry_cfg.get("backoff", [30, 60, 120])
 
         if attempts >= max_attempts:
-            update_stage(document_id, stage, StageStatus.FAILED, error=str(exc))
+            error_text = str(exc)
+            update_stage(document_id, stage, StageStatus.FAILED, error=error_text)
+
+            # Also write to Document so the status API can surface the error
+            # without needing to query PipelineStage.
+            from app.database import SessionLocal
+            from app.models.document import Document
+
+            db = SessionLocal()
+            try:
+                doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+                doc = db.query(Document).filter(Document.id == doc_uuid).first()
+                if doc:
+                    doc.pipeline_error = error_text[:500]
+                    meta = doc.document_metadata or {}
+                    meta["processing_error"] = error_text[:500]
+                    meta["last_error_at"] = datetime.now(UTC).isoformat()
+                    doc.document_metadata = meta
+                    db.commit()
+            finally:
+                db.close()
+
             logger.error(
                 "Stage %s exhausted %d attempts for doc %s — rejecting task",
                 stage,
                 max_attempts,
                 document_id,
             )
-            raise Reject(str(exc), requeue=False)
+
+            # Write to Dead Letter Queue for observability
+            try:
+                import traceback as _tb
+                from app.services.dlq_service import DeadLetterQueueService
+
+                DeadLetterQueueService.store_failed_task(
+                    task_name=self.name,
+                    task_id=self.request.id or "unknown",
+                    args=(document_id,),
+                    kwargs={},
+                    exception=exc,
+                    traceback_str=_tb.format_exc(),
+                    retry_count=attempts,
+                    extra_metadata={"document_id": document_id, "stage": stage.value},
+                )
+            except Exception:
+                logger.exception("DLQ write failed for doc %s stage %s", document_id, stage)
+
+            raise Reject(error_text, requeue=False)
 
         # Determine backoff countdown (use list index, capped at last value)
         backoff_idx = min(attempts - 1, len(backoff_list) - 1)
@@ -217,14 +257,46 @@ def _run_ocr(document_id: str) -> None:
 
         if should_ocr:
             logger.info("OCR needed for doc %s: %s", document_id, reason)
-            ocr_result = asyncio.run(ocr_service._extract_full(file_path))
-            extracted_text = ocr_result.get("text", "")
+
+            if doc.mime_type == "application/pdf":
+                import os as _os
+                import tempfile
+
+                images = asyncio.run(text_extractor.extract_images_from_pdf(file_path))
+                ocr_texts = []
+                for i, page_bytes in enumerate(images):
+                    tmp_path = None
+                    try:
+                        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                            tmp.write(page_bytes)
+                            tmp_path = tmp.name
+                        ocr_result = asyncio.run(ocr_service._extract_full(tmp_path))
+                    finally:
+                        if tmp_path and _os.path.exists(tmp_path):
+                            _os.unlink(tmp_path)
+                    if ocr_result.get("text"):
+                        ocr_texts.append(f"[Image Page {i + 1}] {ocr_result['text']}")
+                extracted_text = "\n\n".join(ocr_texts)
+            else:
+                ocr_result = asyncio.run(ocr_service._extract_full(file_path))
+                extracted_text = ocr_result.get("text", "")
+
             doc.ocr_processed = True
 
         # Write sidecar .txt file
         txt_path = file_path + ".txt"
         with open(txt_path, "w", encoding="utf-8") as fh:
             fh.write(extracted_text or "")
+
+        if not extracted_text:
+            logger.warning(
+                "No text extracted for doc %s (%s). Document will proceed but may produce 0 chunks.",
+                document_id,
+                doc.mime_type,
+            )
+            meta = doc.document_metadata or {}
+            meta["extraction_empty"] = True
+            doc.document_metadata = meta
 
         doc.page_count = page_count or 1
         db.commit()
@@ -265,6 +337,20 @@ def _run_chunk(document_id: str) -> None:
 
         chunks = chunking_service.chunk_document(text, document_id=document_id)
 
+        if len(chunks) > CHUNK_COUNT_MAX:
+            error_msg = f"Too many chunks ({len(chunks)} > {CHUNK_COUNT_MAX}) — document rejected to prevent queue starvation"
+            logger.error("Doc %s: %s", document_id, error_msg)
+            from app.models.document import DocumentStatus
+
+            doc.status = DocumentStatus.ERROR
+            doc.pipeline_error = error_msg
+            meta = doc.document_metadata or {}
+            meta["processing_error"] = error_msg
+            meta["last_error_at"] = datetime.now(UTC).isoformat()
+            doc.document_metadata = meta
+            db.commit()
+            return
+
         # Delete existing chunks to allow re-runs
         db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid).delete()
 
@@ -290,6 +376,8 @@ def _run_chunk(document_id: str) -> None:
 
 
 EMBED_CHUNK_CAP = int(os.getenv("EMBED_CHUNK_CAP", "64"))
+GRAPH_CHUNK_CAP = int(os.getenv("GRAPH_CHUNK_CAP", "20"))
+CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "5000"))
 
 
 def _run_embed(document_id: str) -> None:
@@ -308,6 +396,11 @@ def _run_embed(document_id: str) -> None:
         doc = db.query(Document).filter(Document.id == doc_uuid).first()
         if doc is None:
             raise ValueError(f"Document {document_id} not found")
+
+        # Preflight: fail fast if embed-server is unreachable so we retry
+        # instead of silently poisoning chunks with zero vectors.
+        if not embedding_service.can_embed:
+            raise RuntimeError("Embed server is not healthy")
 
         # Only fetch chunks that still need embeddings
         chunks = (
@@ -394,8 +487,13 @@ def _run_index(document_id: str) -> None:
         if chunk_count > 0:
             doc.status = DocumentStatus.INDEXED
         else:
+            error_msg = "No chunks generated — document may have no extractable text"
             doc.status = DocumentStatus.ERROR
-            doc.pipeline_error = "No chunks generated — document may have no extractable text"
+            doc.pipeline_error = error_msg
+            doc.document_metadata = {
+                **(doc.document_metadata or {}),
+                "processing_error": error_msg,
+            }
 
         db.commit()
         logger.info("Indexed doc %s (chunks=%d)", document_id, chunk_count)
@@ -449,16 +547,25 @@ def _run_entities(document_id: str) -> None:
         # Step 1: LLM-based entity extraction (sync DB, async LLM call only)
         entity_extraction_service.extract_entities_from_document_sync(doc, chunks, db)
 
-        # Step 2: Graph extraction — wrapped in try/except so it doesn't
-        # kill the whole task if the graph pipeline has issues
+        # Step 2: Graph extraction — capped to GRAPH_CHUNK_CAP chunks to keep
+        # task runtime reasonable. Large documents can generate thousands of
+        # edges and starve the queue.
         bucket = doc.bucket.value if hasattr(doc.bucket, "value") else str(doc.bucket)
+        graph_chunks = chunks[:GRAPH_CHUNK_CAP]
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                loop.run_until_complete(_graph_extract_document(document_id, chunks, bucket))
+                loop.run_until_complete(
+                    asyncio.wait_for(
+                        _graph_extract_document(document_id, graph_chunks, bucket),
+                        timeout=120,  # cap graph extraction to prevent 391s tasks
+                    )
+                )
             finally:
                 loop.close()
+        except asyncio.TimeoutError:
+            logger.warning("Graph extraction timed out for doc %s (cap=120s); skipping", document_id)
         except Exception as e:
             logger.warning("Graph extraction failed for doc %s: %s", document_id, e)
 
@@ -595,11 +702,8 @@ def entity_stage(self, document_id: str) -> str:
     return _stage_task(self, document_id, StageEnum.ENTITIES, _run_entities)
 
 
-@celery_app.task(name="pipeline.finalize_stage", acks_late=True)
-def finalize_stage(document_id: str) -> str:
-    """Mark document as fully enriched — terminal stage, no retries."""
-    update_stage(document_id, StageEnum.ENRICHED, StageStatus.COMPLETED)
-
+def _run_finalize(document_id: str) -> None:
+    """Mark document as fully enriched — terminal stage work function."""
     from app.database import SessionLocal
     from app.models.document import Document
 
@@ -613,4 +717,15 @@ def finalize_stage(document_id: str) -> str:
     finally:
         db.close()
 
-    return document_id
+
+@celery_app.task(
+    bind=True,
+    name="pipeline.finalize_stage",
+    max_retries=3,
+    acks_late=True,
+    soft_time_limit=120,
+    time_limit=180,
+)
+def finalize_stage(self, document_id: str) -> str:
+    """Mark document as fully enriched — terminal stage with retries."""
+    return _stage_task(self, document_id, StageEnum.ENRICHED, _run_finalize)

@@ -51,15 +51,7 @@ class ProgressiveRevelationService:
 
     def __init__(self):
         self.minimax_service = minimax_service
-        self._ollama_service = None
         self._openrouter_service = None
-
-    def _get_ollama_service(self):
-        if self._ollama_service is None:
-            from app.services.ollama_service import ollama_service
-
-            self._ollama_service = ollama_service
-        return self._ollama_service
 
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
@@ -414,6 +406,9 @@ class ProgressiveRevelationService:
                         }
                     )
 
+            # Commit read transaction before the long-running LLM call.
+            await db.commit()
+
             # Generate narrative
             narrative = await self._generate_family_narrative(
                 focus_person, family_members, relationships, key_events, bucket
@@ -444,9 +439,6 @@ class ProgressiveRevelationService:
         bucket: DocumentBucket = DocumentBucket.PUBLIC,
     ) -> str:
         """Generate a narrative description of the family context"""
-
-        # Determine LLM routing based on bucket
-        use_ollama = bucket == DocumentBucket.CONFIDENTIAL
 
         narrative_task_prompt = """Create a warm, engaging narrative that describes family relationships,
 connections, and key events based on the provided information.
@@ -509,8 +501,8 @@ Please write a family narrative that weaves together these relationships and eve
         ]
 
         try:
-            # Get appropriate LLM service based on bucket
-            llm_service = self._get_ollama_service() if use_ollama else self._get_openrouter_service()
+            # Use OpenRouter for family narrative generation
+            llm_service = self._get_openrouter_service()
 
             response = []
             async for chunk in llm_service.chat_completion(

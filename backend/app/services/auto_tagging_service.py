@@ -24,15 +24,7 @@ class AutoTaggingService:
 
     def __init__(self):
         self.minimax_service = minimax_service
-        self._ollama_service = None
         self._openrouter_service = None
-
-    def _get_ollama_service(self):
-        if self._ollama_service is None:
-            from app.services.ollama_service import ollama_service
-
-            self._ollama_service = ollama_service
-        return self._ollama_service
 
     def _get_openrouter_service(self):
         if self._openrouter_service is None:
@@ -54,17 +46,11 @@ class AutoTaggingService:
             List of created Tag objects
         """
         try:
-            # Determine LLM routing based on document bucket
-            use_ollama = document.bucket == DocumentBucket.CONFIDENTIAL
-
             # Prepare the text for analysis (truncate if too long)
             analysis_text = self._prepare_text_for_analysis(extracted_text, document.filename)
 
-            # Call appropriate LLM to extract tags
-            if use_ollama:
-                tags_data = await self._extract_tags_with_ollama(analysis_text, document)
-            else:
-                tags_data = await self._extract_tags_with_minimax(analysis_text, document)
+            # Call MiniMax to extract tags
+            tags_data = await self._extract_tags_with_minimax(analysis_text, document)
 
             if not tags_data:
                 logger.warning(f"No tags extracted for document {document.id}")
@@ -147,7 +133,7 @@ class AutoTaggingService:
             return []
 
     def _prepare_text_for_analysis(self, text: str, filename: str) -> str:
-        """Prepare text for LLM analysis (MiniMax for public, Ollama for confidential)"""
+        """Prepare text for LLM analysis (MiniMax)"""
         # Get first 3000 characters for analysis
         text_preview = text[:3000] if text else ""
 
@@ -179,8 +165,7 @@ Respond ONLY with valid JSON in this exact format:
             mission="Automatically tag documents with topics, entities, importance levels, and language using AI analysis",
             constraints=(
                 "- You MUST generate tags in the document's primary language\n"
-                "- You MUST assign importance levels based on content significance\n"
-                "- You MUST NOT send confidential document content to cloud LLMs for tagging"
+                "- You MUST assign importance levels based on content significance"
             ),
             task_prompt=tagging_task,
         )
@@ -236,54 +221,6 @@ Extract the tags now:"""
 
         return None
 
-    async def _extract_tags_with_ollama(self, text: str, document: Document) -> dict[str, Any] | None:
-        """Extract tags using Ollama"""
-
-        system_prompt = self._build_tagging_system_prompt()
-
-        user_prompt = f"""Analyze this document and extract tags:
-
-Filename: {document.filename}
-File Type: {document.mime_type}
-
-{text}
-
-Extract the tags now:"""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-
-        try:
-            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
-            warnings.warn(
-                "AutoTaggingService uses inline LLM routing (confidential path). "
-                "Migrate to llm_router.select_provider() to remove this warning.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            llm_service = self._get_ollama_service()
-            response_parts = []
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=1000
-            ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                    response_parts.append(chunk)
-
-            response_text = "".join(response_parts).strip()
-
-            import json
-
-            json_text = self._extract_json(response_text)
-
-            if json_text:
-                return json.loads(json_text)
-
-        except Exception as e:
-            logger.error(f"Ollama tagging error: {e}")
-
-        return None
 
     def _extract_json(self, text: str) -> str | None:
         """Extract JSON from response text"""

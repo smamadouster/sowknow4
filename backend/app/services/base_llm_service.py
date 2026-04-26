@@ -1,7 +1,7 @@
 """
 Abstract base class for all LLM services.
 
-Defines the standard interface that MiniMax, Kimi, OpenRouter, and Ollama services must implement.
+Defines the standard interface that MiniMax, Kimi, and OpenRouter services must implement.
 Allows the LLM router to call any provider through a uniform API.
 """
 
@@ -30,9 +30,9 @@ class BaseLLMService(ABC):
             stream: Whether to stream the response token-by-token.
             temperature: Sampling temperature (0–1).
             max_tokens: Maximum tokens to generate.
-            **kwargs: Provider-specific parameters (e.g. cache_key for MiniMax,
-                      num_predict for Ollama). Implementations must accept and
-                      ignore unknown kwargs to stay forward-compatible.
+            **kwargs: Provider-specific parameters (e.g. cache_key for MiniMax).
+                      Implementations must accept and ignore unknown kwargs to
+                      stay forward-compatible.
 
         Yields:
             Text chunks. Non-streaming implementations must still be async

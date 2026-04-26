@@ -83,18 +83,18 @@ def test_can_embed_false_when_server_unreachable():
         assert client.can_embed is False
 
 
-def test_encode_returns_zero_vectors_on_connection_error():
+def test_encode_raises_on_connection_error():
     with patch("httpx.post", side_effect=httpx.ConnectError("refused")):
         client = get_client()
-        result = client.encode(["hello"])
-    assert result == [[0.0] * 1024]
+        with pytest.raises(RuntimeError):
+            client.encode(["hello"])
 
 
-def test_encode_query_returns_zero_vector_on_connection_error():
+def test_encode_query_raises_on_connection_error():
     with patch("httpx.post", side_effect=httpx.ConnectError("refused")):
         client = get_client()
-        result = client.encode_query("search")
-    assert result == [0.0] * 1024
+        with pytest.raises(RuntimeError):
+            client.encode_query("search")
 
 
 def test_encode_single_returns_zero_on_empty():
@@ -129,9 +129,9 @@ def test_can_embed_caches_result():
     assert mock_get.call_count == 1  # cached on second call
 
 
-def test_encode_returns_zero_vectors_on_server_error():
+def test_encode_raises_on_server_error():
     error_resp = _mock_response(503, {"detail": "model not loaded"})
     with patch("httpx.post", return_value=error_resp):
         client = get_client()
-        result = client.encode(["hello"])
-    assert result == [[0.0] * 1024]
+        with pytest.raises(RuntimeError):
+            client.encode(["hello"])

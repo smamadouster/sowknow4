@@ -2,7 +2,7 @@
 Collection Chat Service for follow-up Q&A
 
 Manages chat sessions scoped to specific collections with Mistral Small 2603
-(via OpenRouter) for public documents and Ollama for confidential documents.
+(via OpenRouter) for public and confidential documents.
 """
 
 import json
@@ -19,7 +19,6 @@ from app.models.collection import Collection, CollectionChatSession
 from app.models.user import User
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.ollama_service import ollama_service
 from app.services.openrouter_service import openrouter_service
 
 logger = logging.getLogger(__name__)
@@ -54,7 +53,6 @@ class CollectionChatService:
 
     def __init__(self):
         self.openrouter_service = openrouter_service
-        self.ollama_service = ollama_service
 
     async def get_or_create_chat_session(
         self,
@@ -203,28 +201,23 @@ class CollectionChatService:
             session_id=session.id,
             role=MessageRole.USER,
             content=message,
-            llm_used=LLMProvider.OLLAMA if has_confidential else LLMProvider.OPENROUTER,
+            llm_used=LLMProvider.OPENROUTER,
         )
         db.add(user_msg)
         db.flush()
 
+        # Commit before the long-running LLM call to avoid holding a DB
+        # connection idle-in-transaction while waiting for OpenRouter.
+        await db.commit()
+
         # Generate response
-        if has_confidential:
-            response_data = await self._chat_with_ollama(
-                message=message,
-                collection=collection,
-                document_context=document_context,
-                session=session,
-                db=db,
-            )
-        else:
-            response_data = await self._chat_with_openrouter(
-                message=message,
-                collection=collection,
-                document_context=document_context,
-                session=session,
-                db=db,
-            )
+        response_data = await self._chat_with_openrouter(
+            message=message,
+            collection=collection,
+            document_context=document_context,
+            session=session,
+            db=db,
+        )
 
         # Store assistant message
         assistant_msg = ChatMessage(
@@ -321,7 +314,7 @@ When answering:
             constraints=(
                 "- You MUST restrict answers to documents within the active collection\n"
                 "- You MUST cite which collection documents support each claim\n"
-                "- You MUST route confidential collection queries to Ollama\n"
+                "- You MUST handle confidential collection queries with appropriate privacy safeguards\n"
                 "- You MUST NOT reference documents outside the active collection"
             ),
             task_prompt=collection_task,
@@ -399,74 +392,6 @@ When answering:
             "sources": sources,
             "llm_used": "openrouter",
         }
-
-    async def _chat_with_ollama(
-        self,
-        message: str,
-        collection: Collection,
-        document_context: list[dict[str, Any]],
-        session: ChatSession,
-        db: AsyncSession,
-    ) -> dict[str, Any]:
-        """Chat with Ollama for confidential collections"""
-
-        # Build prompt
-        context_text = "\n\n".join([f"- {doc['filename']}" for doc in document_context])
-
-        prompt = f"""Collection: {collection.name}
-Summary: {collection.ai_summary or "No summary"}
-
-Available documents:
-{context_text}
-
-User question: {message}
-
-Answer based on the available documents. If you don't have enough information, say so."""
-
-        try:
-            ollama_system = build_service_prompt(
-                service_name="SOWKNOW Collection Chat Service",
-                mission="Provide collection-scoped conversational AI with context isolated to the selected document collection",
-                constraints=(
-                    "- You MUST restrict answers to documents within the active collection\n"
-                    "- You MUST cite which collection documents support each claim\n"
-                    "- You MUST route confidential collection queries to Ollama\n"
-                    "- You MUST NOT reference documents outside the active collection"
-                ),
-                task_prompt="Answer questions about documents in this collection. Cite sources and stay within collection scope.",
-            )
-            # Prepend working memory context block
-            try:
-                context_block = await get_cached_context_block(db)
-                if context_block:
-                    ollama_system = context_block + "\n\n" + ollama_system
-            except Exception:
-                pass
-
-            # Get response from Ollama
-            response_text = await self.ollama_service.generate(
-                prompt=prompt,
-                system=ollama_system,
-                temperature=0.7,
-            )
-
-            sources = [{"document_id": doc["id"], "filename": doc["filename"]} for doc in document_context[:5]]
-
-            return {
-                "response": response_text,
-                "sources": sources,
-                "llm_used": "ollama",
-                "cache_hit": False,
-            }
-
-        except Exception as e:
-            logger.error(f"Ollama error: {e}")
-            return {
-                "response": "I'm sorry, I couldn't process your question. The local LLM may be unavailable.",
-                "sources": [],
-                "llm_used": "ollama",
-                "cache_hit": False,
-            }
 
 
 # Global collection chat service instance

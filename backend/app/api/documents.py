@@ -1179,6 +1179,25 @@ async def get_document_status(
     if not error_message and doc_meta.get("processing_error"):
         error_message = doc_meta["processing_error"]
 
+    # Fallback to pipeline_error for cases where metadata wasn't updated
+    if not error_message and document.pipeline_error:
+        error_message = document.pipeline_error
+
+    # Final fallback: new pipeline stage system stores errors in PipelineStage
+    if not error_message:
+        from app.models.pipeline import PipelineStage, StageStatus
+        ps_result = await db.execute(
+            select(PipelineStage)
+            .where(
+                PipelineStage.document_id == document_id,
+                PipelineStage.status == StageStatus.FAILED,
+            )
+            .order_by(PipelineStage.updated_at.desc())
+        )
+        failed_stage = ps_result.scalars().first()
+        if failed_stage and failed_stage.error_message:
+            error_message = failed_stage.error_message
+
     last_error_at = None
     if doc_meta.get("last_error_at"):
         try:

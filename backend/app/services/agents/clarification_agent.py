@@ -11,7 +11,6 @@ from typing import Any
 
 from app.services.agent_identity import CLARIFICATION_IDENTITY
 from app.services.minimax_service import minimax_service
-from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +61,6 @@ class ClarificationAgent:
     """
 
     def __init__(self):
-        self.ollama_service = ollama_service
         self.minimax_service = minimax_service
 
     def _has_confidential_documents(self, sources: list[dict[str, Any]] | None) -> bool:
@@ -72,44 +70,20 @@ class ClarificationAgent:
         return any(s.get("document_bucket") == "confidential" for s in sources)
 
     def _get_llm_service(self, request: "ClarificationRequest"):
-        """Select LLM based on document confidentiality.
-
-        Priority:
-        1. Any source in request.sources tagged as confidential → Ollama
-        2. request.has_confidential explicitly set to True → Ollama
-        3. Otherwise → MiniMax (public / general-chat)
-        """
-        if self._has_confidential_documents(request.sources) or request.has_confidential:
-            logger.info("ClarificationAgent: Using Ollama for confidential context")
-            return self.ollama_service
+        """Select LLM – always MiniMax."""
         return self.minimax_service
 
-    async def clarify(
-        self,
-        request: ClarificationRequest,
-        use_ollama: bool = False,  # kept for backward compatibility
-    ) -> ClarificationResult:
+    async def clarify(self, request: ClarificationRequest) -> ClarificationResult:
         """
         Analyze and potentially clarify a user query.
-
-        Routing is determined automatically from ``request.sources`` /
-        ``request.has_confidential``.  The legacy ``use_ollama`` kwarg is
-        still accepted for backward compatibility but the request-level
-        flags take precedence.
 
         Args:
             request: Clarification request with query, optional sources, and
                      optional has_confidential flag.
-            use_ollama: Deprecated – set ``request.has_confidential = True``
-                        instead.  Still applied as a fallback override.
 
         Returns:
             Clarification result with questions and assumptions.
         """
-        # Merge legacy kwarg into request so _get_llm_service has a single path
-        if use_ollama:
-            request.has_confidential = True
-
         llm_service = self._get_llm_service(request)
 
         # Build the messages for the LLM

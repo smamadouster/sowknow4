@@ -58,22 +58,22 @@ fi
 
 # Create test database
 log "Creating test database: $TEST_DB"
-docker exec sowknow-postgres psql -U sowknow -c "DROP DATABASE IF EXISTS $TEST_DB;" 2>/dev/null || true
-docker exec sowknow-postgres psql -U sowknow -c "CREATE DATABASE $TEST_DB;" 
+docker exec sowknow4-postgres psql -U sowknow -c "DROP DATABASE IF EXISTS $TEST_DB;" 2>/dev/null || true
+docker exec sowknow4-postgres psql -U sowknow -c "CREATE DATABASE $TEST_DB;" 
 
 # Restore to test database
 log "Restoring backup to test database..."
-if gunzip -c "$LATEST_BACKUP" | docker exec -i sowknow-postgres psql -U sowknow -d "$TEST_DB" 2>&1 | tee -a "$LOG_FILE"; then
+if gunzip -c "$LATEST_BACKUP" | docker exec -i sowknow4-postgres psql -U sowknow -d "$TEST_DB" 2>&1 | tee -a "$LOG_FILE"; then
     log "✓ Restore completed successfully"
 else
     log "ERROR: Restore failed"
-    docker exec sowknow-postgres psql -U sowknow -c "DROP DATABASE IF EXISTS $TEST_DB;"
+    docker exec sowknow4-postgres psql -U sowknow -c "DROP DATABASE IF EXISTS $TEST_DB;"
     exit 1
 fi
 
 # Verify schema
 log "Verifying schema..."
-TABLES=$(docker exec sowknow-postgres psql -U sowknow -d "$TEST_DB" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ')
+TABLES=$(docker exec sowknow4-postgres psql -U sowknow -d "$TEST_DB" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ')
 
 if [ "$TABLES" -gt 0 ]; then
     log "✓ Schema verification PASSED ($TABLES tables found)"
@@ -83,7 +83,7 @@ fi
 
 # Verify pgvector extension
 log "Verifying pgvector extension..."
-if docker exec sowknow-postgres psql -U sowknow -d "$TEST_DB" -c "SELECT * FROM pg_extension WHERE extname = 'vector';" > /dev/null 2>&1; then
+if docker exec sowknow4-postgres psql -U sowknow -d "$TEST_DB" -c "SELECT * FROM pg_extension WHERE extname = 'vector';" > /dev/null 2>&1; then
     log "✓ pgvector extension verified"
 else
     log "WARNING: pgvector extension not found"
@@ -91,14 +91,14 @@ fi
 
 # Verify row count (if users table exists)
 log "Checking data integrity..."
-USER_COUNT=$(docker exec sowknow-postgres psql -U sowknow -d "$TEST_DB" -t -c "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' ' || echo "0")
+USER_COUNT=$(docker exec sowknow4-postgres psql -U sowknow -d "$TEST_DB" -t -c "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' ' || echo "0")
 if [ "$USER_COUNT" != "0" ]; then
     log "✓ Data verification: $USER_COUNT users found"
 fi
 
 # Cleanup test database
 log "Cleaning up test database..."
-docker exec sowknow-postgres psql -U sowknow -c "DROP DATABASE IF EXISTS $TEST_DB;"
+docker exec sowknow4-postgres psql -U sowknow -c "DROP DATABASE IF EXISTS $TEST_DB;"
 
 log "=========================================="
 log "Restore Test COMPLETED SUCCESSFULLY"

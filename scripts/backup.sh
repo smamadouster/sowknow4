@@ -30,7 +30,7 @@ log "Starting SOWKNOW backup - $DATE"
 
 # Backup PostgreSQL database
 log "Backing up PostgreSQL..."
-docker exec sowknow-postgres pg_dump -U sowknow sowknow > "$BACKUP_DIR/sowknow_$DATE.sql"
+docker exec sowknow4-postgres pg_dump -U sowknow sowknow > "$BACKUP_DIR/sowknow_$DATE.sql"
 
 if [ $? -eq 0 ]; then
     log "Database backup completed: sowknow_$DATE.sql"

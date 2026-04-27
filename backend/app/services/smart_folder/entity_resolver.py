@@ -60,12 +60,14 @@ class EntityResolverService:
         normalized = name.strip().lower()
 
         # 1. Exact match (case-insensitive)
-        exact_stmt = select(Entity).where(func.lower(Entity.name) == normalized)
+        exact_stmt = select(Entity).where(func.lower(Entity.name) == normalized).order_by(Entity.document_count.desc().nullslast())
         exact_result = await db.execute(exact_stmt)
-        exact_entity = exact_result.scalar_one_or_none()
-        if exact_entity:
+        exact_entities = exact_result.scalars().all()
+        if exact_entities:
+            # Pick the entity with the most documents (most authoritative)
+            best_entity = exact_entities[0]
             return ResolutionResult(
-                entity=exact_entity,
+                entity=best_entity,
                 match_type="exact",
                 confidence=100.0,
             )
@@ -74,12 +76,12 @@ class EntityResolverService:
         alias_stmt = select(Entity).where(
             Entity.aliases.isnot(None),
             Entity.aliases.op("@>")([name]),
-        )
+        ).order_by(Entity.document_count.desc().nullslast())
         alias_result = await db.execute(alias_stmt)
-        alias_entity = alias_result.scalar_one_or_none()
-        if alias_entity:
+        alias_entities = alias_result.scalars().all()
+        if alias_entities:
             return ResolutionResult(
-                entity=alias_entity,
+                entity=alias_entities[0],
                 match_type="alias",
                 confidence=95.0,
             )

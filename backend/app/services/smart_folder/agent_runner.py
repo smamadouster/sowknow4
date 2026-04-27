@@ -9,6 +9,7 @@ High-level orchestrator that ties together the agentic pipeline:
 """
 
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -24,6 +25,45 @@ from app.services.smart_folder.query_parser import query_parser
 from app.services.smart_folder.report_generator import report_generator
 
 logger = logging.getLogger(__name__)
+
+# Patterns for extracting entity names from raw queries when LLM parser fails
+_ENTITY_PATTERNS = [
+    # French
+    re.compile(r"(?:mémo|rapport|analyse|résumé|synthèse)\s+(?:sur|de|d'|concernant|à propos de)\s+(.+)", re.IGNORECASE),
+    re.compile(r"(?:parle|parler|dire|dis)\s+(?:de|d'|sur|à propos de)\s+(.+)", re.IGNORECASE),
+    re.compile(r"(?:informations?|infos|documents?)\s+(?:sur|de|concernant)\s+(.+)", re.IGNORECASE),
+    re.compile(r"(?:relation|projet|contrat|compte)\s+(?:avec|de|chez|pour)\s+(.+)", re.IGNORECASE),
+    re.compile(r"(?:qui est|qu'est-ce que|c'est quoi)\s+(.+)", re.IGNORECASE),
+    # English
+    re.compile(r"(?:memo|report|analysis|summary|about|on|regarding|concerning)\s+(.+)", re.IGNORECASE),
+    re.compile(r"(?:tell me about|talk about|information on|documents about)\s+(.+)", re.IGNORECASE),
+    re.compile(r"(?:relationship|project|contract|account)\s+(?:with|at|for)\s+(.+)", re.IGNORECASE),
+    re.compile(r"(?:who is|what is)\s+(.+)", re.IGNORECASE),
+]
+
+
+def _extract_entity_from_query(query: str) -> str | None:
+    """Extract a likely entity name from raw query text when LLM parser fails.
+
+    Uses simple regex heuristics for common French and English query patterns.
+    Returns the cleaned candidate entity name or None if no match.
+    """
+    if not query or not query.strip():
+        return None
+
+    for pattern in _ENTITY_PATTERNS:
+        match = pattern.search(query.strip())
+        if match:
+            candidate = match.group(1).strip().strip('"').strip("'").strip("?").strip(".")
+            if candidate:
+                return candidate
+
+    # Fallback: if query is short (≤ 5 words), use it as-is
+    words = query.strip().split()
+    if len(words) <= 5:
+        return query.strip().strip('"').strip("'").strip("?").strip(".")
+
+    return None
 
 
 class SmartFolderAgentRunner:
@@ -61,7 +101,18 @@ class SmartFolderAgentRunner:
 
         if not entity_id:
             parsed = await query_parser.parse(query)
-            if parsed.primary_entity:
+            entity_candidate = parsed.primary_entity
+
+            # Fallback: extract entity from raw query when LLM parser fails
+            if not entity_candidate:
+                entity_candidate = _extract_entity_from_query(query)
+                if entity_candidate:
+                    logger.info(
+                        "Query parser returned no entity; fallback extracted '%s' from raw query",
+                        entity_candidate,
+                    )
+
+            if parsed.primary_entity or entity_candidate:
                 smart_folder.query_text = query
                 if parsed.relationship_type:
                     smart_folder.relationship_type = parsed.relationship_type
@@ -74,8 +125,8 @@ class SmartFolderAgentRunner:
                 await db.commit()
 
             # Resolve entity
-            if parsed.primary_entity:
-                resolution = await entity_resolver.resolve(db, parsed.primary_entity)
+            if entity_candidate:
+                resolution = await entity_resolver.resolve(db, entity_candidate)
                 if resolution.entity:
                     entity_id = resolution.entity.id
                     entity_name = resolution.entity.name
@@ -85,7 +136,7 @@ class SmartFolderAgentRunner:
                 else:
                     smart_folder.status = SmartFolderStatus.FAILED
                     smart_folder.error_message = (
-                        f"Entity '{parsed.primary_entity}' not recognised."
+                        f"Entity '{entity_candidate}' not recognised."
                     )
                     await db.commit()
                     return {

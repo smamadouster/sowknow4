@@ -506,6 +506,35 @@ class ApiClient {
     return this.request('/v1/admin/dashboard');
   }
 
+  async getUploadsHistory() {
+    return this.request<{ history: Array<{ day: string; count: number }> }>('/v1/admin/uploads-history');
+  }
+
+  async getArticlesHistory() {
+    return this.request<{ history: Array<{ day: string; count: number }> }>('/v1/admin/articles-history');
+  }
+
+  async getArticlesStats() {
+    return this.request<{ total_articles: number; indexed_articles: number; pending_articles: number; generating_articles: number; error_articles: number }>('/v1/admin/articles-stats');
+  }
+
+  async getPipelineStats() {
+    return this.request<{
+      stages: Array<{
+        stage: string;
+        pending: number;
+        running: number;
+        failed: number;
+        throughput_per_hour: number;
+        throughput_per_10min: number;
+        health: 'green' | 'yellow' | 'red';
+      }>;
+      total_active: number;
+      bottleneck_stage: string | null;
+      overall_health: 'green' | 'yellow' | 'red';
+    }>('/v1/admin/pipeline-stats');
+  }
+
   // Collection endpoints
   async getCollections(page: number = 1, pageSize: number = 20) {
     const params = new URLSearchParams({

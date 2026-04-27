@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import {
   PieChart, Pie, Cell, Tooltip as ReTooltip, Legend, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList,
   AreaChart, Area,
 } from 'recharts';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/store';
 
 interface Stats {
   total_documents: number;
@@ -66,8 +69,6 @@ interface PipelineStats {
   overall_health: 'green' | 'yellow' | 'red';
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
-
 const STAGE_LABELS: Record<string, string> = {
   uploaded: 'Uploaded',
   ocr: 'OCR',
@@ -83,6 +84,9 @@ export default function DashboardPage() {
   const t = useTranslations('dashboard');
   const tAdmin = useTranslations('admin');
   const tCommon = useTranslations('common');
+  const router = useRouter();
+  const locale = useLocale();
+  const { user, _hasHydrated } = useAuthStore();
 
   const [stats, setStats] = useState<Stats | null>(null);
   const [articlesStats, setArticlesStats] = useState<ArticlesStats | null>(null);
@@ -95,27 +99,55 @@ export default function DashboardPage() {
   const [pipelineStats, setPipelineStats] = useState<PipelineStats | null>(null);
   const [lastPipelineUpdate, setLastPipelineUpdate] = useState<Date>(new Date());
 
+  // Role guard: redirect non-admins
+  useEffect(() => {
+    if (!_hasHydrated) return;
+    if (!user || (user.role !== 'admin' && user.role !== 'superuser')) {
+      router.replace(`/${locale}`);
+    }
+  }, [_hasHydrated, user, locale, router]);
+
   const loadSlowStats = async () => {
     try {
       const [statsRes, anomaliesRes, historyRes, articlesHistoryRes] = await Promise.all([
-        fetch(`${API_BASE}/v1/admin/stats`, { credentials: 'include', cache: 'no-store' }),
-        fetch(`${API_BASE}/v1/admin/anomalies`, { credentials: 'include', cache: 'no-store' }),
-        fetch(`${API_BASE}/v1/admin/uploads-history`, { credentials: 'include', cache: 'no-store' }),
-        fetch(`${API_BASE}/v1/admin/articles-history`, { credentials: 'include', cache: 'no-store' }),
+        api.getStats(),
+        api.getAnomalies(),
+        api.getUploadsHistory(),
+        api.getArticlesHistory(),
       ]);
 
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (anomaliesRes.ok) {
-        const data = await anomaliesRes.json();
-        setAnomalies(data.anomalies || data || []);
+      let anyError = false;
+
+      if (statsRes.data) {
+        setStats(statsRes.data as Stats);
+      } else {
+        anyError = true;
+        console.error('Stats error:', statsRes.error);
       }
-      if (historyRes.ok) {
-        const data = await historyRes.json();
+
+      if (anomaliesRes.data) {
+        const data = anomaliesRes.data as { anomalies?: Anomaly[] };
+        setAnomalies(data.anomalies || []);
+      } else {
+        console.error('Anomalies error:', anomaliesRes.error);
+      }
+
+      if (historyRes.data) {
+        const data = historyRes.data as { history?: UploadsPoint[] };
         setUploadsHistory(data.history || []);
+      } else {
+        console.error('Uploads history error:', historyRes.error);
       }
-      if (articlesHistoryRes.ok) {
-        const data = await articlesHistoryRes.json();
+
+      if (articlesHistoryRes.data) {
+        const data = articlesHistoryRes.data as { history?: ArticlesPoint[] };
         setArticlesHistory(data.history || []);
+      } else {
+        console.error('Articles history error:', articlesHistoryRes.error);
+      }
+
+      if (anyError) {
+        setError(tCommon('error'));
       }
       setLastUpdated(new Date());
     } catch (e) {
@@ -127,12 +159,21 @@ export default function DashboardPage() {
   const loadLiveStats = async () => {
     try {
       const [articlesRes, pipelineRes] = await Promise.all([
-        fetch(`${API_BASE}/v1/admin/articles-stats`, { credentials: 'include', cache: 'no-store' }),
-        fetch(`${API_BASE}/v1/admin/pipeline-stats`, { credentials: 'include', cache: 'no-store' }),
+        api.getArticlesStats(),
+        api.getPipelineStats(),
       ]);
 
-      if (articlesRes.ok) setArticlesStats(await articlesRes.json());
-      if (pipelineRes.ok) setPipelineStats(await pipelineRes.json());
+      if (articlesRes.data) {
+        setArticlesStats(articlesRes.data as ArticlesStats);
+      } else {
+        console.error('Articles stats error:', articlesRes.error);
+      }
+
+      if (pipelineRes.data) {
+        setPipelineStats(pipelineRes.data as PipelineStats);
+      } else {
+        console.error('Pipeline stats error:', pipelineRes.error);
+      }
       setLastPipelineUpdate(new Date());
     } catch (e) {
       console.error('Error loading live stats:', e);
@@ -149,9 +190,10 @@ export default function DashboardPage() {
       clearInterval(slowInterval);
       clearInterval(liveInterval);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading && !stats) {
+  if (!_hasHydrated || loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -308,8 +350,8 @@ export default function DashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-60 flex items-center justify-center">
-              <div className="animate-pulse bg-gray-200 rounded-full w-40 h-40" />
+            <div className="h-60 flex items-center justify-center text-gray-400 text-sm">
+              {tCommon('error')}
             </div>
           )}
         </div>
@@ -364,10 +406,8 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </>
           ) : (
-            <div className="h-60 flex items-center justify-center gap-4">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="animate-pulse bg-gray-200 rounded w-16" style={{ height: `${i * 30}px` }} />
-              ))}
+            <div className="h-60 flex items-center justify-center text-gray-400 text-sm">
+              {tCommon('error')}
             </div>
           )}
         </div>
@@ -399,8 +439,8 @@ export default function DashboardPage() {
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-56 flex items-center justify-center">
-            <div className="animate-pulse bg-gray-200 rounded w-full h-full" />
+          <div className="h-56 flex items-center justify-center text-gray-400 text-sm">
+            {tCommon('error')}
           </div>
         )}
       </div>
@@ -441,8 +481,8 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </>
         ) : (
-          <div className="h-56 flex items-center justify-center">
-            <div className="animate-pulse bg-gray-200 rounded w-full h-full" />
+          <div className="h-56 flex items-center justify-center text-gray-400 text-sm">
+            {tCommon('error')}
           </div>
         )}
       </div>
@@ -569,10 +609,8 @@ export default function DashboardPage() {
             </table>
           </div>
         ) : (
-          <div className="space-y-2">
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
-            ))}
+          <div className="h-60 flex items-center justify-center text-gray-400 text-sm">
+            {tCommon('error')}
           </div>
         )}
       </div>

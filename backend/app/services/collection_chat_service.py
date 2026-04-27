@@ -96,7 +96,7 @@ class CollectionChatService:
         )
 
         db.add(session)
-        db.flush()
+        await db.flush()
 
         # Link to collection
         collection.chat_session_id = session.id
@@ -204,7 +204,7 @@ class CollectionChatService:
             llm_used=LLMProvider.OPENROUTER,
         )
         db.add(user_msg)
-        db.flush()
+        await db.flush()
 
         # Commit before the long-running LLM call to avoid holding a DB
         # connection idle-in-transaction while waiting for OpenRouter.

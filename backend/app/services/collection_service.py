@@ -124,7 +124,7 @@ class CollectionService:
         )
 
         db.add(collection)
-        db.flush()  # Get the ID before adding items
+        await db.flush()  # Get the ID before adding items
 
         # Add collection items
         for idx, doc in enumerate(documents):

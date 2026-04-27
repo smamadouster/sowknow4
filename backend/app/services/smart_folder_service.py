@@ -130,7 +130,7 @@ class SmartFolderService:
         )
 
         db.add(collection)
-        db.flush()
+        await db.flush()
 
         # Add documents to collection
         for idx, doc in enumerate(documents):

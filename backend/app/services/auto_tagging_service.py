@@ -123,7 +123,7 @@ class AutoTaggingService:
             if db_session:
                 for tag in tags:
                     db_session.add(tag)
-                db_session.flush()
+                await db_session.flush()
 
             logger.info(f"Auto-tagged document {document.id} with {len(tags)} tags")
             return tags

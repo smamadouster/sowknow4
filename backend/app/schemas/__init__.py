@@ -142,6 +142,24 @@ try:
 except ImportError:
     _collection_schemas = []
 
+from app.schemas.smart_folder import (
+    CitationEntry,
+    GeneratedContent,
+    GenerationStatusResponse,
+    MilestoneCreate,
+    MilestoneResponse,
+    PatternInsightCreate,
+    PatternInsightResponse,
+    ReportSection,
+    SmartFolderCreate,
+    SmartFolderGenerateRequest,
+    SmartFolderListResponse,
+    SmartFolderRefineRequest,
+    SmartFolderReportResponse,
+    SmartFolderResponse,
+    SmartFolderSaveRequest,
+    SmartFolderUpdate,
+)
 from app.schemas.pagination import (
     CursorPaginatedResponse,
     CursorPaginationParams,
@@ -164,6 +182,23 @@ __all__ = [
     "CursorPaginatedResponse",
     "encode_cursor",
     "decode_cursor",
+    # Smart Folder v2
+    "SmartFolderCreate",
+    "SmartFolderUpdate",
+    "SmartFolderResponse",
+    "SmartFolderListResponse",
+    "SmartFolderGenerateRequest",
+    "SmartFolderRefineRequest",
+    "SmartFolderSaveRequest",
+    "SmartFolderReportResponse",
+    "GenerationStatusResponse",
+    "CitationEntry",
+    "GeneratedContent",
+    "ReportSection",
+    "MilestoneCreate",
+    "MilestoneResponse",
+    "PatternInsightCreate",
+    "PatternInsightResponse",
     *_document_schemas,
     *_chat_schemas,
     *_search_schemas,

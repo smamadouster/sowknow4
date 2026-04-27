@@ -366,7 +366,21 @@
     "untitled": "Sans titre",
     "export_pdf": "Exporter en PDF",
     "exporting_pdf": "Génération du PDF...",
-    "export_error": "Échec de la génération du rapport PDF"
+    "export_error": "Échec de la génération du rapport PDF",
+    "subtitle": "Demandez n'importe quelle relation, projet ou sujet — obtenez un rapport intelligent avec citations",
+    "generation_failed": "Échec de la génération du rapport",
+    "refinement_failed": "Échec de l'affinage du rapport",
+    "load_error": "Échec du chargement du rapport",
+    "save_as_note": "Enregistrer comme Note",
+    "save_success": "Enregistré comme Note avec succès",
+    "save_error": "Échec de l'enregistrement",
+    "copy": "Copier",
+    "copy_success": "Copié dans le presse-papiers",
+    "copy_error": "Échec de la copie",
+    "share": "Partager",
+    "share_success": "Lien copié dans le presse-papiers",
+    "share_error": "Échec de la copie du lien",
+    "regenerate": "Régénérer"
   },
   "reports": {
     "title": "Rapports",

@@ -141,7 +141,7 @@ services:
         limits:
           memory: 1280m
           cpus: '1.5'
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled,collections
     env_file:
       - .env
     environment:

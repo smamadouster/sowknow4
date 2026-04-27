@@ -33,6 +33,7 @@ class User(Base, TimestampMixin):
 
     # Relationships
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
+    smart_folders = relationship("SmartFolder", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"

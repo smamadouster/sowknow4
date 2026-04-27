@@ -94,6 +94,9 @@ class Entity(Base, TimestampMixin):
         "EntityRelationship", foreign_keys="EntityRelationship.target_id", back_populates="target_entity"
     )
     mentions = relationship("EntityMention", back_populates="entity")
+    smart_folders = relationship("SmartFolder", back_populates="entity")
+    milestones = relationship("Milestone", back_populates="entity", cascade="all, delete-orphan")
+    pattern_insights = relationship("PatternInsight", back_populates="entity", cascade="all, delete-orphan")
 
     # Indexes
     __table_args__ = (

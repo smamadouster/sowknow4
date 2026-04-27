@@ -821,6 +821,85 @@ class ApiClient {
     if (itemType) params.set('item_type', itemType);
     return this.request<{ results: SpaceItemData[]; total: number }>(`/v1/spaces/${spaceId}/search?${params}`);
   }
+
+  // --- Smart Folder v2 ---
+
+  async generateSmartFolder(query: string) {
+    return this.request<{ task_id: string; status: string; status_url: string; message: string }>('/v1/smart-folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+  }
+
+  async getSmartFolder(id: string) {
+    return this.request<{
+      smart_folder: {
+        id: string;
+        user_id: string;
+        name: string;
+        query_text: string;
+        entity_id: string | null;
+        relationship_type: string | null;
+        status: string;
+        error_message: string | null;
+        created_at: string;
+        updated_at: string;
+      };
+      latest_report: {
+        id: string;
+        smart_folder_id: string;
+        generated_content: Record<string, unknown> & {
+          title?: string;
+          summary?: string;
+          timeline?: Array<Record<string, unknown>>;
+          patterns?: string[];
+          trends?: string[];
+          issues?: string[];
+          learnings?: string[];
+          recommendations?: string[];
+          raw_markdown?: string;
+        };
+        source_asset_ids: string[];
+        citation_index: Record<string, unknown>;
+        version: number;
+        refinement_query: string | null;
+        created_at: string;
+      } | null;
+    }>(`/v1/smart-folders/${id}`);
+  }
+
+  async refineSmartFolder(id: string, refinementQuery: string) {
+    return this.request<{ task_id: string; status: string; status_url: string; message: string }>(`/v1/smart-folders/${id}/refine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refinement_query: refinementQuery }),
+    });
+  }
+
+  async saveSmartFolder(id: string, name?: string) {
+    return this.request<{ note_id: string; title: string; message: string }>(`/v1/smart-folders/${id}/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name || null }),
+    });
+  }
+
+  async getSmartFolderStatus(id: string) {
+    return this.request<{
+      task_id: string;
+      status: string;
+      progress_percent: number;
+      message: string | null;
+      smart_folder_id: string | null;
+      report_id: string | null;
+      error: string | null;
+    }>(`/v1/smart-folders/${id}/status`);
+  }
+
+  async getGenerationTaskStatus(taskId: string) {
+    return this.request<{ task_id: string; status: string; result: unknown; error: string | null }>(`/v1/smart-folders/generate/status/${taskId}`);
+  }
 }
 
 export const api = new ApiClient(API_BASE);

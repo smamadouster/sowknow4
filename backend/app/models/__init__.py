@@ -21,6 +21,14 @@ from app.models.knowledge_graph import (
     RelationType,
     TimelineEvent,
 )
+from app.models.milestone import Milestone
+from app.models.pattern_insight import PatternInsight, PatternInsightType
+from app.models.smart_folder import (
+    RelationshipType,
+    SmartFolder,
+    SmartFolderReport,
+    SmartFolderStatus,
+)
 from app.models.note import Note, NoteBucket  # noqa: F401
 from app.models.note_audio import NoteAudio  # noqa: F401
 from app.models.pipeline import PipelineStage, StageEnum, StageStatus
@@ -53,6 +61,13 @@ __all__ = [
     "TimelineEvent",
     "EntityType",
     "RelationType",
+    "Milestone",
+    "PatternInsight",
+    "PatternInsightType",
+    "SmartFolder",
+    "SmartFolderReport",
+    "SmartFolderStatus",
+    "RelationshipType",
     "AuditLog",
     "AuditAction",
     "FailedCeleryTask",

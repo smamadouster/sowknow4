@@ -366,7 +366,21 @@
     "untitled": "Untitled",
     "export_pdf": "Export PDF",
     "exporting_pdf": "Generating PDF...",
-    "export_error": "Failed to generate PDF report"
+    "export_error": "Failed to generate PDF report",
+    "subtitle": "Ask about any relationship, project, or topic — get a cited, intelligent report",
+    "generation_failed": "Failed to generate report",
+    "refinement_failed": "Failed to refine report",
+    "load_error": "Failed to load report",
+    "save_as_note": "Save as Note",
+    "save_success": "Saved as Note successfully",
+    "save_error": "Failed to save as Note",
+    "copy": "Copy",
+    "copy_success": "Copied to clipboard",
+    "copy_error": "Failed to copy",
+    "share": "Share",
+    "share_success": "Link copied to clipboard",
+    "share_error": "Failed to copy link",
+    "regenerate": "Regenerate"
   },
   "reports": {
     "title": "Reports",

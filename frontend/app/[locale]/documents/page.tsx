@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useAuthStore, useUploadStore, canAccessConfidential } from '@/lib/store';
 import api, { getCsrfToken } from '@/lib/api';
 import { formatDate } from '@/lib/formatDate';
@@ -42,7 +44,9 @@ export default function DocumentsPage() {
   const tCommon = useTranslations('common');
   const { user } = useAuthStore();
   const { setIsUploading } = useUploadStore();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
+  const params = useParams();
+  const locale = (params?.locale as string) || 'en';
   const canAccessConf = canAccessConfidential(user);
 
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -415,6 +419,26 @@ export default function DocumentsPage() {
     }
   };
 
+  const retryUpload = (id: string) => {
+    setFileQueue((prev) =>
+      prev.map((f) =>
+        f.id === id
+          ? { ...f, status: 'pending' as const, progress: 0, error: undefined }
+          : f
+      )
+    );
+
+    setTimeout(() => {
+      setFileQueue((prev) => {
+        const pending = prev.filter((item) => item.status === 'pending');
+        if (pending.length > 0 && uploadingCount.current === 0) {
+          uploadBatch(pending);
+        }
+        return prev;
+      });
+    }, 0);
+  };
+
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'indexed':
@@ -615,6 +639,17 @@ export default function DocumentsPage() {
                     </div>
                   </div>
 
+                  {item.status === 'error' && (
+                    <button
+                      onClick={() => retryUpload(item.id)}
+                      className="p-1 text-text-muted/50 hover:text-amber-400 ml-2 transition-colors"
+                      title={t('retry')}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  )}
                   <button
                     onClick={() => removeFromQueue(item.id)}
                     className="p-1 text-text-muted/50 hover:text-text-secondary ml-2 transition-colors"
@@ -730,6 +765,16 @@ export default function DocumentsPage() {
                     <span>{formatDate(doc.created_at)}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
+                    <Link
+                      href={`/${locale}/documents/${doc.id}`}
+                      className="flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-400 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      {t('preview')}
+                    </Link>
                     <button
                       onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
                       className="flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-400 transition-colors"
@@ -739,7 +784,7 @@ export default function DocumentsPage() {
                       </svg>
                       {tCommon('download')}
                     </button>
-                    {isAdmin && (doc.status === 'error' || doc.status === 'pending') && (
+                    {isAdmin && (doc.status === 'error' || doc.status === 'pending' || doc.status === 'processing') && (
                       <button
                         type="button"
                         onClick={() => handleReprocess(doc.id)}
@@ -858,6 +903,16 @@ export default function DocumentsPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1">
+                          <Link
+                            href={`/${locale}/documents/${doc.id}`}
+                            className="p-1.5 text-text-muted hover:text-amber-400 hover:bg-amber-500/5 rounded-lg transition-all"
+                            title={t('preview')}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </Link>
                           <button
                             onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
                             className="p-1.5 text-text-muted hover:text-amber-400 hover:bg-amber-500/5 rounded-lg transition-all"
@@ -867,7 +922,7 @@ export default function DocumentsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                             </svg>
                           </button>
-                          {isAdmin && (doc.status === 'error' || doc.status === 'pending') && (
+                          {isAdmin && (doc.status === 'error' || doc.status === 'pending' || doc.status === 'processing') && (
                             <button
                               type="button"
                               onClick={() => handleReprocess(doc.id)}

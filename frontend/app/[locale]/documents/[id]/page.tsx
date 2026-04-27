@@ -314,7 +314,7 @@ export default function DocumentDetailPage() {
   const id = params.id as string;
 
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
   const [doc, setDoc] = useState<Document | null>(null);
   const [loading, setLoading] = useState(true);
@@ -412,6 +412,32 @@ export default function DocumentDetailPage() {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error('Download error:', e);
+      setError(tCommon('error'));
+    }
+  };
+
+  const handleReprocess = async () => {
+    if (!doc) return;
+    try {
+      const res = await fetch(`${API_BASE}/v1/documents/${doc.id}/reprocess`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken(),
+        },
+        body: JSON.stringify({ force: false }),
+      });
+      if (res.ok) {
+        setSuccess(t('reprocess_success'));
+        setTimeout(() => setSuccess(null), 3000);
+        fetchDocument();
+      } else {
+        setError(tCommon('error'));
+        setTimeout(() => setError(null), 3000);
+      }
+    } catch (e) {
+      console.error('Reprocess error:', e);
       setError(tCommon('error'));
     }
   };
@@ -582,6 +608,17 @@ export default function DocumentDetailPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
                 {tCommon('edit')}
+              </button>
+            )}
+            {isAdmin && (doc.status === 'error' || doc.status === 'pending' || doc.status === 'processing') && (
+              <button
+                onClick={handleReprocess}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {t('reprocess')}
               </button>
             )}
           </div>

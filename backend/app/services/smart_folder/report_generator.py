@@ -156,6 +156,10 @@ Rules:
                 raw_response = raw_response[:-3]
             raw_response = raw_response.strip()
 
+            # Strip OpenRouter __USAGE__ metadata that may be appended after JSON
+            if "\n__USAGE__:" in raw_response:
+                raw_response = raw_response.split("\n__USAGE__:")[0].strip()
+
             data = json.loads(raw_response)
         except json.JSONDecodeError as exc:
             logger.warning("Report generator returned invalid JSON: %s — raw: %s", exc, raw_response)

@@ -33,7 +33,7 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-pro")
 OPENROUTER_TIER_MODELS = {
     "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "deepseek/deepseek-v4-pro"),
     "standard": os.getenv("OPENROUTER_TIER_STANDARD", "qwen/qwen3.5-plus"),
-    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "qwen/qwen3-235b-a22b:free"),
+    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "meta-llama/llama-3.3-70b-instruct:free"),
 }
 OPENROUTER_TIER_BUDGET_PCT = {
     "complex": 0.5,    # 50% of daily budget reserved for complex tasks
@@ -291,6 +291,7 @@ class OpenRouterService:
         # PRIVACY: confidential/PII queries are NEVER cached
         effective_cache_key = None
         if self._cache_enabled and not stream and not is_confidential:
+            model = self.select_model_for_tier(tier)
             effective_cache_key = cache_key or self._generate_cache_key(model, truncated_messages)
 
             # Check cache for non-streaming requests

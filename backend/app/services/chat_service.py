@@ -5,7 +5,7 @@ LLM Routing Strategy:
 - Confidential chunks are stripped to metadata-only before reaching the LLM prompt
   (no document content ever leaves the server).
 - All queries (public and confidential) route through cloud LLMs via llm_router.
-- Fallback chain: MiniMax M2.7 (direct API) -> mistral-small-2603 (OpenRouter)
+- Fallback chain: OpenRouter (deepseek-v4-pro / qwen3.5-plus / qwen3-free) -> MiniMax M2.7
 """
 
 import asyncio

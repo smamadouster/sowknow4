@@ -615,7 +615,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 • Just ask me anything
 
 💬 <b>Chat</b>
-• Conversational AI powered by Mistral
+• Conversational AI powered by DeepSeek V4 Pro
 
 📓 <b>Journal</b>
 • Personal journal in confidential vault

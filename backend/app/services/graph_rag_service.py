@@ -40,6 +40,34 @@ class GraphRAGService:
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
+    def _get_ollama_service(self):
+        try:
+            from app.services.ollama_service import ollama_service
+            return ollama_service
+        except Exception:
+            return None
+
+    def _strip_sensitive_content(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Strip sensitive entity names and relationship details from messages.
+
+        Used as a privacy fallback when Ollama is unavailable for confidential queries.
+        Replaces specific names with generic placeholders.
+        """
+        import re
+
+        stripped = []
+        for msg in messages:
+            content = msg.get("content", "")
+            # Replace specific person names with [NAME REDACTED]
+            # This is a best-effort regex; production should use NER
+            content = re.sub(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", "[NAME REDACTED]", content)
+            # Redact email addresses
+            content = re.sub(r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}", "[EMAIL REDACTED]", content)
+            # Redact phone numbers
+            content = re.sub(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b", "[PHONE REDACTED]", content)
+            stripped.append({"role": msg.get("role", "user"), "content": content})
+        return stripped
+
     async def _extract_bucket_from_results(self, results: list[dict[str, Any]], db: Session) -> DocumentBucket:
         """Extract document bucket from search results"""
         try:
@@ -452,15 +480,29 @@ Key Principles:
             except Exception:
                 pass
 
-            # Use OpenRouter for all documents
-            llm_service = self._get_openrouter_service()
+            # Route confidential queries to local Ollama; public to OpenRouter
+            if bucket == DocumentBucket.CONFIDENTIAL:
+                ollama = self._get_ollama_service()
+                if ollama and getattr(ollama, "available", True):
+                    logger.info("GraphRAG: Routing confidential query to Ollama (local)")
+                    llm_service = ollama
+                    tier = "standard"
+                else:
+                    logger.warning("GraphRAG: Ollama unavailable for confidential query — stripping entity details")
+                    # Strip sensitive entity names from messages before sending to cloud
+                    messages = self._strip_sensitive_content(messages)
+                    llm_service = self._get_openrouter_service()
+                    tier = "standard"
+            else:
+                llm_service = self._get_openrouter_service()
+                tier = "standard"
 
             if stream:
-                return llm_service.chat_completion(messages=messages, stream=True, temperature=0.7, max_tokens=2048)
+                return llm_service.chat_completion(messages=messages, stream=True, temperature=0.7, max_tokens=2048, tier=tier)
             else:
                 response = []
                 async for chunk in llm_service.chat_completion(
-                    messages=messages, stream=False, temperature=0.7, max_tokens=2048
+                    messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier=tier
                 ):
                     if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                         response.append(chunk)

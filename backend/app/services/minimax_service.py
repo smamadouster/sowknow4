@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
 
@@ -74,6 +75,22 @@ class MiniMaxService(BaseLLMService):
             "Content-Type": "application/json",
         }
 
+    def _check_cost_ceiling(self, estimated_input_tokens: int, estimated_output_tokens: int) -> bool:
+        """Check if a call would exceed the cost ceiling."""
+        try:
+            from app.services.monitoring import get_cost_ceiling
+            ceiling = get_cost_ceiling()
+            return ceiling.check_call_allowed(
+                service="minimax",
+                model=self.model,
+                estimated_input_tokens=estimated_input_tokens,
+                estimated_output_tokens=estimated_output_tokens,
+                tier="standard",
+            )
+        except Exception as e:
+            logger.warning(f"Cost ceiling check failed, allowing call: {e}")
+            return True
+
     async def chat_completion(
         self,
         messages: list[dict[str, str]],
@@ -81,6 +98,7 @@ class MiniMaxService(BaseLLMService):
         temperature: float = 0.7,
         max_tokens: int = 4096,
         cache_key: str | None = None,
+        **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using MiniMax API directly
@@ -90,6 +108,14 @@ class MiniMaxService(BaseLLMService):
             return
 
         truncated_messages = self._truncate_messages(messages)
+
+        # --- Cost ceiling pre-flight check ---
+        est_input = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
+        est_output = max_tokens
+        if not self._check_cost_ceiling(est_input, est_output):
+            logger.error(f"MiniMax call BLOCKED by cost ceiling (est_input={est_input}, est_output={est_output})")
+            yield "Error: LLM cost ceiling reached. Please try again later or contact support."
+            return
 
         payload = {
             "model": self.model,
@@ -136,6 +162,22 @@ class MiniMaxService(BaseLLMService):
 
                     if "choices" in data and len(data["choices"]) > 0:
                         content = data["choices"][0].get("message", {}).get("content", "")
+                        usage = data.get("usage", {})
+
+                        # Record actual cost for budget tracking
+                        try:
+                            from app.services.monitoring import get_cost_tracker
+                            tracker = get_cost_tracker()
+                            tracker.record_api_call(
+                                service="minimax",
+                                operation="chat",
+                                model=self.model,
+                                input_tokens=usage.get("prompt_tokens", 0) if usage else est_input,
+                                output_tokens=usage.get("completion_tokens", 0) if usage else 0,
+                            )
+                        except Exception as cost_err:
+                            logger.debug(f"MiniMax cost tracking failed: {cost_err}")
+
                         yield content
 
         except httpx.HTTPStatusError as e:

@@ -2,14 +2,21 @@
 Centralized LLM routing service.
 
 Single source of truth for provider selection based on document confidentiality,
-PII detection, and service availability.  All chat services should route through
-this module instead of embedding routing logic inline.
+PII detection, task complexity tier, and service availability.
+
+All chat services should route through this module instead of embedding routing logic inline.
 
 Routing strategy
 ----------------
-* Confidential docs or PII detected → OpenRouter → MiniMax
-* Public docs (RAG)                 → OpenRouter (mistral-small-2603) → MiniMax
-* General chat (no docs)            → OpenRouter (mistral-small-2603) → MiniMax
+* Confidential docs or PII detected → Ollama (local) → OpenRouter → MiniMax
+* Public docs (RAG)                 → OpenRouter tiered → MiniMax
+* General chat (no docs)            → OpenRouter tiered → MiniMax
+
+Tiered model routing (OpenRouter)
+---------------------------------
+* simple:    qwen/qwen3-235b-a22b:free  (classification, tagging, intent)
+* standard:  qwen/qwen3.5-plus           (chat, synthesis, articles)
+* complex:   deepseek/deepseek-v4-pro    (reasoning, coding, verification)
 """
 
 import logging
@@ -40,6 +47,15 @@ class LLMProvider(StrEnum):
     MINIMAX = "minimax"
     KIMI = "kimi"
     OPENROUTER = "openrouter"
+    OLLAMA = "ollama"
+
+
+class TaskTier(StrEnum):
+    """Complexity tier for task-aware model selection."""
+
+    SIMPLE = "simple"       # Classification, tagging, intent parsing
+    STANDARD = "standard"   # Chat, synthesis, articles, summaries
+    COMPLEX = "complex"     # Reasoning, coding, verification, reports
 
 
 # ---------------------------------------------------------------------------
@@ -51,10 +67,11 @@ class LLMProvider(StrEnum):
 class RoutingDecision:
     """Result of the LLM routing decision."""
 
-    provider_name: str  # e.g. "minimax", "openrouter"
+    provider_name: str  # e.g. "minimax", "openrouter", "ollama"
     reason: RoutingReason
     service: Any  # The actual service instance
     metadata: dict[str, Any] = field(default_factory=dict)
+    tier: TaskTier = TaskTier.STANDARD
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +81,7 @@ class RoutingDecision:
 
 class LLMRouter:
     """
-    Stateless routing helper.  Call :meth:`select_provider` to get a
+    Stateful routing helper.  Call :meth:`select_provider` to get a
     :class:`RoutingDecision`, then use ``decision.service`` to call
     ``chat_completion``.
 
@@ -74,7 +91,7 @@ class LLMRouter:
     # Fallback chains per routing scenario.
     # Each chain is an ordered list of provider names tried left-to-right.
     fallback_chains: dict[str, list[str]] = {
-        "confidential": ["openrouter", "minimax"],
+        "confidential": ["ollama", "openrouter", "minimax"],
         "public_docs": ["openrouter", "minimax"],
         "general_chat": ["openrouter", "minimax"],
     }
@@ -85,11 +102,13 @@ class LLMRouter:
         minimax_service: Any = None,
         kimi_service: Any = None,
         openrouter_service: Any = None,
+        ollama_service: Any = None,
         pii_detection_service: Any = None,
     ) -> None:
         self._minimax = minimax_service
         self._kimi = kimi_service
         self._openrouter = openrouter_service
+        self._ollama = ollama_service
         self._pii = pii_detection_service
 
     # ------------------------------------------------------------------
@@ -106,12 +125,16 @@ class LLMRouter:
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        tier: TaskTier = TaskTier.STANDARD,
     ) -> AsyncGenerator[str, None]:
         """
         High-level entry point: route the query and call the selected provider.
 
         Selects the best provider via :meth:`select_provider`, then delegates to
         :class:`LLMServiceAdapter` for normalised ``chat_completion`` dispatch.
+
+        Args:
+            tier: Task complexity tier (simple/standard/complex) for model selection.
 
         Yields:
             Text chunks from the provider.
@@ -128,6 +151,7 @@ class LLMRouter:
             stream=stream,
             temperature=temperature,
             max_tokens=max_tokens,
+            tier=tier.value,
         ):
             yield chunk
 
@@ -171,7 +195,8 @@ class LLMRouter:
         caller) to skip the PII / bucket scan.  If omitted, sensitivity is
         detected from *query* and *context_chunks*.
 
-        Confidential queries use OpenRouter, falling back to MiniMax.
+        Confidential queries prefer Ollama (local), falling back to OpenRouter
+        with metadata-only stripping, then MiniMax.
         """
         context_chunks = context_chunks or []
 
@@ -182,12 +207,13 @@ class LLMRouter:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
-        # --- Confidential path: OpenRouter → MiniMax ---
+        # --- Confidential path: Ollama → OpenRouter → MiniMax ---
         if is_sensitive:
             reason = (
                 RoutingReason.CONFIDENTIAL_DOCS if "confidential" in sensitivity_reason else RoutingReason.PII_DETECTED
             )
             chain = [
+                ("ollama", self._ollama, lambda s: s is not None and getattr(s, "available", True)),
                 ("openrouter", self._openrouter, lambda s: s is not None),
                 ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
             ]
@@ -198,7 +224,7 @@ class LLMRouter:
                         provider_name=name,
                         reason=reason,
                         service=service,
-                        metadata={"chain": [n for n, _, _ in chain]},
+                        metadata={"chain": [n for n, _, _ in chain], "sensitive": True},
                     )
             raise RuntimeError("No LLM provider available for confidential query.")
 
@@ -231,6 +257,30 @@ class LLMRouter:
                 )
 
         raise RuntimeError("No LLM provider available.")
+
+    def get_provider_for_direct_call(
+        self,
+        preferred: LLMProvider = LLMProvider.OPENROUTER,
+        tier: TaskTier = TaskTier.STANDARD,
+    ) -> tuple[Any, str]:
+        """Get a provider service for direct (non-routed) calls.
+
+        Used by services that bypass the router but still want tiered model selection.
+
+        Returns:
+            (service_instance, provider_name)
+        """
+        if preferred == LLMProvider.OPENROUTER and self._openrouter is not None:
+            return self._openrouter, "openrouter"
+        if preferred == LLMProvider.MINIMAX and self._minimax is not None:
+            return self._minimax, "minimax"
+        if preferred == LLMProvider.OLLAMA and self._ollama is not None:
+            return self._ollama, "ollama"
+        # Fallback to any available
+        for svc, name in [(self._openrouter, "openrouter"), (self._minimax, "minimax"), (self._ollama, "ollama")]:
+            if svc is not None:
+                return svc, name
+        raise RuntimeError("No LLM provider available for direct call.")
 
 
 # ---------------------------------------------------------------------------
@@ -267,17 +317,17 @@ class LLMServiceAdapter:
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        tier: str = "standard",
     ) -> AsyncGenerator[str, None]:
         """
         Dispatch to the underlying service's ``chat_completion``, translating
         parameter names as needed.
         """
-        async for chunk in self._service.chat_completion(
-            messages,
-            stream=stream,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        ):
+        kwargs = {"stream": stream, "temperature": temperature, "max_tokens": max_tokens}
+        # Pass tier to OpenRouter for model selection; other providers ignore it
+        if self._provider == "openrouter":
+            kwargs["tier"] = tier
+        async for chunk in self._service.chat_completion(messages, **kwargs):
             yield chunk
 
 
@@ -292,6 +342,7 @@ def _build_router() -> LLMRouter:
     minimax_svc = None
     kimi_svc = None
     openrouter_svc = None
+    ollama_svc = None
     pii_svc = None
 
     try:
@@ -316,6 +367,13 @@ def _build_router() -> LLMRouter:
         logger.warning("LLMRouter: openrouter_service not available: %s", exc, exc_info=True)
 
     try:
+        from app.services.ollama_service import ollama_service as _o
+
+        ollama_svc = _o
+    except Exception as exc:
+        logger.warning("LLMRouter: ollama_service not available: %s", exc, exc_info=True)
+
+    try:
         from app.services.pii_detection_service import pii_detection_service as _pii
 
         pii_svc = _pii
@@ -326,6 +384,7 @@ def _build_router() -> LLMRouter:
         minimax_service=minimax_svc,
         kimi_service=kimi_svc,
         openrouter_service=openrouter_svc,
+        ollama_service=ollama_svc,
         pii_detection_service=pii_svc,
     )
 

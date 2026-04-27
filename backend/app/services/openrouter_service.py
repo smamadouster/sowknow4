@@ -1,7 +1,8 @@
 """
-OpenRouter service for LLM access — Mistral Small 2603 fallback
+OpenRouter service for LLM access — DeepSeek V4 Pro primary
 OpenRouter provides OpenAI-compatible API access to multiple LLMs.
-Used as the fallback when MiniMax M2.7 direct API is unavailable.
+Primary model: deepseek/deepseek-v4-pro (1M context, frontier reasoning).
+Tiered fallback: deepseek-v4-pro → qwen/qwen3.5-plus → minimax/minimax-m2.5
 
 CONTEXT CACHING:
 - Redis-backed cache for repeated queries to reduce API costs
@@ -26,7 +27,19 @@ logger = logging.getLogger(__name__)
 # Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "moonshotai/kimi-k2.6")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-pro")
+
+# Tiered model configuration for cost/quality optimization
+OPENROUTER_TIER_MODELS = {
+    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "deepseek/deepseek-v4-pro"),
+    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "qwen/qwen3.5-plus"),
+    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "qwen/qwen3-235b-a22b:free"),
+}
+OPENROUTER_TIER_BUDGET_PCT = {
+    "complex": 0.5,    # 50% of daily budget reserved for complex tasks
+    "standard": 0.35,  # 35% for standard tasks
+    "simple": 0.15,    # 15% for simple tasks (free tier)
+}
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamtech.com")
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
@@ -38,8 +51,8 @@ CACHE_TTL_SECONDS = 3600  # 1 hour TTL for cached responses
 CACHE_KEY_PREFIX = "sowknow:openrouter:cache:"
 
 # Context window limits (in tokens)
-MISTRAL_CONTEXT_WINDOW = 32000  # Mistral Small 2603 supports 32K
-MAX_INPUT_TOKENS = 28000  # Leave buffer for response
+DEEPSEEK_CONTEXT_WINDOW = 1_000_000  # DeepSeek V4 Pro supports 1M tokens
+MAX_INPUT_TOKENS = 128_000  # Conservative limit to manage cost/latency
 
 # Collection cache key tracking (for invalidation)
 COLLECTION_CACHE_KEYS_PREFIX = "sowknow:openrouter:collection_keys:"
@@ -80,9 +93,13 @@ class OpenRouterService:
         self.site_url = OPENROUTER_SITE_URL
         self.site_name = OPENROUTER_SITE_NAME
         self._cache_enabled = False
+        self._tier_models = OPENROUTER_TIER_MODELS
+        self._tier_budget_pct = OPENROUTER_TIER_BUDGET_PCT
 
         if self.api_key:
-            logger.info(f"OpenRouter service initialized with model: {self.model}")
+            logger.info(f"OpenRouter service initialized with primary model: {self.model}")
+            logger.info(f"OpenRouter tier config: complex={self._tier_models['complex']}, "
+                       f"standard={self._tier_models['standard']}, simple={self._tier_models['simple']}")
         else:
             logger.warning("OPENROUTER_API_KEY not configured")
 
@@ -181,6 +198,40 @@ class OpenRouterService:
             headers["X-Title"] = self.site_name
         return headers
 
+    def select_model_for_tier(self, tier: str = "standard") -> str:
+        """Select the appropriate model for a task tier.
+
+        Tiers:
+            - "simple":   Cheap/free models for classification, tagging, intent
+            - "standard": Balanced models for chat, synthesis, articles
+            - "complex":  Frontier models for reasoning, coding, verification
+
+        Returns:
+            Model identifier string for the given tier.
+        """
+        model = self._tier_models.get(tier, self.model)
+        logger.debug(f"OpenRouter tier routing: {tier} -> {model}")
+        return model
+
+    def _check_cost_ceiling(self, estimated_input_tokens: int, estimated_output_tokens: int, tier: str = "standard") -> bool:
+        """Check if a call would exceed the cost ceiling.
+
+        Returns True if the call is allowed, False if it would exceed budget.
+        """
+        try:
+            from app.services.monitoring import get_cost_ceiling
+            ceiling = get_cost_ceiling()
+            return ceiling.check_call_allowed(
+                service="openrouter",
+                model=self.select_model_for_tier(tier),
+                estimated_input_tokens=estimated_input_tokens,
+                estimated_output_tokens=estimated_output_tokens,
+                tier=tier,
+            )
+        except Exception as e:
+            logger.warning(f"Cost ceiling check failed, allowing call: {e}")
+            return True
+
     async def chat_completion(
         self,
         messages: list[dict[str, str]],
@@ -191,6 +242,7 @@ class OpenRouterService:
         user_id: str | None = None,
         is_confidential: bool = False,
         collection_id: str | None = None,
+        tier: str = "standard",
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using OpenRouter (OpenAI-compatible API)
@@ -239,7 +291,7 @@ class OpenRouterService:
         # PRIVACY: confidential/PII queries are NEVER cached
         effective_cache_key = None
         if self._cache_enabled and not stream and not is_confidential:
-            effective_cache_key = cache_key or self._generate_cache_key(self.model, truncated_messages)
+            effective_cache_key = cache_key or self._generate_cache_key(model, truncated_messages)
 
             # Check cache for non-streaming requests
             redis_client = _get_redis_client()
@@ -274,8 +326,17 @@ class OpenRouterService:
             except Exception as metric_error:
                 logger.warning(f"Failed to record cache miss metric: {metric_error}")
 
+        # --- Cost ceiling pre-flight check ---
+        est_input = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
+        est_output = max_tokens
+        if not self._check_cost_ceiling(est_input, est_output, tier=tier):
+            logger.error(f"OpenRouter call BLOCKED by cost ceiling (tier={tier}, est_input={est_input}, est_output={est_output})")
+            yield "Error: LLM cost ceiling reached. Please try again later or contact support."
+            return
+
+        model = self.select_model_for_tier(tier)
         payload = {
-            "model": self.model,
+            "model": model,
             "messages": truncated_messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -343,6 +404,20 @@ class OpenRouterService:
                                         redis_client.expire(tracking_key, CACHE_TTL_SECONDS)
                                 except Exception as cache_error:
                                     logger.warning(f"Failed to cache response: {cache_error}")
+
+                        # Record actual cost for budget tracking
+                        try:
+                            from app.services.monitoring import get_cost_tracker
+                            tracker = get_cost_tracker()
+                            tracker.record_api_call(
+                                service="openrouter",
+                                operation="chat",
+                                model=model,
+                                input_tokens=usage.get("prompt_tokens", 0) if usage else est_input,
+                                output_tokens=usage.get("completion_tokens", 0) if usage else 0,
+                            )
+                        except Exception as cost_err:
+                            logger.debug(f"Cost tracking failed: {cost_err}")
 
                         yield content
 
@@ -421,6 +496,7 @@ class OpenRouterService:
             "service": "openrouter",
             "status": "healthy",
             "model": self.model,
+            "tier_models": self._tier_models,
             "api_configured": bool(self.api_key),
             "timestamp": datetime.utcnow().isoformat(),
         }

@@ -37,6 +37,7 @@ class OllamaService(BaseLLMService):
     def __init__(self):
         self.base_url = OLLAMA_BASE_URL
         self.model = OLLAMA_MODEL
+        self.available = bool(os.getenv("OLLAMA_BASE_URL"))
 
     async def chat_completion(
         self,
@@ -45,6 +46,7 @@ class OllamaService(BaseLLMService):
         temperature: float = 0.7,
         num_predict: int = 4096,
         max_tokens: int | None = None,
+        **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using Ollama

@@ -60,6 +60,13 @@ class ProgressiveRevelationService:
             self._openrouter_service = openrouter_service
         return self._openrouter_service
 
+    def _get_ollama_service(self):
+        try:
+            from app.services.ollama_service import ollama_service
+            return ollama_service
+        except Exception:
+            return None
+
     async def reveal_entity_info(
         self,
         entity_id: str,
@@ -501,12 +508,26 @@ Please write a family narrative that weaves together these relationships and eve
         ]
 
         try:
-            # Use OpenRouter for family narrative generation
-            llm_service = self._get_openrouter_service()
+            # Route confidential family data to local Ollama; public to OpenRouter
+            if bucket == DocumentBucket.CONFIDENTIAL:
+                ollama = self._get_ollama_service()
+                if ollama and getattr(ollama, "available", True):
+                    logger.info("ProgressiveRevelation: Routing confidential family narrative to Ollama (local)")
+                    llm_service = ollama
+                    tier = "standard"
+                else:
+                    logger.warning("ProgressiveRevelation: Ollama unavailable for confidential narrative — returning safe fallback")
+                    return (
+                        f"Confidential family data for {focus_person}. "
+                        f"This narrative contains sensitive information and is only available via local processing."
+                    )
+            else:
+                llm_service = self._get_openrouter_service()
+                tier = "standard"
 
             response = []
             async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.8, max_tokens=2048
+                messages=messages, stream=False, temperature=0.8, max_tokens=2048, tier=tier
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)

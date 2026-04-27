@@ -115,6 +115,7 @@ class KimiService(BaseLLMService):
         max_tokens: int = 4096,
         cache_key: str | None = None,
         user_id: str | None = None,
+        **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         """Generate a chat completion via the Kimi (Moonshot AI) API.
 

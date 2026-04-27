@@ -737,6 +737,34 @@ services:
     networks:
       - sowknow-net
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sowknow4-ollama
+    restart: unless-stopped
+    profiles:
+      - local-llm
+    logging: *default-logging
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - sowknow-ollama-models:/root/.ollama
+    # Exposed only on host loopback for security; backend accesses via host.docker.internal
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4096M
+          cpus: '2.0'
+    networks:
+      - sowknow-net
+
 networks:
   sowknow-net:
     driver: bridge
@@ -755,4 +783,7 @@ volumes:
   sowknow-model-cache:
   sowknow-audio-data:
   sowknow-prometheus-data:
-  # sowknow-ollama-models: disabled — Ollama removed 2026-04-14, confidential routing uses OpenRouter
+  sowknow-ollama-models:
+    driver: local
+
+  # sowknow-ollama-models: re-enabled 2026-04-27 with local-llm profile

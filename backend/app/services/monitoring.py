@@ -2,7 +2,7 @@
 Comprehensive monitoring service for SOWKNOW infrastructure.
 
 Provides health checks, queue depth monitoring, cost tracking,
-and alerting capabilities per PRD requirements.
+cost ceiling enforcement, and alerting capabilities per PRD requirements.
 """
 
 import logging
@@ -77,11 +77,56 @@ class AlertState:
 class CostTracker:
     """Track API costs with daily caps and budgeting."""
 
-    # Pricing (as of 2025)
+    # Pricing (as of 2026-04-27) — per 1K tokens
     OPENROUTER_PRICING = {
+        # DeepSeek (primary)
+        "deepseek/deepseek-v4-pro": {
+            "input": 0.00174,   # $1.74 per 1M
+            "output": 0.00348,  # $3.48 per 1M
+        },
+        "deepseek/deepseek-v4-flash": {
+            "input": 0.00014,
+            "output": 0.00028,
+        },
+        # Qwen (standard tier)
+        "qwen/qwen3.5-plus": {
+            "input": 0.00026,
+            "output": 0.00200,
+        },
+        "qwen/qwen3-235b-a22b:free": {
+            "input": 0.0,
+            "output": 0.0,
+        },
+        # Legacy / fallback
+        "moonshotai/kimi-k2.6": {
+            "input": 0.000745,
+            "output": 0.004655,
+        },
+        "moonshotai/kimi-k2.5": {
+            "input": 0.00044,
+            "output": 0.00200,
+        },
+        # MiniMax (direct)
+        "minimax/minimax-m2.7": {
+            "input": 0.00030,
+            "output": 0.00120,
+        },
+        "minimax/minimax-m2.5": {
+            "input": 0.00015,
+            "output": 0.00095,
+        },
+        "MiniMax-M2.7": {
+            "input": 0.00030,
+            "output": 0.00120,
+        },
+        "MiniMax-M2.5": {
+            "input": 0.00015,
+            "output": 0.00095,
+        },
+        # Older references
         "minimax/minimax-01": {
-            "input": 0.00055,  # per 1K tokens
-            "output": 0.0022,  # per 1K tokens
+            "input": 0.00055,
+            "output": 0.0022,
         },
         "openai/gpt-4o": {
             "input": 0.0025,
@@ -145,7 +190,10 @@ class CostTracker:
         cost = 0.0
 
         if service == "openrouter":
-            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING["minimax/minimax-01"])
+            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING.get("deepseek/deepseek-v4-pro"))
+            cost = (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
+        elif service == "minimax":
+            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING.get("minimax/minimax-m2.7"))
             cost = (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
         elif service in ("paddleocr", "tesseract"):
             # Local OCR - no API cost, just compute resources
@@ -170,7 +218,7 @@ class CostTracker:
             self._daily_totals[key] += cost
 
         logger.debug(
-            f"API cost recorded: {service}.{operation} = ${cost:.6f} (in: {input_tokens}, out: {output_tokens})"
+            f"API cost recorded: {service}.{operation} ({model}) = ${cost:.6f} (in: {input_tokens}, out: {output_tokens})"
         )
 
         return cost
@@ -290,6 +338,185 @@ class CostTracker:
         with self._lock:
             self._cost_records.append(record)
         return total
+
+
+class CostCeiling:
+    """Enforce hard and soft cost ceilings on LLM consumption.
+
+    Features:
+    - Daily budget cap (hard ceiling: reject calls when exceeded)
+    - Tier budget allocation (complex/standard/simple each get a % of daily budget)
+    - Per-request token limit (reject unreasonably large requests)
+    - Emergency circuit breaker (auto-shutoff when spike detected)
+    - Rolling window rate limit (calls per minute)
+    """
+
+    DEFAULT_TIER_BUDGET_PCT = {
+        "complex": 0.50,
+        "standard": 0.35,
+        "simple": 0.15,
+    }
+
+    # Max tokens per request by tier (hard limit to prevent runaway costs)
+    MAX_TOKENS_PER_REQUEST = {
+        "complex": 32_768,
+        "standard": 16_384,
+        "simple": 8_192,
+    }
+
+    def __init__(
+        self,
+        daily_budget_usd: float | None = None,
+        tier_budget_pct: dict[str, float] | None = None,
+        max_calls_per_minute: int = 120,
+        emergency_spike_multiplier: float = 3.0,
+    ):
+        self._daily_budget = daily_budget_usd or float(os.getenv("OPENROUTER_DAILY_BUDGET_USD", "5.0"))
+        self._tier_budget_pct = tier_budget_pct or self.DEFAULT_TIER_BUDGET_PCT
+        self._max_calls_per_minute = max_calls_per_minute
+        self._emergency_spike_multiplier = emergency_spike_multiplier
+
+        self._call_times: list[datetime] = []
+        self._tier_spent_today: dict[str, float] = defaultdict(float)
+        self._emergency_triggered: bool = False
+        self._emergency_triggered_at: datetime | None = None
+        self._lock = Lock()
+
+    def _estimate_cost(self, service: str, model: str, input_tokens: int, output_tokens: int) -> float:
+        """Estimate the cost of a prospective API call."""
+        pricing = CostTracker.OPENROUTER_PRICING.get(model, CostTracker.OPENROUTER_PRICING.get("deepseek/deepseek-v4-pro"))
+        return (input_tokens / 1000) * pricing.get("input", 0.001) + (output_tokens / 1000) * pricing.get("output", 0.003)
+
+    def _is_rate_limited(self) -> bool:
+        """Check if calls per minute exceed threshold."""
+        now = datetime.now()
+        window_start = now - timedelta(minutes=1)
+        with self._lock:
+            self._call_times = [t for t in self._call_times if t > window_start]
+            return len(self._call_times) >= self._max_calls_per_minute
+
+    def _check_emergency_spike(self, estimated_cost: float) -> bool:
+        """Detect cost spikes that might indicate a runaway loop or attack."""
+        tracker = get_cost_tracker()
+        today_cost = tracker.get_daily_cost()
+        hour_ago = datetime.now() - timedelta(hours=1)
+
+        with self._lock:
+            recent_cost = sum(
+                r.cost_usd for r in tracker._cost_records
+                if r.timestamp > hour_ago
+            )
+
+        # Trigger emergency if this single call costs more than N× the average hourly spend
+        avg_hourly = today_cost / max(1, (datetime.now().hour + 1))
+        if estimated_cost > avg_hourly * self._emergency_spike_multiplier and avg_hourly > 0.01:
+            self._emergency_triggered = True
+            self._emergency_triggered_at = datetime.now()
+            logger.critical(
+                f"EMERGENCY CIRCUIT BREAKER: Call cost ${estimated_cost:.4f} exceeds "
+                f"{self._emergency_spike_multiplier}× avg hourly (${avg_hourly:.4f}). "
+                f"Blocking LLM calls for 5 minutes."
+            )
+            return True
+        return False
+
+    def check_call_allowed(
+        self,
+        service: str,
+        model: str,
+        estimated_input_tokens: int,
+        estimated_output_tokens: int,
+        tier: str = "standard",
+    ) -> bool:
+        """Check if a prospective LLM call is within budget.
+
+        Returns True if allowed, False if it would exceed any ceiling.
+        """
+        # 1. Emergency circuit breaker
+        if self._emergency_triggered:
+            if self._emergency_triggered_at and (datetime.now() - self._emergency_triggered_at) < timedelta(minutes=5):
+                logger.warning("CostCeiling: Emergency circuit breaker active — call blocked")
+                return False
+            else:
+                self._emergency_triggered = False
+                logger.info("CostCeiling: Emergency circuit breaker reset")
+
+        # 2. Rate limiting
+        if self._is_rate_limited():
+            logger.warning("CostCeiling: Rate limit exceeded — call blocked")
+            return False
+
+        # 3. Per-request token ceiling
+        max_tokens = self.MAX_TOKENS_PER_REQUEST.get(tier, 16_384)
+        if estimated_input_tokens + estimated_output_tokens > max_tokens:
+            logger.warning(
+                f"CostCeiling: Token ceiling exceeded ({estimated_input_tokens}+{estimated_output_tokens} > {max_tokens}) — call blocked"
+            )
+            return False
+
+        # 4. Daily budget ceiling
+        tracker = get_cost_tracker()
+        today_cost = tracker.get_daily_cost()
+        if today_cost >= self._daily_budget:
+            logger.warning(f"CostCeiling: Daily budget exhausted (${today_cost:.4f} / ${self._daily_budget:.4f}) — call blocked")
+            return False
+
+        # 5. Tier budget ceiling
+        tier_pct = self._tier_budget_pct.get(tier, 0.35)
+        tier_budget = self._daily_budget * tier_pct
+        tier_spent = tracker.get_daily_cost(service) + self._tier_spent_today.get(tier, 0.0)
+        estimated_cost = self._estimate_cost(service, model, estimated_input_tokens, estimated_output_tokens)
+
+        if tier_spent + estimated_cost > tier_budget:
+            logger.warning(
+                f"CostCeiling: Tier '{tier}' budget exhausted (${tier_spent:.4f} + ${estimated_cost:.4f} > ${tier_budget:.4f}) — call blocked"
+            )
+            return False
+
+        # 6. Emergency spike detection
+        if self._check_emergency_spike(estimated_cost):
+            return False
+
+        # All checks passed — record the call
+        with self._lock:
+            self._call_times.append(datetime.now())
+            self._tier_spent_today[tier] += estimated_cost
+
+        logger.debug(
+            f"CostCeiling: Call approved ({service}/{model}, tier={tier}, est=${estimated_cost:.4f}, "
+            f"today=${today_cost:.4f}, tier_spent=${tier_spent:.4f})"
+        )
+        return True
+
+    def get_status(self) -> dict[str, Any]:
+        """Get current ceiling status for health/monitoring endpoints."""
+        tracker = get_cost_tracker()
+        today_cost = tracker.get_daily_cost()
+        return {
+            "daily_budget_usd": self._daily_budget,
+            "today_spent_usd": round(today_cost, 4),
+            "remaining_usd": round(max(0, self._daily_budget - today_cost), 4),
+            "emergency_triggered": self._emergency_triggered,
+            "emergency_triggered_at": self._emergency_triggered_at.isoformat() if self._emergency_triggered_at else None,
+            "tier_budgets": {
+                tier: {
+                    "budget_usd": round(self._daily_budget * pct, 4),
+                    "spent_usd": round(tracker.get_daily_cost("openrouter") * pct + self._tier_spent_today.get(tier, 0.0), 4),
+                    "pct": pct,
+                }
+                for tier, pct in self._tier_budget_pct.items()
+            },
+            "rate_limit": {
+                "max_calls_per_minute": self._max_calls_per_minute,
+                "calls_in_last_minute": len(self._call_times),
+            },
+        }
+
+    def reset_emergency(self) -> None:
+        """Manually reset emergency circuit breaker (admin use)."""
+        self._emergency_triggered = False
+        self._emergency_triggered_at = None
+        logger.info("CostCeiling: Emergency circuit breaker manually reset")
 
 
 class QueueMonitor:
@@ -597,6 +824,7 @@ class AlertManager:
 _cost_tracker: CostTracker | None = None
 _queue_monitor: QueueMonitor | None = None
 _alert_manager = AlertManager()
+_cost_ceiling: CostCeiling | None = None
 
 
 def get_cost_tracker() -> CostTracker:
@@ -606,6 +834,15 @@ def get_cost_tracker() -> CostTracker:
         daily_budget = float(os.getenv("OPENROUTER_DAILY_BUDGET_USD", "5.0"))
         _cost_tracker = CostTracker(daily_budget_usd=daily_budget)
     return _cost_tracker
+
+
+def get_cost_ceiling() -> CostCeiling:
+    """Get or create global cost ceiling instance."""
+    global _cost_ceiling
+    if _cost_ceiling is None:
+        daily_budget = float(os.getenv("OPENROUTER_DAILY_BUDGET_USD", "5.0"))
+        _cost_ceiling = CostCeiling(daily_budget_usd=daily_budget)
+    return _cost_ceiling
 
 
 def get_queue_monitor() -> QueueMonitor:

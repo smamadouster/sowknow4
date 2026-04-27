@@ -2,7 +2,7 @@
 Report Generation Service for Smart Collections
 
 Generates PDF reports in Short/Standard/Comprehensive formats from collection
-data using OpenRouter/mistral-small-2603 for analysis and synthesis.
+data using OpenRouter/deepseek-v4-pro for analysis and synthesis.
 """
 
 import logging
@@ -190,7 +190,7 @@ class ReportService:
         language: str,
         context_block: str | None = None,
     ) -> str:
-        """Generate report using OpenRouter (mistral-small-2603)"""
+        """Generate report using OpenRouter (deepseek-v4-pro)"""
 
         # Build format guidelines
         format_guides = {
@@ -287,7 +287,7 @@ Generate the complete report now:"""
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         response_parts = []
-        # Use OpenRouter (mistral-small-2603) for public documents
+        # Use OpenRouter (deepseek-v4-pro) for public documents
         async for chunk in self.openrouter_service.chat_completion(
             messages=messages, stream=False, temperature=0.5, max_tokens=8192
         ):

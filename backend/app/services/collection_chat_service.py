@@ -24,6 +24,15 @@ from app.services.openrouter_service import openrouter_service
 logger = logging.getLogger(__name__)
 
 
+def _get_ollama_service():
+    """Lazy import Ollama service to avoid circular deps."""
+    try:
+        from app.services.ollama_service import ollama_service
+        return ollama_service
+    except Exception:
+        return None
+
+
 async def create_audit_log(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -210,13 +219,14 @@ class CollectionChatService:
         # connection idle-in-transaction while waiting for OpenRouter.
         await db.commit()
 
-        # Generate response
-        response_data = await self._chat_with_openrouter(
+        # Generate response — route confidential docs to local Ollama when available
+        response_data = await self._chat_with_llm(
             message=message,
             collection=collection,
             document_context=document_context,
             session=session,
             db=db,
+            has_confidential=has_confidential,
         )
 
         # Store assistant message
@@ -284,15 +294,31 @@ class CollectionChatService:
 
         return context
 
-    async def _chat_with_openrouter(
+    async def _chat_with_llm(
         self,
         message: str,
         collection: Collection,
         document_context: list[dict[str, Any]],
         session: ChatSession,
         db: AsyncSession,
+        has_confidential: bool = False,
     ) -> dict[str, Any]:
-        """Chat with OpenRouter (mistral-small-2603) for public collections"""
+        """Chat with appropriate LLM — Ollama for confidential, OpenRouter for public."""
+
+        # Try local Ollama first for confidential collections
+        if has_confidential:
+            ollama = _get_ollama_service()
+            if ollama and getattr(ollama, "available", True):
+                logger.info("CollectionChat: Routing confidential collection to Ollama (local)")
+                return await self._chat_with_ollama(
+                    message=message,
+                    collection=collection,
+                    document_context=document_context,
+                    session=session,
+                    db=db,
+                )
+            else:
+                logger.warning("CollectionChat: Ollama unavailable for confidential collection — stripping chunk text")
 
         # Build system prompt with collection context
         collection_task = f"""You are answering questions about a document collection called "{collection.name}".
@@ -321,10 +347,16 @@ When answering:
         )
 
         # Build document context text
+        # PRIVACY: When confidential and Ollama unavailable, strip chunk text to metadata-only
         context_parts = []
         for doc in document_context:
-            chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
-            context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
+            if has_confidential:
+                context_parts.append(
+                    f"Document: {doc['filename']} (metadata only — confidential content stripped)"
+                )
+            else:
+                chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
+                context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
         context_text = "\n\n".join(context_parts)
 
         # Get conversation history
@@ -366,11 +398,11 @@ When answering:
         except Exception:
             pass
 
-        # Generate response with OpenRouter (mistral-small-2603) for public collections
+        # Generate response with OpenRouter (tiered model selection)
         response_parts = []
 
         async for chunk in self.openrouter_service.chat_completion(
-            messages=messages, stream=False, temperature=0.7, max_tokens=2048
+            messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier="standard"
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
@@ -391,6 +423,60 @@ When answering:
             "response": response_text,
             "sources": sources,
             "llm_used": "openrouter",
+        }
+
+    async def _chat_with_ollama(
+        self,
+        message: str,
+        collection: Collection,
+        document_context: list[dict[str, Any]],
+        session: ChatSession,
+        db: AsyncSession,
+    ) -> dict[str, Any]:
+        """Chat with local Ollama for confidential collections."""
+        from app.services.ollama_service import ollama_service
+
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Collection Chat Service (Confidential Mode)",
+            mission="Answer questions about confidential documents using only the local LLM",
+            constraints=(
+                "- You MUST restrict answers to documents within the active collection\n"
+                "- You MUST NOT expose confidential information beyond what is necessary\n"
+                "- You MUST cite which collection documents support each claim"
+            ),
+            task_prompt=f"Collection: {collection.name}\nQuery: {collection.query}",
+        )
+
+        # Build full context with chunks (safe because Ollama is local)
+        context_parts = []
+        for doc in document_context:
+            chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
+            context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
+        context_text = "\n\n".join(context_parts)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Documents context:\n{context_text}\n\nUser question: {message}"},
+        ]
+
+        response_parts = []
+        async for chunk in ollama_service.chat_completion(
+            messages=messages, stream=False, temperature=0.7, max_tokens=2048
+        ):
+            if chunk and not chunk.startswith("Error:"):
+                response_parts.append(chunk)
+
+        response_text = "".join(response_parts).strip()
+
+        sources = [
+            {"document_id": doc["id"], "filename": doc["filename"], "relevance": doc["relevance"]}
+            for doc in document_context[:5]
+        ]
+
+        return {
+            "response": response_text,
+            "sources": sources,
+            "llm_used": "ollama",
         }
 
 

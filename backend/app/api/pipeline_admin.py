@@ -3,14 +3,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_admin_only
+from app.api.deps import require_superuser_or_admin
 from app.database import get_db
 from app.models.pipeline import PipelineStage, StageEnum
 
 router = APIRouter(prefix="/admin/pipeline", tags=["admin-pipeline"])
 
 
-@router.get("/status", dependencies=[Depends(require_admin_only)])
+@router.get("/status", dependencies=[Depends(require_superuser_or_admin)])
 async def pipeline_status(db: AsyncSession = Depends(get_db)) -> dict:
     """Get pipeline status overview — stage counts, queue depths, worker status."""
     # Stage counts

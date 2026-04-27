@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_admin_only
+from app.api.deps import require_admin_only, require_superuser_or_admin
 from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
 from app.models.chat import ChatSession
@@ -87,7 +87,7 @@ async def list_users(
     search: str | None = Query(None, description="Search by email or name"),
     role: UserRole | None = Query(None, description="Filter by role"),
     is_active: bool | None = Query(None, description="Filter by active status"),
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ) -> UserListResponse:
@@ -142,7 +142,7 @@ async def list_users(
 @router.get("/users/{user_id}", response_model=UserManagementResponse)
 async def get_user_details(
     user_id: uuid.UUID,
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ) -> UserManagementResponse:
@@ -371,7 +371,7 @@ async def get_audit_logs(
     resource_type: str | None = Query(None, description="Filter by resource type"),
     user_id: uuid.UUID | None = Query(None, description="Filter by user ID"),
     days: int | None = Query(30, ge=1, le=365, description="Number of days to look back"),
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ) -> AuditLogResponse:
@@ -457,7 +457,7 @@ async def get_audit_logs(
 
 @router.get("/stats", response_model=SystemStats)
 async def get_system_stats(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> SystemStats:
     """Get system statistics for admin dashboard (Admin only)."""
@@ -505,7 +505,7 @@ async def get_system_stats(
 
 @router.get("/stats/extended", response_model=AdminStatsResponse)
 async def get_extended_admin_stats(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminStatsResponse:
     """Get extended admin statistics (Admin only)."""
@@ -562,7 +562,7 @@ async def get_extended_admin_stats(
 
 @router.get("/queue-stats", response_model=QueueStats)
 async def get_queue_stats(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> QueueStats:
     """Get processing queue statistics."""
@@ -620,7 +620,7 @@ async def get_queue_stats(
 
 @router.get("/anomalies", response_model=AnomalyBucketResponse)
 async def get_anomalies(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AnomalyBucketResponse:
     """Get documents stuck in processing for more than 24 hours."""
@@ -678,7 +678,7 @@ PIPELINE_STAGE_ORDER = [
 
 @router.get("/pipeline-stats", response_model=PipelineStatsResponse)
 async def get_pipeline_stats(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> PipelineStatsResponse:
     """Per-stage pipeline funnel with throughput rates (Admin only)."""
@@ -791,7 +791,7 @@ async def get_pipeline_stats(
 
 @router.get("/uploads-history", response_model=UploadsHistoryResponse)
 async def get_uploads_history(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> UploadsHistoryResponse:
     """7-day real uploads history grouped by day (Admin only)."""
@@ -817,7 +817,7 @@ async def get_uploads_history(
 
 @router.get("/articles-stats", response_model=ArticlesStats)
 async def get_articles_stats(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ArticlesStats:
     """Get article generation statistics (Admin only)."""
@@ -852,7 +852,7 @@ async def get_articles_stats(
 
 @router.get("/articles-history", response_model=ArticlesHistoryResponse)
 async def get_articles_history(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ArticlesHistoryResponse:
     """7-day articles generation history grouped by day (Admin only)."""
@@ -880,7 +880,7 @@ async def get_articles_history(
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> DashboardResponse:
     """Get complete admin dashboard data."""
@@ -977,7 +977,7 @@ async def list_failed_tasks(
 @router.get("/failed-tasks/{task_id}")
 async def get_failed_task(
     task_id: str,
-    current_user: User = Depends(require_admin_only),
+    current_user: User = Depends(require_superuser_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get a single failed task with full traceback (Admin only)."""
@@ -1122,7 +1122,7 @@ async def recover_failed_uploads(
     }
 
 
-@router.get("/whisper-model", dependencies=[Depends(require_admin_only)])
+@router.get("/whisper-model", dependencies=[Depends(require_superuser_or_admin)])
 async def get_whisper_model() -> dict[str, Any]:
     """Get current Whisper model size and available options."""
     from app.services.whisper_service import VALID_MODEL_SIZES, whisper_service

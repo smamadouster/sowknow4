@@ -116,18 +116,19 @@ def generate_smart_folder_v2_task(
                                 if row[1] and row[1].value == "confidential"
                             ]
                             if conf_docs:
+                                import json as _json
                                 audit_entry = AuditLog(
                                     user_id=user_uuid,
                                     action=AuditAction.CONFIDENTIAL_ACCESSED,
                                     resource_type="smart_folder",
                                     resource_id=str(smart_folder.id),
-                                    details={
+                                    details=_json.dumps({
                                         "query": query,
                                         "refinement": refinement_query,
                                         "confidential_document_count": len(conf_docs),
                                         "confidential_documents": conf_docs,
                                         "action": "generate_smart_folder_v2",
-                                    },
+                                    }),
                                 )
                                 db.add(audit_entry)
                                 await db.commit()

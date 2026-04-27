@@ -211,18 +211,61 @@ class RetrievalService:
 
         return context
 
+    # French/English stopwords that pollute semantic vectors
+    _STOPWORDS = {
+        # French
+        "me", "faire", "un", "une", "le", "la", "les", "de", "des", "du", "sur",
+        "à", "propos", "concernant", "résumer", "résume", "donne", "donner",
+        "moi", "information", "informations", "doc", "document", "documents",
+        "memo", "mémo", "rapport", "analyse", "synthèse",
+        # English
+        "a", "an", "the", "me", "give", "make", "write", "tell", "about", "on",
+        "regarding", "concerning", "summary", "report", "analysis", "memo",
+        "information", "documents", "document", "do", "does", "did", "have", "has",
+        "had", "is", "are", "was", "were", "be", "been", "being", "i", "you",
+        "he", "she", "it", "we", "they", "my", "your", "his", "her", "its",
+        "our", "their", "this", "that", "these", "those", "and", "but", "or",
+        "yet", "so", "for", "nor", "as", "at", "by", "from", "in", "into",
+        "of", "off", "onto", "out", "over", "to", "up", "with", "within",
+        "without", "what", "which", "who", "whom", "whose", "where", "when",
+        "why", "how", "all", "any", "both", "each", "few", "more", "most",
+        "other", "some", "such", "no", "not", "only", "own", "same", "than",
+        "too", "very", "can", "will", "just", "should", "now",
+    }
+
+    def _clean_search_query(self, query_text: str) -> str:
+        """Remove function words to produce a clean semantic search query."""
+        words = query_text.split()
+        cleaned = [w for w in words if w.lower().strip("?.,;:!'") not in self._STOPWORDS]
+        return " ".join(cleaned) if cleaned else query_text
+
     def _build_search_query(
         self,
         query_text: str,
         entity_name: str | None,
         focus_aspects: list[str] | None,
     ) -> str:
-        """Build an enriched search query for hybrid search."""
-        parts = [query_text]
-        if entity_name and entity_name.lower() not in query_text.lower():
-            parts.append(entity_name)
+        """Build an enriched search query for hybrid search.
+
+        Uses the clean entity name as the primary search term to avoid
+        polluting the semantic vector with French/English function words.
+        """
+        # Prefer entity_name as the clean search term
+        if entity_name:
+            parts = [entity_name]
+            # Add cleaned query text if it contains meaningful extra terms
+            cleaned = self._clean_search_query(query_text)
+            if cleaned and cleaned.lower() != entity_name.lower():
+                # Only add words not already in entity_name
+                extra = [w for w in cleaned.split() if w.lower() not in entity_name.lower()]
+                if extra:
+                    parts.extend(extra)
+        else:
+            parts = [self._clean_search_query(query_text)]
+
         if focus_aspects:
             parts.extend(focus_aspects)
+
         return " ".join(parts)
 
     async def _retrieve_by_entity_mentions(

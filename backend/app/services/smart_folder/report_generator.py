@@ -66,35 +66,44 @@ class ReportGeneratorService:
         ),
     }
 
-    SYSTEM_PROMPT_TEMPLATE = """You are a validity-checked report generator for a digital vault.
-Your task is to produce a structured report about a user's relationship or topic,
-using ONLY the provided context. You must NEVER invent facts not present in the context.
+    SYSTEM_PROMPT_TEMPLATE = """You are a senior analyst writing a confidential memo for a digital vault.
+Your task is to produce a rich, structured report using ONLY the provided documents.
+You must NEVER invent facts not present in the documents.
 
 {TONE_INSTRUCTION}
 
 Rules:
-1. Use ONLY the provided context (retrieved assets, milestones, patterns, trends, issues, learnings).
-2. Every factual sentence MUST end with a citation marker like [AssetID].
-   Example: "The account was opened in March 2010 [doc_123e4567]."
-3. If a fact has multiple sources, use multiple markers: [doc_123e4567][doc_abcdef].
+1. Use ONLY the provided documents. Do NOT use outside knowledge.
+2. Every factual sentence MUST end with a citation marker like [document_id].
+   Example: "Ousmane Sow was appointed Director in March 2021 [d7cb595b-3bf4-48f1-9b68-9aa023ad9943]."
+3. If a fact has multiple sources, use multiple markers: [doc1][doc2].
 4. If there is insufficient data for a section, state "Insufficient data" and omit the section.
 5. If evidence is contradictory, note the contradiction and cite both sources.
-6. Do NOT include a "References" or "Sources" section — citations are inline only.
-7. Output valid JSON with the following structure:
+6. Quote key passages VERBATIM when they are especially important or revealing.
+7. Write in the same language as the user's query (French if query is French, English if English).
+8. Output valid JSON with the following structure:
 
 {{
-  "title": "Smart Folder: ...",
-  "summary": "2-3 sentence overview with citations",
+  "title": "Rich descriptive title",
+  "summary": "3-5 sentence executive overview with citations",
   "timeline": [
-    {{"date": "YYYY-MM-DD", "title": "...", "description": "... [AssetID]"}}
+    {{"date": "YYYY-MM-DD or 'Approx YYYY'", "title": "Event title", "description": "What happened [doc_id]"}}
   ],
-  "patterns": ["Pattern description [AssetID]", ...],
-  "trends": ["Trend description [AssetID]", ...],
-  "issues": ["Issue description [AssetID]", ...],
-  "learnings": ["Learning description [AssetID]", ...],
-  "recommendations": ["Recommendation [AssetID]", ...],
-  "raw_markdown": "Full report as markdown with inline citations"
+  "patterns": ["Pattern description with evidence [doc_id]", ...],
+  "trends": ["Trend description with evidence [doc_id]", ...],
+  "issues": ["Issue or risk identified [doc_id]", ...],
+  "learnings": ["Key insight or lesson [doc_id]", ...],
+  "recommendations": ["Actionable recommendation [doc_id]", ...],
+  "raw_markdown": "Full report as rich markdown with sections, inline citations, and quoted passages"
 }}
+
+For the raw_markdown, use a rich structure like:
+# Title
+## Profil Exécutif / Executive Profile
+## Chronologie / Timeline
+## Organisations & Rôles
+## Documents Clés
+## Observations & Recommandations
 """
 
     async def generate(
@@ -104,6 +113,7 @@ Rules:
         relationship_type: str | None,
         retrieval_context: RetrievalContext,
         analysis_result: AnalysisResult,
+        full_documents: list[dict[str, Any]] | None = None,
     ) -> GeneratedReport:
         """Generate a cited Smart Folder report.
 
@@ -113,6 +123,7 @@ Rules:
             relationship_type: Detected relationship type.
             retrieval_context: Retrieved vault assets.
             analysis_result: Structured analysis findings.
+            full_documents: Optional list of full document dicts for richer context.
 
         Returns:
             GeneratedReport with structured content and citation index.
@@ -127,6 +138,7 @@ Rules:
             query_text=query_text,
             retrieval_context=retrieval_context,
             analysis_result=analysis_result,
+            full_documents=full_documents,
         )
 
         messages = [
@@ -197,58 +209,92 @@ Rules:
         query_text: str,
         retrieval_context: RetrievalContext,
         analysis_result: AnalysisResult,
+        full_documents: list[dict[str, Any]] | None = None,
     ) -> str:
-        """Assemble a concise, structured context string for the LLM."""
+        """Assemble a rich, structured context string for the LLM."""
         lines = [
             f"QUERY: {query_text}",
             f"ENTITY: {entity_name or 'Not specified'}",
             "",
-            "=== RETRIEVED ASSETS ===",
         ]
 
+        # ── Full documents (primary context) ──
+        if full_documents:
+            lines.append(f"=== FULL DOCUMENTS ({len(full_documents)} documents read) ===")
+            for i, doc in enumerate(full_documents, 1):
+                doc_id = doc.get("document_id", "unknown")
+                title = doc.get("title", "Untitled")
+                doc_type = doc.get("doc_type", "document")
+                created = doc.get("created_at", "unknown date")
+                lines.append(f"\n--- DOCUMENT {i} [{doc_id}] ---")
+                lines.append(f"Title: {title}")
+                lines.append(f"Type: {doc_type}")
+                lines.append(f"Date: {created}")
+                lines.append("Content:")
+                lines.append(doc.get("full_text", "[No text available]")[:8000])
+                lines.append("---")
+
+        # ── Chunk snippets (supplementary context) ──
         asset_map: dict[str, RetrievedAsset] = {}
+        remaining_assets = []
         for asset in retrieval_context.primary_assets:
             asset_map[str(asset.document_id)] = asset
-            snippet = (asset.chunk_text or "")[:400].replace("\n", " ")
-            lines.append(
-                f"ASSET [{asset.document_id}] {asset.document_name} ({asset.retrieval_source}): {snippet}"
-            )
+            # Skip if we already have full text for this doc
+            if full_documents and not any(
+                d.get("document_id") == str(asset.document_id) for d in full_documents
+            ):
+                remaining_assets.append(asset)
+
+        if remaining_assets:
+            lines.append("\n=== ADDITIONAL CHUNK SNIPPETS ===")
+            for asset in remaining_assets[:20]:
+                snippet = (asset.chunk_text or "")[:400].replace("\n", " ")
+                lines.append(
+                    f"[{asset.document_id}] {asset.document_name} ({asset.retrieval_source}): {snippet}"
+                )
 
         if retrieval_context.related_assets:
-            lines.append("\n=== RELATED ASSETS (via graph) ===")
-            for asset in retrieval_context.related_assets:
+            lines.append("\n=== RELATED ASSETS (via graph traversal) ===")
+            for asset in retrieval_context.related_assets[:10]:
                 asset_map[str(asset.document_id)] = asset
                 snippet = (asset.chunk_text or "")[:300].replace("\n", " ")
                 lines.append(
-                    f"ASSET [{asset.document_id}] {asset.document_name}: {snippet}"
+                    f"[{asset.document_id}] {asset.document_name}: {snippet}"
                 )
 
-        lines.append("\n=== MILESTONES ===")
-        for ms in analysis_result.milestones:
-            date_str = ms.get("date") or "Undated"
-            lines.append(f"- {date_str}: {ms['title']} — {ms.get('description', '')}")
-            if ms.get("linked_asset_ids"):
-                lines.append(f"  Sources: {', '.join(ms['linked_asset_ids'])}")
+        # ── Analysis tables (may be empty) ──
+        if analysis_result.milestones:
+            lines.append("\n=== MILESTONES ===")
+            for ms in analysis_result.milestones:
+                date_str = ms.get("date") or "Undated"
+                lines.append(f"- {date_str}: {ms['title']} — {ms.get('description', '')}")
+                if ms.get("linked_asset_ids"):
+                    lines.append(f"  Sources: {', '.join(ms['linked_asset_ids'])}")
 
-        lines.append("\n=== PATTERNS ===")
-        for pat in analysis_result.patterns:
-            lines.append(f"- {pat['description']} (confidence: {pat['confidence']})")
+        if analysis_result.patterns:
+            lines.append("\n=== PATTERNS ===")
+            for pat in analysis_result.patterns:
+                lines.append(f"- {pat['description']} (confidence: {pat['confidence']})")
 
-        lines.append("\n=== TRENDS ===")
-        for tr in analysis_result.trends:
-            lines.append(f"- {tr['description']} (confidence: {tr['confidence']})")
+        if analysis_result.trends:
+            lines.append("\n=== TRENDS ===")
+            for tr in analysis_result.trends:
+                lines.append(f"- {tr['description']} (confidence: {tr['confidence']})")
 
-        lines.append("\n=== ISSUES ===")
-        for issue in analysis_result.issues:
-            lines.append(f"- {issue['description']} (confidence: {issue['confidence']})")
+        if analysis_result.issues:
+            lines.append("\n=== ISSUES ===")
+            for issue in analysis_result.issues:
+                lines.append(f"- {issue['description']} (confidence: {issue['confidence']})")
 
-        lines.append("\n=== LEARNINGS ===")
-        for learning in analysis_result.learnings:
-            lines.append(f"- {learning['description']} (confidence: {learning['confidence']})")
+        if analysis_result.learnings:
+            lines.append("\n=== LEARNINGS ===")
+            for learning in analysis_result.learnings:
+                lines.append(f"- {learning['description']} (confidence: {learning['confidence']})")
 
         lines.append(
-            "\nInstructions: Generate the report JSON using ONLY the context above. "
-            "Every factual claim MUST have a citation like [AssetID]."
+            "\nInstructions: Generate a rich, structured memo using ONLY the documents above. "
+            "Cite every fact with [document_id]. Quote important passages verbatim. "
+            "If data is insufficient for a section, omit it."
         )
 
         return "\n".join(lines)
@@ -260,7 +306,7 @@ Rules:
     ) -> tuple[dict[str, dict[str, Any]], set[UUID]]:
         """Extract unique asset IDs from the report, build numbered citation index."""
         all_text = json.dumps(data)
-        # Find all [AssetID] patterns
+        # Find all [AssetID] patterns (UUID format)
         asset_id_pattern = re.compile(r"\[([a-f0-9\-]{36})\]")
         matches = asset_id_pattern.findall(all_text)
 

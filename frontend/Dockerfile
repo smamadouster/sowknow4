@@ -8,6 +8,9 @@ ARG NEXT_PUBLIC_API_URL
 ENV JWT_SECRET=${JWT_SECRET}
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
+# Install build dependencies for native modules (e.g. canvas)
+RUN apk add --no-cache python3 make g++ pkgconfig pixman-dev cairo-dev pango-dev libjpeg-turbo-dev giflib-dev
+
 # Copy package files
 COPY package*.json ./
 

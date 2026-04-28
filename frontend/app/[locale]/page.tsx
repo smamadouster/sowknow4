@@ -105,6 +105,30 @@ export default function Home() {
       color: 'from-purple-500/20 to-purple-600/5',
       glowColor: 'group-hover:shadow-purple-500/20',
     },
+    {
+      href: '/bookmarks',
+      titleKey: 'bookmarks',
+      descKey: 'bookmarks_desc',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+        </svg>
+      ),
+      color: 'from-rose-500/20 to-rose-600/5',
+      glowColor: 'group-hover:shadow-rose-500/20',
+    },
+    {
+      href: '/notes',
+      titleKey: 'notes',
+      descKey: 'notes_desc',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      ),
+      color: 'from-amber-500/20 to-amber-600/5',
+      glowColor: 'group-hover:shadow-amber-500/20',
+    },
   ];
 
   return (

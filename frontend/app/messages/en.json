@@ -11,6 +11,8 @@
     "collections_desc": "Dynamic collections with AI-powered queries",
     "smart_folders_desc": "AI-generated summaries and reports",
     "knowledge_graph_desc": "Explore entities, relationships and timeline",
+    "bookmarks_desc": "Your saved favorite links and resources",
+    "notes_desc": "Take and organize your personal notes",
     "journal_desc": "Your personal confidential journal",
     "admin_section_title": "Administration & Monitoring",
     "dashboard_desc": "System statistics and status",

@@ -24,6 +24,7 @@ class DocumentReaderTool:
         document_id: UUID,
         db: AsyncSession,
         max_chars: int = 15000,
+        allowed_buckets: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Read a document's full text by concatenating all its chunks.
 
@@ -31,13 +32,22 @@ class DocumentReaderTool:
             document_id: The document UUID.
             db: Database session.
             max_chars: Maximum characters to return (truncates if longer).
+            allowed_buckets: Optional list of allowed document buckets for RBAC.
 
         Returns:
-            Dict with document metadata and full text, or None if not found.
+            Dict with document metadata and full text, or None if not found
+            or bucket not allowed.
         """
         doc = await db.get(Document, document_id)
         if not doc:
             return None
+
+        # SECURITY: Check bucket access
+        if allowed_buckets is not None:
+            bucket_val = doc.bucket.value if hasattr(doc.bucket, "value") else str(doc.bucket)
+            if bucket_val not in allowed_buckets:
+                logger.debug("Document %s bucket '%s' not in allowed buckets %s", document_id, bucket_val, allowed_buckets)
+                return None
 
         chunks_result = await db.execute(
             select(DocumentChunk.chunk_text, DocumentChunk.chunk_index)
@@ -69,11 +79,15 @@ class DocumentReaderTool:
         document_ids: list[UUID],
         db: AsyncSession,
         max_chars: int = 15000,
+        allowed_buckets: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Read multiple documents in parallel (sequentially via async)."""
+        """Read multiple documents in parallel (sequentially via async).
+
+        SECURITY: Respects allowed_buckets RBAC filter.
+        """
         results = []
         for doc_id in document_ids:
-            doc = await self.read_document(doc_id, db, max_chars)
+            doc = await self.read_document(doc_id, db, max_chars, allowed_buckets)
             if doc:
                 results.append(doc)
         return results

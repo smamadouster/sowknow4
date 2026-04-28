@@ -111,10 +111,16 @@ class GeneralNarrativeSkill(BaseSkill):
                 if len(doc_ids_to_read) >= self.FULL_READ_DOC_COUNT:
                     break
 
+            # SECURITY: Determine allowed buckets from user access level
+            allowed_buckets = ["public"]
+            if user and (getattr(user, "is_superuser", False) or getattr(user, "can_access_confidential", False) or getattr(user, "role", None) in ("admin", "superuser")):
+                allowed_buckets = ["public", "confidential"]
+
             documents = await document_reader.read_documents(
                 document_ids=doc_ids_to_read,
                 db=db,
                 max_chars=self.MAX_CHARS_PER_DOC,
+                allowed_buckets=allowed_buckets,
             )
 
             # Build a relation_path lookup for context enrichment

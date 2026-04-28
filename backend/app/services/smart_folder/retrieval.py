@@ -20,7 +20,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.document import Document
+from app.models.document import Document, DocumentBucket
 from app.models.knowledge_graph import Entity, EntityRelationship, EntityMention, RelationType
 from app.services.search_service import search_service
 
@@ -77,6 +77,21 @@ class RetrievalService:
         self.cooccurrence_limit = cooccurrence_limit
         self.org_search_limit = org_search_limit
 
+    def _get_allowed_buckets(self, user: Any) -> list[str]:
+        """Return allowed document buckets based on user access level.
+
+        Mirrors the RBAC logic in search_service._get_user_bucket_filter().
+        """
+        if not user:
+            return [DocumentBucket.PUBLIC.value]
+        # Admin and superuser can access all buckets
+        if getattr(user, "is_superuser", False) or getattr(user, "role", None) in ("admin", "superuser"):
+            return [DocumentBucket.PUBLIC.value, DocumentBucket.CONFIDENTIAL.value]
+        # Users with explicit confidential flag
+        if getattr(user, "can_access_confidential", False):
+            return [DocumentBucket.PUBLIC.value, DocumentBucket.CONFIDENTIAL.value]
+        return [DocumentBucket.PUBLIC.value]
+
     async def retrieve(
         self,
         db: AsyncSession,
@@ -111,11 +126,15 @@ class RetrievalService:
         primary_assets: list[RetrievedAsset] = []
         expansion_stats: dict[str, int] = {"direct_mentions": 0, "hybrid": 0, "graph": 0, "cooccurrence": 0, "org_search": 0}
 
+        allowed_buckets = self._get_allowed_buckets(user)
+
         # --- Signal 1: Entity Mentions (direct tag) ---
         if entity_id:
             mention_assets = await self._retrieve_by_entity_mentions(
                 db=db,
                 entity_id=entity_id,
+                user=user,
+                allowed_buckets=allowed_buckets,
                 limit=self.mention_limit,
             )
             for asset in mention_assets:
@@ -170,6 +189,7 @@ class RetrievalService:
                 db=db,
                 entity_id=entity_id,
                 user=user,
+                allowed_buckets=allowed_buckets,
                 limit=self.hybrid_limit // 2,
                 seen_doc_ids=seen_doc_ids,
             )
@@ -205,6 +225,7 @@ class RetrievalService:
                 entity_id=entity_id,
                 entity_name=entity_name,
                 user=user,
+                allowed_buckets=allowed_buckets,
                 limit=self.org_search_limit,
                 seen_doc_ids=seen_doc_ids,
             )
@@ -340,29 +361,36 @@ class RetrievalService:
         self,
         db: AsyncSession,
         entity_id: UUID,
+        user: Any,
+        allowed_buckets: list[str],
         limit: int,
     ) -> list[RetrievedAsset]:
-        """Retrieve assets where the entity is explicitly mentioned."""
+        """Retrieve assets where the entity is explicitly mentioned.
+
+        SECURITY: Filters by document bucket to respect user access level.
+        """
         stmt = (
-            select(EntityMention)
+            select(EntityMention, Document.bucket)
+            .join(Document, EntityMention.document_id == Document.id)
             .where(EntityMention.entity_id == entity_id)
+            .where(Document.bucket.in_(allowed_buckets))
             .order_by(EntityMention.confidence_score.desc())
             .limit(limit)
         )
         result = await db.execute(stmt)
-        mentions = result.scalars().all()
+        rows = result.all()
 
         assets = []
         seen: set[UUID] = set()
-        for mention in mentions:
+        for mention, bucket in rows:
             if mention.document_id in seen:
                 continue
             seen.add(mention.document_id)
             assets.append(
                 RetrievedAsset(
                     document_id=mention.document_id,
-                    document_name=getattr(mention, "document", None) and mention.document.filename or "Unknown",
-                    document_bucket=getattr(mention, "document", None) and mention.document.bucket or "public",
+                    document_name=mention.document.filename if mention.document else "Unknown",
+                    document_bucket=bucket.value if hasattr(bucket, "value") else str(bucket),
                     chunk_text=mention.context_text,
                     page_number=mention.page_number,
                     score=1.0,
@@ -380,10 +408,14 @@ class RetrievalService:
         db: AsyncSession,
         entity_id: UUID,
         user: Any,
+        allowed_buckets: list[str],
         limit: int,
         seen_doc_ids: set[UUID],
     ) -> list[RetrievedAsset]:
-        """Retrieve assets linked to entities related to the target entity via explicit relationships."""
+        """Retrieve assets linked to entities related to the target entity via explicit relationships.
+
+        SECURITY: Filters by document bucket to respect user access level.
+        """
         # Find related entity IDs (depth 1) with their relationship types
         rel_stmt = select(
             EntityRelationship.target_id,
@@ -415,18 +447,20 @@ class RetrievalService:
         ent_result = await db.execute(ent_stmt)
         ent_names = {row[0]: row[1] for row in ent_result.all()}
 
-        # Find mentions of related entities
+        # Find mentions of related entities, filtered by bucket
         mention_stmt = (
-            select(EntityMention)
+            select(EntityMention, Document.bucket)
+            .join(Document, EntityMention.document_id == Document.id)
             .where(EntityMention.entity_id.in_(related_entity_ids))
+            .where(Document.bucket.in_(allowed_buckets))
             .limit(limit)
         )
         mention_result = await db.execute(mention_stmt)
-        mentions = mention_result.scalars().all()
+        rows = mention_result.all()
 
         assets = []
         seen: set[UUID] = set()
-        for mention in mentions:
+        for mention, bucket in rows:
             if mention.document_id in seen_doc_ids or mention.document_id in seen:
                 continue
             seen.add(mention.document_id)
@@ -437,8 +471,8 @@ class RetrievalService:
             assets.append(
                 RetrievedAsset(
                     document_id=mention.document_id,
-                    document_name=getattr(mention, "document", None) and mention.document.filename or "Unknown",
-                    document_bucket=getattr(mention, "document", None) and mention.document.bucket or "public",
+                    document_name=mention.document.filename if mention.document else "Unknown",
+                    document_bucket=bucket.value if hasattr(bucket, "value") else str(bucket),
                     chunk_text=mention.context_text,
                     page_number=mention.page_number,
                     score=score,
@@ -455,6 +489,7 @@ class RetrievalService:
         db: AsyncSession,
         entity_id: UUID,
         user: Any,
+        allowed_buckets: list[str],
         limit: int,
         seen_doc_ids: set[UUID],
     ) -> list[RetrievedAsset]:
@@ -467,11 +502,15 @@ class RetrievalService:
         Uses direct DB queries instead of search_service.hybrid_search() to
         avoid session concurrency issues (hybrid_search spawns 5 concurrent
         sub-tasks that can invalidate a shared SQLAlchemy session).
+
+        SECURITY: Filters by document bucket to respect user access level.
         """
-        # Step 1: Find documents that mention the target entity
+        # Step 1: Find documents that mention the target entity (bucket-filtered)
         doc_stmt = (
             select(EntityMention.document_id)
+            .join(Document, EntityMention.document_id == Document.id)
             .where(EntityMention.entity_id == entity_id)
+            .where(Document.bucket.in_(allowed_buckets))
             .distinct()
         )
         doc_result = await db.execute(doc_stmt)
@@ -480,14 +519,16 @@ class RetrievalService:
         if not target_doc_ids:
             return []
 
-        # Step 2: Find top co-occurring entities (organizations and people prioritized)
+        # Step 2: Find top co-occurring entities (bucket-filtered)
         cooc_stmt = text("""
             SELECT e.id, e.name, e.entity_type, COUNT(DISTINCT em.document_id) as doc_count
             FROM sowknow.entity_mentions em
+            JOIN sowknow.documents d ON d.id = em.document_id
             JOIN sowknow.entities e ON e.id = em.entity_id
             WHERE em.document_id = ANY(:doc_ids)
               AND e.id != :entity_id
               AND e.entity_type IN ('organization', 'person', 'location')
+              AND d.bucket = ANY(:buckets)
             GROUP BY e.id, e.name, e.entity_type
             ORDER BY doc_count DESC, e.document_count DESC
             LIMIT :limit
@@ -497,6 +538,7 @@ class RetrievalService:
             {
                 "doc_ids": [str(d) for d in target_doc_ids],
                 "entity_id": str(entity_id),
+                "buckets": allowed_buckets,
                 "limit": 10,
             },
         )
@@ -521,6 +563,7 @@ class RetrievalService:
 
         # Find documents mentioning co-occurring entities, excluding docs already seen
         # and excluding docs that directly mention the target entity (to get NEW context)
+        # SECURITY: Filter by allowed_buckets
         related_doc_stmt = text("""
             SELECT DISTINCT ON (em.document_id)
                 em.document_id,
@@ -532,6 +575,7 @@ class RetrievalService:
             FROM sowknow.entity_mentions em
             JOIN sowknow.documents d ON d.id = em.document_id
             WHERE em.entity_id = ANY(:entity_ids)
+              AND d.bucket = ANY(:buckets)
               AND em.document_id != ALL(:seen_doc_ids)
               AND em.document_id NOT IN (
                   SELECT document_id FROM sowknow.entity_mentions WHERE entity_id = :target_id
@@ -543,6 +587,7 @@ class RetrievalService:
             related_doc_stmt,
             {
                 "entity_ids": [str(e) for e in cooc_entity_ids],
+                "buckets": allowed_buckets,
                 "seen_doc_ids": [str(d) for d in seen_doc_ids] if seen_doc_ids else ["00000000-0000-0000-0000-000000000000"],
                 "target_id": str(entity_id),
                 "limit": limit,
@@ -591,6 +636,7 @@ class RetrievalService:
         entity_id: UUID,
         entity_name: str,
         user: Any,
+        allowed_buckets: list[str],
         limit: int,
         seen_doc_ids: set[UUID],
     ) -> list[RetrievedAsset]:
@@ -604,6 +650,8 @@ class RetrievalService:
 
         Uses direct SQL instead of search_service.hybrid_search() to avoid
         session concurrency issues.
+
+        SECURITY: Filters by document bucket to respect user access level.
         """
         # Find organization relationships
         org_rel_types = [
@@ -649,6 +697,7 @@ class RetrievalService:
 
         # Single query: find documents mentioning these orgs but NOT the target entity
         # (to get NEW organizational context docs)
+        # SECURITY: Filter by allowed_buckets
         org_doc_stmt = text("""
             SELECT DISTINCT ON (em.document_id)
                 em.document_id,
@@ -660,6 +709,7 @@ class RetrievalService:
             FROM sowknow.entity_mentions em
             JOIN sowknow.documents d ON d.id = em.document_id
             WHERE em.entity_id = ANY(:org_ids)
+              AND d.bucket = ANY(:buckets)
               AND em.document_id != ALL(:seen_doc_ids)
               AND em.document_id NOT IN (
                   SELECT document_id FROM sowknow.entity_mentions WHERE entity_id = :target_id
@@ -671,6 +721,7 @@ class RetrievalService:
             org_doc_stmt,
             {
                 "org_ids": [str(o) for o in org_ids],
+                "buckets": allowed_buckets,
                 "seen_doc_ids": [str(d) for d in seen_doc_ids] if seen_doc_ids else ["00000000-0000-0000-0000-000000000000"],
                 "target_id": str(entity_id),
                 "limit": limit,

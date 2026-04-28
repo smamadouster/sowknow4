@@ -41,6 +41,8 @@ class RetrievedAsset:
     retrieval_source: str = ""  # "mention", "hybrid_search", "graph_traversal", "cooccurrence", "semantic", "keyword"
     entity_context: str | None = None  # Surrounding text if from entity mention
     relation_path: str = "direct"  # "direct" | "graph:{type}:{entity}" | "cooccurrence:{entity}"
+    evidence_grade: str = "A"  # A=Direct, B=Relationship, C=Co-occurrence, D=Contextual
+    confidence_score: float = 1.0  # 0.0-1.0
 
 
 @dataclass
@@ -153,6 +155,8 @@ class RetrievalService:
                         score=result.final_score,
                         retrieval_source="hybrid_search",
                         relation_path="direct",
+                        evidence_grade="A",
+                        confidence_score=result.final_score,
                     )
                 )
             expansion_stats["hybrid"] = len(search_result.get("results", []))
@@ -237,6 +241,8 @@ class RetrievalService:
                                 score=result.final_score * 0.9,  # Slight discount
                                 retrieval_source="semantic_focus",
                                 relation_path="direct",
+                                evidence_grade="A",
+                                confidence_score=result.final_score * 0.9,
                             )
                         )
                 except Exception as exc:
@@ -363,6 +369,8 @@ class RetrievalService:
                     retrieval_source="mention",
                     entity_context=mention.context_text,
                     relation_path="direct",
+                    evidence_grade="A",
+                    confidence_score=1.0,
                 )
             )
         return assets
@@ -436,6 +444,8 @@ class RetrievalService:
                     score=score,
                     retrieval_source="graph_traversal",
                     relation_path=f"graph:{rel_type}:{rel_name}",
+                    evidence_grade="B",
+                    confidence_score=confidence / 100.0,
                 )
             )
         return assets
@@ -564,6 +574,8 @@ class RetrievalService:
                     score=score,
                     retrieval_source="cooccurrence",
                     relation_path=f"cooccurrence:{ent_type}:{ent_name}",
+                    evidence_grade="C",
+                    confidence_score=score,
                 )
             )
 
@@ -688,6 +700,8 @@ class RetrievalService:
                     score=score,
                     retrieval_source="org_search",
                     relation_path=f"org:{rel_type}:{org_name}",
+                    evidence_grade="D",
+                    confidence_score=0.55,
                 )
             )
 

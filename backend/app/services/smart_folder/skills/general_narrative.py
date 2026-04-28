@@ -155,6 +155,10 @@ class GeneralNarrativeSkill(BaseSkill):
             citation_index: dict[str, dict[str, Any]] = {}
             counter = 1
             all_assets = primary_assets + related_assets
+            grade_counts: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0}
+            direct_count = 0
+            contextual_count = 0
+            total_confidence = 0.0
             for asset in all_assets:
                 aid = str(asset.document_id)
                 if aid not in citation_index:
@@ -166,8 +170,34 @@ class GeneralNarrativeSkill(BaseSkill):
                         "page_number": asset.page_number,
                         "retrieval_source": asset.retrieval_source,
                         "relation_path": asset.relation_path,
+                        "evidence_grade": asset.evidence_grade,
+                        "confidence_score": round(asset.confidence_score, 2),
                     }
                     counter += 1
+                # Count grades for source quality
+                grade_counts[asset.evidence_grade] = grade_counts.get(asset.evidence_grade, 0) + 1
+                total_confidence += asset.confidence_score
+                if asset.evidence_grade in ("A", "B"):
+                    direct_count += 1
+                else:
+                    contextual_count += 1
+
+            avg_confidence = total_confidence / len(all_assets) if all_assets else 0.0
+            overall = "High" if avg_confidence >= 0.7 else "Medium" if avg_confidence >= 0.5 else "Low"
+
+            source_quality = {
+                "grade_distribution": grade_counts,
+                "overall_confidence": overall,
+                "direct_sources_count": direct_count,
+                "contextual_sources_count": contextual_count,
+                "notes": (
+                    f"{grade_counts.get('A', 0)} direct mentions (Grade A), "
+                    f"{grade_counts.get('B', 0)} relationship sources (Grade B), "
+                    f"{grade_counts.get('C', 0)} co-occurrence sources (Grade C), "
+                    f"{grade_counts.get('D', 0)} contextual org sources (Grade D). "
+                    f"Average confidence: {round(avg_confidence * 100)}%."
+                ),
+            }
 
             return SkillResult(
                 skill_id=self.skill_id,
@@ -179,6 +209,10 @@ class GeneralNarrativeSkill(BaseSkill):
                         "preview": entry["preview"],
                         "document_name": entry["document_name"],
                         "page_number": entry.get("page_number"),
+                        "evidence_grade": entry.get("evidence_grade"),
+                        "confidence_score": entry.get("confidence_score"),
+                        "relation_path": entry.get("relation_path"),
+                        "retrieval_source": entry.get("retrieval_source"),
                     }
                     for aid, entry in citation_index.items()
                 ],
@@ -192,6 +226,7 @@ class GeneralNarrativeSkill(BaseSkill):
                     "learnings": report.learnings,
                     "recommendations": report.recommendations,
                     "raw_markdown": report.raw_markdown,
+                    "source_quality": source_quality,
                     "citation_index": citation_index,
                     "source_asset_ids": [str(a.document_id) for a in all_assets],
                     "documents_read": len(documents),

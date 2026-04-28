@@ -78,12 +78,17 @@ class SmartFolderListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class CitationEntry(BaseModel):
-    """A single citation mapping [N] → source asset."""
+    """A single citation mapping [N] → source asset with quality metadata."""
 
     asset_id: UUID
     preview: str
     cell_ref: str | None = None  # For spreadsheet/PDF cell-level citations
     page_number: int | None = None
+    document_name: str | None = None
+    retrieval_source: str | None = None
+    relation_path: str | None = None
+    evidence_grade: str | None = None  # A/B/C/D
+    confidence_score: float | None = None
 
 
 class ReportSection(BaseModel):
@@ -93,6 +98,16 @@ class ReportSection(BaseModel):
     title: str
     content: str | list[dict[str, Any]] | None = None
     markdown: str | None = None
+
+
+class SourceQuality(BaseModel):
+    """Source quality assessment for a report."""
+
+    grade_distribution: dict[str, int] = Field(default_factory=dict)
+    overall_confidence: str = "Medium"
+    direct_sources_count: int = 0
+    contextual_sources_count: int = 0
+    notes: str = ""
 
 
 class GeneratedContent(BaseModel):
@@ -106,6 +121,7 @@ class GeneratedContent(BaseModel):
     issues: list[str] = Field(default_factory=list)
     learnings: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    source_quality: SourceQuality | None = None
     sections: list[ReportSection] = Field(default_factory=list)
 
 

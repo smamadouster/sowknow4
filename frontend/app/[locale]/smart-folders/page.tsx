@@ -31,6 +31,13 @@ interface ReportData {
     issues: string[];
     learnings: string[];
     recommendations: string[];
+    source_quality?: {
+      grade_distribution?: Record<string, number>;
+      overall_confidence?: string;
+      direct_sources_count?: number;
+      contextual_sources_count?: number;
+      notes?: string;
+    };
     raw_markdown?: string;
   };
   citation_index: Record<string, {
@@ -39,6 +46,9 @@ interface ReportData {
     preview: string;
     document_name?: string;
     page_number?: number | null;
+    evidence_grade?: string | null;
+    confidence_score?: number | null;
+    relation_path?: string | null;
   }>;
   source_asset_ids: string[];
   refinement_query: string | null;

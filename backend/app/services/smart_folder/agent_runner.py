@@ -227,6 +227,11 @@ class SmartFolderAgentRunner:
                         "asset_id": aid,
                         "preview": cite.get("preview", "")[:200],
                         "document_name": cite.get("document_name", "Unknown"),
+                        "page_number": cite.get("page_number"),
+                        "evidence_grade": cite.get("evidence_grade"),
+                        "confidence_score": cite.get("confidence_score"),
+                        "relation_path": cite.get("relation_path"),
+                        "retrieval_source": cite.get("retrieval_source"),
                     }
                     source_asset_ids.append(aid)
                     counter += 1
@@ -257,6 +262,7 @@ class SmartFolderAgentRunner:
                 "issues": synthesized.get("issues", []),
                 "learnings": synthesized.get("learnings", []),
                 "recommendations": synthesized.get("recommendations", []),
+                "source_quality": synthesized.get("source_quality"),
                 "raw_markdown": synthesized.get("raw_markdown", ""),
             },
             source_asset_ids=source_asset_ids,

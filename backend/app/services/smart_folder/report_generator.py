@@ -246,14 +246,14 @@ For the raw_markdown, use a rich structure like:
                     contextual_docs.append(doc)
 
             if direct_docs:
-                lines.append(f"=== DIRECT EVIDENCE ({len(direct_docs)} documents) ===")
-                lines.append("These documents explicitly mention the subject or are directly retrieved via search.")
+                lines.append(f"=== DIRECT EVIDENCE ({len(direct_docs)} documents, Grade A) ===")
+                lines.append("Grade A = Direct mention or explicit search match. Highest confidence.")
                 for i, doc in enumerate(direct_docs, 1):
                     doc_id = doc.get("document_id", "unknown")
                     title = doc.get("title", "Untitled")
                     doc_type = doc.get("doc_type", "document")
                     created = doc.get("created_at", "unknown date")
-                    lines.append(f"\n--- DOCUMENT {i} [{doc_id}] ---")
+                    lines.append(f"\n--- DOCUMENT {i} [{doc_id}] (GRADE A) ---")
                     lines.append(f"Title: {title}")
                     lines.append(f"Type: {doc_type}")
                     lines.append(f"Date: {created}")
@@ -262,19 +262,26 @@ For the raw_markdown, use a rich structure like:
                     lines.append("---")
 
             if contextual_docs:
-                lines.append(f"\n=== CONTEXTUAL EVIDENCE ({len(contextual_docs)} documents) ===")
+                lines.append(f"\n=== CONTEXTUAL EVIDENCE ({len(contextual_docs)} documents, Grades B/C/D) ===")
                 lines.append(
-                    "These documents are about organizations, people, or locations RELATED to the subject. "
-                    "Use them to infer the subject's professional environment, roles, and activities. "
-                    "Clearly distinguish inferences from direct facts."
+                    "Grade B = Explicit relationship (works_at, founded, etc). "
+                    "Grade C = Co-occurrence with subject in other documents. "
+                    "Grade D = Organizational context (company docs without direct mention). "
+                    "Use these to infer the subject's environment. Clearly label inferences."
                 )
                 for i, doc in enumerate(contextual_docs, 1):
                     doc_id = doc.get("document_id", "unknown")
                     path = relation_paths.get(doc_id, "contextual")
+                    # Determine grade from relation_path prefix
+                    grade = "D"
+                    if path.startswith("graph:"):
+                        grade = "B"
+                    elif path.startswith("cooccurrence:"):
+                        grade = "C"
                     title = doc.get("title", "Untitled")
                     doc_type = doc.get("doc_type", "document")
                     created = doc.get("created_at", "unknown date")
-                    lines.append(f"\n--- CONTEXTUAL DOC {i} [{doc_id}] (source: {path}) ---")
+                    lines.append(f"\n--- CONTEXTUAL DOC {i} [{doc_id}] (GRADE {grade}, source: {path}) ---")
                     lines.append(f"Title: {title}")
                     lines.append(f"Type: {doc_type}")
                     lines.append(f"Date: {created}")

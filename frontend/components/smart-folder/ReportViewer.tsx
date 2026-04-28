@@ -13,6 +13,14 @@ interface CitationIndex {
   };
 }
 
+interface SourceQuality {
+  grade_distribution?: Record<string, number>;
+  overall_confidence?: string;
+  direct_sources_count?: number;
+  contextual_sources_count?: number;
+  notes?: string;
+}
+
 interface ReportData {
   title: string;
   summary: string;
@@ -22,6 +30,7 @@ interface ReportData {
   issues: string[];
   learnings: string[];
   recommendations: string[];
+  source_quality?: SourceQuality;
   raw_markdown?: string;
 }
 
@@ -117,6 +126,7 @@ export default function ReportViewer({ report, citationIndex, visualisations, on
   const toc = useMemo(() => {
     const items = [
       { id: "summary", label: "Summary" },
+      ...(report.source_quality ? [{ id: "source-quality", label: "Source Quality" }] : []),
       ...(report.timeline?.length ? [{ id: "timeline", label: "Timeline" }] : []),
       ...(report.patterns?.length ? [{ id: "patterns", label: "Patterns" }] : []),
       ...(report.trends?.length ? [{ id: "trends", label: "Trends" }] : []),
@@ -183,6 +193,68 @@ export default function ReportViewer({ report, citationIndex, visualisations, on
                 {renderMarkdownWithCitations(report.summary)}
               </div>
             </Section>
+
+            {/* Source Quality */}
+            {report.source_quality && (
+              <Section title="Source Quality Assessment" id="source-quality">
+                <div className="space-y-3">
+                  {/* Grade distribution bars */}
+                  {report.source_quality.grade_distribution && (
+                    <div className="flex gap-2 flex-wrap">
+                      {(["A", "B", "C", "D"] as const).map((g) => {
+                        const count = report.source_quality!.grade_distribution![g] || 0;
+                        if (count === 0) return null;
+                        const colorClass =
+                          g === "A"
+                            ? "bg-emerald-500"
+                            : g === "B"
+                            ? "bg-blue-500"
+                            : g === "C"
+                            ? "bg-amber-500"
+                            : "bg-orange-500";
+                        return (
+                          <div key={g} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg px-3 py-2">
+                            <span className={`inline-flex items-center justify-center w-6 h-6 text-xs font-bold text-white rounded-full ${colorClass}`}>
+                              {g}
+                            </span>
+                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                              {g === "A" ? "Direct" : g === "B" ? "Related" : g === "C" ? "Co-occurrence" : "Contextual"}
+                            </span>
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">{count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Stats row */}
+                  <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                    {report.source_quality.overall_confidence && (
+                      <span>
+                        Overall confidence: <strong className="text-gray-700 dark:text-gray-300">{report.source_quality.overall_confidence}</strong>
+                      </span>
+                    )}
+                    {report.source_quality.direct_sources_count != null && (
+                      <span>
+                        Direct sources: <strong className="text-gray-700 dark:text-gray-300">{report.source_quality.direct_sources_count}</strong>
+                      </span>
+                    )}
+                    {report.source_quality.contextual_sources_count != null && (
+                      <span>
+                        Contextual sources: <strong className="text-gray-700 dark:text-gray-300">{report.source_quality.contextual_sources_count}</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Notes */}
+                  {report.source_quality.notes && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 italic">
+                      {report.source_quality.notes}
+                    </p>
+                  )}
+                </div>
+              </Section>
+            )}
 
             {/* Timeline */}
             {report.timeline?.length > 0 && (

@@ -97,6 +97,11 @@ Rules:
   "raw_markdown": "Full report as rich markdown with sections, inline citations, and quoted passages"
 }}
 
+EVIDENCE QUALITY — IMPORTANT:
+- Documents marked as "direct" are primary evidence: they explicitly mention the subject.
+- Documents marked as "cooccurrence" or "org_search" are contextual evidence: they are about organizations, people, or locations related to the subject. Use these to INFER the subject's role, activities, or significance, but clearly distinguish inference from direct evidence.
+- Example: "Documents from Matforce (a company Ousmane Sow works at) show expansion into new markets in 2019 [doc_id]. This suggests his professional environment was growing during this period."
+
 For the raw_markdown, use a rich structure like:
 # Title
 ## Profil Exécutif / Executive Profile
@@ -211,55 +216,104 @@ For the raw_markdown, use a rich structure like:
         analysis_result: AnalysisResult,
         full_documents: list[dict[str, Any]] | None = None,
     ) -> str:
-        """Assemble a rich, structured context string for the LLM."""
+        """Assemble a rich, structured context string for the LLM.
+
+        Phase 2: Distinguishes direct evidence from multi-hop contextual evidence
+        so the LLM can appropriately weight and describe each type.
+        """
         lines = [
             f"QUERY: {query_text}",
             f"ENTITY: {entity_name or 'Not specified'}",
             "",
         ]
 
+        # Build a lookup of relation_paths from all assets
+        relation_paths: dict[str, str] = {}
+        for asset in retrieval_context.primary_assets + retrieval_context.related_assets:
+            relation_paths[str(asset.document_id)] = asset.relation_path
+
         # ── Full documents (primary context) ──
         if full_documents:
-            lines.append(f"=== FULL DOCUMENTS ({len(full_documents)} documents read) ===")
-            for i, doc in enumerate(full_documents, 1):
+            # Separate direct vs contextual documents
+            direct_docs = []
+            contextual_docs = []
+            for doc in full_documents:
                 doc_id = doc.get("document_id", "unknown")
-                title = doc.get("title", "Untitled")
-                doc_type = doc.get("doc_type", "document")
-                created = doc.get("created_at", "unknown date")
-                lines.append(f"\n--- DOCUMENT {i} [{doc_id}] ---")
-                lines.append(f"Title: {title}")
-                lines.append(f"Type: {doc_type}")
-                lines.append(f"Date: {created}")
-                lines.append("Content:")
-                lines.append(doc.get("full_text", "[No text available]")[:8000])
-                lines.append("---")
+                path = relation_paths.get(doc_id, "direct")
+                if path.startswith("direct") or path.startswith("graph:") and "cooccurrence" not in path:
+                    direct_docs.append(doc)
+                else:
+                    contextual_docs.append(doc)
+
+            if direct_docs:
+                lines.append(f"=== DIRECT EVIDENCE ({len(direct_docs)} documents) ===")
+                lines.append("These documents explicitly mention the subject or are directly retrieved via search.")
+                for i, doc in enumerate(direct_docs, 1):
+                    doc_id = doc.get("document_id", "unknown")
+                    title = doc.get("title", "Untitled")
+                    doc_type = doc.get("doc_type", "document")
+                    created = doc.get("created_at", "unknown date")
+                    lines.append(f"\n--- DOCUMENT {i} [{doc_id}] ---")
+                    lines.append(f"Title: {title}")
+                    lines.append(f"Type: {doc_type}")
+                    lines.append(f"Date: {created}")
+                    lines.append("Content:")
+                    lines.append(doc.get("full_text", "[No text available]")[:7000])
+                    lines.append("---")
+
+            if contextual_docs:
+                lines.append(f"\n=== CONTEXTUAL EVIDENCE ({len(contextual_docs)} documents) ===")
+                lines.append(
+                    "These documents are about organizations, people, or locations RELATED to the subject. "
+                    "Use them to infer the subject's professional environment, roles, and activities. "
+                    "Clearly distinguish inferences from direct facts."
+                )
+                for i, doc in enumerate(contextual_docs, 1):
+                    doc_id = doc.get("document_id", "unknown")
+                    path = relation_paths.get(doc_id, "contextual")
+                    title = doc.get("title", "Untitled")
+                    doc_type = doc.get("doc_type", "document")
+                    created = doc.get("created_at", "unknown date")
+                    lines.append(f"\n--- CONTEXTUAL DOC {i} [{doc_id}] (source: {path}) ---")
+                    lines.append(f"Title: {title}")
+                    lines.append(f"Type: {doc_type}")
+                    lines.append(f"Date: {created}")
+                    lines.append("Content:")
+                    lines.append(doc.get("full_text", "[No text available]")[:5000])
+                    lines.append("---")
 
         # ── Chunk snippets (supplementary context) ──
         asset_map: dict[str, RetrievedAsset] = {}
-        remaining_assets = []
+        remaining_primary = []
+        remaining_related = []
         for asset in retrieval_context.primary_assets:
             asset_map[str(asset.document_id)] = asset
-            # Skip if we already have full text for this doc
             if full_documents and not any(
                 d.get("document_id") == str(asset.document_id) for d in full_documents
             ):
-                remaining_assets.append(asset)
+                remaining_primary.append(asset)
 
-        if remaining_assets:
-            lines.append("\n=== ADDITIONAL CHUNK SNIPPETS ===")
-            for asset in remaining_assets[:20]:
+        for asset in retrieval_context.related_assets:
+            asset_map[str(asset.document_id)] = asset
+            if full_documents and not any(
+                d.get("document_id") == str(asset.document_id) for d in full_documents
+            ):
+                remaining_related.append(asset)
+
+        if remaining_primary:
+            lines.append("\n=== ADDITIONAL DIRECT SNIPPETS ===")
+            for asset in remaining_primary[:15]:
                 snippet = (asset.chunk_text or "")[:400].replace("\n", " ")
                 lines.append(
                     f"[{asset.document_id}] {asset.document_name} ({asset.retrieval_source}): {snippet}"
                 )
 
-        if retrieval_context.related_assets:
-            lines.append("\n=== RELATED ASSETS (via graph traversal) ===")
-            for asset in retrieval_context.related_assets[:10]:
-                asset_map[str(asset.document_id)] = asset
+        if remaining_related:
+            lines.append("\n=== ADDITIONAL CONTEXTUAL SNIPPETS (multi-hop) ===")
+            for asset in remaining_related[:10]:
                 snippet = (asset.chunk_text or "")[:300].replace("\n", " ")
                 lines.append(
-                    f"[{asset.document_id}] {asset.document_name}: {snippet}"
+                    f"[{asset.document_id}] {asset.document_name} ({asset.relation_path}): {snippet}"
                 )
 
         # ── Analysis tables (may be empty) ──

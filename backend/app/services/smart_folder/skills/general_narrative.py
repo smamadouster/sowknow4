@@ -32,10 +32,10 @@ class GeneralNarrativeSkill(BaseSkill):
         "full document context and quoted evidence."
     )
 
-    # Number of unique documents to read in full
-    FULL_READ_DOC_COUNT = 15
+    # Number of unique documents to read in full (Phase 2: increased for multi-hop)
+    FULL_READ_DOC_COUNT = 25
     # Max chars per document
-    MAX_CHARS_PER_DOC = 12000
+    MAX_CHARS_PER_DOC = 10000
 
     async def analyze(self, parameters: dict[str, Any], context: dict[str, Any]) -> SkillResult:
         """Run the general narrative pipeline with full document reading."""
@@ -89,13 +89,22 @@ class GeneralNarrativeSkill(BaseSkill):
                 )
 
             # ── 2. Full document reading ──
-            # Gather unique document IDs from primary + related assets, sorted by score
-            all_assets = retrieval.primary_assets + retrieval.related_assets
-            all_assets.sort(key=lambda a: a.score, reverse=True)
+            # Phase 2: Prioritize direct evidence first, then multi-hop context
+            # Sort primary (direct) assets higher, but include top related assets too
+            primary_assets = sorted(retrieval.primary_assets, key=lambda a: a.score, reverse=True)
+            related_assets = sorted(retrieval.related_assets, key=lambda a: a.score, reverse=True)
 
             seen_doc_ids: set[UUID] = set()
             doc_ids_to_read: list[UUID] = []
-            for asset in all_assets:
+
+            # First pass: all primary (direct) assets
+            for asset in primary_assets:
+                if asset.document_id not in seen_doc_ids:
+                    seen_doc_ids.add(asset.document_id)
+                    doc_ids_to_read.append(asset.document_id)
+
+            # Second pass: top related (multi-hop) assets
+            for asset in related_assets:
                 if asset.document_id not in seen_doc_ids:
                     seen_doc_ids.add(asset.document_id)
                     doc_ids_to_read.append(asset.document_id)
@@ -108,10 +117,17 @@ class GeneralNarrativeSkill(BaseSkill):
                 max_chars=self.MAX_CHARS_PER_DOC,
             )
 
+            # Build a relation_path lookup for context enrichment
+            relation_paths: dict[str, str] = {}
+            for asset in primary_assets + related_assets:
+                relation_paths[str(asset.document_id)] = asset.relation_path
+
             logger.info(
-                "GeneralNarrativeSkill read %d full documents for entity=%s",
-                len(documents),
-                entity_name,
+                "GeneralNarrativeSkill read %d full documents for entity=%s "
+                "(primary=%d, related=%d, expansion=%s)",
+                len(documents), entity_name,
+                len(primary_assets), len(related_assets),
+                retrieval.expansion_stats,
             )
 
             # ── 3. Analysis (milestones, patterns from dedicated tables) ──
@@ -135,8 +151,10 @@ class GeneralNarrativeSkill(BaseSkill):
 
             # Build citations from ALL retrieved assets, not just those used in report text
             # This ensures the citation panel shows all sources consulted
+            # Phase 2: Include relation_path to distinguish direct vs multi-hop sources
             citation_index: dict[str, dict[str, Any]] = {}
             counter = 1
+            all_assets = primary_assets + related_assets
             for asset in all_assets:
                 aid = str(asset.document_id)
                 if aid not in citation_index:
@@ -146,6 +164,8 @@ class GeneralNarrativeSkill(BaseSkill):
                         "preview": (asset.chunk_text or "")[:200],
                         "document_name": asset.document_name,
                         "page_number": asset.page_number,
+                        "retrieval_source": asset.retrieval_source,
+                        "relation_path": asset.relation_path,
                     }
                     counter += 1
 

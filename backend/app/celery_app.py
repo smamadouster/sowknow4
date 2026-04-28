@@ -131,6 +131,11 @@ celery_app.conf.update(
             "schedule": crontab(hour=2, minute=0),  # 02:00 AM daily
             "args": (7,),  # Keep reports for 7 days
         },
+        "smart-folder-auto-refresh": {
+            "task": "app.tasks.smart_folder_tasks.refresh_stale_smart_folders",
+            "schedule": 1800,  # Every 30 minutes
+            "args": (),
+        },
     },
 )
 

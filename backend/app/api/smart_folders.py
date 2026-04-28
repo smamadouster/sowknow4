@@ -158,6 +158,63 @@ async def get_smart_folder(
     }
 
 
+@router.post("/{smart_folder_id}/refresh", status_code=status.HTTP_202_ACCEPTED)
+async def refresh_smart_folder(
+    smart_folder_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Refresh an existing Smart Folder by re-running generation with the same query.
+
+    Creates a new report version while preserving the Smart Folder identity.
+    """
+    from app.tasks.smart_folder_tasks import generate_smart_folder_v2_task
+
+    # Load existing Smart Folder
+    stmt = select(SmartFolder).where(
+        SmartFolder.id == smart_folder_id,
+        SmartFolder.user_id == current_user.id,
+    )
+    result = await db.execute(stmt)
+    sf = result.scalar_one_or_none()
+
+    if not sf:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Smart Folder not found",
+        )
+
+    include_confidential = current_user.can_access_confidential
+
+    try:
+        task = generate_smart_folder_v2_task.delay(
+            query=sf.query_text,
+            include_confidential=include_confidential,
+            user_id=str(current_user.id),
+            smart_folder_id=str(smart_folder_id),
+        )
+    except Exception as exc:
+        logger.error("Failed to queue smart folder refresh: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to queue refresh task. Please try again later.",
+        )
+
+    logger.info(
+        "Smart folder refresh queued | task_id=%s user=%s sf_id=%s",
+        task.id,
+        current_user.email,
+        smart_folder_id,
+    )
+
+    return {
+        "task_id": task.id,
+        "status": "pending",
+        "status_url": f"/api/v1/smart-folders/generate/status/{task.id}",
+        "message": f"Smart Folder refresh queued (task_id={task.id})",
+    }
+
+
 @router.post("/{smart_folder_id}/refine", status_code=status.HTTP_202_ACCEPTED)
 async def refine_smart_folder(
     smart_folder_id: UUID,

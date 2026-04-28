@@ -246,9 +246,24 @@ export default function SmartFoldersPage() {
     }
   };
 
-  const handleRegenerate = () => {
-    if (query) {
-      handleGenerate(query);
+  const handleRegenerate = async () => {
+    if (!smartFolder) return;
+    setError(null);
+    setReport(null);
+    setPollingLoading(true);
+    try {
+      const response = await api.refreshSmartFolder(smartFolder.id);
+      if (response.error) {
+        setError(response.error);
+        setPollingLoading(false);
+        return;
+      }
+      if (response.data?.task_id) {
+        setTaskId(response.data.task_id);
+      }
+    } catch (exc) {
+      setError(t("refresh_error") || "Failed to refresh Smart Folder");
+      setPollingLoading(false);
     }
   };
 

@@ -877,6 +877,13 @@ class ApiClient {
     });
   }
 
+  async refreshSmartFolder(id: string) {
+    return this.request<{ task_id: string; status: string; status_url: string; message: string }>(`/v1/smart-folders/${id}/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   async saveSmartFolder(id: string, name?: string) {
     return this.request<{ note_id: string; title: string; message: string }>(`/v1/smart-folders/${id}/save`, {
       method: 'POST',

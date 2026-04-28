@@ -149,6 +149,58 @@ def generate_smart_folder_v2_task(
         raise
 
 
+@shared_task(
+    bind=True,
+    name="app.tasks.smart_folder_tasks.refresh_stale_smart_folders",
+    queue="scheduled",
+    soft_time_limit=300,
+    time_limit=600,
+)
+def refresh_stale_smart_folders_task(self) -> dict[str, Any]:
+    """Periodically refresh Smart Folders that may have new documents.
+
+    Finds all READY Smart Folders and queues a refresh task for each.
+    This ensures reports stay current as new documents are uploaded.
+    """
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import select
+
+    from app.database import AsyncSessionLocal
+    from app.models.smart_folder import SmartFolder, SmartFolderStatus
+
+    async def _run() -> dict[str, Any]:
+        async with AsyncSessionLocal() as db:
+            # Find all READY Smart Folders created/updated in the last 30 days
+            cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+            stmt = (
+                select(SmartFolder)
+                .where(SmartFolder.status == SmartFolderStatus.READY)
+                .where(SmartFolder.updated_at > cutoff)
+            )
+            result = await db.execute(stmt)
+            folders = result.scalars().all()
+
+            refreshed = 0
+            for sf in folders:
+                try:
+                    generate_smart_folder_v2_task.delay(
+                        query=sf.query_text,
+                        include_confidential=False,  # Will be overridden by user's actual permission in task
+                        user_id=str(sf.user_id),
+                        smart_folder_id=str(sf.id),
+                    )
+                    refreshed += 1
+                except Exception as exc:
+                    logger.warning("Failed to queue refresh for SmartFolder %s: %s", sf.id, exc)
+
+            logger.info("Queued refresh for %d/%d stale Smart Folders", refreshed, len(folders))
+            return {"refreshed": refreshed, "total": len(folders)}
+
+    return asyncio.run(_run())
+
+
 # Legacy task kept for backward compatibility
 @shared_task(
     bind=True,

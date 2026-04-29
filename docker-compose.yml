@@ -232,6 +232,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.embed
     container_name: sowknow4-embed-server
+    cpuset: "6,7"
     restart: unless-stopped
     logging: *default-logging
     environment:

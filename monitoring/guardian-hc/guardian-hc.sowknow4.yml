@@ -218,7 +218,7 @@ modules:
     services: [frontend, backend]
     # nginx_upstream removed 2026-04-11: sowknow4 uses host nginx, not a container.
     # The old probe hard-coded `restart:sowknow4-nginx` which never exists.
-    probes: [disk, memory, network, ssl]
+    probes: [disk, memory, network, ssl, resource_hogs]
 
 database:
   host: "postgres"

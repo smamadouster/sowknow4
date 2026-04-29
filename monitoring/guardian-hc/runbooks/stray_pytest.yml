@@ -1,0 +1,100 @@
+name: stray_pytest
+description: >
+  Detects pytest processes that have been running for >2 hours.
+  These are almost always forgotten manual test runs that will saturate
+  CPU and starve every other service on the host.
+
+triggers:
+  - check_name: stray_pytest
+
+steps:
+  - id: count_stray
+    name: "Count long-running pytest processes"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python -c "
+      import subprocess, json, sys, os, time;
+      # Check host processes via docker exec on a privileged container
+      result = subprocess.run(
+          ['ps', 'aux'],
+          capture_output=True, text=True, timeout=10
+      );
+      stray = [];
+      for line in result.stdout.splitlines():
+          if 'pytest' in line.lower() and 'grep' not in line.lower():
+              parts = line.split();
+              if len(parts) >= 10:
+                  # Extract CPU time (column 9 in ps aux: HH:MM or MM:SS)
+                  cpu_time = parts[9];
+                  pid = parts[1];
+                  cmd = ' '.join(parts[10:]);
+                  # Parse elapsed time roughly from CPU time string
+                  try:
+                      if '-' in cpu_time:
+                          days = int(cpu_time.split('-')[0]);
+                          if days >= 0:
+                              stray.append({'pid': pid, 'cpu_time': cpu_time, 'cmd': cmd[:80]});
+                      else:
+                          h, m = cpu_time.split(':')[:2];
+                          if int(h) >= 2:
+                              stray.append({'pid': pid, 'cpu_time': cpu_time, 'cmd': cmd[:80]});
+                  except Exception:
+                      pass;
+      print('STRAY_PYTEST:', json.dumps({'count': len(stray), 'processes': stray}));
+      if stray:
+          sys.exit(1);
+      sys.exit(0);
+      "
+    expect_returncode: 0
+    timeout: 15
+    on_success: resolved
+    on_failure: kill_and_alert
+
+  - id: kill_and_alert
+    name: "Kill stray pytest processes and alert"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python -c "
+      import subprocess, json, sys;
+      result = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=10);
+      killed = [];
+      for line in result.stdout.splitlines():
+          if 'pytest' in line.lower() and 'grep' not in line.lower():
+              parts = line.split();
+              if len(parts) >= 10:
+                  cpu_time = parts[9];
+                  pid = parts[1];
+                  try:
+                      if '-' in cpu_time:
+                          killed.append(pid);
+                      else:
+                          h, m = cpu_time.split(':')[:2];
+                          if int(h) >= 2:
+                              killed.append(pid);
+                  except Exception:
+                      pass;
+      for pid in killed:
+          subprocess.run(['kill', '-TERM', pid], capture_output=True, timeout=5);
+      print(f'KILLED {len(killed)} stray pytest PIDs: {killed}');
+      sys.exit(1);  # exit 1 so runbook triggers alert step
+      "
+    timeout: 20
+    on_success: alert
+    on_failure: alert
+
+  - id: resolved
+    name: "No stray pytest processes"
+    action: resolved
+    terminal: true
+
+  - id: alert
+    name: "Alert: stray pytest killed"
+    action: alert
+    message: >-
+      ⚠️ *Guardian: stray pytest detected*
+
+      Found pytest processes running >2 hours. They have been killed.
+      If this happens repeatedly, add a cron guard or check tmux/screen sessions.
+    terminal: true

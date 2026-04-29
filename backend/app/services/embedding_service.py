@@ -37,6 +37,7 @@ class EmbeddingService:
         self._device = "cpu"
         self._load_error = None
         self._load_lock = threading.Lock()
+        self._encode_lock = threading.Lock()
         self._initialized = True
 
     @property
@@ -66,10 +67,9 @@ class EmbeddingService:
             try:
                 import torch
 
-                # Limit PyTorch internal threads to reduce memory fragmentation
-                torch.set_num_threads(1)
-                torch.set_num_interop_threads(1)
-
+                # Thread limits are caller-configured (e.g. embed-server main.py
+                # clamps these to 1).  We do NOT override them here so that
+                # dedicated services can enforce their own policy.
                 if torch.cuda.is_available():
                     self._device = "cuda"
                     logger.info("Using CUDA for embeddings")
@@ -170,30 +170,34 @@ class EmbeddingService:
             # The e5 model expects "query:" prefix for queries and "passage:" for passages
             processed_texts = [f"passage: {text}" for text in texts]
 
-            # Generate embeddings — disable gradient tracking to save memory
-            import gc
-            try:
-                import torch
-                with torch.no_grad():
+            # Serialize all encode calls to prevent CPU thrashing and memory
+            # fragmentation when multiple FastAPI threads hit the model
+            # concurrently.
+            with self._encode_lock:
+                # Generate embeddings — disable gradient tracking to save memory
+                import gc
+                try:
+                    import torch
+                    with torch.no_grad():
+                        embeddings = self.model.encode(
+                            processed_texts,
+                            batch_size=batch_size,
+                            show_progress_bar=show_progress,
+                            convert_to_numpy=True,
+                            normalize_embeddings=True,  # L2 normalization
+                        )
+                except ImportError:
                     embeddings = self.model.encode(
                         processed_texts,
                         batch_size=batch_size,
                         show_progress_bar=show_progress,
                         convert_to_numpy=True,
-                        normalize_embeddings=True,  # L2 normalization
+                        normalize_embeddings=True,
                     )
-            except ImportError:
-                embeddings = self.model.encode(
-                    processed_texts,
-                    batch_size=batch_size,
-                    show_progress_bar=show_progress,
-                    convert_to_numpy=True,
-                    normalize_embeddings=True,
-                )
 
-            # Force garbage collection after large batches to release memory
-            if len(texts) > 50:
-                gc.collect()
+            # Force garbage collection after every encode to release memory
+            # and prevent fragmentation across threads.
+            gc.collect()
 
             # Convert to list of lists
             return embeddings.tolist()
@@ -228,21 +232,22 @@ class EmbeddingService:
             return [0.0] * self.embedding_dim
 
         try:
-            try:
-                import torch
-                with torch.no_grad():
+            with self._encode_lock:
+                try:
+                    import torch
+                    with torch.no_grad():
+                        embeddings = self.model.encode(
+                            [f"query: {text}"],
+                            convert_to_numpy=True,
+                            normalize_embeddings=True,
+                        )
+                except ImportError:
                     embeddings = self.model.encode(
                         [f"query: {text}"],
                         convert_to_numpy=True,
                         normalize_embeddings=True,
                     )
-            except ImportError:
-                embeddings = self.model.encode(
-                    [f"query: {text}"],
-                    convert_to_numpy=True,
-                    normalize_embeddings=True,
-                )
-            return embeddings[0].tolist()
+                return embeddings[0].tolist()
         except Exception as e:
             logger.error(f"Error generating query embedding: {e}")
             raise

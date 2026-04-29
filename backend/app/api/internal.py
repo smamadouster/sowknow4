@@ -91,6 +91,7 @@ async def internal_upload(
             title=title,
             tags=tags,
             document_type=document_type,
+            transcript=None,
             x_bot_api_key=x_bot_api_key,
             current_user=bot_user,
             db=db,

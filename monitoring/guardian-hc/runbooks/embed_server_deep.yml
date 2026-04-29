@@ -1,0 +1,87 @@
+name: embed_server_deep
+description: >
+  Embed server passes /health but fails to generate actual vectors on /embed.
+  Usually means the uvicorn worker is mid-restart (--limit-max-requests)
+  or the PyTorch model crashed. Restarts the embed-server container.
+
+triggers:
+  - check_name: embed_server_deep
+
+steps:
+  # Step 1: Quick double-check before restarting anything
+  - id: verify_unhealthy
+    name: "Re-verify /embed endpoint"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python -c "
+      import httpx, os, sys;
+      url = os.getenv('EMBED_SERVER_URL', 'http://embed-server:8000') + '/embed';
+      try:
+          r = httpx.post(url, json={'texts': ['probe'], 'batch_size': 1}, timeout=10);
+          if r.status_code == 200 and len(r.json()[0]) == 1024:
+              print('HEALTHY');
+              sys.exit(0);
+      except Exception as e:
+          pass;
+      print('UNHEALTHY');
+      sys.exit(1);
+      "
+    expect_in_stdout: "UNHEALTHY"
+    timeout: 20
+    on_success: restart_embed_server
+    on_failure: resolved  # it healed itself in the meantime
+
+  # Step 2: Restart embed-server
+  - id: restart_embed_server
+    name: "Restart embed-server container"
+    action: restart_container
+    container: sowknow4-embed-server
+    wait_after: 30
+    on_success: verify_after_restart
+    on_failure: escalate
+
+  # Step 3: Verify /embed works after restart
+  - id: verify_after_restart
+    name: "Verify embed server generates vectors post-restart"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python -c "
+      import httpx, os, sys, time;
+      url = os.getenv('EMBED_SERVER_URL', 'http://embed-server:8000') + '/embed';
+      for i in range(6):
+          try:
+              r = httpx.post(url, json={'texts': ['probe'], 'batch_size': 1}, timeout=10);
+              if r.status_code == 200 and len(r.json()[0]) == 1024:
+                  print('HEALTHY');
+                  sys.exit(0);
+          except Exception:
+              pass;
+          time.sleep(5);
+      print('STILL_UNHEALTHY');
+      sys.exit(1);
+      "
+    expect_in_stdout: "HEALTHY"
+    timeout: 45
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Embed server recovered"
+    action: resolved
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: embed server still failing after restart"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: embed_server_deep — ESCALATED*
+
+      Embed server restarted but still cannot generate vectors.
+      Manual investigation needed:
+      • `docker logs sowknow4-embed-server`
+      • Check model disk space: `docker exec sowknow4-embed-server df -h /models`
+      • Check for OOM: `dmesg | grep -i oom`
+    terminal: true

@@ -14,6 +14,7 @@ async event loop at task execution time).
 import asyncio
 import logging
 import os
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -399,8 +400,15 @@ def _run_embed(document_id: str) -> None:
 
         # Preflight: fail fast if embed-server is unreachable so we retry
         # instead of silently poisoning chunks with zero vectors.
-        if not embedding_service.can_embed:
-            raise RuntimeError("Embed server is not healthy")
+        # Retry a few times to survive the ~5s uvicorn worker restart window.
+        _embed_ready = False
+        for _attempt in range(1, 4):
+            if embedding_service.can_embed:
+                _embed_ready = True
+                break
+            time.sleep(2.0)
+        if not _embed_ready:
+            raise RuntimeError("Embed server is not healthy after 3 attempts")
 
         # Only fetch chunks that still need embeddings
         chunks = (

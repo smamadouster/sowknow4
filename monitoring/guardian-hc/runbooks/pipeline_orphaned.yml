@@ -1,0 +1,124 @@
+name: pipeline_orphaned
+description: >
+  Documents that completed chunking but have no embedded row at all.
+  This happens when Celery chains break due to worker OOM kills.
+  Creates missing rows and dispatches them via the backend orchestrator.
+
+triggers:
+  - check_name: pipeline_orphaned
+
+steps:
+  # Step 1: Count orphaned docs
+  - id: count_orphaned
+    name: "Count chunked docs with no embedded row"
+    action: exec
+    container: sowknow4-postgres
+    command: >-
+      psql -U postgres -t -c
+      "WITH chunked_docs AS (
+         SELECT document_id FROM pipeline_stages
+         WHERE stage='chunked' AND status='completed'
+       ),
+       embedded_docs AS (
+         SELECT document_id FROM pipeline_stages WHERE stage='embedded'
+       )
+       SELECT count(*) FROM chunked_docs c
+       WHERE NOT EXISTS (
+         SELECT 1 FROM embedded_docs e WHERE e.document_id = c.document_id
+       );"
+    expect_returncode: 0
+    timeout: 15
+    on_success: heal_orphaned
+    on_failure: alert_db_query_failed
+
+  # Step 2: Heal via backend Python script (creates rows + dispatches)
+  - id: heal_orphaned
+    name: "Create missing embedded rows and dispatch"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python -c "
+      import os; os.chdir('/app');
+      from app.database import SessionLocal;
+      from app.models.pipeline import PipelineStage, StageEnum, StageStatus;
+      from app.tasks.pipeline_orchestrator import dispatch_document;
+      db = SessionLocal();
+      try:
+          chunked_ids = {r[0] for r in db.query(PipelineStage.document_id).filter(
+              PipelineStage.stage == StageEnum.CHUNKED,
+              PipelineStage.status == StageStatus.COMPLETED,
+          ).all()};
+          embedded_ids = {r[0] for r in db.query(PipelineStage.document_id).filter(
+              PipelineStage.stage == StageEnum.EMBEDDED,
+          ).all()};
+          missing = chunked_ids - embedded_ids;
+          for doc_id in missing:
+              db.add(PipelineStage(
+                  document_id=doc_id, stage=StageEnum.EMBEDDED,
+                  status=StageStatus.PENDING, attempt=0, max_attempts=3,
+              ));
+          db.commit();
+          dispatched = 0;
+          for doc_id in missing:
+              if dispatch_document(str(doc_id), from_stage=StageEnum.EMBEDDED) == 'dispatched':
+                  dispatched += 1;
+          print(f'HEALED: created={len(missing)} dispatched={dispatched}');
+      finally:
+          db.close();
+      "
+    expect_in_stdout: "HEALED:"
+    timeout: 120
+    on_success: verify_healed
+    on_failure: escalate
+
+  # Step 3: Verify no orphans remain
+  - id: verify_healed
+    name: "Verify orphaned count dropped to zero"
+    action: exec
+    container: sowknow4-postgres
+    command: >-
+      psql -U postgres -t -c
+      "WITH chunked_docs AS (
+         SELECT document_id FROM pipeline_stages
+         WHERE stage='chunked' AND status='completed'
+       ),
+       embedded_docs AS (
+         SELECT document_id FROM pipeline_stages WHERE stage='embedded'
+       )
+       SELECT count(*) FROM chunked_docs c
+       WHERE NOT EXISTS (
+         SELECT 1 FROM embedded_docs e WHERE e.document_id = c.document_id
+       );"
+    expect_in_stdout: "0"
+    timeout: 15
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Orphaned documents healed"
+    action: resolved
+    terminal: true
+
+  - id: alert_db_query_failed
+    name: "Alert: could not query pipeline_stages"
+    action: alert
+    message: >-
+      ⚠️ *Guardian runbook: pipeline_orphaned*
+
+      Could not query pipeline_stages table. Postgres may be down
+      or the table schema has changed.
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: orphaned docs remain after heal"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: pipeline_orphaned — ESCALATED*
+
+      Documents remain orphaned after auto-heal.
+      Manual investigation needed:
+      • `docker logs sowknow4-celery-heavy`
+      • Check for OOM kills: `dmesg | grep -i oom`
+      • Verify embed-server health: `curl http://embed-server:8000/health`
+    terminal: true

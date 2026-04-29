@@ -28,6 +28,7 @@ from guardian_hc.checks.network_health import NetworkHealthChecker
 from guardian_hc.checks.celery_health import CeleryHealthChecker
 from guardian_hc.checks.vps_load import VpsLoadChecker
 from guardian_hc.checks.ollama_health import OllamaChecker
+from guardian_hc.checks.resource_hogs import ResourceHogsChecker
 from guardian_hc.healers.container_healer import ContainerHealer
 from guardian_hc.healers.disk_healer import DiskHealer
 from guardian_hc.healers.ssl_healer import SslHealer
@@ -46,9 +47,9 @@ from guardian_hc.healers.network_healer import NetworkHealer
 #   - restart_rate: in-memory sliding window of RestartCount per container
 
 PATROL_CHECKS: dict[str, list[str]] = {
-    "critical": ["containers", "api_health", "oom_events", "restart_rate"],
-    "standard": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "oom_events", "restart_rate"],
-    "deep": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "ssl", "config_drift", "oom_events", "restart_rate"],
+    "critical": ["containers", "api_health", "oom_events", "restart_rate", "resource_hogs"],
+    "standard": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "resource_hogs", "oom_events", "restart_rate"],
+    "deep": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "resource_hogs", "ssl", "config_drift", "oom_events", "restart_rate"],
 }
 
 
@@ -75,6 +76,7 @@ class InfrastructurePlugin(GuardianPlugin):
         self._network_checker = NetworkHealthChecker(config.get("network"))
         self._celery_checker = CeleryHealthChecker(config.get("celery"))
         self._vps_checker = VpsLoadChecker(config.get("vps_load"))
+        self._resource_hogs_checker = ResourceHogsChecker(config.get("resource_hogs"))
         self._ollama_checker = OllamaChecker(config.get("ollama"))
 
         # Instantiate healers
@@ -146,6 +148,10 @@ class InfrastructurePlugin(GuardianPlugin):
         # --- oom_events ---
         if "oom_events" in active:
             results.extend(await self._check_oom_events())
+
+        # --- resource_hogs ---
+        if "resource_hogs" in active:
+            results.extend(await self._check_resource_hogs())
 
         # --- restart_rate ---
         if "restart_rate" in active:
@@ -379,6 +385,33 @@ class InfrastructurePlugin(GuardianPlugin):
     #        signals, and no probe that sampled RestartCount over time.
     #   These two checks close the gap. They are cheap (one subprocess and
     #   one docker-API call per patrol) and state is held in memory.
+
+    async def _check_resource_hogs(self) -> list[CheckResult]:
+        raw_list = await self._resource_hogs_checker.check()
+        results: list[CheckResult] = []
+        for item in raw_list:
+            check_name = item.get("check", "resource_unknown")
+            needs = item.get("needs_healing", False)
+            severity = item.get("severity", "warning")
+            sev_map = {
+                "critical": Severity.CRITICAL,
+                "warning": Severity.WARNING,
+                "ok": Severity.INFO,
+            }
+            results.append(
+                CheckResult(
+                    plugin=self.name,
+                    module="Infrastructure",
+                    check_name=f"resource_{check_name}",
+                    status="fail" if needs else "pass",
+                    severity=sev_map.get(severity, Severity.WARNING),
+                    summary=f"Resource {check_name}: {item.get('count', 0)} hog(s) detected" if needs else f"Resource {check_name}: OK",
+                    details=item,
+                    needs_healing=needs,
+                    heal_hint="kill_resource_hogs" if needs else None,
+                )
+            )
+        return results
 
     async def _check_oom_events(self) -> list[CheckResult]:
         """Detect containers that have been OOM-killed by the kernel cgroup.

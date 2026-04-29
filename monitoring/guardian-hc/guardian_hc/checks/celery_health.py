@@ -83,9 +83,14 @@ class CeleryHealthChecker:
                     writer.close()
                     return {"check": "celery_queue", "error": "Redis AUTH failed", "needs_healing": False}
 
-            # Check main celery queue
+            # Check all relevant Celery queues
             total_depth = 0
-            queues = ["celery", "document_processing", "scheduled"]
+            queues = [
+                "celery", "document_processing", "scheduled",
+                "pipeline.embed", "pipeline.entities", "pipeline.ocr",
+                "pipeline.articles", "pipeline.index", "pipeline.chunk",
+                "collections",
+            ]
             queue_details = {}
             for queue in queues:
                 writer.write(f"LLEN {queue}\r\n".encode())
@@ -98,6 +103,11 @@ class CeleryHealthChecker:
             writer.close()
             await writer.wait_closed()
 
+            # Flag if pipeline-specific queues are stalled (deep but not moving)
+            embed_depth = queue_details.get("pipeline.embed", 0)
+            entity_depth = queue_details.get("pipeline.entities", 0)
+            pipeline_stalled = embed_depth == 0 and entity_depth == 0
+
             return {
                 "check": "celery_queue",
                 "total_depth": total_depth,
@@ -105,6 +115,7 @@ class CeleryHealthChecker:
                 "needs_healing": total_depth > self.max_queue_depth,
                 "severity": "critical" if total_depth > self.max_queue_depth * 2 else
                            "warning" if total_depth > self.max_queue_depth else "ok",
+                "pipeline_stalled": pipeline_stalled,
             }
         except Exception as e:
             return {"check": "celery_queue", "error": str(e)[:200], "needs_healing": False}

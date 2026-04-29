@@ -173,6 +173,8 @@ services:
       - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BOT_API_KEY=${BOT_API_KEY}
+      - BOT_USER_EMAIL=${BOT_USER_EMAIL}
       - VAULT_ADDR=http://vault:8200
       - VAULT_TOKEN=${VAULT_ROOT_TOKEN:?VAULT_ROOT_TOKEN must be set in .env}
       - NATS_URL=nats://nats:4222
@@ -239,13 +241,19 @@ services:
       - SENTENCE_TRANSFORMERS_HOME=/models
       - HF_HOME=/models
       - TRANSFORMERS_CACHE=/models
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - VECLIB_MAXIMUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     volumes:
       - sowknow-model-cache:/models
       - ./backend:/app
-    # Periodic worker restart prevents PyTorch memory pool fragmentation
+    # Periodic worker restart prevents PyTorch memory pool fragmentation.
+    # 10000 requests ≈ 2-4h of embedding work; restart window is ~5s.
     command: >
       uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
-      --workers 1 --limit-max-requests 1000
+      --workers 1 --limit-max-requests 10000
     # NO ports — internal only. Access: http://embed-server:8000
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
@@ -256,7 +264,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4096M
+          memory: 10240M
           cpus: '2.0'
     networks:
       - sowknow-net
@@ -396,7 +404,7 @@ services:
           memory: 4096M
           cpus: '2.0'
     command: >-
-      celery -A app.celery_app worker --loglevel=info --concurrency=4
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
       --pool=prefork
       -Q pipeline.entities
       --prefetch-multiplier=1
@@ -419,6 +427,7 @@ services:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_HOST=redis
       - EMBED_SERVER_URL=http://embed-server:8000
+      - EMBED_CHUNK_CAP=32
       - SKIP_MODEL_DOWNLOAD=1
     volumes:
       - sowknow-public-data:/data/public
@@ -442,12 +451,13 @@ services:
       resources:
         limits:
           # celery-heavy handles pipeline.embed queue; tasks call embed-server via HTTP
-          # (no model in this container — 512MB is sufficient for pure I/O work)
-          memory: 512M
+          # Memory footprint grows with chunk count per doc (batch buffers).
+          # OOM kills observed at ~1.2GB → give headroom.
+          memory: 1536M
           cpus: '2.0'
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=2
-      --pool=prefork
+      --pool=threads
       -Q pipeline.embed
       --prefetch-multiplier=1
       -n heavy@%h

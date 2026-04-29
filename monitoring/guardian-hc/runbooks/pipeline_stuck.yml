@@ -1,87 +1,204 @@
 name: pipeline_stuck
 description: >
-  Pipeline stages stuck in RUNNING state for >10 minutes.
-  Attempts targeted requeue of stuck documents, then escalates to worker
-  restart if requeue alone doesn't clear the jam.
+  Smart pipeline recovery — handles three failure modes:
+
+  1. STUCK RUNNING: stage is RUNNING beyond its legitimate hard_timeout
+     (stage-aware thresholds: embedded 50min, articles/entities 20min, others 10min).
+  2. TRANSIENT FAILED: stage is FAILED but the error looks retryable
+     (embed-server unreachable, timeout, connection refused, etc).
+  3. DEAD WORKER: the celery-heavy container is not running/healthy,
+     so stuck stages will never progress until the worker restarts.
+
+  Resets affected stages to PENDING, restarts the worker only when needed,
+  then verifies the backlog is clearing.
 
 triggers:
   - check_name: pipeline
 
 steps:
-  # Step 1: Count how many stages are stuck
-  - id: count_stuck
-    name: "Count stuck pipeline stages"
+  # Step 1: Diagnose + heal in one atomic Python script
+  - id: diagnose_and_heal
+    name: "Diagnose, heal stuck/ transient-failed stages, restart worker if dead"
     action: exec
-    container: sowknow4-postgres
+    container: sowknow4-backend
     command: >-
-      psql -U postgres -t -c
-      "SELECT count(*) FROM pipeline_stages
-       WHERE status='RUNNING'
-       AND updated_at < now() - interval '10 minutes';"
-    expect_returncode: 0
-    timeout: 15
-    on_success: requeue_stuck
-    on_failure: alert_db_query_failed
+      python -c "
+      import os, subprocess, json, sys;
+      os.chdir('/app');
 
-  # Step 2: Requeue stuck stages back to PENDING
-  - id: requeue_stuck
-    name: "Requeue stuck stages to PENDING"
-    action: exec
-    container: sowknow4-postgres
-    command: >-
-      psql -U postgres -c
-      "UPDATE pipeline_stages SET status='PENDING', updated_at=now()
-       WHERE status='RUNNING'
-       AND updated_at < now() - interval '10 minutes';"
-    expect_returncode: 0
-    timeout: 15
+      from app.database import SessionLocal;
+      from app.models.pipeline import PipelineStage, StageEnum, StageStatus;
+      from sqlalchemy import text;
+
+      db = SessionLocal();
+      try:
+          # ── 1. Stage-specific stuck thresholds (hard_timeout * 1.5) ──
+          thresholds = {
+              'ocr': '10 minutes',
+              'chunked': '10 minutes',
+              'embedded': '50 minutes',
+              'indexed': '10 minutes',
+              'articles': '20 minutes',
+              'entities': '20 minutes',
+          };
+          stuck_total = 0;
+          stuck_by_stage = {};
+          for stage, interval in thresholds.items():
+              sql = text(f\"\"\"
+                  SELECT count(*) FROM pipeline_stages
+                  WHERE stage = :stage AND status = 'RUNNING'
+                  AND updated_at < now() - interval '{interval}'
+              \"\"\");
+              count = db.execute(sql, {'stage': stage}).scalar() or 0;
+              if count:
+                  stuck_by_stage[stage] = count;
+                  stuck_total += count;
+
+          # ── 2. Transient FAILED errors that should be retried ──
+          transient_patterns = [
+              'connection refused', 'not healthy', 'timed out',
+              'unreachable', 'server disconnected',
+              'temporary failure in name resolution',
+          ];
+          failed_sql = text('''
+              SELECT stage, count(*) FROM pipeline_stages
+              WHERE status = 'FAILED'
+              AND error_message ILIKE ANY(:patterns)
+              GROUP BY stage
+          ''');
+          failed_rows = db.execute(failed_sql, {'patterns': transient_patterns}).all();
+          failed_by_stage = {row[0]: row[1] for row in failed_rows};
+          failed_total = sum(failed_by_stage.values());
+
+          # ── 3. Check celery-heavy container health ──
+          hc = subprocess.run(
+              ['docker', 'inspect',
+               '--format={{.State.Status}} {{.State.Health.Status}}',
+               'sowknow4-celery-heavy'],
+              capture_output=True, text=True, timeout=10
+          );
+          worker_state = hc.stdout.strip() if hc.returncode == 0 else 'unknown';
+          worker_healthy = (
+              'running' in worker_state.lower()
+              and 'unhealthy' not in worker_state.lower()
+          );
+
+          # ── 4. Heal stuck stages ──
+          stuck_healed = 0;
+          for stage, interval in thresholds.items():
+              sql = text(f\"\"\"
+                  UPDATE pipeline_stages
+                  SET status = 'PENDING', updated_at = now(),
+                      error_message = NULL, started_at = NULL, worker_id = NULL
+                  WHERE stage = :stage AND status = 'RUNNING'
+                  AND updated_at < now() - interval '{interval}'
+              \"\"\");
+              result = db.execute(sql, {'stage': stage});
+              stuck_healed += result.rowcount;
+
+          # ── 5. Heal transient FAILED stages ──
+          failed_sql = text('''
+              UPDATE pipeline_stages
+              SET status = 'PENDING', updated_at = now(),
+                  error_message = NULL, attempt = 0,
+                  started_at = NULL, worker_id = NULL
+              WHERE status = 'FAILED'
+              AND error_message ILIKE ANY(:patterns)
+          ''');
+          result = db.execute(failed_sql, {'patterns': transient_patterns});
+          failed_healed = result.rowcount;
+          db.commit();
+
+          # ── 6. Restart worker only if it is unhealthy AND we found stuck work ──
+          restarted = False;
+          if stuck_total > 0 and not worker_healthy:
+              print(f'Restarting celery-heavy (state={worker_state})');
+              r = subprocess.run(
+                  ['docker', 'restart', 'sowknow4-celery-heavy'],
+                  capture_output=True, text=True, timeout=60
+              );
+              restarted = r.returncode == 0;
+              if restarted:
+                  import time; time.sleep(10);
+
+          summary = {
+              'stuck_found': stuck_total,
+              'stuck_healed': stuck_healed,
+              'failed_found': failed_total,
+              'failed_healed': failed_healed,
+              'worker_state': worker_state,
+              'worker_restarted': restarted,
+          };
+          print('HEAL_RESULT:', json.dumps(summary));
+
+          # Exit 0 means 'healed or nothing to do' → runbook continues to verify
+          # Exit 1 means 'db error or unexpected failure' → escalate
+          if stuck_healed > 0 or failed_healed > 0 or restarted:
+              print('ACTION_TAKEN');
+          else:
+              print('NOTHING_TO_HEAL');
+      except Exception as e:
+          print(f'HEAL_ERROR: {e}');
+          sys.exit(1);
+      finally:
+          db.close();
+      "
+    expect_in_stdout: "HEAL_RESULT:"
+    timeout: 120
     on_success: wait_for_pickup
     on_failure: escalate
 
-  # Step 3: Wait 30s to see if workers pick up the requeued work
+  # Step 2: Wait for workers to pick up requeued work
   - id: wait_for_pickup
-    name: "Wait 30s for workers to pick up requeued stages"
+    name: "Wait 45s for workers to pick up requeued stages"
     action: wait
-    seconds: 30
-    on_success: verify_cleared
-    on_failure: verify_cleared
+    seconds: 45
+    on_success: verify
+    on_failure: verify
 
-  # Step 4: Verify stuck count has dropped
-  - id: verify_cleared
-    name: "Check if stuck stages cleared"
+  # Step 3: Verify nothing remains stuck or transient-failed
+  - id: verify
+    name: "Verify stuck and transient-failed counts are zero"
     action: exec
-    container: sowknow4-postgres
+    container: sowknow4-backend
     command: >-
-      psql -U postgres -t -c
-      "SELECT count(*) FROM pipeline_stages
-       WHERE status='RUNNING'
-       AND updated_at < now() - interval '10 minutes';"
-    expect_in_stdout: "0"
-    timeout: 15
-    on_success: resolved
-    on_failure: restart_workers
+      python -c "
+      import os, sys;
+      os.chdir('/app');
+      from app.database import SessionLocal;
+      from sqlalchemy import text;
+      db = SessionLocal();
+      try:
+          thresholds = {
+              'ocr': '10 minutes', 'chunked': '10 minutes',
+              'embedded': '50 minutes', 'indexed': '10 minutes',
+              'articles': '20 minutes', 'entities': '20 minutes',
+          };
+          stuck_total = 0;
+          for stage, interval in thresholds.items():
+              sql = text(f\"SELECT count(*) FROM pipeline_stages WHERE stage = :stage AND status = 'RUNNING' AND updated_at < now() - interval '{interval}'\");
+              stuck_total += db.execute(sql, {'stage': stage}).scalar() or 0;
 
-  # Step 5: Restart celery-heavy (handles OCR/embeddings — most stuck stages)
-  - id: restart_workers
-    name: "Restart celery-heavy worker"
-    action: restart_container
-    container: sowknow4-celery-heavy
-    wait_after: 20
-    on_success: requeue_again
-    on_failure: escalate
+          transient_patterns = [
+              'connection refused', 'not healthy', 'timed out',
+              'unreachable', 'server disconnected',
+              'temporary failure in name resolution',
+          ];
+          failed_sql = text(\"SELECT count(*) FROM pipeline_stages WHERE status = 'FAILED' AND error_message ILIKE ANY(:patterns)\");
+          failed_total = db.execute(failed_sql, {'patterns': transient_patterns}).scalar() or 0;
 
-  # Step 6: Requeue again after worker restart
-  - id: requeue_again
-    name: "Requeue stuck stages again after worker restart"
-    action: exec
-    container: sowknow4-postgres
-    command: >-
-      psql -U postgres -c
-      "UPDATE pipeline_stages SET status='PENDING', updated_at=now()
-       WHERE status='RUNNING'
-       AND updated_at < now() - interval '10 minutes';"
+          print(f'VERIFY stuck={stuck_total} failed={failed_total}');
+          if stuck_total == 0 and failed_total == 0:
+              print('CLEARED');
+              sys.exit(0);
+          else:
+              print('STILL_STUCK');
+              sys.exit(1);
+      finally:
+          db.close();
+      "
     expect_returncode: 0
-    timeout: 15
+    timeout: 30
     on_success: resolved
     on_failure: escalate
 
@@ -91,27 +208,17 @@ steps:
     action: resolved
     terminal: true
 
-  - id: alert_db_query_failed
-    name: "Alert: could not query pipeline_stages"
-    action: alert
-    message: >-
-      ⚠️ *Guardian runbook: pipeline_stuck*
-
-      Could not query pipeline_stages table. Postgres may be down
-      or the table schema has changed.
-    terminal: true
-
   - id: escalate
-    name: "Escalate: pipeline still stuck after requeue and restart"
+    name: "Escalate: pipeline still stuck after auto-heal and restart"
     action: alert
     message: >-
       🔴 *Guardian runbook: pipeline_stuck — ESCALATED*
 
-      Pipeline stages remain stuck after auto-requeue and worker restart.
+      Pipeline stages remain stuck after smart auto-heal.
       Manual investigation needed:
       • `docker logs sowknow4-celery-heavy`
-      • `docker logs sowknow4-celery-light`
-      • Check pipeline_stages table for error messages
-      • Check Redis queue depth: `redis-cli LLEN celery`
-      • Check for OOM: worker may be killed on large documents
+      • `docker logs sowknow4-embed-server`
+      • Check pipeline_stages for error messages
+      • Check Redis: `redis-cli LLEN pipeline.embed`
+      • Check for OOM: `dmesg | grep -i oom`
     terminal: true

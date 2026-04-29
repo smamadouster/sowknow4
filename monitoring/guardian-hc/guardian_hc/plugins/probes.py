@@ -35,14 +35,16 @@ class ProbesPlugin(GuardianPlugin):
     # "restart:sowknow4-nginx", which never existed. Host nginx is health-
     # checked by the external host watchdog and Cloudflare instead.
     PROBE_LEVELS: dict[str, list[str]] = {
-        "critical": ["jwt", "redis_deep", "celery_completion"],
+        "critical": ["jwt", "redis_deep", "celery_completion", "pipeline_orphaned"],
         "standard": [
             "jwt", "redis_deep", "celery_completion",
-            "postgres_deep", "deep_health", "pipeline",
+            "postgres_deep", "deep_health", "pipeline", "pipeline_orphaned",
+            "embed_server_deep",
         ],
         "deep": [
             "jwt", "redis_deep", "celery_completion",
-            "postgres_deep", "deep_health", "pipeline", "auth_flow",
+            "postgres_deep", "deep_health", "pipeline", "pipeline_orphaned",
+            "embed_server_deep", "auth_flow",
         ],
     }
 
@@ -72,6 +74,8 @@ class ProbesPlugin(GuardianPlugin):
             "postgres_deep": self._check_postgres_deep,
             "deep_health": self._check_deep_health,
             "pipeline": self._check_pipeline,
+            "pipeline_orphaned": self._check_pipeline_orphaned,
+            "embed_server_deep": self._check_embed_server_deep,
             "nginx": self._check_nginx,
             "auth_flow": self._check_auth_flow,
         }
@@ -510,40 +514,44 @@ class ProbesPlugin(GuardianPlugin):
             )
 
     async def _check_pipeline(self, ctx: CheckContext) -> CheckResult:
-        """Detect pipeline stages stuck in RUNNING >10 minutes."""
+        """Detect pipeline stages stuck in RUNNING beyond their stage-specific hard_timeout."""
         try:
-            result = subprocess.run(
-                [
-                    "docker", "exec", "sowknow4-postgres",
-                    "psql", "-U", "postgres", "-t", "-c",
-                    "SELECT count(*) FROM pipeline_stages"
-                    " WHERE status='RUNNING'"
-                    " AND updated_at < now() - interval '10 minutes';",
-                ],
-                capture_output=True, text=True, timeout=15,
-            )
-            if not result.stdout.strip():
-                stderr = result.stderr or ""
-                return CheckResult(
-                    plugin=self.name,
-                    module="Document Pipeline",
-                    check_name="pipeline",
-                    status="warning",
-                    severity=Severity.WARNING,
-                    summary="pipeline probe got no output from docker exec — Postgres may be mid-restart or unreachable",
-                    details={"stderr": stderr[:500], "returncode": result.returncode},
-                    needs_healing=False,  # don't requeue when exec itself is unreachable
+            # Stage-aware thresholds (hard_timeout * 1.5)
+            thresholds = [
+                ("ocr", "10 minutes"),
+                ("chunked", "10 minutes"),
+                ("embedded", "50 minutes"),
+                ("indexed", "10 minutes"),
+                ("articles", "20 minutes"),
+                ("entities", "20 minutes"),
+            ]
+            total_stuck = 0
+            stuck_by_stage: dict[str, int] = {}
+            for stage, interval in thresholds:
+                result = subprocess.run(
+                    [
+                        "docker", "exec", "sowknow4-postgres",
+                        "psql", "-U", "postgres", "-t", "-c",
+                        f"SELECT count(*) FROM pipeline_stages"
+                        f" WHERE stage='{stage}' AND status='RUNNING'"
+                        f" AND updated_at < now() - interval '{interval}';",
+                    ],
+                    capture_output=True, text=True, timeout=15,
                 )
-            stuck = int(result.stdout.strip() or 0)
-            if stuck > 0:
+                count = int(result.stdout.strip() or 0) if result.returncode == 0 else 0
+                if count > 0:
+                    stuck_by_stage[stage] = count
+                    total_stuck += count
+
+            if total_stuck > 0:
                 return CheckResult(
                     plugin=self.name,
                     module="Document Pipeline",
                     check_name="pipeline",
                     status="warning",
                     severity=Severity.WARNING,
-                    summary=f"{stuck} pipeline stage(s) stuck in RUNNING >10min",
-                    details={"stuck_count": stuck},
+                    summary=f"{total_stuck} pipeline stage(s) stuck beyond stage timeout",
+                    details={"stuck_count": total_stuck, "by_stage": stuck_by_stage},
                     needs_healing=True,
                     heal_hint="requeue_stuck_docs",
                 )
@@ -563,6 +571,115 @@ class ProbesPlugin(GuardianPlugin):
                 status="fail",
                 severity=Severity.WARNING,
                 summary=f"Pipeline check failed: {exc!s:.200}",
+            )
+
+    async def _check_pipeline_orphaned(self, ctx: CheckContext) -> CheckResult:
+        """Detect documents where a stage completed but the next stage row is completely missing.
+
+        This happens when Celery workers are OOM-killed after completing a stage
+        but before dispatching the next task in the chain.
+        """
+        try:
+            result = subprocess.run(
+                [
+                    "docker", "exec", "sowknow4-postgres",
+                    "psql", "-U", "postgres", "-t", "-c",
+                    "WITH chunked_docs AS ("
+                    "  SELECT document_id FROM pipeline_stages"
+                    "  WHERE stage='chunked' AND status='completed'"
+                    "),"
+                    "embedded_docs AS ("
+                    "  SELECT document_id FROM pipeline_stages"
+                    "  WHERE stage='embedded'"
+                    ")"
+                    " SELECT count(*) FROM chunked_docs c"
+                    " WHERE NOT EXISTS ("
+                    "   SELECT 1 FROM embedded_docs e"
+                    "   WHERE e.document_id = c.document_id"
+                    " );",
+                ],
+                capture_output=True, text=True, timeout=15,
+            )
+            orphaned = int(result.stdout.strip() or 0)
+            if orphaned > 0:
+                return CheckResult(
+                    plugin=self.name,
+                    module="Document Pipeline",
+                    check_name="pipeline_orphaned",
+                    status="fail",
+                    severity=Severity.HIGH,
+                    summary=f"{orphaned} document(s) chunked but have no embedded row at all",
+                    details={"orphaned_count": orphaned},
+                    needs_healing=True,
+                    heal_hint="create_missing_embed_rows",
+                )
+            return CheckResult(
+                plugin=self.name,
+                module="Document Pipeline",
+                check_name="pipeline_orphaned",
+                status="pass",
+                severity=Severity.INFO,
+                summary="No orphaned pipeline stages",
+            )
+        except Exception as exc:
+            return CheckResult(
+                plugin=self.name,
+                module="Document Pipeline",
+                check_name="pipeline_orphaned",
+                status="fail",
+                severity=Severity.WARNING,
+                summary=f"Pipeline orphaned check failed: {exc!s:.200}",
+            )
+
+    async def _check_embed_server_deep(self, ctx: CheckContext) -> CheckResult:
+        """Actually exercise the /embed endpoint, not just /health."""
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    "http://embed-server:8000/embed",
+                    json={"texts": ["guardian probe"], "batch_size": 1},
+                )
+            if resp.status_code == 200:
+                vectors = resp.json()
+                if isinstance(vectors, list) and len(vectors) == 1 and len(vectors[0]) == 1024:
+                    return CheckResult(
+                        plugin=self.name,
+                        module="Document Pipeline",
+                        check_name="embed_server_deep",
+                        status="pass",
+                        severity=Severity.INFO,
+                        summary="Embed server responds to /embed with valid 1024-dim vector",
+                    )
+                return CheckResult(
+                    plugin=self.name,
+                    module="Document Pipeline",
+                    check_name="embed_server_deep",
+                    status="warning",
+                    severity=Severity.WARNING,
+                    summary="Embed server /embed returned unexpected payload shape",
+                    details={"response_preview": str(vectors)[:200]},
+                )
+            return CheckResult(
+                plugin=self.name,
+                module="Document Pipeline",
+                check_name="embed_server_deep",
+                status="fail",
+                severity=Severity.HIGH,
+                summary=f"Embed server /embed returned HTTP {resp.status_code}",
+                details={"status_code": resp.status_code},
+                needs_healing=True,
+                heal_hint="restart_embed_server",
+            )
+        except Exception as exc:
+            return CheckResult(
+                plugin=self.name,
+                module="Document Pipeline",
+                check_name="embed_server_deep",
+                status="fail",
+                severity=Severity.CRITICAL,
+                summary=f"Embed server /embed unreachable: {exc!s:.200}",
+                needs_healing=True,
+                heal_hint="restart_embed_server",
             )
 
     async def _check_nginx(self, ctx: CheckContext) -> CheckResult:

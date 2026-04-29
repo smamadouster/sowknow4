@@ -28,6 +28,8 @@ class TextExtractor:
             ".csv": self._extract_from_csv,
             ".xml": self._extract_from_xml,
             ".epub": self._extract_from_epub,
+            ".rtf": self._extract_from_rtf,
+            ".zip": self._extract_from_zip,
         }
 
     def get_file_extension(self, filename: str) -> str:
@@ -362,6 +364,61 @@ class TextExtractor:
 
         except Exception as e:
             logger.error(f"Error extracting from EPUB: {str(e)}")
+            return {"text": "", "error": str(e), "pages": 0}
+
+    async def _extract_from_rtf(self, file_path: str) -> dict[str, Any]:
+        """Extract readable text from RTF using a lightweight parser."""
+        try:
+            import re
+
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    data = f.read()
+            except UnicodeDecodeError:
+                with open(file_path, encoding="latin-1") as f:
+                    data = f.read()
+
+            def replace_hex(match: re.Match[str]) -> str:
+                try:
+                    return bytes.fromhex(match.group(1)).decode("latin-1")
+                except Exception:
+                    return " "
+
+            text = re.sub(r"\\'([0-9a-fA-F]{2})", replace_hex, data)
+            text = re.sub(r"\\par[d]?", "\n", text)
+            text = re.sub(r"\\tab", "\t", text)
+            text = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", text)
+            text = re.sub(r"[{}]", " ", text)
+            text = re.sub(r"[ \t]+", " ", text)
+            text = re.sub(r"\n\s+", "\n", text)
+            return {"text": text.strip(), "pages": 0, "source": "rtf-parser"}
+
+        except Exception as e:
+            logger.error(f"Error extracting from RTF: {str(e)}")
+            return {"text": "", "error": str(e), "pages": 0}
+
+    async def _extract_from_zip(self, file_path: str) -> dict[str, Any]:
+        """Index ZIP archive contents as a searchable manifest."""
+        try:
+            import zipfile
+
+            lines = ["ZIP archive contents:"]
+            with zipfile.ZipFile(file_path) as archive:
+                infos = archive.infolist()
+                for info in infos:
+                    if info.is_dir():
+                        continue
+                    lines.append(f"{info.filename} ({info.file_size} bytes)")
+
+            return {
+                "text": "\n".join(lines),
+                "pages": 0,
+                "source": "zip-manifest",
+                "file_count": max(len(lines) - 1, 0),
+            }
+
+        except Exception as e:
+            logger.error(f"Error extracting from ZIP: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
     async def extract_images_from_pdf(self, file_path: str) -> list[bytes]:

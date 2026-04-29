@@ -1,0 +1,97 @@
+name: resource_hogs
+description: >
+  Kills runaway processes that saturate CPU or memory:
+  - pytest processes running >2 hours
+  - Processes using >200% CPU for >1 hour
+  - Processes using >5GB RSS
+  Sustained high load average is alerted but NOT auto-killed
+  (could be legitimate batch work).
+
+triggers:
+  - check_name: resource_stray_tests
+  - check_name: resource_cpu_hogs
+  - check_name: resource_mem_hogs
+
+steps:
+  - id: diagnose_and_kill
+    name: "Detect and kill resource hogs"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python -c "
+      import subprocess, json, sys, os, time;
+
+      def parse_cpu_time(t):
+          try:
+              if '-' in t:
+                  days, rest = t.split('-', 1)
+                  return int(days) * 24 + int(rest.split(':')[0])
+              return int(t.split(':')[0])
+          except Exception:
+              return 0
+
+      ps = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=10)
+      killed = []
+      skipped = []
+
+      for line in ps.stdout.splitlines()[1:]:
+          parts = line.split(None, 10)
+          if len(parts) < 11:
+              continue
+          pid = parts[1]
+          cpu_pct = float(parts[2])
+          rss_kb = int(parts[5])
+          cpu_time = parts[9]
+          cmd = parts[10]
+          hours = parse_cpu_time(cpu_time)
+          rss_mb = rss_kb / 1024
+
+          reason = None
+          # Stray pytest
+          if ('pytest' in cmd.lower() or 'py.test' in cmd.lower()) and hours >= 2:
+              reason = f'pytest {hours}h'
+          # CPU hog (>200% for >1h)
+          elif cpu_pct >= 200 and hours >= 1:
+              # Don't kill our own services
+              if not any(x in cmd for x in ['sowknow', 'celery', 'embed_server', 'uvicorn', 'dockerd']):
+                  reason = f'cpu_hog {cpu_pct}% {hours}h'
+          # Mem hog (>5GB)
+          elif rss_mb >= 5120:
+              if not any(x in cmd for x in ['sowknow', 'embed_server', 'uvicorn', 'postgres', 'redis-server']):
+                  reason = f'mem_hog {rss_mb:.0f}MB'
+
+          if reason:
+              r = subprocess.run(['kill', '-TERM', pid], capture_output=True, timeout=5)
+              if r.returncode == 0:
+                  killed.append({'pid': pid, 'reason': reason, 'cmd': cmd[:80]})
+              else:
+                  skipped.append({'pid': pid, 'reason': reason, 'cmd': cmd[:80]})
+
+      result = {'killed': killed, 'skipped': skipped};
+      print('RESOURCE_HOGS:', json.dumps(result));
+      if killed:
+          print('ACTION_TAKEN');
+      else:
+          print('NOTHING_TO_KILL');
+      "
+    expect_in_stdout: "RESOURCE_HOGS:"
+    timeout: 30
+    on_success: resolved
+    on_failure: escalate
+
+  - id: resolved
+    name: "Resource hogs handled"
+    action: resolved
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: could not kill resource hogs"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: resource_hogs — ESCALATED*
+
+      Detected resource hogs but could not terminate them.
+      Manual check:
+      • `ps aux --sort=-%cpu | head -20`
+      • `dmesg | grep -i oom`
+    terminal: true

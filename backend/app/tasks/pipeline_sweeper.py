@@ -3,6 +3,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_
+from sqlalchemy.orm import aliased
 
 from app.celery_app import celery_app
 from app.models.pipeline import STAGE_RETRY_CONFIG, PipelineStage, StageEnum, StageStatus
@@ -123,6 +124,50 @@ def pipeline_sweeper() -> dict:
                     # Stop dispatching this stage pair — queue is full
                     break
 
+        # ── 2.5 Missing intermediate rows: completed stage N but no row at all for stage N+1 ──
+        missing_intermediate_dispatched = 0
+        stages = list(StageEnum)
+        for i, completed_stage in enumerate(stages[:-1]):
+            next_stage = stages[i + 1]
+            if next_stage not in _DISPATCHABLE_STAGES:
+                continue
+
+            NextAlias = aliased(PipelineStage)
+            missing_rows = (
+                db.query(PipelineStage.document_id)
+                .filter(
+                    PipelineStage.stage == completed_stage,
+                    PipelineStage.status == StageStatus.COMPLETED,
+                )
+                .filter(
+                    ~exists().where(
+                        and_(
+                            NextAlias.stage == next_stage,
+                            NextAlias.document_id == PipelineStage.document_id,
+                        )
+                    ).correlate(PipelineStage)
+                )
+                .limit(500)
+                .all()
+            )
+
+            for (doc_id,) in missing_rows:
+                row = PipelineStage(
+                    document_id=doc_id,
+                    stage=next_stage,
+                    status=StageStatus.PENDING,
+                    attempt=0,
+                    max_attempts=STAGE_RETRY_CONFIG.get(next_stage, {}).get("max_attempts", 3),
+                )
+                db.add(row)
+                db.commit()
+
+                result = dispatch_document(str(doc_id), from_stage=next_stage)
+                if result == "dispatched":
+                    missing_intermediate_dispatched += 1
+                elif result.startswith("backpressure"):
+                    break
+
         # ── 3. Clean up premature ENRICHED rows (entities not done yet) ──
         premature_deleted = 0
         premature_enriched = (
@@ -223,6 +268,7 @@ def pipeline_sweeper() -> dict:
             "stuck_resumed": stuck_resumed,
             "stuck_failed": stuck_failed,
             "stalled_dispatched": stalled_dispatched,
+            "missing_intermediate_dispatched": missing_intermediate_dispatched,
             "premature_deleted": premature_deleted,
             "missing_enriched_dispatched": missing_enriched_dispatched,
             "backpressure_dispatched": backpressure_dispatched,

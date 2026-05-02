@@ -95,20 +95,31 @@ class ApiClient {
 
       const status = response.status;
 
-      // Handle 401 unauthorized
-      if (status === 401) {
+      // Handle 401 unauthorized or 403 CSRF failure
+      if (status === 401 || status === 403) {
         // Try to refresh token before redirecting
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           try {
+            const refreshHeaders: Record<string, string> = {};
+            const csrfToken = this.getCsrfToken();
+            if (csrfToken) {
+              refreshHeaders['X-CSRF-Token'] = csrfToken;
+            }
             const refreshResponse = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
               method: 'POST',
+              headers: refreshHeaders,
               credentials: 'include', // Include cookies for refresh
             });
             if (refreshResponse.ok) {
+              const retryHeaders = { ...headers };
+              const nextCsrfToken = this.getCsrfToken();
+              if (nextCsrfToken && unsafeMethods.has((options.method ?? 'GET').toUpperCase())) {
+                retryHeaders['X-CSRF-Token'] = nextCsrfToken;
+              }
               // Refresh successful, retry original request
               const retryResponse = await fetch(url, {
                 ...options,
-                headers,
+                headers: retryHeaders,
                 credentials: 'include',
               });
               const retryStatus = retryResponse.status;
@@ -125,7 +136,7 @@ class ApiClient {
           const locale = ['fr', 'en'].includes(pathLocale) ? pathLocale : 'fr';
           window.location.href = `/${locale}/login`;
         }
-        return { status, error: 'Unauthorized' };
+        return { status, error: status === 403 ? 'Forbidden' : 'Unauthorized' };
       }
 
       // Handle empty responses

@@ -76,6 +76,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
+      args:
+        - JWT_SECRET=${JWT_SECRET}
+        - NEXT_PUBLIC_API_URL=/api
     container_name: sowknow4-frontend-dev
     environment:
       - NEXT_PUBLIC_API_URL=/api

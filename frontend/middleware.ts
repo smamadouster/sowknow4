@@ -1,6 +1,5 @@
 import createMiddleware from 'next-intl/middleware';
 import { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose';
 import { routing } from './i18n/routing';
 
 const ACCESS_TOKEN_COOKIE = 'access_token';
@@ -28,27 +27,24 @@ const authPaths = [
 ];
 
 /**
- * Verify the access_token JWT locally using HS256.
- * No backend HTTP call needed — just cryptographic signature check.
+ * Check whether the request carries an access_token cookie.
+ *
+ * DESIGN DECISION: We do NOT verify the JWT signature in Edge Middleware.
+ * Next.js middleware bundles env vars at build time, so baking JWT_SECRET
+ * into the frontend image makes auth fragile: every secret rotation or
+ * rebuild with a different env file breaks the entire app (users get
+ * redirected to login even though their tokens are perfectly valid).
+ *
+ * Instead we treat the middleware as a lightweight UX gate:
+ *  - Cookie present  → let the request through to the page shell
+ *  - Cookie missing  → redirect to login
+ *
+ * The backend still cryptographically validates the token on every API
+ * request, and the client-side API client handles 401 by attempting a
+ * silent refresh or redirecting to login.
  */
-async function verifySession(request: NextRequest): Promise<boolean> {
-  const token = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
-  if (!token) return false;
-
-  const secret = process.env.JWT_SECRET;
-  if (!secret) return false;
-
-  try {
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(secret),
-      { algorithms: ['HS256'] }
-    );
-    return payload.type === 'access' && typeof payload.sub === 'string';
-  } catch {
-    // Expired, tampered, or malformed token
-    return false;
-  }
+function hasSessionCookie(request: NextRequest): boolean {
+  return Boolean(request.cookies.get(ACCESS_TOKEN_COOKIE)?.value);
 }
 
 export default async function middleware(request: NextRequest) {
@@ -64,9 +60,9 @@ export default async function middleware(request: NextRequest) {
     return t(request);
   }
 
-  const hasValidSession = await verifySession(request);
+  const hasCookie = hasSessionCookie(request);
 
-  if (!hasValidSession) {
+  if (!hasCookie) {
     // Extract locale from path using routing config (not hardcoded list).
     // With localePrefix: 'as-needed', default locale has no prefix.
     const segments = pathname.split('/').filter(Boolean);

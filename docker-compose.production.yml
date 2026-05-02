@@ -206,6 +206,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
+        - JWT_SECRET=${JWT_SECRET}
         - NEXT_PUBLIC_API_URL=https://sowknow.gollamtech.com/api
         - NEXT_PUBLIC_APP_URL=https://sowknow.gollamtech.com
     container_name: sowknow-frontend

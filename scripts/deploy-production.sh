@@ -28,13 +28,18 @@ if [ ! -f .secrets ]; then
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
 REDIS_PASSWORD=$(openssl rand -base64 32)
 SECRET_KEY=$(openssl rand -hex 32)
-JWT_SECRET_KEY=$(openssl rand -hex 32)
+JWT_SECRET=$(openssl rand -hex 32)
 EOF
     echo "Secrets generated in .secrets file"
     echo "WARNING: Add TELEGRAM_BOT_TOKEN to .secrets before deploying!"
 fi
 
 source .secrets
+
+# Backward compatibility: older .secrets files used JWT_SECRET_KEY
+if [ -z "${JWT_SECRET:-}" ] && [ -n "${JWT_SECRET_KEY:-}" ]; then
+    JWT_SECRET="$JWT_SECRET_KEY"
+fi
 
 # Step 2: Create SSL certificates
 echo "[2/7] Setting up SSL certificates..."
@@ -94,7 +99,7 @@ GEMINI_API_KEY=$GEMINI_API_KEY
 GEMINI_MODEL=gemini-2.0-flash-exp
 GEMINI_CACHE_ENABLED=true
 
-JWT_SECRET_KEY=$JWT_SECRET_KEY
+JWT_SECRET=$JWT_SECRET
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 MAX_UPLOAD_SIZE=104857600

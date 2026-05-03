@@ -33,6 +33,12 @@ class _EmbedContinue(Exception):
         self.remaining = remaining
 
 
+class _PermanentPipelineError(Exception):
+    """Raised by work functions when a failure is permanent (unsupported format,
+    empty text, zero chunks, etc.).  The stage is marked FAILED immediately
+    without retries and the document is parked in ERROR status."""
+
+
 # ---------------------------------------------------------------------------
 # Core helper: update_stage
 # ---------------------------------------------------------------------------
@@ -141,6 +147,48 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
             stage, document_id, cont.remaining,
         )
         raise self.retry(countdown=10)
+    except _PermanentPipelineError as exc:
+        error_text = str(exc)
+        update_stage(document_id, stage, StageStatus.FAILED, error=error_text)
+
+        # Mirror error to Document so the status API can surface it
+        db_err = SessionLocal()
+        try:
+            doc = db_err.query(Document).filter(Document.id == doc_uuid).first()
+            if doc:
+                doc.status = DocumentStatus.ERROR
+                doc.pipeline_error = error_text[:500]
+                meta = doc.document_metadata or {}
+                meta["processing_error"] = error_text[:500]
+                meta["last_error_at"] = datetime.now(UTC).isoformat()
+                doc.document_metadata = meta
+                db_err.commit()
+        finally:
+            db_err.close()
+
+        # Write to DLQ for observability
+        try:
+            import traceback as _tb
+            from app.services.dlq_service import DeadLetterQueueService
+
+            DeadLetterQueueService.store_failed_task(
+                task_name=self.name,
+                task_id=self.request.id or "unknown",
+                args=(document_id,),
+                kwargs={},
+                exception=exc,
+                traceback_str=_tb.format_exc(),
+                retry_count=0,
+                extra_metadata={"document_id": document_id, "stage": stage.value},
+            )
+        except Exception:
+            logger.exception("DLQ write failed for doc %s stage %s", document_id, stage)
+
+        logger.error(
+            "Stage %s permanently failed for doc %s — %s",
+            stage, document_id, error_text,
+        )
+        raise Reject(error_text, requeue=False)
     except Exception as exc:
         logger.exception("Stage %s failed for doc %s: %s", stage, document_id, exc)
 
@@ -229,10 +277,17 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
 # ---------------------------------------------------------------------------
 
 
+# Formats that are uploaded but fundamentally unprocessable as text documents
+_UNPROCESSABLE_EXTENSIONS = {
+    ".mp4", ".avi", ".mov", ".mkv", ".webm",
+    ".mp3", ".wav", ".ogg", ".flac", ".aac", ".wma", ".m4a",
+}
+
+
 def _run_ocr(document_id: str) -> None:
     """Extract text via OCR or native parser; write .txt sidecar file."""
     from app.database import SessionLocal
-    from app.models.document import Document
+    from app.models.document import Document, DocumentStatus
     from app.services.ocr_service import ocr_service
     from app.services.text_extractor import text_extractor
 
@@ -245,11 +300,24 @@ def _run_ocr(document_id: str) -> None:
 
         file_path = doc.file_path
         filename = doc.original_filename or doc.filename
+        file_ext = (filename or "").lower().rsplit(".", 1)[-1]
+        file_ext = f".{file_ext}" if file_ext else ""
+
+        # Fail fast for known unprocessable formats (video, audio, etc.)
+        if file_ext in _UNPROCESSABLE_EXTENSIONS:
+            raise _PermanentPipelineError(
+                f"Unsupported file format: {file_ext} — video and audio files cannot be processed as text documents"
+            )
 
         # Try native text extraction first
         result = asyncio.run(text_extractor.extract_text(file_path, filename))
         extracted_text = result.get("text", "")
         page_count = result.get("pages", 0)
+        extraction_error = result.get("error", "")
+
+        # Fail fast when text extractor reports an unsupported format
+        if extraction_error and "Unsupported file format" in extraction_error:
+            raise _PermanentPipelineError(extraction_error)
 
         # If OCR is needed (image files, PDFs without text layer, etc.)
         should_ocr, reason = ocr_service.should_use_ocr(
@@ -345,15 +413,20 @@ def _run_chunk(document_id: str) -> None:
             text = fh.read()
 
         if not text.strip():
-            logger.warning("Document %s has no text content — skipping chunking", document_id)
-            doc.chunk_count = 0
-            db.commit()
-            return
+            logger.warning("Document %s has no text content — failing pipeline", document_id)
+            raise _PermanentPipelineError(
+                "No text content extracted — document has no extractable text"
+            )
 
         # Detect language for full-text search configuration
         search_lang = detect_text_language(text)
 
         chunks = chunking_service.chunk_document(text, document_id=document_id)
+
+        if len(chunks) == 0:
+            raise _PermanentPipelineError(
+                "No chunks generated — chunking produced zero segments"
+            )
 
         if len(chunks) > CHUNK_COUNT_MAX:
             error_msg = f"Too many chunks ({len(chunks)} > {CHUNK_COUNT_MAX}) — document rejected to prevent queue starvation"
@@ -447,10 +520,10 @@ def _run_embed(document_id: str) -> None:
                 .count()
             )
             if total == 0:
-                logger.warning("No chunks for doc %s — skipping embedding", document_id)
-                doc.embedding_generated = False
-            else:
-                doc.embedding_generated = True
+                raise _PermanentPipelineError(
+                    "No chunks exist for embedding — document has no extractable text"
+                )
+            doc.embedding_generated = True
             db.commit()
             return
 
@@ -511,13 +584,9 @@ def _run_index(document_id: str) -> None:
         if chunk_count > 0:
             doc.status = DocumentStatus.INDEXED
         else:
-            error_msg = "No chunks generated — document may have no extractable text"
-            doc.status = DocumentStatus.ERROR
-            doc.pipeline_error = error_msg
-            doc.document_metadata = {
-                **(doc.document_metadata or {}),
-                "processing_error": error_msg,
-            }
+            raise _PermanentPipelineError(
+                "No chunks generated — document may have no extractable text"
+            )
 
         db.commit()
         logger.info("Indexed doc %s (chunks=%d)", document_id, chunk_count)
@@ -729,7 +798,7 @@ def entity_stage(self, document_id: str) -> str:
 def _run_finalize(document_id: str) -> None:
     """Mark document as fully enriched — terminal stage work function."""
     from app.database import SessionLocal
-    from app.models.document import Document
+    from app.models.document import Document, DocumentStatus
 
     db = SessionLocal()
     try:
@@ -737,6 +806,10 @@ def _run_finalize(document_id: str) -> None:
         doc = db.query(Document).filter(Document.id == doc_uuid).first()
         if doc:
             doc.pipeline_stage = "enriched"
+            # Ensure terminal status is consistent — if indexing succeeded the
+            # document should be INDEXED, not left in PROCESSING or PENDING.
+            if doc.status not in (DocumentStatus.INDEXED, DocumentStatus.ERROR):
+                doc.status = DocumentStatus.INDEXED
             db.commit()
     finally:
         db.close()

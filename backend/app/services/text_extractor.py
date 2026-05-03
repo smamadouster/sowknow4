@@ -32,7 +32,6 @@ class TextExtractor:
             ".epub": self._extract_from_epub,
             ".rtf": self._extract_from_rtf,
             ".zip": self._extract_from_zip,
-            ".xmind": self._extract_from_zip,
         }
 
     def get_file_extension(self, filename: str) -> str:

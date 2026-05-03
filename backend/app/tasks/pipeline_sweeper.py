@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, exists
+from sqlalchemy import and_, exists, func
 from sqlalchemy.orm import aliased
 
 from app.celery_app import celery_app
@@ -343,6 +343,56 @@ def pipeline_sweeper() -> dict:
                 elif result.startswith("backpressure"):
                     break
 
+        # ── 5. Corrupted pipeline data: upstream stages completed but 0 chunks ──
+        # This catches backfilled/migrated documents that have fake COMPLETED
+        # pipeline rows without actual chunk data, or documents that failed
+        # permanently but never had their status updated.
+        corrupted_fixed = 0
+        try:
+            from app.models.document import Document, DocumentChunk, DocumentStatus
+
+            corrupted = (
+                db.query(Document)
+                .outerjoin(DocumentChunk, DocumentChunk.document_id == Document.id)
+                .filter(
+                    Document.status.in_([DocumentStatus.PENDING, DocumentStatus.PROCESSING]),
+                )
+                .group_by(Document.id)
+                .having(
+                    func.count(DocumentChunk.id) == 0,
+                )
+                .limit(500)
+                .all()
+            )
+
+            for doc in corrupted:
+                # Verify that at least one upstream stage claims to be completed
+                has_completed_upstream = (
+                    db.query(PipelineStage)
+                    .filter(
+                        PipelineStage.document_id == doc.id,
+                        PipelineStage.stage.in_([StageEnum.OCR, StageEnum.CHUNKED]),
+                        PipelineStage.status == StageStatus.COMPLETED,
+                    )
+                    .first()
+                )
+                if has_completed_upstream:
+                    doc.status = DocumentStatus.ERROR
+                    error_msg = "No chunks generated — document has no extractable text"
+                    doc.pipeline_error = error_msg
+                    meta = doc.document_metadata or {}
+                    meta["processing_error"] = error_msg
+                    meta["last_error_at"] = datetime.now(UTC).isoformat()
+                    doc.document_metadata = meta
+                    db.commit()
+                    corrupted_fixed += 1
+                    logger.info(
+                        "Sweeper fixed corrupted doc %s — 0 chunks but upstream stages completed",
+                        doc.id,
+                    )
+        except Exception:
+            logger.exception("Sweeper corrupted-data check failed")
+
         metrics = {
             "timestamp": now.isoformat(),
             "stuck_resumed": stuck_resumed,
@@ -352,6 +402,7 @@ def pipeline_sweeper() -> dict:
             "premature_deleted": premature_deleted,
             "missing_enriched_dispatched": missing_enriched_dispatched,
             "backpressure_dispatched": backpressure_dispatched,
+            "corrupted_fixed": corrupted_fixed,
             "total_dispatched": total_dispatched,
             "embed_queue_depth": embed_queue_depth,
             "embed_backpressure": embed_backpressure,

@@ -1094,24 +1094,25 @@ class HybridSearchService:
             "limit": limit,
         })
 
+        rows = rows.mappings().all()
         results = []
         for row in rows:
             # Fetch tags for this bookmark
             tag_rows = await db.execute(
                 text("SELECT tag_name FROM sowknow.tags WHERE target_type = 'bookmark' AND target_id = :tid"),
-                {"tid": str(row.id)},
+                {"tid": str(row["id"])},
             )
             tags = [tr.tag_name for tr in tag_rows]
 
             results.append({
                 "result_type": "bookmark",
-                "id": str(row.id),
-                "title": row.title,
-                "description": (row.description or row.url or "")[:200],
+                "id": str(row["id"]),
+                "title": row["title"],
+                "description": (row["description"] or row["url"] or "")[:200],
                 "tags": tags,
                 "score": 0.8,
-                "bucket": row.bucket,
-                "url": row.url,
+                "bucket": row["bucket"],
+                "url": row["url"],
             })
         return results
 
@@ -1152,22 +1153,23 @@ class HybridSearchService:
             "limit": limit,
         })
 
+        rows = rows.mappings().all()
         results = []
         for row in rows:
             tag_rows = await db.execute(
                 text("SELECT tag_name FROM sowknow.tags WHERE target_type = 'note' AND target_id = :tid"),
-                {"tid": str(row.id)},
+                {"tid": str(row["id"])},
             )
             tags = [tr.tag_name for tr in tag_rows]
 
             results.append({
                 "result_type": "note",
-                "id": str(row.id),
-                "title": row.title,
-                "description": (row.content or "")[:200],
+                "id": str(row["id"]),
+                "title": row["title"],
+                "description": (row["content"] or "")[:200],
                 "tags": tags,
                 "score": 0.8,
-                "bucket": row.bucket,
+                "bucket": row["bucket"],
             })
         return results
 
@@ -1258,15 +1260,13 @@ class HybridSearchService:
         if "space" in types:
             tasks.append(("space", self._search_spaces(query, user, db, page_size)))
 
-        # Run all searches concurrently
-        if tasks:
-            coros = [t[1] for t in tasks]
-            results = await asyncio.gather(*coros, return_exceptions=True)
-            for (type_name, _), result in zip(tasks, results, strict=False):
-                if isinstance(result, Exception):
-                    logger.warning("search_all_types: %s search failed: %s", type_name, result)
-                    continue
+        # Run all searches sequentially (same AsyncSession is not safe for concurrent use)
+        for type_name, coro in tasks:
+            try:
+                result = await coro
                 all_results.extend(result)
+            except Exception as exc:
+                logger.warning("search_all_types: %s search failed: %s", type_name, exc)
 
         # Sort by score descending
         all_results.sort(key=lambda r: r.get("score", 0), reverse=True)

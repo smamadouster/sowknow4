@@ -681,7 +681,7 @@ def chunk_stage(self, document_id: str) -> str:
 @celery_app.task(
     bind=True,
     name="pipeline.embed_stage",
-    max_retries=3,
+    max_retries=None,
     acks_late=True,
     soft_time_limit=1800,
     time_limit=1980,

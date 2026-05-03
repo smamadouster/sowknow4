@@ -27,9 +27,12 @@ class TextExtractor:
             ".json": self._extract_from_json,
             ".csv": self._extract_from_csv,
             ".xml": self._extract_from_xml,
+            ".html": self._extract_from_html,
+            ".htm": self._extract_from_html,
             ".epub": self._extract_from_epub,
             ".rtf": self._extract_from_rtf,
             ".zip": self._extract_from_zip,
+            ".xmind": self._extract_from_zip,
         }
 
     def get_file_extension(self, filename: str) -> str:
@@ -364,6 +367,30 @@ class TextExtractor:
 
         except Exception as e:
             logger.error(f"Error extracting from EPUB: {str(e)}")
+            return {"text": "", "error": str(e), "pages": 0}
+
+    async def _extract_from_html(self, file_path: str) -> dict[str, Any]:
+        """Extract readable text from HTML/HTM files."""
+        try:
+            import html
+            import re
+
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    data = f.read()
+            except UnicodeDecodeError:
+                with open(file_path, encoding="latin-1") as f:
+                    data = f.read()
+
+            data = re.sub(r"(?is)<(script|style).*?</\1>", " ", data)
+            text = re.sub(r"(?s)<[^>]+>", " ", data)
+            text = html.unescape(text)
+            text = re.sub(r"[ \t\r\f\v]+", " ", text)
+            text = re.sub(r"\n\s+", "\n", text)
+            return {"text": text.strip(), "pages": 0, "source": "html-parser"}
+
+        except Exception as e:
+            logger.error(f"Error extracting from HTML: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
     async def _extract_from_rtf(self, file_path: str) -> dict[str, Any]:

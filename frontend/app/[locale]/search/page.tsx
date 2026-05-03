@@ -522,7 +522,7 @@ export default function SearchPage() {
     fetch(`${API_BASE}/v1/search/global?q=${encodeURIComponent(searchQuery)}&types=bookmark,note,space`, { credentials: 'include', headers: { 'X-CSRF-Token': getCsrfToken() }, signal: abortRef.current.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => { setStream((prev) => ({ ...prev, globalResults: (data.results || []) as GlobalSearchResult[] })); })
-      .catch(() => {});
+      .catch((err) => { console.error('Global search failed', err); });
 
     try {
       const response = await fetch(`${API_BASE}/v1/search/stream`, {
@@ -678,7 +678,7 @@ export default function SearchPage() {
   }, [fetchInlineSuggestions]);
   const typeCounts: Record<string, number> = { document: stream.results.length };
   for (const gr of stream.globalResults) { typeCounts[gr.result_type] = (typeCounts[gr.result_type] || 0) + 1; }
-  const filteredGlobalResults = typeFilter === 'all' || typeFilter === 'document' ? stream.globalResults : stream.globalResults.filter((r) => r.result_type === typeFilter);
+  const filteredGlobalResults = typeFilter === 'all' ? stream.globalResults : stream.globalResults.filter((r) => r.result_type === typeFilter);
   const showDocumentResults = typeFilter === 'all' || typeFilter === 'document';
   const typeLabels: Record<string, string> = { all: t('typeFilter.all' as Parameters<typeof t>[0]), document: t('typeFilter.documents' as Parameters<typeof t>[0]), bookmark: t('typeFilter.bookmarks' as Parameters<typeof t>[0]), note: t('typeFilter.notes' as Parameters<typeof t>[0]), space: t('typeFilter.spaces' as Parameters<typeof t>[0]) };
 

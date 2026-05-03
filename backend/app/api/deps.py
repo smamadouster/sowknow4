@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.services.token_blacklist import is_token_blacklisted
 from app.utils.constants import COOKIE_ACCESS_TOKEN_NAME
 from app.utils.security import TokenExpiredError, TokenInvalidError, decode_token
 
@@ -83,6 +84,9 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     token = await get_token_from_request(request)
     if not token:
         logger.warning("Authentication failed: No token found in cookie or header")
+        raise credentials_exception
+    if is_token_blacklisted(token):
+        logger.warning("Authentication failed: Token has been revoked")
         raise credentials_exception
 
     # Decode token with proper exception handling

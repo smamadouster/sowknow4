@@ -43,8 +43,8 @@ def backfill_embeddings(db):
         texts = [c.chunk_text for c in chunks]
 
         try:
-            # Process in batches of 32
-            batch_size = 32
+            # Process in batches of 8
+            batch_size = 8
             for i in range(0, len(texts), batch_size):
                 batch_texts = texts[i : i + batch_size]
                 batch_chunks = chunks[i : i + batch_size]

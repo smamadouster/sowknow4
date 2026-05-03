@@ -195,9 +195,10 @@ class EmbeddingService:
                         normalize_embeddings=True,
                     )
 
-            # Force garbage collection after every encode to release memory
+            # Force garbage collection after large batches to release memory
             # and prevent fragmentation across threads.
-            gc.collect()
+            if len(texts) > 50:
+                gc.collect()
 
             # Convert to list of lists
             return embeddings.tolist()

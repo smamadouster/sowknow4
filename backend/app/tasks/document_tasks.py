@@ -503,7 +503,7 @@ def generate_embeddings(self, chunk_ids: list) -> dict:
 
         embeddings = embedding_service.encode(
             texts=chunk_texts,
-            batch_size=32,
+            batch_size=8,
             show_progress=False,
         )
 

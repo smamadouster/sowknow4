@@ -22,7 +22,16 @@ MAX_QUEUE_DEPTH = {
     "pipeline.ocr": 500,
     "pipeline.articles": 300,
     "pipeline.entities": 200,
+    "pipeline.chunk": 300,
+    "pipeline.index": 300,
 }
+
+# Global safety limit: if total pipeline queue depth exceeds this, stop all dispatching.
+# Prevents system-wide queue flooding during batch uploads or recovery from outage.
+MAX_TOTAL_QUEUE_DEPTH = 800
+
+_PIPELINE_QUEUES = ["pipeline.embed", "pipeline.ocr", "pipeline.chunk", "pipeline.index",
+                    "pipeline.articles", "pipeline.entities"]
 
 # Mapping from StageEnum to Celery task (for building partial chains)
 _STAGE_TASKS = {
@@ -46,21 +55,46 @@ except Exception:
 # Map from StageEnum to the Redis queue name the task lands on
 _STAGE_QUEUE = {
     StageEnum.OCR: "pipeline.ocr",
+    StageEnum.CHUNKED: "pipeline.chunk",
     StageEnum.EMBEDDED: "pipeline.embed",
+    StageEnum.INDEXED: "pipeline.index",
     StageEnum.ARTICLES: "pipeline.articles",
     StageEnum.ENTITIES: "pipeline.entities",
 }
 
 
-def _check_backpressure(from_stage: StageEnum = StageEnum.OCR) -> str | None:
-    """Check the entry queue depth for the given stage.
+def _total_queue_depth() -> int:
+    """Sum the depths of all pipeline queues."""
+    if redis_client is None:
+        return 0
+    total = 0
+    for q in _PIPELINE_QUEUES:
+        try:
+            total += redis_client.llen(q)
+        except Exception:
+            pass
+    return total
 
-    Only blocks dispatch if the queue that the *first* task in the chain
-    lands on is over its limit.  Downstream queues are not checked —
-    tasks will naturally queue up as upstream stages complete.
+
+def _check_backpressure(from_stage: StageEnum = StageEnum.OCR) -> str | None:
+    """Check the entry queue depth for the given stage AND global queue depth.
+
+    Blocks dispatch if either the entry queue or the total pipeline queue depth
+    exceeds its limit.  Downstream queues are not checked — tasks will naturally
+    queue up as upstream stages complete.
     """
     if redis_client is None:
         return None
+
+    # Global backpressure first
+    total_depth = _total_queue_depth()
+    if total_depth > MAX_TOTAL_QUEUE_DEPTH:
+        logger.warning(
+            "Global backpressure: total pipeline queue depth=%d > max=%d",
+            total_depth, MAX_TOTAL_QUEUE_DEPTH,
+        )
+        return "global"
+
     queue_name = _STAGE_QUEUE.get(from_stage)
     if queue_name is None:
         return None

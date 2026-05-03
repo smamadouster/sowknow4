@@ -89,7 +89,7 @@ class CostTracker:
             "output": 0.00028,
         },
         # Qwen (standard tier)
-        "qwen/qwen3.5-plus": {
+        "qwen/qwen3.5-plus-20260420": {
             "input": 0.00026,
             "output": 0.00200,
         },

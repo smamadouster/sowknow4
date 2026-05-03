@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
@@ -102,13 +103,54 @@ const SUGGESTION_ICONS: Record<string, string> = {
   related_query: '→', refine: '◎', expand: '⊕', temporal: '◷', entity_search: '◈',
 };
 
-function formatSynthesis(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/\[Source: ([^\]]+)\]/g, '<cite class="text-xs text-text-muted not-italic border-b border-dashed border-white/10">[$1]</cite>')
-    .replace(/^• (.+)$/gm, '<li class="mb-1">$1</li>')
-    .replace(/\n/g, '<br/>');
+function renderInlineSynthesis(text: string, keyPrefix: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*|\[Source: ([^\]]+)\])/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    if (match[2]) {
+      parts.push(<strong key={`${keyPrefix}-b-${match.index}`}>{match[2]}</strong>);
+    } else if (match[3]) {
+      parts.push(<em key={`${keyPrefix}-i-${match.index}`}>{match[3]}</em>);
+    } else if (match[4]) {
+      parts.push(
+        <cite
+          key={`${keyPrefix}-s-${match.index}`}
+          className="text-xs text-text-muted not-italic border-b border-dashed border-white/10"
+        >
+          [{match[4]}]
+        </cite>
+      );
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+function renderSynthesis(text: string): ReactNode[] {
+  return text.split('\n').map((line, index) => {
+    const bullet = line.match(/^•\s+(.+)$/);
+    const content = bullet ? bullet[1] : line;
+
+    return (
+      <div key={`line-${index}`} className={bullet ? 'mb-1' : undefined}>
+        {bullet && <span className="mr-2">•</span>}
+        {renderInlineSynthesis(content, `line-${index}`)}
+      </div>
+    );
+  });
 }
 
 function PipelineProgress({ stage, message }: { stage: PipelineStage; message: string }) {
@@ -182,7 +224,9 @@ function SynthesisBlock({ text, model, synthesizedAnswerLabel, ollamaLabel, mini
         </button>
       </div>
       {expanded && (
-        <div className="px-5 py-4 text-sm leading-relaxed text-text-secondary" dangerouslySetInnerHTML={{ __html: formatSynthesis(text) }} />
+        <div className="px-5 py-4 text-sm leading-relaxed text-text-secondary">
+          {renderSynthesis(text)}
+        </div>
       )}
     </div>
   );

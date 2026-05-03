@@ -35,16 +35,16 @@ class ProbesPlugin(GuardianPlugin):
     # "restart:sowknow4-nginx", which never existed. Host nginx is health-
     # checked by the external host watchdog and Cloudflare instead.
     PROBE_LEVELS: dict[str, list[str]] = {
-        "critical": ["jwt", "redis_deep", "celery_completion", "pipeline_orphaned"],
+        "critical": ["jwt", "redis_deep", "celery_completion", "pipeline_orphaned", "embed_server_cascade"],
         "standard": [
             "jwt", "redis_deep", "celery_completion",
             "postgres_deep", "deep_health", "pipeline", "pipeline_orphaned",
-            "embed_server_deep",
+            "embed_server_deep", "embed_server_cascade",
         ],
         "deep": [
             "jwt", "redis_deep", "celery_completion",
             "postgres_deep", "deep_health", "pipeline", "pipeline_orphaned",
-            "embed_server_deep", "auth_flow",
+            "embed_server_deep", "embed_server_cascade", "auth_flow",
         ],
     }
 
@@ -76,6 +76,7 @@ class ProbesPlugin(GuardianPlugin):
             "pipeline": self._check_pipeline,
             "pipeline_orphaned": self._check_pipeline_orphaned,
             "embed_server_deep": self._check_embed_server_deep,
+            "embed_server_cascade": self._check_embed_server_cascade,
             "nginx": self._check_nginx,
             "auth_flow": self._check_auth_flow,
         }
@@ -137,6 +138,9 @@ class ProbesPlugin(GuardianPlugin):
 
         if hint == "requeue_stuck_docs":
             return await self._heal_requeue_stuck_docs()
+
+        if hint == "embed_cascade":
+            return await self._heal_embed_cascade()
 
         return None
 
@@ -682,6 +686,73 @@ class ProbesPlugin(GuardianPlugin):
                 heal_hint="restart_embed_server",
             )
 
+    async def _check_embed_server_cascade(self, ctx: CheckContext) -> CheckResult:
+        """Detect embed-server CPU cascade: high CPU + deep pipeline.embed queue.
+
+        This catches the death-spiral where the embed server is overwhelmed by
+        a flood of retrying Celery tasks, causing 200 %+ CPU from thread-pile-up
+        and GIL contention.  Restarting alone is not enough — the queue must be
+        purged first or the flood resumes within seconds.
+        """
+        try:
+            cpu_pct = 0.0
+            stats_proc = subprocess.run(
+                ["docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}", "sowknow4-embed-server"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if stats_proc.returncode == 0 and stats_proc.stdout.strip():
+                cpu_str = stats_proc.stdout.strip().replace("%", "")
+                try:
+                    cpu_pct = float(cpu_str)
+                except ValueError:
+                    cpu_pct = 0.0
+
+            queue_depth = 0
+            redis_proc = subprocess.run(
+                self._redis_cli_cmd("LLEN", "pipeline.embed"),
+                capture_output=True, text=True, timeout=10,
+            )
+            if redis_proc.returncode == 0 and redis_proc.stdout.strip():
+                try:
+                    queue_depth = int(redis_proc.stdout.strip())
+                except ValueError:
+                    queue_depth = 0
+
+            details = {"embed_cpu_pct": round(cpu_pct, 1), "pipeline_embed_depth": queue_depth}
+
+            if cpu_pct > 150 and queue_depth > 100:
+                return CheckResult(
+                    plugin=self.name,
+                    module="Document Pipeline",
+                    check_name="embed_server_cascade",
+                    status="fail",
+                    severity=Severity.CRITICAL,
+                    summary=f"Embed cascade detected: CPU {cpu_pct:.0f}% + queue depth {queue_depth}",
+                    details=details,
+                    needs_healing=True,
+                    heal_hint="embed_cascade",
+                )
+
+            return CheckResult(
+                plugin=self.name,
+                module="Document Pipeline",
+                check_name="embed_server_cascade",
+                status="pass",
+                severity=Severity.INFO,
+                summary=f"Embed server stable: CPU {cpu_pct:.0f}%, queue depth {queue_depth}",
+                details=details,
+            )
+        except Exception as exc:
+            return CheckResult(
+                plugin=self.name,
+                module="Document Pipeline",
+                check_name="embed_server_cascade",
+                status="fail",
+                severity=Severity.WARNING,
+                summary=f"Embed cascade check failed: {exc!s:.200}",
+                needs_healing=False,
+            )
+
     async def _check_nginx(self, ctx: CheckContext) -> CheckResult:
         """Verify Nginx proxy health endpoint responds."""
         url = f"{self._nginx_url}/api/v1/health"
@@ -842,6 +913,41 @@ class ProbesPlugin(GuardianPlugin):
                 plugin=self.name,
                 target="sowknow4-postgres",
                 action="requeue_stuck_docs",
+                success=False,
+                details=str(exc)[:200],
+            )
+
+    async def _heal_embed_cascade(self) -> HealResult:
+        """Purge the flooded pipeline.embed queue, then restart embed-server."""
+        try:
+            # 1. Purge the queue so the restart isn't immediately drowned
+            purge_proc = subprocess.run(
+                self._redis_cli_cmd("LTRIM", "pipeline.embed", "1", "0"),
+                capture_output=True, text=True, timeout=15,
+            )
+            purge_ok = purge_proc.returncode == 0
+
+            # 2. Restart embed-server to clear stuck threads
+            healer = ContainerHealer()
+            out = await healer.heal("sowknow4-embed-server")
+            restart_ok = out.get("healed", False)
+
+            return HealResult(
+                plugin=self.name,
+                target="sowknow4-embed-server",
+                action="embed_cascade_purge_and_restart",
+                success=purge_ok and restart_ok,
+                details=(
+                    f"purge_ok={purge_ok}, restart_ok={restart_ok}, "
+                    f"purge_out={purge_proc.stdout.strip()[:200]}, "
+                    f"restart_out={str(out)[:200]}"
+                ),
+            )
+        except Exception as exc:
+            return HealResult(
+                plugin=self.name,
+                target="sowknow4-embed-server",
+                action="embed_cascade_purge_and_restart",
                 success=False,
                 details=str(exc)[:200],
             )

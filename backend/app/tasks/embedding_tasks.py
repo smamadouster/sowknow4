@@ -75,7 +75,7 @@ def generate_embeddings_batch(
             }
 
         texts = [c.chunk_text for c in chunks]
-        embeddings = embedding_service.encode(texts=texts, batch_size=32)
+        embeddings = embedding_service.encode(texts=texts, batch_size=8)
 
         success_count = 0
         failed_count = 0
@@ -171,8 +171,8 @@ def recompute_embeddings_for_document(self, document_id: str) -> dict:
                 "duration_seconds": round(time.time() - start, 2),
             }
 
-        # Process in batches of 32 to limit memory usage
-        batch_size = 32
+        # Process in batches of 8 to limit memory usage
+        batch_size = 8
         updated = 0
         failed = 0
 
@@ -180,7 +180,7 @@ def recompute_embeddings_for_document(self, document_id: str) -> dict:
             batch = chunks[batch_start : batch_start + batch_size]
             texts = [c.chunk_text for c in batch]
             try:
-                embeddings = embedding_service.encode(texts=texts, batch_size=16)
+                embeddings = embedding_service.encode(texts=texts, batch_size=8)
                 for i, chunk in enumerate(batch):
                     chunk.embedding_vector = embeddings[i]
                     updated += 1
@@ -287,7 +287,7 @@ def upgrade_embeddings_model(
             try:
                 embeddings = target_model.encode(
                     texts,
-                    batch_size=32,
+                    batch_size=8,
                     show_progress_bar=False,
                     convert_to_numpy=True,
                     normalize_embeddings=True,

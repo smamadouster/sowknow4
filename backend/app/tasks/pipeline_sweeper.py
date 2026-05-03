@@ -1,8 +1,9 @@
 """Unified pipeline sweeper — finds stuck documents and resumes or parks them."""
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_
+from sqlalchemy import and_, exists
 from sqlalchemy.orm import aliased
 
 from app.celery_app import celery_app
@@ -12,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 # Stages that have a corresponding Celery task (UPLOADED is just a marker)
 _DISPATCHABLE_STAGES = [s for s in StageEnum if s != StageEnum.UPLOADED]
+
+# Safety cap: maximum total dispatches per sweeper run to prevent queue flooding
+# when a large backlog exists (e.g., after an outage or batch upload).
+_MAX_DISPATCHES_PER_RUN = int(os.getenv("SWEEPER_MAX_DISPATCH", "1000"))
+
+# Queue depth thresholds for embed server protection.
+# If embed queue exceeds this, skip stalled/missing dispatches that would land there.
+_EMBED_QUEUE_SOFT_LIMIT = int(os.getenv("SWEEPER_EMBED_QUEUE_LIMIT", "250"))
 
 
 @celery_app.task(name="pipeline.sweeper")
@@ -36,9 +45,34 @@ def pipeline_sweeper() -> dict:
     stuck_resumed = 0
     stuck_failed = 0
     stalled_dispatched = 0
+    total_dispatched = 0
+
+    # Quick queue-depth check for embed-server protection
+    embed_queue_depth = 0
+    try:
+        from app.core.redis_url import safe_redis_url
+        import redis
+        _redis = redis.from_url(safe_redis_url())
+        embed_queue_depth = _redis.llen("pipeline.embed")
+    except Exception:
+        pass
+
+    embed_backpressure = embed_queue_depth > _EMBED_QUEUE_SOFT_LIMIT
+    if embed_backpressure:
+        logger.warning(
+            "Sweeper embed backpressure active: pipeline.embed depth=%d > limit=%d",
+            embed_queue_depth, _EMBED_QUEUE_SOFT_LIMIT,
+        )
 
     try:
         now = datetime.now(UTC)
+
+        # Helper: skip documents that are permanently in ERROR — no point
+        # resuming a broken pipeline for a doc that already failed.
+        def _skip_if_error(doc_id) -> bool:
+            from app.models.document import Document, DocumentStatus
+            doc = db.query(Document).filter(Document.id == doc_id).first()
+            return doc is not None and doc.status == DocumentStatus.ERROR
 
         # ── 1. Find stages stuck in RUNNING state ──
         for stage in StageEnum:
@@ -55,10 +89,13 @@ def pipeline_sweeper() -> dict:
                     PipelineStage.status == StageStatus.RUNNING,
                     PipelineStage.started_at < stuck_threshold,
                 )
+                .limit(500)
                 .all()
             )
 
             for ps in stuck_stages:
+                if _skip_if_error(ps.document_id):
+                    continue
                 if ps.attempt >= ps.max_attempts:
                     ps.status = StageStatus.FAILED
                     ps.error_message = f"Sweeper: stuck in RUNNING after {ps.attempt} attempts"
@@ -79,6 +116,15 @@ def pipeline_sweeper() -> dict:
                         doc.document_metadata = meta
                         db.commit()
                 else:
+                    # CRITICAL: do NOT redispatch stuck embed stages when the embed
+                    # queue is already backlogged — that creates a cascading flood.
+                    if embed_backpressure and stage == StageEnum.EMBEDDED:
+                        logger.info(
+                            "Sweeper skipping stuck EMBEDDED stage doc=%s due to embed backpressure (depth=%d)",
+                            ps.document_id, embed_queue_depth,
+                        )
+                        continue
+
                     ps.status = StageStatus.PENDING
                     ps.error_message = f"Sweeper: reset from stuck RUNNING (attempt {ps.attempt})"
                     db.commit()
@@ -94,6 +140,11 @@ def pipeline_sweeper() -> dict:
         for i, completed_stage in enumerate(stages[:-1]):
             next_stage = stages[i + 1]
             if next_stage not in _DISPATCHABLE_STAGES:
+                continue
+
+            # Skip dispatches that would land on embed queue if it's already high
+            if embed_backpressure and next_stage in (StageEnum.CHUNKED, StageEnum.EMBEDDED):
+                logger.info("Sweeper skipping stalled %s dispatches due to embed backpressure", next_stage.name)
                 continue
 
             # Subquery: docs where completed_stage is COMPLETED
@@ -112,17 +163,25 @@ def pipeline_sweeper() -> dict:
                         )
                     ),
                 )
-                .limit(500)  # temporarily raised for backlog catchup
+                .limit(500)
                 .all()
             )
 
             for ps in stalled:
+                if total_dispatched >= _MAX_DISPATCHES_PER_RUN:
+                    logger.warning("Sweeper reached MAX_DISPATCHES_PER_RUN=%d — stopping", _MAX_DISPATCHES_PER_RUN)
+                    break
+                if _skip_if_error(ps.document_id):
+                    continue
                 result = dispatch_document(str(ps.document_id), from_stage=next_stage)
                 if result == "dispatched":
                     stalled_dispatched += 1
+                    total_dispatched += 1
                 elif result.startswith("backpressure"):
                     # Stop dispatching this stage pair — queue is full
                     break
+            if total_dispatched >= _MAX_DISPATCHES_PER_RUN:
+                break
 
         # ── 2.5 Missing intermediate rows: completed stage N but no row at all for stage N+1 ──
         missing_intermediate_dispatched = 0
@@ -152,6 +211,11 @@ def pipeline_sweeper() -> dict:
             )
 
             for (doc_id,) in missing_rows:
+                if total_dispatched >= _MAX_DISPATCHES_PER_RUN:
+                    logger.warning("Sweeper reached MAX_DISPATCHES_PER_RUN=%d — stopping", _MAX_DISPATCHES_PER_RUN)
+                    break
+                if _skip_if_error(doc_id):
+                    continue
                 row = PipelineStage(
                     document_id=doc_id,
                     stage=next_stage,
@@ -165,8 +229,11 @@ def pipeline_sweeper() -> dict:
                 result = dispatch_document(str(doc_id), from_stage=next_stage)
                 if result == "dispatched":
                     missing_intermediate_dispatched += 1
+                    total_dispatched += 1
                 elif result.startswith("backpressure"):
                     break
+            if total_dispatched >= _MAX_DISPATCHES_PER_RUN:
+                break
 
         # ── 3. Clean up premature ENRICHED rows (entities not done yet) ──
         premature_deleted = 0
@@ -179,6 +246,8 @@ def pipeline_sweeper() -> dict:
             .all()
         )
         for ps in premature_enriched:
+            if _skip_if_error(ps.document_id):
+                continue
             entity_row = (
                 db.query(PipelineStage)
                 .filter(
@@ -196,8 +265,6 @@ def pipeline_sweeper() -> dict:
 
         # ── 4. Missing terminal rows: ENTITIES completed but no ENRICHED row ──
         missing_enriched_dispatched = 0
-        from sqlalchemy import exists
-        from sqlalchemy.orm import aliased
 
         EnrichedAlias = aliased(PipelineStage)
         missing_enriched = (
@@ -219,6 +286,11 @@ def pipeline_sweeper() -> dict:
         )
 
         for (doc_id,) in missing_enriched:
+            if total_dispatched >= _MAX_DISPATCHES_PER_RUN:
+                logger.warning("Sweeper reached MAX_DISPATCHES_PER_RUN=%d — stopping", _MAX_DISPATCHES_PER_RUN)
+                break
+            if _skip_if_error(doc_id):
+                continue
             # Create the missing row so the dashboard tracks it
             row = PipelineStage(
                 document_id=doc_id,
@@ -233,6 +305,7 @@ def pipeline_sweeper() -> dict:
             result = dispatch_document(str(doc_id), from_stage=StageEnum.ENRICHED)
             if result == "dispatched":
                 missing_enriched_dispatched += 1
+                total_dispatched += 1
             elif result.startswith("backpressure"):
                 break
 
@@ -244,10 +317,16 @@ def pipeline_sweeper() -> dict:
                 PipelineStage.stage == StageEnum.UPLOADED,
                 PipelineStage.status == StageStatus.COMPLETED,
             )
+            .limit(500)
             .all()
         )
 
         for ps in uploaded_done:
+            if total_dispatched >= _MAX_DISPATCHES_PER_RUN:
+                logger.warning("Sweeper reached MAX_DISPATCHES_PER_RUN=%d — stopping", _MAX_DISPATCHES_PER_RUN)
+                break
+            if _skip_if_error(ps.document_id):
+                continue
             ocr_exists = (
                 db.query(PipelineStage)
                 .filter(
@@ -260,6 +339,7 @@ def pipeline_sweeper() -> dict:
                 result = dispatch_document(str(ps.document_id))
                 if result == "dispatched":
                     backpressure_dispatched += 1
+                    total_dispatched += 1
                 elif result.startswith("backpressure"):
                     break
 
@@ -272,6 +352,10 @@ def pipeline_sweeper() -> dict:
             "premature_deleted": premature_deleted,
             "missing_enriched_dispatched": missing_enriched_dispatched,
             "backpressure_dispatched": backpressure_dispatched,
+            "total_dispatched": total_dispatched,
+            "embed_queue_depth": embed_queue_depth,
+            "embed_backpressure": embed_backpressure,
+            "max_dispatches_per_run": _MAX_DISPATCHES_PER_RUN,
         }
         logger.info(f"Sweeper completed: {metrics}")
         return metrics

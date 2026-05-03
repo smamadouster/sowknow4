@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from dotenv import load_dotenv
+from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -53,8 +54,18 @@ SessionLocal = sessionmaker(sync_engine, expire_on_commit=False)
 Base = declarative_base()
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Async dependency to get database session."""
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """Async dependency to get the request-scoped database session."""
+    if request is not None and hasattr(request.state, "db"):
+        session = request.state.db
+        rls_context = getattr(request.state, "rls_context", None)
+        if rls_context is not None:
+            from app.middleware.rls import apply_rls_context
+
+            await apply_rls_context(session, rls_context)
+        yield session
+        return
+
     async with AsyncSessionLocal() as session:
         yield session
 

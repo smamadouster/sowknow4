@@ -97,6 +97,13 @@ celery_app.conf.update(
     result_expires=86400,  # 24 hours — document processing may be checked hours later
     # Reliability
     task_acks_late=True,
+    # Reject tasks if the worker process is killed (SIGKILL, OOM) so they are
+    # re-queued immediately rather than lost.  Combined with acks_late this
+    # prevents tasks from vanishing when a worker is restarted by Guardian HC.
+    task_reject_on_worker_lost=True,
+    # Send task events so Flower / monitoring dashboards can track runtime state.
+    worker_send_task_events=True,
+    task_send_sent_event=True,
     # Rate limiting — disabled by default. Slow tasks (entity extraction, LLM
     # calls) are naturally throttled by their own execution time. A global
     # rate limit artificially starves fast pipeline stages (index, finalize)

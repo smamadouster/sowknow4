@@ -1,0 +1,88 @@
+name: embed_cascade
+description: >
+  Embed server is in a CPU death-spiral (>150 % CPU) because the pipeline.embed
+  Celery queue is flooded with retrying tasks.  Restarting the container without
+  clearing the queue causes an immediate regression.  This runbook purges the
+  queue first, then restarts, then verifies.
+
+triggers:
+  - check_name: embed_server_cascade
+
+steps:
+  # Step 1: Verify the queue is still deep (race with other healers)
+  - id: check_queue
+    name: "Check pipeline.embed queue depth"
+    action: exec
+    container: sowknow4-redis
+    command: >-
+      redis-cli {redis_auth} LLEN pipeline.embed
+    expect_returncode: 0
+    timeout: 10
+    on_success: purge_queue
+    on_failure: escalate
+
+  # Step 2: Purge the flooded queue
+  - id: purge_queue
+    name: "Purge pipeline.embed queue"
+    action: exec
+    container: sowknow4-redis
+    command: >-
+      redis-cli {redis_auth} LTRIM pipeline.embed 1 0
+    expect_returncode: 0
+    timeout: 10
+    on_success: restart_embed_server
+    on_failure: escalate
+
+  # Step 3: Restart embed-server (RestartTracker gates this)
+  - id: restart_embed_server
+    name: "Restart embed-server container"
+    action: restart_container
+    container: sowknow4-embed-server
+    wait_after: 30
+    on_success: verify_after_restart
+    on_failure: escalate
+
+  # Step 4: Verify /embed works and CPU has dropped
+  - id: verify_after_restart
+    name: "Verify embed server healthy post-restart"
+    action: exec
+    container: sowknow4-backend
+    command: >-
+      python3 -c "
+      import httpx, os, sys, time, subprocess;
+      url = os.getenv('EMBED_SERVER_URL', 'http://embed-server:8000') + '/embed';
+      for i in range(6):
+          try:
+              r = httpx.post(url, json={'texts': ['probe'], 'batch_size': 1}, timeout=10);
+              if r.status_code == 200 and len(r.json()[0]) == 1024:
+                  print('HEALTHY');
+                  sys.exit(0);
+          except Exception:
+              pass;
+          time.sleep(5);
+      print('STILL_UNHEALTHY');
+      sys.exit(1);
+      "
+    expect_in_stdout: "HEALTHY"
+    timeout: 45
+    on_success: resolved
+    on_failure: escalate
+
+  # Terminals
+  - id: resolved
+    name: "Embed cascade resolved"
+    action: resolved
+    terminal: true
+
+  - id: escalate
+    name: "Escalate: embed cascade not resolved after purge + restart"
+    action: alert
+    message: >-
+      🔴 *Guardian runbook: embed_cascade — ESCALATED*
+
+      Embed server CPU cascade persists after queue purge and restart.
+      Manual investigation needed:
+      • `docker logs sowknow4-embed-server`
+      • `docker exec sowknow4-redis redis-cli LLEN pipeline.embed`
+      • Check for mass upload or backfill task flooding the queue
+    terminal: true

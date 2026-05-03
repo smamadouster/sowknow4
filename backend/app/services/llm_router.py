@@ -15,7 +15,7 @@ Routing strategy
 Tiered model routing (OpenRouter)
 ---------------------------------
 * simple:    qwen/qwen3-235b-a22b:free  (classification, tagging, intent)
-* standard:  qwen/qwen3.5-plus           (chat, synthesis, articles)
+* standard:  qwen/qwen3.5-plus-20260420  (chat, synthesis, articles)
 * complex:   deepseek/deepseek-v4-pro    (reasoning, coding, verification)
 """
 
@@ -207,26 +207,20 @@ class LLMRouter:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
-        # --- Confidential path: Ollama → OpenRouter → MiniMax ---
+        # --- Confidential path: local-only, fail closed ---
         if is_sensitive:
             reason = (
                 RoutingReason.CONFIDENTIAL_DOCS if "confidential" in sensitivity_reason else RoutingReason.PII_DETECTED
             )
-            chain = [
-                ("ollama", self._ollama, lambda s: s is not None and getattr(s, "available", True)),
-                ("openrouter", self._openrouter, lambda s: s is not None),
-                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
-            ]
-            for name, service, available in chain:
-                if available(service):
-                    logger.info(f"LLM routing → {name} ({reason.value})")
-                    return RoutingDecision(
-                        provider_name=name,
-                        reason=reason,
-                        service=service,
-                        metadata={"chain": [n for n, _, _ in chain], "sensitive": True},
-                    )
-            raise RuntimeError("No LLM provider available for confidential query.")
+            if await self._is_ollama_available():
+                logger.info("LLM routing → ollama (%s)", reason.value)
+                return RoutingDecision(
+                    provider_name="ollama",
+                    reason=reason,
+                    service=self._ollama,
+                    metadata={"chain": ["ollama"], "sensitive": True, "fail_closed": True},
+                )
+            raise RuntimeError("Ollama unavailable for confidential or PII-bearing query.")
 
         # --- Public path ---
         has_context = bool(context_chunks)
@@ -257,6 +251,25 @@ class LLMRouter:
                 )
 
         raise RuntimeError("No LLM provider available.")
+
+    async def _is_ollama_available(self) -> bool:
+        """Return True only when the local Ollama service is configured and healthy enough for sensitive data."""
+        if self._ollama is None:
+            return False
+        if not getattr(self._ollama, "available", True):
+            return False
+
+        health_check = getattr(self._ollama, "health_check", None)
+        if health_check is None:
+            return True
+
+        try:
+            health = await health_check()
+        except Exception as exc:
+            logger.warning("Ollama health check failed for sensitive routing: %s", exc)
+            return False
+
+        return health.get("status") in {"healthy", "degraded"}
 
     def get_provider_for_direct_call(
         self,

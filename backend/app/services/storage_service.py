@@ -160,6 +160,14 @@ class StorageService:
             return self.confidential_path
         return self.public_path
 
+    def _safe_bucket_file_path(self, filename: str, bucket: str) -> Path:
+        """Return a resolved bucket file path, rejecting traversal outside the bucket."""
+        bucket_path = self.get_bucket_path(bucket).resolve()
+        file_path = (bucket_path / filename).resolve()
+        if file_path == bucket_path or bucket_path not in file_path.parents:
+            raise ValueError("Invalid storage filename")
+        return file_path
+
     def generate_filename(self, original_filename: str) -> str:
         """Generate a unique filename while preserving extension"""
         # Get file extension
@@ -201,9 +209,6 @@ class StorageService:
         # Generate unique filename
         filename = self.generate_filename(original_filename)
 
-        # Get bucket path
-        bucket_path = self.get_bucket_path(bucket)
-
         # Determine if we should encrypt
         encrypt = (bucket == "confidential" and self._fernet is not None) or force_encrypt
 
@@ -218,7 +223,7 @@ class StorageService:
             except EncryptionError:
                 raise
 
-        file_path = bucket_path / filename
+        file_path = self._safe_bucket_file_path(filename, bucket)
 
         # Write file
         with open(file_path, "wb") as f:
@@ -246,8 +251,7 @@ class StorageService:
             True if deleted, False otherwise
         """
         try:
-            bucket_path = self.get_bucket_path(bucket)
-            file_path = bucket_path / filename
+            file_path = self._safe_bucket_file_path(filename, bucket)
 
             if file_path.exists():
                 file_path.unlink()
@@ -271,8 +275,7 @@ class StorageService:
             File content as bytes or None if not found
         """
         try:
-            bucket_path = self.get_bucket_path(bucket)
-            file_path = bucket_path / filename
+            file_path = self._safe_bucket_file_path(filename, bucket)
 
             if file_path.exists():
                 with open(file_path, "rb") as f:
@@ -312,8 +315,7 @@ class StorageService:
             Raw file content as bytes (possibly encrypted)
         """
         try:
-            bucket_path = self.get_bucket_path(bucket)
-            file_path = bucket_path / filename
+            file_path = self._safe_bucket_file_path(filename, bucket)
 
             if file_path.exists():
                 with open(file_path, "rb") as f:
@@ -358,14 +360,13 @@ class StorageService:
             encrypted_filename = filename + ".encrypted"
             encrypted_content = self._encrypt_data(content)
 
-            bucket_path = self.get_bucket_path(bucket)
-            new_path = bucket_path / encrypted_filename
+            new_path = self._safe_bucket_file_path(encrypted_filename, bucket)
 
             with open(new_path, "wb") as f:
                 f.write(encrypted_content)
 
             # Delete original unencrypted file
-            old_path = bucket_path / filename
+            old_path = self._safe_bucket_file_path(filename, bucket)
             old_path.unlink()
 
             logger.info(f"Encrypted file: {filename} -> {encrypted_filename}")
@@ -406,14 +407,13 @@ class StorageService:
             decrypted_filename = filename.replace(".encrypted", "")
             decrypted_content = self._decrypt_data(content)
 
-            bucket_path = self.get_bucket_path(bucket)
-            new_path = bucket_path / decrypted_filename
+            new_path = self._safe_bucket_file_path(decrypted_filename, bucket)
 
             with open(new_path, "wb") as f:
                 f.write(decrypted_content)
 
             # Delete original encrypted file
-            old_path = bucket_path / filename
+            old_path = self._safe_bucket_file_path(filename, bucket)
             old_path.unlink()
 
             logger.info(f"Decrypted file: {filename} -> {decrypted_filename}")
@@ -444,15 +444,13 @@ class StorageService:
 
     def file_exists(self, filename: str, bucket: str = "public") -> bool:
         """Check if a file exists in the specified bucket"""
-        bucket_path = self.get_bucket_path(bucket)
-        file_path = bucket_path / filename
+        file_path = self._safe_bucket_file_path(filename, bucket)
         return file_path.exists()
 
     def get_file_info(self, filename: str, bucket: str = "public") -> dict | None:
         """Get file information"""
         try:
-            bucket_path = self.get_bucket_path(bucket)
-            file_path = bucket_path / filename
+            file_path = self._safe_bucket_file_path(filename, bucket)
 
             if file_path.exists():
                 stat = file_path.stat()

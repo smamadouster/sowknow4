@@ -11,6 +11,7 @@ from typing import Any
 
 from app.services.agent_identity import CLARIFICATION_IDENTITY
 from app.services.minimax_service import minimax_service
+from app.services.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class ClarificationAgent:
 
     def __init__(self):
         self.minimax_service = minimax_service
+        self.ollama_service = ollama_service
 
     def _has_confidential_documents(self, sources: list[dict[str, Any]] | None) -> bool:
         """Check if any sources contain confidential documents."""
@@ -70,10 +72,14 @@ class ClarificationAgent:
         return any(s.get("document_bucket") == "confidential" for s in sources)
 
     def _get_llm_service(self, request: "ClarificationRequest"):
-        """Select LLM – always MiniMax."""
+        """Select the local LLM whenever confidential content is involved."""
+        if request.has_confidential or self._has_confidential_documents(request.sources):
+            if not self.ollama_service:
+                raise RuntimeError("Ollama unavailable for confidential clarification.")
+            return self.ollama_service
         return self.minimax_service
 
-    async def clarify(self, request: ClarificationRequest) -> ClarificationResult:
+    async def clarify(self, request: ClarificationRequest, use_ollama: bool = False) -> ClarificationResult:
         """
         Analyze and potentially clarify a user query.
 
@@ -84,6 +90,8 @@ class ClarificationAgent:
         Returns:
             Clarification result with questions and assumptions.
         """
+        if use_ollama:
+            request.has_confidential = True
         llm_service = self._get_llm_service(request)
 
         # Build the messages for the LLM

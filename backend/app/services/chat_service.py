@@ -2,10 +2,9 @@
 Chat service for RAG-powered conversations
 
 LLM Routing Strategy:
-- Confidential chunks are stripped to metadata-only before reaching the LLM prompt
-  (no document content ever leaves the server).
-- All queries (public and confidential) route through cloud LLMs via llm_router.
-- Fallback chain: OpenRouter (deepseek-v4-pro / qwen3.5-plus / qwen3-free) -> MiniMax M2.7
+- Confidential chunks are stripped to metadata-only before reaching cloud LLM prompts.
+- Raw confidential context requires the local Ollama provider and fails closed if unavailable.
+- Public and metadata-only prompts route through llm_router.
 """
 
 import asyncio
@@ -29,7 +28,7 @@ from app.services.prometheus_metrics import (
     llm_request_duration,
     llm_request_total,
 )
-from app.services.search_service import search_service, _get_regconfig
+from app.services.search_service import _get_regconfig, search_service
 
 # Import all LLM services
 try:
@@ -50,6 +49,12 @@ except ImportError:
     minimax_service = None
     logging.warning("MiniMax service not available")
 
+try:
+    from app.services.ollama_service import ollama_service
+except ImportError:
+    ollama_service = None
+    logging.warning("Ollama service not available")
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,6 +65,7 @@ class ChatService:
         self.openrouter_service = openrouter_service  # Fallback LLM
         self.kimi_service = kimi_service  # For chatbot/telegram/general chat
         self.minimax_service = minimax_service  # Default LLM for RAG (direct API)
+        self.ollama_service = ollama_service
         self.max_context_messages = 20
 
     async def get_conversation_history(self, session_id: UUID, db) -> list[dict[str, str]]:
@@ -134,12 +140,13 @@ class ChatService:
                 seen_docs[doc_id] = r
         top_results = list(seen_docs.values())
 
-        # Determine user access level to confidential content
-        user_is_admin = getattr(current_user, "is_superuser", False) or getattr(current_user, "can_access_confidential", False)
-
-        # Normal users: completely hide confidential documents
-        if not user_is_admin:
-            top_results = [r for r in top_results if r.document_bucket != "confidential"]
+        # Determine access explicitly. Missing/mock attributes must not become truthy by accident.
+        role_value = getattr(getattr(current_user, "role", None), "value", getattr(current_user, "role", None))
+        user_is_admin = (
+            role_value in {"admin", "superuser"}
+            or getattr(current_user, "is_superuser", False) is True
+            or getattr(current_user, "can_access_confidential", False) is True
+        )
 
         # Check for confidential documents OR PII in query
         has_confidential = any(r.document_bucket == "confidential" for r in top_results) or has_pii
@@ -190,6 +197,7 @@ class ChatService:
                         "chunk_text": metadata_summary,
                         "relevance_score": r.final_score,
                         "bucket": "confidential",
+                        "metadata_only": True,
                         "page_count": page_count,
                         "mime_type": mime_type,
                         "created_at": created_at,
@@ -210,6 +218,7 @@ class ChatService:
                         "chunk_text": chunk_text,
                         "relevance_score": r.final_score,
                         "bucket": r.document_bucket,
+                        "metadata_only": False,
                     }
                 )
 
@@ -249,6 +258,9 @@ Mention documents conversationally, e.g. "J'ai trouvé dans [Document Name] que.
 
 RULE 4 — NO CONFIDENTIAL APOLOGIES:
 Never apologize for not having access to documents. Never mention that documents are confidential or hidden. Just present what is available.
+
+RULE 5 — METADATA-ONLY CONFIDENTIAL SOURCES:
+When a document is labeled "Confidential, metadata only", do not fabricate or infer facts from its hidden contents. You may only mention the filename and visible metadata shown in the context.
 
 Answer based ONLY on the provided document context below. If the context truly contains no documents at all, say so honestly. Otherwise, summarize what the retrieved documents contain.
 Respond in the same language as the user's last message.
@@ -308,19 +320,21 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
         except Exception:
             pass  # Context block is optional — don't break chat
 
-        # Always route through cloud LLMs — confidential chunks have already
-        # been stripped to metadata only in retrieve_relevant_chunks().
+        raw_confidential_context = self._has_raw_confidential_context(sources)
+
         try:
             routing_decision = await llm_router.select_provider(
                 query=user_message,
                 context_chunks=sources,
-                has_confidential=False,
+                has_confidential=raw_confidential_context,
             )
             llm_service = routing_decision.service
             llm_provider = LLMProvider(routing_decision.provider_name)
             routing_reason = routing_decision.reason.value
         except RuntimeError as routing_err:
             logger.error(f"llm_router.select_provider failed: {routing_err}")
+            if raw_confidential_context:
+                raise RuntimeError("Local LLM unavailable for confidential document context") from routing_err
             if openrouter_service is not None:
                 llm_service = openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
@@ -420,19 +434,21 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
         except Exception:
             pass
 
-        # Always route through cloud LLMs — confidential chunks have already
-        # been stripped to metadata only in retrieve_relevant_chunks().
+        raw_confidential_context = self._has_raw_confidential_context(sources)
+
         try:
             routing_decision = await llm_router.select_provider(
                 query=user_message,
                 context_chunks=sources,
-                has_confidential=False,
+                has_confidential=raw_confidential_context,
             )
             llm_service = routing_decision.service
             llm_provider = LLMProvider(routing_decision.provider_name)
             routing_reason = routing_decision.reason.value
         except RuntimeError as routing_err:
             logger.error(f"llm_router.select_provider failed (stream): {routing_err}")
+            if raw_confidential_context:
+                raise RuntimeError("Local LLM unavailable for confidential document context") from routing_err
             if openrouter_service is not None:
                 llm_service = openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
@@ -510,6 +526,20 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
 
         yield f"data: {json.dumps({'type': 'sources', 'sources': formatted_sources})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    @staticmethod
+    def _has_raw_confidential_context(sources: list[dict]) -> bool:
+        """Return True when confidential sources include content rather than metadata-only summaries."""
+        for source in sources:
+            if source.get("bucket") != "confidential":
+                continue
+            if source.get("metadata_only", False):
+                continue
+            chunk_text = str(source.get("chunk_text") or "").lower()
+            if "content not sent to ai" in chunk_text or "metadata only" in chunk_text:
+                continue
+            return True
+        return False
 
 
 # Global chat service instance

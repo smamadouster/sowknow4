@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DocumentBucket(StrEnum):
@@ -40,6 +40,19 @@ class DocumentUpdate(BaseModel):
     filename: str | None = None
     bucket: DocumentBucket | None = None
     language: DocumentLanguage | None = None
+
+    @field_validator("filename")
+    @classmethod
+    def validate_stored_filename(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not value or value in {".", ".."}:
+            raise ValueError("Invalid filename")
+        if "/" in value or "\\" in value or "\x00" in value:
+            raise ValueError("Filename must not contain path separators")
+        if any(ord(char) < 32 for char in value):
+            raise ValueError("Filename must not contain control characters")
+        return value
 
 
 class DocumentResponse(BaseModel):

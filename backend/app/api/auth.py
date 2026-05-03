@@ -38,6 +38,8 @@ from app.models.user import User
 from app.schemas.auth import ForgotPasswordRequest, ResendVerificationRequest, TelegramAuthRequest
 from app.schemas.token import LoginResponse
 from app.schemas.user import UserCreate, UserPublic
+from app.services.token_blacklist import blacklist_token as blacklist_jwt
+from app.services.token_blacklist import is_token_blacklisted as jwt_is_blacklisted
 from app.utils.constants import COOKIE_ACCESS_TOKEN_NAME, COOKIE_REFRESH_TOKEN_NAME
 from app.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -142,19 +144,7 @@ def blacklist_token(token: str, expires_in_seconds: int) -> bool:
     Returns:
         True if successfully blacklisted, False otherwise
     """
-    if not redis_client:
-        return False
-
-    try:
-        # Use token's JTI (JWT ID) or the token itself as key
-        # Store with expiration matching token lifetime
-        key = f"blacklist:{token}"
-        redis_client.setex(key, expires_in_seconds, "1")
-        logger.debug(f"Token blacklisted: {token[:20]}...")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to blacklist token: {e}")
-        return False
+    return blacklist_jwt(token, expires_in_seconds)
 
 
 def is_token_blacklisted(token: str) -> bool:
@@ -167,15 +157,7 @@ def is_token_blacklisted(token: str) -> bool:
     Returns:
         True if token is blacklisted, False otherwise
     """
-    if not redis_client:
-        return False
-
-    try:
-        key = f"blacklist:{token}"
-        return redis_client.exists(key) > 0
-    except Exception as e:
-        logger.error(f"Failed to check token blacklist: {e}")
-        return False
+    return jwt_is_blacklisted(token)
 
 
 # =============================================================================
@@ -277,6 +259,29 @@ def get_refresh_token_from_request(request: Request) -> str | None:
         Refresh token string or None
     """
     return request.cookies.get(COOKIE_REFRESH_TOKEN_NAME)
+
+
+def get_access_token_from_request(request: Request) -> str | None:
+    """Extract access token from auth cookie or Authorization header."""
+    token = request.cookies.get(COOKIE_ACCESS_TOKEN_NAME)
+    if token:
+        return token
+    authorization = request.headers.get("Authorization", "")
+    if authorization.startswith("Bearer "):
+        return authorization[7:]
+    return None
+
+
+def blacklist_token_until_expiry(token: str, expected_type: str) -> None:
+    """Best-effort token revocation using the JWT exp claim as Redis TTL."""
+    import time
+
+    try:
+        payload = decode_token(token, expected_type=expected_type)
+    except Exception:
+        return
+    ttl = max(0, int(payload.get("exp", int(time.time()))) - int(time.time()))
+    blacklist_token(token, ttl)
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | bool:
@@ -589,8 +594,11 @@ async def logout(request: Request, response: Response) -> LoginResponse:
     # Optionally blacklist the refresh token
     refresh_token = get_refresh_token_from_request(request)
     if refresh_token:
-        # Blacklist for remaining lifetime (or max 7 days)
-        blacklist_token(refresh_token, REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60)
+        blacklist_token_until_expiry(refresh_token, expected_type="refresh")
+
+    access_token = get_access_token_from_request(request)
+    if access_token:
+        blacklist_token_until_expiry(access_token, expected_type="access")
 
     # Clear httpOnly cookies
     clear_auth_cookies(response)

@@ -26,6 +26,10 @@
 - [2026-04-10] Guardian v2 plugin heals log `success: True/False` but the dashboard/report counted healed via `h.get("healed")` (v1 field only). All plugin heal results must be checked as: `h.get("healed") or h.get("success") is True`.
 - [2026-04-11] NEVER use `--pool=prefork` with `concurrency=1` for celery-heavy. fork() doubles the ~1.3GB model in memory → RSS hits cgroup limit → OOM kill. Use `--pool=solo`: single process, model loaded once, no fork overhead. solo pool ignores `--max-tasks-per-child` (use `--max-memory-per-child` as a safety valve instead).
 - [2026-04-11] NUL bytes (0x00) in OCR'd text cause PostgreSQL "string literal cannot contain NUL characters" errors during chunk insert. Always strip with `text.replace('\x00', '')` before passing to the DB.
+- [2026-05-01] NEVER let the pipeline sweeper run without a dispatch cap. With a large backlog, an unbounded sweeper floods queues every 5 minutes, causing embed-server CPU saturation and celery-light memory pressure. Cap sweeper dispatches per run (default 1000) and add embed-queue backpressure (default depth 250).
+- [2026-05-01] Process-alive healthchecks (`grep -q celery`) hide zombie Celery workers that lost their Redis connection. Use broker-connectivity checks (`celery inspect ping`) so Docker restarts workers that are alive but useless.
+- [2026-05-01] Prefork Celery workers running OCR / whisper / LLM tasks accumulate memory fragmentation. `--max-tasks-per-child=20` forces process recycle before RSS hits the cgroup limit. This is cheaper than an OOM-kill restart loop.
+- [2026-05-01] Embed-server CPU >100% is usually a *symptom* of upstream queue flooding, not a root cause. Always check `pipeline.embed` queue depth and sweeper metrics before restarting embed-server. Restarting the victim without fixing the source just recreates the spike.
 
 ## Decision Log
 

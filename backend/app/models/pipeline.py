@@ -54,6 +54,8 @@ class PipelineStage(Base, TimestampMixin):
         Index("ix_pipeline_stages_doc_stage", "document_id", "stage", unique=True),
         Index("ix_pipeline_stages_status", "status"),
         Index("ix_pipeline_stages_stuck", "status", "started_at"),
+        Index("ix_pipeline_stages_stage_status_started", "stage", "status", "started_at"),
+        Index("ix_pipeline_stages_stage_status", "stage", "status"),
         {"schema": "sowknow"},
     )
 

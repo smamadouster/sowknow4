@@ -133,12 +133,14 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
     try:
         work_fn(document_id)
     except _EmbedContinue as cont:
-        # Partial embed — task re-queued, keep stage RUNNING
+        # Partial embed — retry this chain link so the next stage does NOT
+        # run until all chunks are fully embedded.  The retry countdown
+        # gives other documents a turn between windows.
         logger.info(
-            "Stage %s partial for doc %s — %d chunks remaining, re-queued",
+            "Stage %s partial for doc %s — %d chunks remaining, retrying chain link",
             stage, document_id, cont.remaining,
         )
-        return document_id
+        raise self.retry(countdown=10)
     except Exception as exc:
         logger.exception("Stage %s failed for doc %s: %s", stage, document_id, exc)
 
@@ -284,10 +286,25 @@ def _run_ocr(document_id: str) -> None:
 
             doc.ocr_processed = True
 
-        # Write sidecar .txt file
+        # Write sidecar .txt file — but preserve existing content if extraction
+        # returns empty (prevents destroying previously-extracted text on reprocess).
         txt_path = file_path + ".txt"
-        with open(txt_path, "w", encoding="utf-8") as fh:
-            fh.write(extracted_text or "")
+        existing_text = ""
+        if os.path.exists(txt_path):
+            try:
+                with open(txt_path, encoding="utf-8") as fh:
+                    existing_text = fh.read()
+            except Exception:
+                pass
+
+        if extracted_text or not existing_text:
+            with open(txt_path, "w", encoding="utf-8") as fh:
+                fh.write(extracted_text or "")
+        else:
+            logger.warning(
+                "OCR returned empty for doc %s but sidecar %.0f bytes exists — preserving",
+                document_id, len(existing_text)
+            )
 
         if not extracted_text:
             logger.warning(
@@ -350,7 +367,7 @@ def _run_chunk(document_id: str) -> None:
             meta["last_error_at"] = datetime.now(UTC).isoformat()
             doc.document_metadata = meta
             db.commit()
-            return
+            raise RuntimeError(error_msg)
 
         # Delete existing chunks to allow re-runs
         db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid).delete()
@@ -402,13 +419,13 @@ def _run_embed(document_id: str) -> None:
         # instead of silently poisoning chunks with zero vectors.
         # Retry a few times to survive the ~5s uvicorn worker restart window.
         _embed_ready = False
-        for _attempt in range(1, 4):
+        for _attempt in range(1, 3):
             if embedding_service.can_embed:
                 _embed_ready = True
                 break
-            time.sleep(2.0)
+            time.sleep(3.0)
         if not _embed_ready:
-            raise RuntimeError("Embed server is not healthy after 3 attempts")
+            raise RuntimeError("Embed server is not healthy after 2 attempts")
 
         # Only fetch chunks that still need embeddings
         chunks = (
@@ -437,7 +454,7 @@ def _run_embed(document_id: str) -> None:
             db.commit()
             return
 
-        batch_size = 32
+        batch_size = 8
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
             texts = [c.chunk_text for c in batch]
@@ -459,11 +476,10 @@ def _run_embed(document_id: str) -> None:
         )
         if remaining > 0:
             logger.info(
-                "Doc %s has %d more chunks to embed — re-queuing", document_id, remaining
+                "Doc %s has %d more chunks to embed — retrying chain link", document_id, remaining
             )
-            # Re-queue ourselves so other docs get a turn between windows
-            embed_stage.apply_async(args=[document_id], countdown=1)
-            # Signal _stage_task to keep stage as RUNNING (not COMPLETED)
+            # Signal _stage_task to retry this chain link so the next stage
+            # (index_stage) does NOT run until all chunks are embedded.
             raise _EmbedContinue(remaining)
 
         doc.embedding_generated = True

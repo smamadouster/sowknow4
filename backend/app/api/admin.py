@@ -3,6 +3,7 @@ Admin API endpoints for user management, dashboard, stats, and audit logging
 """
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta
@@ -44,6 +45,8 @@ from app.schemas.admin import (
 )
 from app.schemas.user import UserPublic
 from app.utils.security import get_password_hash
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -1141,8 +1144,8 @@ async def set_whisper_model(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Hot-reload the Whisper model to a different size. Call sparingly — loading takes time."""
-    from app.services.whisper_service import VALID_MODEL_SIZES, whisper_service
     from app.models.audit import AuditAction
+    from app.services.whisper_service import VALID_MODEL_SIZES, whisper_service
 
     size = size.strip().lower()
     if size not in VALID_MODEL_SIZES:

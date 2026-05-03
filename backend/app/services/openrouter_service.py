@@ -2,7 +2,7 @@
 OpenRouter service for LLM access — DeepSeek V4 Pro primary
 OpenRouter provides OpenAI-compatible API access to multiple LLMs.
 Primary model: deepseek/deepseek-v4-pro (1M context, frontier reasoning).
-Tiered fallback: deepseek-v4-pro → qwen/qwen3.5-plus → minimax/minimax-m2.5
+Tiered fallback: deepseek-v4-pro → qwen/qwen3.5-plus-20260420 → minimax/minimax-m2.5
 
 CONTEXT CACHING:
 - Redis-backed cache for repeated queries to reduce API costs
@@ -32,7 +32,7 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-pro")
 # Tiered model configuration for cost/quality optimization
 OPENROUTER_TIER_MODELS = {
     "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "deepseek/deepseek-v4-pro"),
-    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "qwen/qwen3.5-plus"),
+    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "qwen/qwen3.5-plus-20260420"),
     "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "meta-llama/llama-3.3-70b-instruct:free"),
 }
 OPENROUTER_TIER_BUDGET_PCT = {

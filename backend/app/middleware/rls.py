@@ -12,19 +12,28 @@ Variables set per request:
 """
 
 import logging
+from dataclasses import dataclass
 
 from jose import JWTError, jwt
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.database import AsyncSessionLocal
 from app.utils.security import ALGORITHM, SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
 
-async def set_rls_context(request: Request, call_next) -> Response:
-    """HTTP middleware that injects RLS session variables."""
+@dataclass(frozen=True)
+class RLSContext:
+    user_id: str = ""
+    user_role: str = ""
+    client_ip: str = ""
+
+
+def extract_rls_context(request: Request) -> RLSContext:
+    """Extract request metadata used by PostgreSQL RLS policies."""
     user_id = ""
     user_role = ""
     client_ip = request.client.host if request.client else ""
@@ -39,27 +48,32 @@ async def set_rls_context(request: Request, call_next) -> Response:
     if token:
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = payload.get("sub", "")
+            user_id = str(payload.get("user_id") or "")
             user_role = payload.get("role", "")
         except JWTError:
             pass
 
-    # Set PostgreSQL session variables for RLS:
-    #   SET app.user_id   = '<user_id>'
-    #   SET app.user_role = '<role>'
-    async with AsyncSessionLocal() as session:
-        try:
-            await session.execute(
-                __import__("sqlalchemy").text(
-                    "SELECT set_config('app.user_id',   :uid,  true), "
-                    "       set_config('app.user_role', :role, true), "
-                    "       set_config('app.client_ip', :ip,   true)"
-                ),
-                {"uid": user_id, "role": user_role, "ip": client_ip},
-            )
-            await session.commit()
-        except Exception:
-            logger.debug("RLS context set failed (non-fatal)", exc_info=True)
+    return RLSContext(user_id=user_id, user_role=user_role, client_ip=client_ip)
+
+
+async def apply_rls_context(session: AsyncSession, context: RLSContext) -> None:
+    """Apply RLS variables on the same DB session that will execute request queries."""
+    try:
+        await session.execute(
+            text(
+                "SELECT set_config('app.user_id',   :uid,  true), "
+                "       set_config('app.user_role', :role, true), "
+                "       set_config('app.client_ip', :ip,   true)"
+            ),
+            {"uid": context.user_id, "role": context.user_role, "ip": context.client_ip},
+        )
+    except Exception:
+        logger.debug("RLS context set failed (non-fatal)", exc_info=True)
+
+
+async def set_rls_context(request: Request, call_next) -> Response:
+    """HTTP middleware that stores RLS context for request-scoped DB sessions."""
+    request.state.rls_context = extract_rls_context(request)
 
     response = await call_next(request)
     return response

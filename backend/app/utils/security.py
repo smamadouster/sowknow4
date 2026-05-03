@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session  # noqa: F401 — kept for type-compat in non
 
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.services.token_blacklist import is_token_blacklisted
 
 load_dotenv()
 
@@ -149,6 +150,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     )
 
     try:
+        if is_token_blacklisted(token):
+            raise TokenInvalidError("Token has been revoked")
         payload = decode_token(token, expected_type="access")
     except (TokenExpiredError, TokenInvalidError):
         raise credentials_exception

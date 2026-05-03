@@ -13,6 +13,7 @@ When the embed server is unreachable the client raises RuntimeError so callers
 can retry or fail fast rather than silently poisoning the index with zero vectors.
 """
 
+import itertools
 import logging
 import os
 import time
@@ -22,7 +23,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 EMBEDDING_DIM = 1024
-_ENCODE_TIMEOUT = 120.0    # e5-large on CPU can take 30-60s per batch
+_ENCODE_TIMEOUT = 300.0    # e5-large on CPU can take 30-120s per batch; give headroom under load
 _SINGLE_ENCODE_TIMEOUT = 10.0  # single text should be near-instant
 _QUERY_TIMEOUT = 30.0
 _HEALTH_TIMEOUT = 5.0
@@ -32,9 +33,23 @@ _HEALTH_CACHE_TTL = 30.0
 _MAX_RETRIES = 3
 _RETRY_BACKOFF = [1.0, 2.0, 4.0]  # seconds
 
+# Circuit-breaker config: fast-fail when embed server is consistently unhealthy
+_CIRCUIT_FAILURE_THRESHOLD = 5
+_CIRCUIT_OPEN_DURATION = 60.0  # seconds
+
+
+def _base_urls() -> list[str]:
+    """Parse EMBED_SERVER_URL as comma-separated list for round-robin load balancing."""
+    raw = os.getenv("EMBED_SERVER_URL", "http://embed-server:8000")
+    return [u.strip() for u in raw.split(",") if u.strip()]
+
+
+# Round-robin URL picker — thread-safe because itertools.cycle is atomic in CPython
+_url_cycle = itertools.cycle(_base_urls())
+
 
 def _base_url() -> str:
-    return os.getenv("EMBED_SERVER_URL", "http://embed-server:8000")
+    return next(_url_cycle)
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -54,11 +69,18 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 class EmbedClient:
-    """Sync HTTP wrapper around the embed-server FastAPI microservice."""
+    """Sync HTTP wrapper around the embed-server FastAPI microservice.
+
+    Includes a simple circuit breaker: after _CIRCUIT_FAILURE_THRESHOLD consecutive
+    failures, all requests fast-fail for _CIRCUIT_OPEN_DURATION seconds to prevent
+    hammering an already-overloaded embed server.
+    """
 
     def __init__(self):
         self._health_ok: bool | None = None
         self._health_checked_at: float = 0.0
+        self._consecutive_failures = 0
+        self._circuit_open_until: float = 0.0
 
     @property
     def embedding_dim(self) -> int:
@@ -66,15 +88,29 @@ class EmbedClient:
 
     @property
     def can_embed(self) -> bool:
-        """Return True when the embed server is reachable and healthy (TTL-cached 30s)."""
+        """Return True when the embed server is reachable and healthy (TTL-cached 30s).
+
+        Respects the circuit breaker: if the circuit is open we skip the network
+        call and fast-fail, preventing health-check storms against an overloaded
+        embed server.
+        """
+        # Fast-fail when circuit is open — don't hammer a dying server
+        if time.monotonic() < self._circuit_open_until:
+            return False
+
         now = time.monotonic()
         if self._health_ok is not None and (now - self._health_checked_at) < _HEALTH_CACHE_TTL:
             return self._health_ok
         try:
             resp = httpx.get(f"{_base_url()}/health", timeout=_HEALTH_TIMEOUT)
             self._health_ok = resp.status_code == 200 and resp.json().get("status") == "healthy"
+            if self._health_ok:
+                self._record_success()
+            else:
+                self._record_failure()
         except Exception:
             self._health_ok = False
+            self._record_failure()
         self._health_checked_at = time.monotonic()
         return self._health_ok
 
@@ -92,8 +128,33 @@ class EmbedClient:
         except Exception as exc:
             return {"status": "error", "detail": str(exc), "model_loaded": False}
 
+    def _circuit_breaker_check(self) -> None:
+        """Fast-fail if the circuit breaker is open."""
+        if time.monotonic() < self._circuit_open_until:
+            remaining = int(self._circuit_open_until - time.monotonic())
+            raise RuntimeError(f"Embed server circuit breaker OPEN (cooldown {remaining}s)")
+
+    def _record_failure(self) -> None:
+        """Increment consecutive failures and trip the circuit breaker if threshold reached."""
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= _CIRCUIT_FAILURE_THRESHOLD:
+            self._circuit_open_until = time.monotonic() + _CIRCUIT_OPEN_DURATION
+            logger.error(
+                "EmbedClient circuit breaker TRIPPED: %d consecutive failures. "
+                "Cooling down for %.0fs.",
+                self._consecutive_failures, _CIRCUIT_OPEN_DURATION,
+            )
+
+    def _record_success(self) -> None:
+        """Reset consecutive failures on any successful request."""
+        if self._consecutive_failures > 0:
+            self._consecutive_failures = 0
+            logger.info("EmbedClient circuit breaker RESET after success")
+
     def _post_with_retry(self, endpoint: str, payload: dict, timeout: float) -> dict | list:
-        """POST to embed server with transient-failure retry and exponential backoff."""
+        """POST to embed server with transient-failure retry, exponential backoff,
+        and circuit-breaker protection."""
+        self._circuit_breaker_check()
         url = f"{_base_url()}{endpoint}"
         last_exc: Exception | None = None
 
@@ -101,10 +162,12 @@ class EmbedClient:
             try:
                 resp = httpx.post(url, json=payload, timeout=timeout)
                 resp.raise_for_status()
+                self._record_success()
                 return resp.json()
             except httpx.HTTPStatusError as exc:
                 # Non-2xx from server → don't retry, fail fast
                 logger.error("EmbedClient.%s: server error %s", endpoint, exc.response.status_code)
+                self._record_failure()
                 raise RuntimeError(f"Embed server returned {exc.response.status_code}") from exc
             except Exception as exc:
                 last_exc = exc
@@ -120,6 +183,7 @@ class EmbedClient:
                 else:
                     break
 
+        self._record_failure()
         logger.error("EmbedClient.%s: server unreachable after %d attempts (%s)", endpoint, _MAX_RETRIES, last_exc)
         raise RuntimeError(f"Embed server unreachable: {last_exc}") from last_exc
 

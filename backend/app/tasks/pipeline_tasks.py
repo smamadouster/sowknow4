@@ -152,6 +152,9 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
         update_stage(document_id, stage, StageStatus.FAILED, error=error_text)
 
         # Mirror error to Document so the status API can surface it
+        from app.models.document import Document, DocumentStatus
+
+        doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
         db_err = SessionLocal()
         try:
             doc = db_err.query(Document).filter(Document.id == doc_uuid).first()
@@ -220,13 +223,14 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
             # Also write to Document so the status API can surface the error
             # without needing to query PipelineStage.
             from app.database import SessionLocal
-            from app.models.document import Document
+            from app.models.document import Document, DocumentStatus
 
             db = SessionLocal()
             try:
                 doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
                 doc = db.query(Document).filter(Document.id == doc_uuid).first()
                 if doc:
+                    doc.status = DocumentStatus.ERROR
                     doc.pipeline_error = error_text[:500]
                     meta = doc.document_metadata or {}
                     meta["processing_error"] = error_text[:500]
@@ -309,15 +313,24 @@ def _run_ocr(document_id: str) -> None:
                 f"Unsupported file format: {file_ext} — video and audio files cannot be processed as text documents"
             )
 
-        # Try native text extraction first
-        result = asyncio.run(text_extractor.extract_text(file_path, filename))
-        extracted_text = result.get("text", "")
-        page_count = result.get("pages", 0)
-        extraction_error = result.get("error", "")
+        # Image files have no native text layer — skip text extractor and go
+        # straight to OCR.  Otherwise text_extractor returns "Unsupported file
+        # format" which our fail-fast incorrectly treats as permanent.
+        is_image = doc.mime_type and doc.mime_type.startswith("image/")
+        if is_image:
+            extracted_text = ""
+            page_count = 0
+            extraction_error = ""
+        else:
+            # Try native text extraction first
+            result = asyncio.run(text_extractor.extract_text(file_path, filename))
+            extracted_text = result.get("text", "")
+            page_count = result.get("pages", 0)
+            extraction_error = result.get("error", "")
 
-        # Fail fast when text extractor reports an unsupported format
-        if extraction_error and "Unsupported file format" in extraction_error:
-            raise _PermanentPipelineError(extraction_error)
+            # Fail fast when text extractor reports an unsupported format
+            if extraction_error and "Unsupported file format" in extraction_error:
+                raise _PermanentPipelineError(extraction_error)
 
         # If OCR is needed (image files, PDFs without text layer, etc.)
         should_ocr, reason = ocr_service.should_use_ocr(

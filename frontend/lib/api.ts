@@ -918,6 +918,24 @@ class ApiClient {
   async getGenerationTaskStatus(taskId: string) {
     return this.request<{ task_id: string; status: string; result: unknown; error: string | null }>(`/v1/smart-folders/generate/status/${taskId}`);
   }
+
+  async getPipelineStatus() {
+    return this.request<{
+      stages: Record<string, { pending: number; running: number; completed: number; failed: number; skipped: number }>;
+      queues: Record<string, { depth: number; max: number | null }>;
+      workers: Record<string, { status: string; pool: string }> | { error: string };
+    }>('/v1/admin/pipeline/status');
+  }
+
+  async retryFailedPipelineStages(stage?: string, limit: number = 100) {
+    const params = new URLSearchParams();
+    if (stage) params.set('stage', stage);
+    params.set('limit', limit.toString());
+    return this.request<{ retried: number; skipped: number; stage_filter: string | null; limit: number }>(
+      `/v1/admin/pipeline/retry-failed?${params.toString()}`,
+      { method: 'POST' }
+    );
+  }
 }
 
 export const api = new ApiClient(API_BASE);

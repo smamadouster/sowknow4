@@ -74,6 +74,9 @@ class EmbedClient:
     Includes a simple circuit breaker: after _CIRCUIT_FAILURE_THRESHOLD consecutive
     failures, all requests fast-fail for _CIRCUIT_OPEN_DURATION seconds to prevent
     hammering an already-overloaded embed server.
+
+    Uses a persistent httpx.Client for connection pooling to avoid the TCP
+    setup/teardown overhead on every embedding call.
     """
 
     def __init__(self):
@@ -81,6 +84,8 @@ class EmbedClient:
         self._health_checked_at: float = 0.0
         self._consecutive_failures = 0
         self._circuit_open_until: float = 0.0
+        self._client = httpx.Client(http2=False, timeout=httpx.Timeout(_ENCODE_TIMEOUT))
+        self._health_client = httpx.Client(http2=False, timeout=httpx.Timeout(_HEALTH_TIMEOUT))
 
     @property
     def embedding_dim(self) -> int:
@@ -102,7 +107,7 @@ class EmbedClient:
         if self._health_ok is not None and (now - self._health_checked_at) < _HEALTH_CACHE_TTL:
             return self._health_ok
         try:
-            resp = httpx.get(f"{_base_url()}/health", timeout=_HEALTH_TIMEOUT)
+            resp = self._health_client.get(f"{_base_url()}/health")
             self._health_ok = resp.status_code == 200 and resp.json().get("status") == "healthy"
             if self._health_ok:
                 self._record_success()
@@ -122,7 +127,7 @@ class EmbedClient:
     def health_check(self) -> dict:
         """Proxy to embed server /health endpoint."""
         try:
-            resp = httpx.get(f"{_base_url()}/health", timeout=_HEALTH_TIMEOUT)
+            resp = self._health_client.get(f"{_base_url()}/health")
             resp.raise_for_status()
             return resp.json()
         except Exception as exc:
@@ -160,7 +165,7 @@ class EmbedClient:
 
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
-                resp = httpx.post(url, json=payload, timeout=timeout)
+                resp = self._client.post(url, json=payload)
                 resp.raise_for_status()
                 self._record_success()
                 return resp.json()

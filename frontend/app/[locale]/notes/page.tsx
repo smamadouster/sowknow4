@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
+import { useSearchParams, useRouter } from 'next/navigation';
 import TagSelector from '@/components/TagSelector';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -40,6 +41,8 @@ export default function NotesPage() {
   const tCommon = useTranslations('common');
   const locale = useLocale();
   const isMobile = useIsMobile();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +81,35 @@ export default function NotesPage() {
   }, [page, searchQuery]);
 
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
+
+  const openedViewRef = useRef<string | null>(null);
+  useEffect(() => {
+    const viewId = searchParams.get('view');
+    if (!viewId || openedViewRef.current === viewId) return;
+
+    const note = notes.find(n => n.id === viewId);
+    if (note) {
+      setViewingNote(note);
+      openedViewRef.current = viewId;
+      router.replace(`/${locale}/notes`, { scroll: false });
+    } else if (!loading) {
+      import('@/lib/api').then(({ api }) => {
+        api.getNote(viewId)
+          .then(res => {
+            if (res.data && !res.error) {
+              setViewingNote(res.data as NoteItem);
+              openedViewRef.current = viewId;
+            }
+          })
+          .catch(() => {
+            // Silently ignore fetch errors
+          })
+          .finally(() => {
+            router.replace(`/${locale}/notes`, { scroll: false });
+          });
+      });
+    }
+  }, [searchParams, notes, loading, locale, router]);
 
   const openEditor = (note?: NoteItem) => {
     if (note) {
@@ -397,7 +429,7 @@ export default function NotesPage() {
       {/* Read-only Note View — Desktop: Modal */}
       {!isMobile && viewingNote && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setViewingNote(null)}>
-          <div className="bg-vault-900 border border-white/[0.08] rounded-xl shadow-2xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
+          <div className="bg-vault-900 border border-white/[0.08] rounded-xl shadow-2xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-4">
               <h2 className="text-xl font-bold text-text-primary font-display">{viewingNote.title}</h2>
               <button
@@ -474,7 +506,7 @@ export default function NotesPage() {
       {/* Editor — Desktop: Modal */}
       {!isMobile && showEditor && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-vault-900 border border-white/[0.08] rounded-xl shadow-2xl max-w-lg w-full p-6">
+          <div className="bg-vault-900 border border-white/[0.08] rounded-xl shadow-2xl max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-text-primary font-display mb-4">
               {editingNote ? editingNote.title : t('new')}
             </h2>

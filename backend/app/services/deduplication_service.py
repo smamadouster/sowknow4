@@ -95,18 +95,28 @@ class DeduplicationService:
                 doc = result.scalar_one_or_none()
                 return doc
 
-        # Check database using metadata
-        # We store hash in document metadata for fast lookup
-        result = await db.execute(select(Document).where(Document.document_metadata["sha256_hash"].astext == file_hash))
-        doc = result.scalar_one_or_none()
+        # Check database using metadata. Multiple legacy rows may share a hash,
+        # so choose the newest same-size document instead of raising.
+        result = await db.execute(
+            select(Document)
+            .where(Document.document_metadata["sha256_hash"].astext == file_hash)
+            .order_by(Document.created_at.desc())
+        )
+        docs = result.scalars().all()
 
-        if doc:
-            # Verify size matches
-            if doc.size == size:
-                logger.info(f"Duplicate found in database: {filename} -> {doc.filename}")
-                # Add to cache
-                self._add_to_cache(file_hash, filename, size, str(doc.id))
-                return doc
+        for doc in docs:
+            if doc.size != size:
+                continue
+            status_value = getattr(doc.status, "value", str(doc.status))
+            has_chunks = bool(getattr(doc, "chunk_count", 0) or 0)
+            if status_value == "error" and not has_chunks:
+                logger.info(
+                    f"Ignoring failed duplicate candidate with no chunks: {filename} -> {doc.filename}"
+                )
+                continue
+            logger.info(f"Duplicate found in database: {filename} -> {doc.filename}")
+            self._add_to_cache(file_hash, filename, size, str(doc.id))
+            return doc
 
         return None
 

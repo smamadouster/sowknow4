@@ -436,7 +436,7 @@ function TypeFilterChips({ active, onChange, counts, labels }: { active: ResultT
 
 function GlobalResultCard({ result, locale, labels }: { result: GlobalSearchResult; locale: string; labels: Record<string, string> }) {
   const style = TYPE_BADGE_STYLES[result.result_type] || TYPE_BADGE_STYLES.document;
-  const linkHref = result.result_type === 'document' ? `/${locale}/documents/${result.id}` : result.result_type === 'bookmark' && result.url ? result.url : result.result_type === 'note' ? `/${locale}/notes` : result.result_type === 'space' ? `/${locale}/spaces/${result.id}` : '#';
+  const linkHref = result.result_type === 'document' ? `/${locale}/documents/${result.id}` : result.result_type === 'bookmark' && result.url ? result.url : result.result_type === 'note' ? `/${locale}/notes?view=${result.id}` : result.result_type === 'space' ? `/${locale}/spaces/${result.id}` : '#';
   const isExternal = result.result_type === 'bookmark' && result.url;
 
   return (
@@ -736,7 +736,7 @@ export default function SearchPage() {
                   onClick={() => {
                     if (s.type === 'document') router.push(`/${locale}/documents/${s.id}`);
                     else if (s.type === 'bookmark') router.push(`/${locale}/bookmarks`);
-                    else if (s.type === 'note') router.push(`/${locale}/notes/${s.id}`);
+                    else if (s.type === 'note') router.push(`/${locale}/notes?view=${s.id}`);
                     else if (s.type === 'tag') router.push(`/${locale}/documents?tag=${encodeURIComponent(s.title)}`);
                     setShowInlineSuggestions(false);
                   }}

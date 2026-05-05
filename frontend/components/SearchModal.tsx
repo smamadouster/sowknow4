@@ -96,7 +96,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     } else if (item.type === 'bookmark') {
       router.push(`/${locale}/bookmarks`);
     } else if (item.type === 'note') {
-      router.push(`/${locale}/notes/${item.id}`);
+      router.push(`/${locale}/notes?view=${item.id}`);
     } else if (item.type === 'tag') {
       router.push(`/${locale}/documents?tag=${encodeURIComponent(item.title)}`);
     }

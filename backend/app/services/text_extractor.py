@@ -19,6 +19,7 @@ class TextExtractor:
             ".docx": self._extract_from_docx,
             ".doc": self._extract_from_doc,
             ".pptx": self._extract_from_pptx,
+            ".ppsx": self._extract_from_pptx,
             ".ppt": self._extract_from_ppt,
             ".xlsx": self._extract_from_xlsx,
             ".xls": self._extract_from_xls,
@@ -32,6 +33,8 @@ class TextExtractor:
             ".epub": self._extract_from_epub,
             ".rtf": self._extract_from_rtf,
             ".zip": self._extract_from_zip,
+            ".xmind": self._extract_from_zip,
+            ".msg": self._extract_from_msg,
         }
 
     def get_file_extension(self, filename: str) -> str:
@@ -445,6 +448,49 @@ class TextExtractor:
 
         except Exception as e:
             logger.error(f"Error extracting from ZIP: {str(e)}")
+            return {"text": "", "error": str(e), "pages": 0}
+
+    async def _extract_from_msg(self, file_path: str) -> dict[str, Any]:
+        """Extract searchable strings from Outlook MSG files without extra dependencies."""
+        try:
+            import re
+
+            with open(file_path, "rb") as f:
+                data = f.read()
+
+            parts: list[str] = []
+            for match in re.finditer(rb"(?:[\x20-\x7e]\x00){6,}", data):
+                try:
+                    text = match.group(0).decode("utf-16le", errors="ignore").strip()
+                    if text:
+                        parts.append(text)
+                except Exception:
+                    pass
+
+            for match in re.finditer(rb"[\x20-\x7e]{8,}", data):
+                try:
+                    text = match.group(0).decode("latin-1", errors="ignore").strip()
+                    if text:
+                        parts.append(text)
+                except Exception:
+                    pass
+
+            seen: set[str] = set()
+            unique_parts: list[str] = []
+            for part in parts:
+                cleaned = " ".join(part.split())
+                if cleaned and cleaned not in seen:
+                    seen.add(cleaned)
+                    unique_parts.append(cleaned)
+
+            return {
+                "text": "\n".join(unique_parts),
+                "pages": 0,
+                "source": "msg-strings",
+            }
+
+        except Exception as e:
+            logger.error(f"Error extracting from MSG: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 
     async def extract_images_from_pdf(self, file_path: str) -> list[bytes]:

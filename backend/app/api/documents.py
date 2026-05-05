@@ -99,6 +99,7 @@ ALLOWED_EXTENSIONS = {
     ".docx",
     ".doc",
     ".pptx",
+    ".ppsx",
     ".ppt",
     ".xlsx",
     ".xls",
@@ -133,6 +134,7 @@ ALLOWED_EXTENSIONS = {
     ".rtf",
     ".zip",
     ".xmind",
+    ".msg",
 }
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 MAX_BATCH_SIZE = 500 * 1024 * 1024  # 500MB
@@ -174,6 +176,7 @@ _EXTENSION_MIME_PREFIXES: dict = {
     ".docx": ["application/vnd.openxmlformats", "application/zip"],
     ".doc": ["application/msword", "application/vnd.ms"],
     ".pptx": ["application/vnd.openxmlformats", "application/zip"],
+    ".ppsx": ["application/vnd.openxmlformats", "application/zip"],
     ".ppt": ["application/vnd.ms-powerpoint", "application/vnd.ms"],
     ".xlsx": ["application/vnd.openxmlformats", "application/zip"],
     ".xls": ["application/vnd.ms-excel", "application/vnd.ms"],
@@ -208,6 +211,7 @@ _EXTENSION_MIME_PREFIXES: dict = {
     ".rtf": ["text/rtf", "application/rtf", "application/x-rtf", "text/"],
     ".zip": ["application/zip", "application/x-zip-compressed"],
     ".xmind": ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
+    ".msg": ["application/vnd.ms-outlook", "application/octet-stream"],
 }
 
 
@@ -819,29 +823,10 @@ async def process_single_file_upload(
                 },
             )
 
-        try:
-            from app.tasks.document_tasks import process_document
-
-            task = process_document.delay(str(document.id))
-            document.status = DocumentStatus.PROCESSING
-            document.document_metadata = document.document_metadata or {}
-            document.document_metadata["celery_task_id"] = task.id
-            await db.commit()
-            logger.info(f"Document {document.id} queued successfully with task {task.id}")
-        except Exception as e:
-            logger.error(f"Failed to queue document {document.id} for processing: {e}")
-            document.status = DocumentStatus.ERROR
-            metadata = document.document_metadata or {}
-            metadata["processing_error"] = f"Failed to queue for processing: {str(e)}"
-            document.document_metadata = metadata
-            await db.commit()
-
-        return DocumentUploadResponse(
-            document_id=document.id,
-            filename=document.filename,
-            status=document.status,
-            message="Document uploaded successfully and queued for processing",
-        ), None
+        # Use the new pipeline orchestrator (same as single upload) instead of
+        # the legacy monolithic process_document task.
+        response = await _queue_document_for_processing(document, db)
+        return response, None
 
     except Exception as e:
         logger.error(f"Error processing file {file.filename}: {str(e)}")

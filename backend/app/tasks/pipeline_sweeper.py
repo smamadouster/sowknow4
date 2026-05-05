@@ -41,6 +41,27 @@ def pipeline_sweeper() -> dict:
     from app.database import SessionLocal
     from app.tasks.pipeline_orchestrator import dispatch_document
 
+    # Distributed lock: prevent concurrent sweeper runs (e.g. manual trigger
+    # overlapping with Celery Beat, or multiple beat instances after a deploy).
+    _redis = None
+    try:
+        from app.core.redis_url import safe_redis_url
+        import redis
+        _redis = redis.from_url(safe_redis_url())
+        lock_acquired = _redis.set(
+            "pipeline:sweeper:lock",
+            datetime.now(UTC).isoformat(),
+            nx=True,
+            ex=300,  # 5 minutes — longer than any sweeper run should take
+        )
+        if not lock_acquired:
+            logger.info("Sweeper lock already held — skipping this run")
+            return {"status": "skipped", "reason": "lock_already_held"}
+    except Exception:
+        # If Redis is unreachable, continue anyway — better to risk a double-run
+        # than to stop recovery entirely.
+        pass
+
     db = SessionLocal()
     stuck_resumed = 0
     stuck_failed = 0
@@ -50,9 +71,10 @@ def pipeline_sweeper() -> dict:
     # Quick queue-depth check for embed-server protection
     embed_queue_depth = 0
     try:
-        from app.core.redis_url import safe_redis_url
-        import redis
-        _redis = redis.from_url(safe_redis_url())
+        if _redis is None:
+            from app.core.redis_url import safe_redis_url
+            import redis
+            _redis = redis.from_url(safe_redis_url())
         embed_queue_depth = _redis.llen("pipeline.embed")
     except Exception:
         pass
@@ -416,3 +438,9 @@ def pipeline_sweeper() -> dict:
         raise
     finally:
         db.close()
+        # Release the distributed lock so the next scheduled run can proceed.
+        try:
+            if _redis is not None:
+                _redis.delete("pipeline:sweeper:lock")
+        except Exception:
+            pass

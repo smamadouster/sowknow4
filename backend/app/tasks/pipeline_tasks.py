@@ -97,7 +97,20 @@ def update_stage(
         row.status = status
 
         if status == StageStatus.RUNNING:
-            row.attempt = (row.attempt or 0) + 1
+            # Don't increment attempt for rapid re-dispatches caused by
+            # _EmbedContinue partial-batch retries.  Real failure retries have
+            # countdown >= 60 s, so they always arrive > 45 s after started_at.
+            already_running = (
+                row.status == StageStatus.RUNNING
+                and row.error_message is None
+                and row.started_at is not None
+            )
+            recent = (
+                row.started_at is not None
+                and (datetime.now(UTC) - row.started_at).total_seconds() < 45
+            )
+            if not (already_running and recent):
+                row.attempt = (row.attempt or 0) + 1
             row.started_at = datetime.now(UTC)
             row.error_message = None  # clear previous error on retry
 
@@ -453,7 +466,7 @@ def _run_chunk(document_id: str) -> None:
             meta["last_error_at"] = datetime.now(UTC).isoformat()
             doc.document_metadata = meta
             db.commit()
-            raise RuntimeError(error_msg)
+            raise _PermanentPipelineError(error_msg)
 
         # Delete existing chunks to allow re-runs
         db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid).delete()
@@ -485,10 +498,12 @@ CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "5000"))
 
 
 def _run_embed(document_id: str) -> None:
-    """Load chunks, generate embeddings in batches of 32, capped at EMBED_CHUNK_CAP per pass.
+    """Load chunks and generate embeddings until ALL chunks are embedded.
 
-    For large documents the work is committed in windows of EMBED_CHUNK_CAP chunks so
-    that each embed task finishes quickly and doesn't starve the queue.
+    Previously this used a chain-link retry pattern (_EmbedContinue) that
+    created hundreds of Celery tasks per large document and consumed the
+    attempt counter.  Now it loops internally, committing in windows of
+    EMBED_CHUNK_CAP chunks.  A single task embeds the entire document.
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentChunk
@@ -503,7 +518,6 @@ def _run_embed(document_id: str) -> None:
 
         # Preflight: fail fast if embed-server is unreachable so we retry
         # instead of silently poisoning chunks with zero vectors.
-        # Retry a few times to survive the ~5s uvicorn worker restart window.
         _embed_ready = False
         for _attempt in range(1, 3):
             if embedding_service.can_embed:
@@ -513,60 +527,51 @@ def _run_embed(document_id: str) -> None:
         if not _embed_ready:
             raise RuntimeError("Embed server is not healthy after 2 attempts")
 
-        # Only fetch chunks that still need embeddings
-        chunks = (
+        total_chunks = (
             db.query(DocumentChunk)
-            .filter(
-                DocumentChunk.document_id == doc_uuid,
-                DocumentChunk.embedding_vector.is_(None),
-            )
-            .order_by(DocumentChunk.chunk_index)
-            .limit(EMBED_CHUNK_CAP)
-            .all()
-        )
-
-        if not chunks:
-            # All chunks already embedded (or none exist)
-            total = (
-                db.query(DocumentChunk)
-                .filter(DocumentChunk.document_id == doc_uuid)
-                .count()
-            )
-            if total == 0:
-                raise _PermanentPipelineError(
-                    "No chunks exist for embedding — document has no extractable text"
-                )
-            doc.embedding_generated = True
-            db.commit()
-            return
-
-        batch_size = 8
-        for i in range(0, len(chunks), batch_size):
-            batch = chunks[i : i + batch_size]
-            texts = [c.chunk_text for c in batch]
-            vectors = embedding_service.encode(texts=texts, batch_size=batch_size)
-            for chunk, vec in zip(batch, vectors, strict=False):
-                chunk.embedding_vector = vec
-
-        db.commit()
-        logger.info("Embedded %d chunks for doc %s", len(chunks), document_id)
-
-        # Check if more un-embedded chunks remain
-        remaining = (
-            db.query(DocumentChunk)
-            .filter(
-                DocumentChunk.document_id == doc_uuid,
-                DocumentChunk.embedding_vector.is_(None),
-            )
+            .filter(DocumentChunk.document_id == doc_uuid)
             .count()
         )
-        if remaining > 0:
-            logger.info(
-                "Doc %s has %d more chunks to embed — retrying chain link", document_id, remaining
+        if total_chunks == 0:
+            raise _PermanentPipelineError(
+                "No chunks exist for embedding — document has no extractable text"
             )
-            # Signal _stage_task to retry this chain link so the next stage
-            # (index_stage) does NOT run until all chunks are embedded.
-            raise _EmbedContinue(remaining)
+
+        batch_size = 8
+        total_embedded = 0
+
+        while True:
+            # Fetch next window of chunks that still need embeddings
+            chunks = (
+                db.query(DocumentChunk)
+                .filter(
+                    DocumentChunk.document_id == doc_uuid,
+                    DocumentChunk.embedding_vector.is_(None),
+                )
+                .order_by(DocumentChunk.chunk_index)
+                .limit(EMBED_CHUNK_CAP)
+                .all()
+            )
+
+            if not chunks:
+                break  # All chunks embedded
+
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i : i + batch_size]
+                texts = [c.chunk_text for c in batch]
+                vectors = embedding_service.encode(texts=texts, batch_size=batch_size)
+                for chunk, vec in zip(batch, vectors, strict=False):
+                    chunk.embedding_vector = vec
+
+            db.commit()
+            total_embedded += len(chunks)
+            logger.info(
+                "Embedded %d/%d chunks for doc %s (window=%d)",
+                total_embedded,
+                total_chunks,
+                document_id,
+                len(chunks),
+            )
 
         doc.embedding_generated = True
         db.commit()

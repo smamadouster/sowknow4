@@ -81,7 +81,7 @@ celery_app.conf.update(
         "pipeline.index_stage": {"queue": "pipeline.index"},
         "pipeline.article_stage": {"queue": "pipeline.articles"},
         "pipeline.entity_stage": {"queue": "pipeline.entities"},
-        "pipeline.finalize_stage": {"queue": "pipeline.index"},
+        "pipeline.finalize_stage": {"queue": "celery"},
         "pipeline.sweeper": {"queue": "scheduled"},
         # Existing routes
         "build_smart_collection": {"queue": "collections"},

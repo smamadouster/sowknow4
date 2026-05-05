@@ -178,6 +178,46 @@ health_checks() {
     log "All health checks completed"
 }
 
+# Post-deploy pipeline check
+check_pipeline() {
+    log "Checking pipeline status..."
+
+    # Clear any stale sweeper lock from previous crashes
+    if docker exec "$PROJECT_NAME-redis" redis-cli del "pipeline:sweeper:lock" > /dev/null 2>&1; then
+        log "Cleared stale pipeline sweeper lock"
+    fi
+
+    # Run sweeper once to resume stuck documents
+    log "Running pipeline sweeper..."
+    docker-compose exec -T celery-worker celery -A app.celery_app call pipeline.sweeper || warn "Sweeper call failed"
+
+    # Show pipeline stats
+    log "Pipeline status:"
+    docker-compose exec -T backend python -c "
+import asyncio, sys
+sys.path.insert(0, '.')
+from app.database import async_session_factory
+from app.models.pipeline import PipelineStage, StageEnum, StageStatus
+from sqlalchemy import func
+
+async def show():
+    async with async_session_factory() as db:
+        print(f\"{'Stage':<12} {'Pending':>8} {'Running':>8} {'Failed':>8}\")
+        print('-' * 40)
+        for s in StageEnum:
+            counts = {}
+            for status, count in (await db.execute(
+                db.query(PipelineStage.status, func.count())
+                .filter(PipelineStage.stage == s)
+                .group_by(PipelineStage.status)
+            )).all():
+                counts[status] = count
+            print(f\"{s.value:<12} {counts.get(StageStatus.PENDING, 0):>8} {counts.get(StageStatus.RUNNING, 0):>8} {counts.get(StageStatus.FAILED, 0):>8}\")
+
+asyncio.run(show())
+" || warn "Could not fetch pipeline stats"
+}
+
 # Create admin user
 create_admin_user() {
     log "Creating admin user..."
@@ -253,6 +293,7 @@ main() {
     backup_data
     deploy
     health_checks
+    check_pipeline
     create_admin_user
     deployment_summary
 

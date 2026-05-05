@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import uuid
@@ -16,6 +17,8 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
+
+logger = logging.getLogger(__name__)
 
 from app.api import (
     admin,
@@ -199,6 +202,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
     """Return 503 on database errors to avoid leaking SQL details."""
+    logger.exception("SQLAlchemy error while handling %s %s", request.method, request.url.path)
     return _error_response(
         error_type="database_error",
         message="A database error occurred. Please try again later.",

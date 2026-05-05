@@ -98,6 +98,13 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [pipelineStats, setPipelineStats] = useState<PipelineStats | null>(null);
   const [lastPipelineUpdate, setLastPipelineUpdate] = useState<Date>(new Date());
+  const [pipelineStatus, setPipelineStatus] = useState<{
+    stages: Record<string, { pending: number; running: number; completed: number; failed: number; skipped: number }>;
+    queues: Record<string, { depth: number; max: number | null }>;
+    workers: Record<string, { status: string; pool: string }> | { error: string };
+  } | null>(null);
+  const [retryingStage, setRetryingStage] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Role guard: redirect non-admins
   useEffect(() => {
@@ -158,9 +165,10 @@ export default function DashboardPage() {
 
   const loadLiveStats = async () => {
     try {
-      const [articlesRes, pipelineRes] = await Promise.all([
+      const [articlesRes, pipelineRes, statusRes] = await Promise.all([
         api.getArticlesStats(),
         api.getPipelineStats(),
+        api.getPipelineStatus(),
       ]);
 
       if (articlesRes.data) {
@@ -174,9 +182,34 @@ export default function DashboardPage() {
       } else {
         console.error('Pipeline stats error:', pipelineRes.error);
       }
+
+      if (statusRes.data) {
+        setPipelineStatus(statusRes.data as typeof pipelineStatus);
+      } else {
+        console.error('Pipeline status error:', statusRes.error);
+      }
       setLastPipelineUpdate(new Date());
     } catch (e) {
       console.error('Error loading live stats:', e);
+    }
+  };
+
+  const handleRetryStage = async (stage: string) => {
+    setRetryingStage(stage);
+    try {
+      const res = await api.retryFailedPipelineStages(stage, 100);
+      if (res.data) {
+        const data = res.data as { retried: number };
+        setToast({ message: `Retried ${data.retried} failed ${stage} stages.`, type: 'success' });
+        await loadLiveStats();
+      } else {
+        setToast({ message: `Retry failed: ${res.error}`, type: 'error' });
+      }
+    } catch (e) {
+      setToast({ message: 'Retry request failed.', type: 'error' });
+    } finally {
+      setRetryingStage(null);
+      setTimeout(() => setToast(null), 4000);
     }
   };
 
@@ -216,6 +249,14 @@ export default function DashboardPage() {
       {error && (
         <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-6">
           {error}
+        </div>
+      )}
+
+      {toast && (
+        <div className={`px-4 py-3 rounded-lg mb-6 transition-all ${
+          toast.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {toast.message}
         </div>
       )}
 
@@ -530,6 +571,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {pipelineStatus && 'error' in pipelineStatus.workers && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <strong>Worker Alert:</strong> Could not connect to Celery workers. Check that Celery is running.
+          </div>
+        )}
+        {pipelineStatus && !('error' in pipelineStatus.workers) && Object.keys(pipelineStatus.workers).length === 0 && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            <strong>Worker Alert:</strong> No Celery workers are connected. The pipeline cannot process documents.
+            <span className="block mt-1 text-red-600">Run: <code className="bg-red-100 px-1 rounded">systemctl status celery</code> or restart your Celery workers.</span>
+          </div>
+        )}
         {pipelineStats ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -541,6 +593,7 @@ export default function DashboardPage() {
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 w-24">Running</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-600 w-20">Failed</th>
                   <th className="text-right py-2.5 pl-3 font-semibold text-gray-600 w-28">Throughput</th>
+                  <th className="text-right py-2.5 pl-3 font-semibold text-gray-600 w-24">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -601,6 +654,27 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-3 pl-3 text-right font-mono text-gray-700">
                         {stage.throughput_per_hour}/hr
+                      </td>
+                      <td className="py-3 pl-3 text-right">
+                        {stage.failed > 0 && (
+                          <button
+                            onClick={() => handleRetryStage(stage.stage)}
+                            disabled={retryingStage === stage.stage}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
+                          >
+                            {retryingStage === stage.stage ? (
+                              <>
+                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                Retrying...
+                              </>
+                            ) : (
+                              <>Retry {stage.failed}</>
+                            )}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

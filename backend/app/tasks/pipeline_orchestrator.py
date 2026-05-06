@@ -108,11 +108,30 @@ def _check_backpressure(from_stage: StageEnum = StageEnum.OCR) -> str | None:
     return None
 
 
+def _get_embed_time_limits(chunk_count: int) -> tuple[int, int]:
+    """Calculate Celery time limits for the embed stage based on chunk count.
+
+    Base: 33 min hard / 30 min soft for <= 1000 chunks.
+    Additional 10 min hard / 9 min soft per 1000 chunks beyond that.
+    Cap at 2 hours to prevent runaway tasks.
+    """
+    base_hard = 1980  # 33 minutes
+    base_soft = 1800  # 30 minutes
+    extra = max(0, chunk_count - 1000)
+    extra_minutes = (extra // 1000) + (1 if extra % 1000 else 0)
+    hard = min(base_hard + extra_minutes * 600, 7200)  # cap at 2h
+    soft = min(base_soft + extra_minutes * 540, 6600)  # cap at 1h50m
+    return soft, hard
+
+
 def _build_chain(document_id: str, from_stage: StageEnum = StageEnum.OCR):
     """Build a Celery chain starting from the given stage.
 
     The first task in the chain receives document_id as an argument.
     Subsequent tasks receive it as the return value of the previous task.
+
+    For large documents starting at the EMBEDDED stage, the embed task gets
+    a dynamically-calculated longer timeout so it is not killed mid-flight.
     """
     stages = list(StageEnum)
     start_idx = stages.index(from_stage)
@@ -121,8 +140,33 @@ def _build_chain(document_id: str, from_stage: StageEnum = StageEnum.OCR):
     if not task_stages:
         return None
 
-    # First task gets document_id explicitly, rest get it from chain
-    tasks = [_STAGE_TASKS[task_stages[0]].s(document_id)]
+    first_stage = task_stages[0]
+    first_task = _STAGE_TASKS[first_stage].s(document_id)
+
+    # Dynamic timeout for large documents at embed stage
+    if first_stage == StageEnum.EMBEDDED:
+        from app.database import SessionLocal
+        from app.models.document import Document
+
+        db = SessionLocal()
+        try:
+            doc = db.query(Document).filter(Document.id == document_id).first()
+            if doc and doc.chunk_count and doc.chunk_count > 1000:
+                soft, hard = _get_embed_time_limits(doc.chunk_count)
+                first_task = first_task.set(
+                    soft_time_limit=soft,
+                    time_limit=hard,
+                )
+                logger.info(
+                    "Doc %s has %d chunks — embed timeout extended to %ds",
+                    document_id, doc.chunk_count, hard,
+                )
+        except Exception:
+            logger.exception("Failed to calculate embed timeout for doc %s", document_id)
+        finally:
+            db.close()
+
+    tasks = [first_task]
     for s in task_stages[1:]:
         tasks.append(_STAGE_TASKS[s].s())
 
@@ -202,6 +246,24 @@ def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -
     if pipeline is None:
         logger.warning(f"No tasks to dispatch for document {document_id} from stage {from_stage}")
         return "dispatched"
+
+    # Size-based routing: warn when large documents enter the pipeline
+    if from_stage in (StageEnum.OCR, StageEnum.CHUNKED, StageEnum.EMBEDDED):
+        from app.database import SessionLocal
+        from app.models.document import Document
+
+        db = SessionLocal()
+        try:
+            doc = db.query(Document).filter(Document.id == document_id).first()
+            if doc and doc.chunk_count and doc.chunk_count > 1000:
+                logger.warning(
+                    "Large document %s (%d chunks) entering pipeline at stage %s",
+                    document_id, doc.chunk_count, from_stage.name,
+                )
+        except Exception:
+            pass
+        finally:
+            db.close()
 
     pipeline.apply_async()
     logger.info(f"Pipeline chain dispatched for document {document_id} from stage {from_stage.name}")

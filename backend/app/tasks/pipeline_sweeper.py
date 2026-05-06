@@ -445,6 +445,19 @@ def pipeline_sweeper() -> dict:
         except Exception:
             logger.exception("Sweeper corrupted-data check failed")
 
+        # Collect depths for all pipeline queues for observability
+        queue_depths = {}
+        if _redis is not None:
+            for q in [
+                "pipeline.ocr", "pipeline.chunk", "pipeline.embed",
+                "pipeline.index", "pipeline.articles", "pipeline.entities",
+                "celery", "scheduled",
+            ]:
+                try:
+                    queue_depths[q] = _redis.llen(q)
+                except Exception:
+                    queue_depths[q] = -1
+
         metrics = {
             "timestamp": now.isoformat(),
             "stuck_resumed": stuck_resumed,
@@ -459,6 +472,7 @@ def pipeline_sweeper() -> dict:
             "embed_queue_depth": embed_queue_depth,
             "embed_backpressure": embed_backpressure,
             "max_dispatches_per_run": _MAX_DISPATCHES_PER_RUN,
+            "queue_depths": queue_depths,
         }
         logger.info(f"Sweeper completed: {metrics}")
         return metrics

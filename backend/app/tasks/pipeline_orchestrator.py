@@ -129,6 +129,53 @@ def _build_chain(document_id: str, from_stage: StageEnum = StageEnum.OCR):
     return chain(*tasks)
 
 
+def _is_stage_inflight(document_id: str, stage: StageEnum) -> bool:
+    """Check if a stage already has an active task in flight.
+
+    Uses the PipelineStage row: RUNNING with a recent started_at means a worker
+    is currently processing it (or will retry shortly).  PENDING with a very
+    recent updated_at means it was just queued.
+    """
+    from app.database import SessionLocal
+    from app.models.pipeline import PipelineStage, StageStatus
+    from datetime import UTC, datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(PipelineStage)
+            .filter(
+                PipelineStage.document_id == document_id,
+                PipelineStage.stage == stage,
+            )
+            .first()
+        )
+        if row is None:
+            return False
+
+        now = datetime.now(UTC)
+
+        # RUNNING + started_at within hard_timeout → worker is alive or retry imminent
+        if row.status == StageStatus.RUNNING and row.started_at is not None:
+            from app.models.pipeline import STAGE_RETRY_CONFIG
+            cfg = STAGE_RETRY_CONFIG.get(stage, {})
+            hard_timeout = cfg.get("hard_timeout", 600)
+            if (now - row.started_at).total_seconds() < hard_timeout:
+                return True
+
+        # PENDING + updated_at within 60s → just queued by sweeper or upload
+        if row.status == StageStatus.PENDING and row.updated_at is not None:
+            if (now - row.updated_at).total_seconds() < 60:
+                return True
+
+        return False
+    except Exception:
+        logger.exception("Error checking inflight status for doc %s stage %s", document_id, stage)
+        return False
+    finally:
+        db.close()
+
+
 def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -> str:
     """Build and dispatch the processing chain for a document.
 
@@ -137,11 +184,19 @@ def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -
         from_stage: Stage to start the chain from (default: OCR for new documents).
 
     Returns:
-        'dispatched' on success, 'backpressure:<queue>' if queues are full.
+        'dispatched' on success, 'backpressure:<queue>' if queues are full,
+        'inflight' if the stage is already active.
     """
     blocked_queue = _check_backpressure(from_stage)
     if blocked_queue:
         return f"backpressure:{blocked_queue}"
+
+    if _is_stage_inflight(document_id, from_stage):
+        logger.info(
+            "Skipping dispatch for document %s stage %s — already inflight",
+            document_id, from_stage.name,
+        )
+        return "inflight"
 
     pipeline = _build_chain(document_id, from_stage)
     if pipeline is None:

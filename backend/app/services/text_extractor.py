@@ -212,26 +212,40 @@ class TextExtractor:
         }
 
     async def _extract_from_xlsx(self, file_path: str) -> dict[str, Any]:
-        """Extract text from XLSX file"""
+        """Extract text from XLSX file.
+
+        Rows are batched into blocks of ~50 rows so the chunking service can
+        create proper 512-token chunks instead of one chunk per row (which
+        caused 40k+ chunks from a single spreadsheet).
+        """
         try:
             from openpyxl import load_workbook
 
             wb = load_workbook(file_path, read_only=True)
             text_parts = []
             sheet_count = len(wb.sheetnames)
+            _ROW_BATCH_SIZE = 50  # keep under chunking window
 
             for sheet_name in wb.sheetnames:
                 sheet = wb[sheet_name]
                 sheet_text_parts = [f"[Sheet: {sheet_name}]"]
+                batch_rows: list[str] = []
 
                 for row in sheet.iter_rows(values_only=True):
                     row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
                     empty_row = " | " * (len(row) - 1)
                     if row_text.strip() and row_text != empty_row:
-                        sheet_text_parts.append(row_text)
+                        batch_rows.append(row_text)
+
+                    if len(batch_rows) >= _ROW_BATCH_SIZE:
+                        sheet_text_parts.append("\n".join(batch_rows))
+                        batch_rows = []
+
+                if batch_rows:
+                    sheet_text_parts.append("\n".join(batch_rows))
 
                 if len(sheet_text_parts) > 1:
-                    text_parts.append("\n".join(sheet_text_parts))
+                    text_parts.append("\n\n".join(sheet_text_parts))
 
             return {
                 "text": "\n\n".join(text_parts),

@@ -537,6 +537,13 @@ def _run_embed(document_id: str) -> None:
                 "No chunks exist for embedding — document has no extractable text"
             )
 
+        # Guard against legacy oversized documents that bypassed CHUNK_COUNT_MAX
+        if total_chunks > CHUNK_COUNT_MAX:
+            raise _PermanentPipelineError(
+                f"Document has {total_chunks} chunks (limit {CHUNK_COUNT_MAX}) — "
+                "quarantined to prevent embed queue starvation"
+            )
+
         batch_size = 8
         total_embedded = 0
 
@@ -768,7 +775,7 @@ def chunk_stage(self, document_id: str) -> str:
 @celery_app.task(
     bind=True,
     name="pipeline.embed_stage",
-    max_retries=None,
+    max_retries=5,
     acks_late=True,
     soft_time_limit=1800,
     time_limit=1980,

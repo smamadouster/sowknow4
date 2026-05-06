@@ -22,6 +22,10 @@ _MAX_DISPATCHES_PER_RUN = int(os.getenv("SWEEPER_MAX_DISPATCH", "1000"))
 # If embed queue exceeds this, skip stalled/missing dispatches that would land there.
 _EMBED_QUEUE_SOFT_LIMIT = int(os.getenv("SWEEPER_EMBED_QUEUE_LIMIT", "250"))
 
+# Poison-pill threshold: if a stage has been attempted this many times,
+# mark it permanently failed instead of re-dispatching.
+_POISON_PILL_ATTEMPTS = int(os.getenv("SWEEPER_POISON_PILL_ATTEMPTS", "5"))
+
 
 @celery_app.task(name="pipeline.sweeper")
 def pipeline_sweeper() -> dict:
@@ -134,6 +138,32 @@ def pipeline_sweeper() -> dict:
                         doc.pipeline_error = error_text[:500]
                         meta = doc.document_metadata or {}
                         meta["processing_error"] = error_text[:500]
+                        meta["last_error_at"] = datetime.now(UTC).isoformat()
+                        doc.document_metadata = meta
+                        db.commit()
+                elif ps.attempt >= _POISON_PILL_ATTEMPTS:
+                    # Poison-pill quarantine: a stage that has been retried many
+                    # times but is still stuck is unlikely to succeed.  Park it
+                    # permanently to prevent queue flooding.
+                    ps.status = StageStatus.FAILED
+                    ps.error_message = (
+                        f"Sweeper: quarantined poison pill (attempt {ps.attempt} >= {_POISON_PILL_ATTEMPTS})"
+                    )
+                    db.commit()
+                    stuck_failed += 1
+                    logger.error(
+                        "Sweeper: quarantined poison-pill doc=%s stage=%s attempts=%d",
+                        ps.document_id, stage.name, ps.attempt,
+                    )
+
+                    from app.models.document import Document, DocumentStatus
+
+                    doc = db.query(Document).filter(Document.id == ps.document_id).first()
+                    if doc:
+                        doc.status = DocumentStatus.ERROR
+                        doc.pipeline_error = ps.error_message[:500]
+                        meta = doc.document_metadata or {}
+                        meta["processing_error"] = ps.error_message[:500]
                         meta["last_error_at"] = datetime.now(UTC).isoformat()
                         doc.document_metadata = meta
                         db.commit()

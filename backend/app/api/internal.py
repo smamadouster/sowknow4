@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Uploa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.documents import _do_upload_document, _upload_semaphore
+from app.api.documents_upload import _do_upload_document, _upload_semaphore
 from app.database import get_db
 from app.models.user import User
 from app.schemas.document import DocumentUploadResponse

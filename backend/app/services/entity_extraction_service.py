@@ -24,7 +24,7 @@ from app.models.knowledge_graph import (
     TimelineEvent,
 )
 from app.services.agent_identity import build_service_prompt
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +71,7 @@ class EntityExtractionService:
     """Service for extracting entities and building knowledge graph"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
-        self._openrouter_service = None
-
-    def _get_openrouter_service(self):
-        if self._openrouter_service is None:
-            from app.services.openrouter_service import openrouter_service
-
-            self._openrouter_service = openrouter_service
-        return self._openrouter_service
+        self.llm = llm_gateway
 
     async def extract_entities_from_document(
         self, document: Document, chunks: list[DocumentChunk], db: Session
@@ -426,10 +418,8 @@ Extract all entities, relationships, and dated events now:"""
 
         try:
             response_parts = []
-
-            llm_service = self._get_openrouter_service()
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=2048
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.3, max_tokens=2048, tier="complex"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)

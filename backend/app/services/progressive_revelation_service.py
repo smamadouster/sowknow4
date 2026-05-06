@@ -16,7 +16,7 @@ from app.models.document import DocumentBucket
 from app.models.knowledge_graph import Entity, EntityRelationship, TimelineEvent
 from app.models.user import User
 from app.services.agent_identity import build_service_prompt
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -50,22 +50,7 @@ class ProgressiveRevelationService:
     """Service for progressive information disclosure"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
-        self._openrouter_service = None
-
-    def _get_openrouter_service(self):
-        if self._openrouter_service is None:
-            from app.services.openrouter_service import openrouter_service
-
-            self._openrouter_service = openrouter_service
-        return self._openrouter_service
-
-    def _get_ollama_service(self):
-        try:
-            from app.services.ollama_service import ollama_service
-            return ollama_service
-        except Exception:
-            return None
+        self.llm = llm_gateway
 
     async def reveal_entity_info(
         self,
@@ -508,26 +493,15 @@ Please write a family narrative that weaves together these relationships and eve
         ]
 
         try:
-            # Route confidential family data to local Ollama; public to OpenRouter
-            if bucket == DocumentBucket.CONFIDENTIAL:
-                ollama = self._get_ollama_service()
-                if ollama and getattr(ollama, "available", True):
-                    logger.info("ProgressiveRevelation: Routing confidential family narrative to Ollama (local)")
-                    llm_service = ollama
-                    tier = "standard"
-                else:
-                    logger.warning("ProgressiveRevelation: Ollama unavailable for confidential narrative — returning safe fallback")
-                    return (
-                        f"Confidential family data for {focus_person}. "
-                        f"This narrative contains sensitive information and is only available via local processing."
-                    )
-            else:
-                llm_service = self._get_openrouter_service()
-                tier = "standard"
-
+            has_confidential = bucket == DocumentBucket.CONFIDENTIAL
             response = []
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.8, max_tokens=2048, tier=tier
+            async for chunk in self.llm.chat_completion(
+                messages=messages,
+                stream=False,
+                temperature=0.8,
+                max_tokens=2048,
+                tier="standard",
+                has_confidential=has_confidential,
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)

@@ -55,8 +55,8 @@ from app.tasks.document_tasks import build_smart_collection
 # Cache invalidation helper — best-effort, never raises
 def _invalidate_collection_cache(collection_id) -> None:
     try:
-        from app.services.openrouter_service import openrouter_service as _or_svc
-        _or_svc.invalidate_collection_cache(str(collection_id))
+        from app.services.llm_gateway import llm_gateway
+        llm_gateway.invalidate_collection_cache(str(collection_id))
     except Exception as e:
         logger.warning(f"Cache invalidation failed for collection {collection_id}: {e}")
 

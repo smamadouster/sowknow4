@@ -19,7 +19,7 @@ from app.models.document import Document
 from app.models.user import User
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.openrouter_service import openrouter_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class ReportService:
     """Service for generating reports from collections"""
 
     def __init__(self):
-        self.openrouter_service = openrouter_service
+        self.llm = llm_gateway
 
     async def generate_report(
         self,
@@ -287,9 +287,9 @@ Generate the complete report now:"""
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         response_parts = []
-        # Use OpenRouter (deepseek-v4-pro) for public documents
-        async for chunk in self.openrouter_service.chat_completion(
-            messages=messages, stream=False, temperature=0.5, max_tokens=8192
+        # Route through LLM gateway (auto-selects best provider for complex tasks)
+        async for chunk in self.llm.chat_completion(
+            messages=messages, stream=False, temperature=0.5, max_tokens=8192, tier="complex"
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)

@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 
+from app.utils.circuit_breaker import circuit_breaker
+
 logger = logging.getLogger(__name__)
 
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small")
@@ -80,6 +82,7 @@ class WhisperService:
         )
         return {"transcript": transcript}
 
+    @circuit_breaker(name="whisper", failure_threshold=3, cooldown_seconds=60)
     async def transcribe(self, audio_path: str, language: str = "auto") -> dict:
         """Transcribe an audio file. Runs sync work in a thread-pool executor.
 

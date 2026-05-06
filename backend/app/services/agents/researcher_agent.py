@@ -13,7 +13,7 @@ from typing import Any
 
 from app.services.agent_identity import RESEARCHER_IDENTITY
 from app.services.graph_rag_service import graph_rag_service
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class ResearcherAgent:
     """
 
     def __init__(self):
-        self.minimax_service = minimax_service
+        self.llm = llm_gateway
         self.search_service = search_service
         self.graph_rag_service = graph_rag_service
 
@@ -177,8 +177,8 @@ class ResearcherAgent:
         return any(finding.get("document_bucket") == "confidential" for finding in findings)
 
     def _get_llm_service(self, findings: list[dict[str, Any]]):
-        """Get appropriate LLM service – always MiniMax."""
-        return self.minimax_service, "minimax"
+        """Get appropriate LLM service via gateway."""
+        return self.llm, "gateway"
 
     async def research(self, request: ResearchQuery, user, db) -> ResearchResult:
         """

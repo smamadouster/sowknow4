@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Any
 
 from app.services.agent_identity import build_service_prompt
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -151,19 +151,8 @@ class IntentParserService:
     """Service for parsing natural language queries into structured intent"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
+        self.llm = llm_gateway
         self._intent_prompt_template = self._get_intent_prompt_template()
-
-        # Lazy imports for routing
-        self._openrouter_service = None
-
-    def _get_openrouter_service(self):
-        """Lazy load OpenRouter service"""
-        if self._openrouter_service is None:
-            from app.services.openrouter_service import openrouter_service
-
-            self._openrouter_service = openrouter_service
-        return self._openrouter_service
 
     def _get_intent_prompt_template(self) -> str:
         """Get the system prompt for intent parsing"""
@@ -408,17 +397,9 @@ Now parse the user's query:"""
                 {"role": "user", "content": prompt},
             ]
 
-            # Route to appropriate LLM based on confidentiality
-            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
-            warnings.warn(
-                "IntentParser uses inline LLM routing. Migrate to llm_router.select_provider() to remove this warning.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
             response_parts = []
-            llm_service = self._get_openrouter_service()
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=1024
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.3, max_tokens=1024, tier="simple"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)

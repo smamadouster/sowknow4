@@ -30,30 +30,7 @@ from app.services.prometheus_metrics import (
 )
 from app.services.search_service import _get_regconfig, search_service
 
-# Import all LLM services
-try:
-    from app.services.kimi_service import kimi_service
-except ImportError:
-    kimi_service = None
-    logging.warning("Kimi service not available")
-
-try:
-    from app.services.openrouter_service import openrouter_service
-except ImportError:
-    openrouter_service = None
-    logging.warning("OpenRouter service not available")
-
-try:
-    from app.services.minimax_service import minimax_service
-except ImportError:
-    minimax_service = None
-    logging.warning("MiniMax service not available")
-
-try:
-    from app.services.ollama_service import ollama_service
-except ImportError:
-    ollama_service = None
-    logging.warning("Ollama service not available")
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +39,7 @@ class ChatService:
     """Service for managing chat sessions with RAG"""
 
     def __init__(self):
-        self.openrouter_service = openrouter_service  # Fallback LLM
-        self.kimi_service = kimi_service  # For chatbot/telegram/general chat
-        self.minimax_service = minimax_service  # Default LLM for RAG (direct API)
-        self.ollama_service = ollama_service
+        self.llm = llm_gateway
         self.max_context_messages = 20
 
     async def get_conversation_history(self, session_id: UUID, db) -> list[dict[str, str]]:
@@ -335,19 +309,16 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
             logger.error(f"llm_router.select_provider failed: {routing_err}")
             if raw_confidential_context:
                 raise RuntimeError("Local LLM unavailable for confidential document context") from routing_err
-            if openrouter_service is not None:
-                llm_service = openrouter_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "emergency_fallback"
-            else:
-                raise RuntimeError("No LLM service available") from routing_err
+            llm_service = self.llm
+            llm_provider = LLMProvider.OPENROUTER
+            routing_reason = "emergency_fallback"
 
         logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
         # Generate response (with 60s timeout to prevent hanging on slow LLM)
         response_text = ""
         _provider_name = llm_provider.value
-        _model_name = getattr(llm_service, "model", "unknown")
+        _model_name = getattr(llm_service, "model", self.llm.model)
         _start = _time.monotonic()
         try:
 
@@ -449,12 +420,9 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
             logger.error(f"llm_router.select_provider failed (stream): {routing_err}")
             if raw_confidential_context:
                 raise RuntimeError("Local LLM unavailable for confidential document context") from routing_err
-            if openrouter_service is not None:
-                llm_service = openrouter_service
-                llm_provider = LLMProvider.OPENROUTER
-                routing_reason = "emergency_fallback"
-            else:
-                raise RuntimeError("No LLM service available") from routing_err
+            llm_service = self.llm
+            llm_provider = LLMProvider.OPENROUTER
+            routing_reason = "emergency_fallback"
 
         logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
 
@@ -464,21 +432,19 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
         # can serve it immediately and emit cache_hit=True so the frontend
         # can display the ⚡ indicator.
         cache_hit = False
-        cached_content: str | None = None
-        if hasattr(llm_service, "check_cache") and callable(llm_service.check_cache):
-            cached_content = llm_service.check_cache(messages)
-            if isinstance(cached_content, str) and cached_content:
-                cache_hit = True
-                logger.info("Stream cache HIT – serving from Redis cache")
-                try:
-                    from app.services.cache_monitor import cache_monitor
+        cached_content: str | None = self.llm.check_cache(messages)
+        if isinstance(cached_content, str) and cached_content:
+            cache_hit = True
+            logger.info("Stream cache HIT – serving from Redis cache")
+            try:
+                from app.services.cache_monitor import cache_monitor
 
-                    cache_monitor.record_cache_hit(
-                        cache_key="stream_pre_check",
-                        tokens_saved=len(cached_content) // 4,
-                    )
-                except Exception:
-                    pass
+                cache_monitor.record_cache_hit(
+                    cache_key="stream_pre_check",
+                    tokens_saved=len(cached_content) // 4,
+                )
+            except Exception:
+                pass
 
         # Emit llm_info metadata including cache_hit flag.
         # Data payload uses `type` field so the frontend SSE reader can
@@ -491,7 +457,7 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
         else:
             # Stream live response from LLM
             _stream_provider = llm_provider.value
-            _stream_model = getattr(llm_service, "model", "unknown")
+            _stream_model = getattr(llm_service, "model", self.llm.model)
             _stream_start = _time.monotonic()
             try:
                 async for chunk in llm_service.chat_completion(messages, stream=True):

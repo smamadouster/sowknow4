@@ -11,6 +11,8 @@ import json
 import logging
 from typing import Any
 
+from app.services.llm_gateway import llm_gateway
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,8 +92,6 @@ class ArticleGenerationService:
         window_chunks: list[dict],
         filename: str,
         language: str,
-        llm_service: Any,
-        provider_name: str,
     ) -> list[dict]:
         """Call LLM to extract articles from a window of chunks."""
         chunk_texts = "\n\n".join(
@@ -113,11 +113,12 @@ class ArticleGenerationService:
         # Collect full response from streaming generator
         response_text = ""
         try:
-            async for chunk in llm_service.chat_completion(
+            async for chunk in llm_gateway.chat_completion(
                 messages=messages,
                 stream=False,
                 temperature=0.3,
                 max_tokens=4096,
+                tier="standard",
             ):
                 if chunk and not chunk.startswith("__USAGE__"):
                     response_text += chunk
@@ -131,10 +132,10 @@ class ArticleGenerationService:
             return []
 
         # Parse JSON response
-        return self._parse_articles_json(response_text, window_chunks, provider_name)
+        return self._parse_articles_json(response_text, window_chunks)
 
     def _parse_articles_json(
-        self, response_text: str, window_chunks: list[dict], provider_name: str
+        self, response_text: str, window_chunks: list[dict]
     ) -> list[dict]:
         """Parse LLM JSON response into article dicts."""
         # Try to extract JSON array from response
@@ -183,7 +184,7 @@ class ArticleGenerationService:
                 "entities": art.get("entities", [])[:20],
                 "confidence": min(100, max(0, int(art.get("confidence", 50)))),
                 "source_chunk_ids": chunk_ids,
-                "llm_provider": provider_name,
+                "llm_provider": "gateway",
                 "content_hash": _content_hash(title, body),
             })
 
@@ -223,8 +224,6 @@ class ArticleGenerationService:
         filename: str,
         language: str,
         bucket: str,
-        llm_service: Any,
-        provider_name: str,
     ) -> list[dict]:
         """
         Generate articles from document chunks.
@@ -235,8 +234,6 @@ class ArticleGenerationService:
             filename: Original filename for context
             language: Detected language (e.g. 'french', 'english')
             bucket: Document bucket ('public' or 'confidential')
-            llm_service: LLM service instance (from llm_router)
-            provider_name: Name of the LLM provider
 
         Returns:
             List of article dicts ready for DB insertion
@@ -259,7 +256,7 @@ class ArticleGenerationService:
         logger.info(
             f"Generating articles for {filename}: {len(chunks)} chunks, "
             f"{len(windows)} windows (size={window_size}, overlap={window_overlap}, "
-            f"concurrency={concurrency}, provider={provider_name})"
+            f"concurrency={concurrency}, provider=gateway)"
         )
 
         # Process windows with early-exit on consecutive failures
@@ -271,7 +268,7 @@ class ArticleGenerationService:
         async def process_window(window):
             async with semaphore:
                 return await self.extract_articles_from_window(
-                    window, filename, language, llm_service, provider_name,
+                    window, filename, language,
                 )
 
         # Process in batches to allow early exit if LLM is unreachable

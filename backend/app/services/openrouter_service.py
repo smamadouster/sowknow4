@@ -43,6 +43,10 @@ OPENROUTER_TIER_BUDGET_PCT = {
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamtech.com")
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
+# OpenRouter native response caching (beta) — https://openrouter.ai/docs/features/cache
+OPENROUTER_RESPONSE_CACHE_ENABLED = os.getenv("OPENROUTER_RESPONSE_CACHE_ENABLED", "false").lower() in ("true", "1", "yes")
+OPENROUTER_RESPONSE_CACHE_TTL = int(os.getenv("OPENROUTER_RESPONSE_CACHE_TTL", "300"))
+
 # Redis configuration for context caching
 from app.core.redis_url import safe_redis_url
 
@@ -95,6 +99,8 @@ class OpenRouterService:
         self._cache_enabled = False
         self._tier_models = OPENROUTER_TIER_MODELS
         self._tier_budget_pct = OPENROUTER_TIER_BUDGET_PCT
+        self._or_cache_enabled = OPENROUTER_RESPONSE_CACHE_ENABLED
+        self._or_cache_ttl = OPENROUTER_RESPONSE_CACHE_TTL
 
         if self.api_key:
             logger.info(f"OpenRouter service initialized with primary model: {self.model}")
@@ -186,7 +192,7 @@ class OpenRouterService:
 
         return truncated_messages
 
-    def _get_headers(self) -> dict[str, str]:
+    def _get_headers(self, cache_enabled: bool | None = None, cache_ttl: int | None = None) -> dict[str, str]:
         """Get headers for OpenRouter API requests"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -196,6 +202,13 @@ class OpenRouterService:
             headers["HTTP-Referer"] = self.site_url
         if self.site_name:
             headers["X-Title"] = self.site_name
+
+        use_cache = cache_enabled if cache_enabled is not None else self._or_cache_enabled
+        use_ttl = cache_ttl if cache_ttl is not None else self._or_cache_ttl
+        if use_cache:
+            headers["X-OpenRouter-Cache"] = "true"
+            if use_ttl:
+                headers["X-OpenRouter-Cache-TTL"] = str(use_ttl)
         return headers
 
     def select_model_for_tier(self, tier: str = "standard") -> str:
@@ -243,6 +256,8 @@ class OpenRouterService:
         is_confidential: bool = False,
         collection_id: str | None = None,
         tier: str = "standard",
+        use_openrouter_cache: bool | None = None,
+        openrouter_cache_ttl: int | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using OpenRouter (OpenAI-compatible API)
@@ -286,6 +301,21 @@ class OpenRouterService:
             logger.warning(
                 f"Input truncated from ~{original_tokens} to ~{truncated_tokens} tokens to fit context window"
             )
+
+        # OpenRouter native response caching (beta)
+        or_cache_enabled = (
+            use_openrouter_cache
+            if use_openrouter_cache is not None
+            else OPENROUTER_RESPONSE_CACHE_ENABLED
+        )
+        or_cache_ttl = (
+            openrouter_cache_ttl
+            if openrouter_cache_ttl is not None
+            else OPENROUTER_RESPONSE_CACHE_TTL
+        )
+        # PRIVACY: never use provider-side caching for confidential queries
+        if is_confidential:
+            or_cache_enabled = False
 
         # Generate cache key if not provided and caching is enabled
         # PRIVACY: confidential/PII queries are NEVER cached
@@ -350,10 +380,19 @@ class OpenRouterService:
                     async with client.stream(
                         "POST",
                         f"{self.base_url}/chat/completions",
-                        headers=self._get_headers(),
+                        headers=self._get_headers(
+                            cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
+                        ),
                         json=payload,
                     ) as response:
                         response.raise_for_status()
+                        # Log OpenRouter native cache status
+                        cache_status = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Status")
+                        if cache_status:
+                            logger.info(
+                                f"OpenRouter native cache {cache_status}: "
+                                f"tier={tier}, model={model}, stream=True"
+                            )
 
                         async for line in response.aiter_lines():
                             if line.strip():
@@ -373,10 +412,26 @@ class OpenRouterService:
                 else:
                     response = await client.post(
                         f"{self.base_url}/chat/completions",
-                        headers=self._get_headers(),
+                        headers=self._get_headers(
+                            cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
+                        ),
                         json=payload,
                     )
                     response.raise_for_status()
+                    # Log OpenRouter native cache status
+                    cache_status = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Status")
+                    if cache_status:
+                        logger.info(
+                            f"OpenRouter native cache {cache_status}: "
+                            f"tier={tier}, model={model}, stream=False"
+                        )
+                        if cache_status == "HIT":
+                            cache_age = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Age")
+                            cache_ttl_remaining = getattr(response, "headers", {}).get("X-OpenRouter-Cache-TTL")
+                            logger.debug(
+                                f"OpenRouter cache age={cache_age}s, "
+                                f"ttl_remaining={cache_ttl_remaining}s"
+                            )
                     result = response.json()
 
                     if "choices" in result and len(result["choices"]) > 0:

@@ -18,6 +18,8 @@ from typing import Any, Literal
 
 from PIL import Image
 
+from app.utils.circuit_breaker import circuit_breaker
+
 logger = logging.getLogger(__name__)
 
 # Local OCR configuration — read from environment (all processing stays on-device)
@@ -190,6 +192,7 @@ class OCRService:
         result["processing_time"] = time.time() - start_time
         return result
 
+    @circuit_breaker(name="ocr", failure_threshold=3, cooldown_seconds=30)
     async def extract_text(
         self,
         image_path: str,

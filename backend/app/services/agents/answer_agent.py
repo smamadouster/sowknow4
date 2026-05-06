@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.agent_identity import ANSWER_IDENTITY
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class AnswerAgent:
     """
 
     def __init__(self):
-        self.minimax_service = minimax_service
+        self.llm = llm_gateway
 
     async def generate_answer(self, request: AnswerRequest) -> AnswerResult:
         """
@@ -74,8 +74,8 @@ class AnswerAgent:
         Returns:
             Structured answer with sources and confidence
         """
-        # Always use MiniMax
-        self._llm_service = self.minimax_service
+        # Route through LLM gateway (standard tier for answer generation)
+        self._llm_service = self.llm
 
         try:
             # Step 1: Analyze what type of answer is needed

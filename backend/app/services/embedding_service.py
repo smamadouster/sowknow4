@@ -9,6 +9,8 @@ from typing import Any
 
 import numpy as np
 
+from app.utils.circuit_breaker import circuit_breaker
+
 try:
     from sentence_transformers import SentenceTransformer
 except ImportError:
@@ -135,6 +137,7 @@ class EmbeddingService:
             stats["status"] = "error"
         return stats
 
+    @circuit_breaker(name="embedding", failure_threshold=3, cooldown_seconds=30)
     def encode(self, texts: list[str], batch_size: int = 32, show_progress: bool = False) -> list[list[float]]:
         """
         Generate embeddings for a list of texts.
@@ -253,6 +256,7 @@ class EmbeddingService:
             logger.error(f"Error generating query embedding: {e}")
             raise
 
+    @circuit_breaker(name="embedding", failure_threshold=3, cooldown_seconds=30)
     async def encode_async(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """Async wrapper for encoding (runs in thread pool)"""
         import asyncio

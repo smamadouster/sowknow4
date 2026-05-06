@@ -18,7 +18,7 @@ from app.models.document import Document, DocumentBucket, DocumentChunk
 from app.models.knowledge_graph import Entity, TimelineEvent
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -76,15 +76,7 @@ class SynthesisPipelineService:
     """Service for map-reduce style synthesis of multiple documents"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
-        self._openrouter_service = None
-
-    def _get_openrouter_service(self):
-        if self._openrouter_service is None:
-            from app.services.openrouter_service import openrouter_service
-
-            self._openrouter_service = openrouter_service
-        return self._openrouter_service
+        self.llm = llm_gateway
 
     async def synthesize(
         self,
@@ -296,12 +288,9 @@ Extract all relevant information about "{topic}" from this document:"""
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
-            # Always use OpenRouter for synthesis
-            llm_service = self._get_openrouter_service()
-
             response = []
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=1024
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.3, max_tokens=1024, tier="complex"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
@@ -501,12 +490,9 @@ Please create a comprehensive synthesis about "{topic}" that integrates all the 
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
-            # Always use OpenRouter for synthesis
-            llm_service = self._get_openrouter_service()
-
             response = []
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.7, max_tokens=4096
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.7, max_tokens=4096, tier="complex"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)
@@ -551,11 +537,9 @@ Extract the key points:"""
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
         try:
-            llm_service = self._get_openrouter_service()
-
             response = []
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=512
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.3, max_tokens=512, tier="complex"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response.append(chunk)

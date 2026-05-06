@@ -6,17 +6,17 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from app.services.openrouter_service import openrouter_service
+from app.services.llm_gateway import llm_gateway
 
 router = APIRouter(prefix="/status", tags=["status"])
 
 
 @router.get("")
 async def api_status() -> dict[str, Any]:
-    """API status endpoint with OpenRouter integration"""
+    """API status endpoint with LLM gateway integration"""
     llm_stats = {"status": "unknown"}
     try:
-        llm_stats = await openrouter_service.get_usage_stats()
+        llm_stats = await llm_gateway.get_usage_stats()
     except Exception as e:
         llm_stats = {"error": f"Could not retrieve LLM stats: {str(e)}"}
 

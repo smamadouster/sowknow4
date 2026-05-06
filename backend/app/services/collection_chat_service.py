@@ -19,18 +19,12 @@ from app.models.collection import Collection, CollectionChatSession
 from app.models.user import User
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.openrouter_service import openrouter_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
 
-def _get_ollama_service():
-    """Lazy import Ollama service to avoid circular deps."""
-    try:
-        from app.services.ollama_service import ollama_service
-        return ollama_service
-    except Exception:
-        return None
+
 
 
 async def create_audit_log(
@@ -61,7 +55,7 @@ class CollectionChatService:
     """Service for collection-scoped chat with context caching"""
 
     def __init__(self):
-        self.openrouter_service = openrouter_service
+        self.llm = llm_gateway
 
     async def get_or_create_chat_session(
         self,
@@ -307,18 +301,7 @@ class CollectionChatService:
 
         # Try local Ollama first for confidential collections
         if has_confidential:
-            ollama = _get_ollama_service()
-            if ollama and getattr(ollama, "available", True):
-                logger.info("CollectionChat: Routing confidential collection to Ollama (local)")
-                return await self._chat_with_ollama(
-                    message=message,
-                    collection=collection,
-                    document_context=document_context,
-                    session=session,
-                    db=db,
-                )
-            else:
-                logger.warning("CollectionChat: Ollama unavailable for confidential collection — stripping chunk text")
+            logger.info("CollectionChat: Routing confidential collection to local LLM")
 
         # Build system prompt with collection context
         collection_task = f"""You are answering questions about a document collection called "{collection.name}".
@@ -401,8 +384,8 @@ When answering:
         # Generate response with OpenRouter (tiered model selection)
         response_parts = []
 
-        async for chunk in self.openrouter_service.chat_completion(
-            messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier="standard"
+        async for chunk in self.llm.chat_completion(
+            messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier="standard",
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
@@ -433,9 +416,7 @@ When answering:
         session: ChatSession,
         db: AsyncSession,
     ) -> dict[str, Any]:
-        """Chat with local Ollama for confidential collections."""
-        from app.services.ollama_service import ollama_service
-
+        """Chat with local LLM for confidential collections (via gateway)."""
         system_prompt = build_service_prompt(
             service_name="SOWKNOW Collection Chat Service (Confidential Mode)",
             mission="Answer questions about confidential documents using only the local LLM",
@@ -447,7 +428,6 @@ When answering:
             task_prompt=f"Collection: {collection.name}\nQuery: {collection.query}",
         )
 
-        # Build full context with chunks (safe because Ollama is local)
         context_parts = []
         for doc in document_context:
             chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
@@ -460,8 +440,8 @@ When answering:
         ]
 
         response_parts = []
-        async for chunk in ollama_service.chat_completion(
-            messages=messages, stream=False, temperature=0.7, max_tokens=2048
+        async for chunk in self.llm.chat_completion(
+            messages=messages, stream=False, temperature=0.7, max_tokens=2048, has_confidential=True
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
@@ -476,7 +456,7 @@ When answering:
         return {
             "response": response_text,
             "sources": sources,
-            "llm_used": "ollama",
+            "llm_used": "local",
         }
 
 

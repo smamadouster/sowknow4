@@ -31,8 +31,7 @@ from app.models.collection import (
 )
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.models.user import User, UserRole
-from app.services.minimax_service import minimax_service
-from app.services.openrouter_service import openrouter_service
+from app.services.llm_gateway import llm_gateway
 from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
@@ -78,8 +77,7 @@ class SmartFolderService:
     FALLBACK_MODEL = "qwen/qwen3-235b-a22b:free"
 
     def __init__(self):
-        self.minimax_service = minimax_service
-        self.openrouter_service = openrouter_service
+        self.llm = llm_gateway
         self.search_service = search_service
 
     # ------------------------------------------------------------------
@@ -429,8 +427,8 @@ class SmartFolderService:
             {"role": "user", "content": prompt},
         ]
         try:
-            async for chunk in self.minimax_service.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=300
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.3, max_tokens=300, tier="simple"
             ):
                 if chunk and not chunk.startswith("Error:"):
                     return chunk.strip()
@@ -499,8 +497,8 @@ Write the article now:"""
         ]
 
         response_parts = []
-        async for chunk in self.minimax_service.chat_completion(
-            messages=messages, stream=False, temperature=0.5, max_tokens=4096
+        async for chunk in self.llm.chat_completion(
+            messages=messages, stream=False, temperature=0.5, max_tokens=4096, tier="complex"
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
@@ -567,32 +565,16 @@ Write the article now:"""
         ]
 
         try:
-            import httpx
-
-            payload = {
-                "model": self.FALLBACK_MODEL,
-                "messages": messages,
-                "temperature": 0.5,
-                "max_tokens": 4096,
-                "stream": False,
-            }
-
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{self.openrouter_service.base_url}/chat/completions",
-                    json=payload,
-                    headers=self.openrouter_service._get_headers(),
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                if "choices" in data and len(data["choices"]) > 0:
-                    return data["choices"][0].get("message", {}).get("content", "")
-
-            return ""
+            response_parts = []
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.5, max_tokens=4096, tier="complex"
+            ):
+                if chunk and not chunk.startswith("Error:"):
+                    response_parts.append(chunk)
+            return "".join(response_parts).strip()
         except Exception as e:
-            logger.error(f"OpenRouter fallback generation error: {e}")
-            return "Unable to generate content. Both MiniMax and OpenRouter failed."
+            logger.error(f"LLM fallback generation error: {e}")
+            return "Unable to generate content. LLM fallback failed."
 
 
 # Global smart folder service instance

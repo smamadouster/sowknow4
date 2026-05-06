@@ -1,45 +1,27 @@
 """
-Document API endpoints for upload, list, get, update, and delete operations
+Document API endpoints for list, get, update, delete, download, similar, and reprocess.
+
+Upload and journal endpoints have been split into sub-routers:
+  - documents_upload.py  → /upload, /upload-batch, /batch/{id}/status
+  - documents_journal.py → /journal, /journal/voice
 """
 
-import asyncio
-import json
 import logging
-import mimetypes
-import os
-import tempfile
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Form,
-    Header,
-    HTTPException,
-    Query,
-    UploadFile,
-    status,
-)
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-try:
-    import magic as _magic
-
-    _magic_available = True
-except ImportError:
-    _magic_available = False
-
-logger = logging.getLogger(__name__)
-
 from app.api.deps import get_current_user, require_admin_only
+from app.api.documents_common import create_audit_log
+from app.api.documents_journal import router as journal_router
+from app.api.documents_upload import router as upload_router
 from app.database import get_db
-from app.models.audit import AuditAction, AuditLog
+from app.models.audit import AuditAction
 from app.models.document import (
     Document,
     DocumentBucket,
@@ -49,958 +31,23 @@ from app.models.document import (
 )
 from app.models.user import User, UserRole
 from app.schemas.document import (
-    BatchUploadResponse,
     DocumentListResponse,
     DocumentResponse,
     DocumentStatusResponse,
     DocumentUpdate,
-    DocumentUploadResponse,
 )
-from app.services.deduplication_service import deduplication_service
 from app.services.storage_service import storage_service
-from app.services.whisper_service import whisper_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-BOT_API_KEY = os.getenv("BOT_API_KEY", "")
+# Include sub-routers for upload and journal endpoints
+router.include_router(upload_router)
+router.include_router(journal_router)
 
 
-async def create_audit_log(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    action: AuditAction,
-    resource_type: str,
-    resource_id: str | None = None,
-    details: dict | None = None,
-    ip_address: str | None = None,
-    user_agent: str | None = None,
-) -> None:
-    """Helper function to create audit log entries for document access"""
-    try:
-        audit_entry = AuditLog(
-            user_id=user_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            details=json.dumps(details) if details else None,
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
-        db.add(audit_entry)
-        await db.commit()
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Audit logging failed: {str(e)}")
-
-
-# Allowed file types and size limits
-ALLOWED_EXTENSIONS = {
-    ".pdf",
-    ".docx",
-    ".doc",
-    ".pptx",
-    ".ppsx",
-    ".ppt",
-    ".xlsx",
-    ".xls",
-    ".txt",
-    ".md",
-    ".json",
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".bmp",
-    ".heic",
-    ".mp4",
-    ".avi",
-    ".mov",
-    ".mkv",
-    ".mp3",
-    ".wav",
-    ".ogg",
-    ".flac",
-    ".aac",
-    ".wma",
-    ".m4a",
-    ".webm",
-    ".epub",
-    ".csv",
-    ".xml",
-    ".html",
-    ".htm",
-    ".tiff",
-    ".tif",
-    ".rtf",
-    ".zip",
-    ".xmind",
-    ".msg",
-}
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
-MAX_BATCH_SIZE = 500 * 1024 * 1024  # 500MB
-
-# Concurrency limiter: cap simultaneous uploads to prevent starving other endpoints
-_upload_semaphore = asyncio.Semaphore(3)
-
-
-def get_file_extension(filename: str) -> str:
-    """Get file extension from filename"""
-    return "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-
-
-def get_mime_type(filename: str, content: bytes = b"") -> str:
-    """Get MIME type using content-based detection (magic bytes) with filename fallback.
-
-    OGG normalization: python-magic detects Telegram OGG Opus voice files as
-    'application/ogg' which is technically valid but browsers require 'audio/ogg'
-    to render an <audio> element.  We normalize it here so the DB always stores
-    the browser-compatible value.
-    """
-    if content and _magic_available:
-        try:
-            detected = _magic.from_buffer(content, mime=True)
-            if detected and detected != "application/octet-stream":
-                # Normalize application/ogg → audio/ogg for browser compatibility
-                if detected == "application/ogg":
-                    detected = "audio/ogg"
-                return detected
-        except Exception:
-            pass
-    mime_type, _ = mimetypes.guess_type(filename)
-    return mime_type or "application/octet-stream"
-
-
-# Map of allowed extensions to their expected MIME type prefixes for validation
-_EXTENSION_MIME_PREFIXES: dict = {
-    ".pdf": ["application/pdf"],
-    ".docx": ["application/vnd.openxmlformats", "application/zip"],
-    ".doc": ["application/msword", "application/vnd.ms"],
-    ".pptx": ["application/vnd.openxmlformats", "application/zip"],
-    ".ppsx": ["application/vnd.openxmlformats", "application/zip"],
-    ".ppt": ["application/vnd.ms-powerpoint", "application/vnd.ms"],
-    ".xlsx": ["application/vnd.openxmlformats", "application/zip"],
-    ".xls": ["application/vnd.ms-excel", "application/vnd.ms"],
-    ".txt": ["text/"],
-    ".md": ["text/"],
-    ".json": ["application/json", "text/"],
-    ".jpg": ["image/jpeg"],
-    ".jpeg": ["image/jpeg"],
-    ".png": ["image/png"],
-    ".gif": ["image/gif"],
-    ".bmp": ["image/bmp", "image/x-bmp", "image/x-ms-bmp"],
-    ".heic": ["image/heic", "image/heif"],
-    ".mp4": ["video/mp4"],
-    ".avi": ["video/x-msvideo", "video/avi"],
-    ".mov": ["video/quicktime"],
-    ".mkv": ["video/x-matroska"],
-    ".mp3": ["audio/mpeg", "audio/mp3"],
-    ".wav": ["audio/wav", "audio/x-wav", "audio/wave"],
-    ".ogg": ["audio/ogg", "application/ogg"],
-    ".flac": ["audio/flac", "audio/x-flac"],
-    ".aac": ["audio/aac", "audio/x-aac"],
-    ".wma": ["audio/x-ms-wma", "video/x-ms-asf"],
-    ".m4a": ["audio/mp4", "audio/x-m4a", "audio/m4a"],
-    ".webm": ["audio/webm", "video/webm"],
-    ".epub": ["application/epub+zip", "application/zip"],
-    ".csv": ["text/csv", "text/", "application/csv"],
-    ".xml": ["text/xml", "application/xml", "text/"],
-    ".html": ["text/html", "text/"],
-    ".htm": ["text/html", "text/"],
-    ".tiff": ["image/tiff"],
-    ".tif": ["image/tiff"],
-    ".rtf": ["text/rtf", "application/rtf", "application/x-rtf", "text/"],
-    ".zip": ["application/zip", "application/x-zip-compressed"],
-    ".xmind": ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
-    ".msg": ["application/vnd.ms-outlook", "application/octet-stream"],
-}
-
-
-def validate_magic_bytes(filename: str, content: bytes) -> bool:
-    """Validate file content matches extension using magic bytes. Returns True if valid."""
-    if not content or not _magic_available:
-        return True  # Fallback: allow if we can't check
-
-    extension = get_file_extension(filename)
-    allowed_prefixes = _EXTENSION_MIME_PREFIXES.get(extension)
-    if not allowed_prefixes:
-        return True  # Unknown extension map — extension check already handles this
-
-    try:
-        detected_mime = _magic.from_buffer(content[:8192], mime=True)
-        return any(detected_mime.startswith(prefix) for prefix in allowed_prefixes)
-    except Exception:
-        return True  # Fail open on magic detection errors
-
-
-@router.post("/upload", response_model=DocumentUploadResponse)
-async def upload_document(
-    file: UploadFile = File(...),
-    bucket: str = Form("public"),
-    title: str | None = Form(None),
-    tags: str | None = Form(None),
-    document_type: str | None = Form(None),
-    transcript: str | None = Form(None),
-    x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> DocumentUploadResponse:
-    """
-    Upload a document to the specified bucket
-
-    - **file**: The file to upload
-    - **bucket**: Either "public" or "confidential" (admin/superuser only)
-    - **title**: Optional title for the document
-    - **tags**: Optional comma-separated tag names (e.g. "urgent,invoice")
-
-    SECURITY: Role-based access control enforced for confidential uploads.
-    - Public bucket: Any authenticated user can upload (with or without bot API key)
-    - Confidential bucket: Only Admin and Super User roles can upload
-    - Bot API key validation is performed but does NOT bypass role checks
-    - Returns 403 Forbidden for unauthorized confidential upload attempts
-    - Returns 503 Service Unavailable when too many uploads are in progress
-    """
-    if _upload_semaphore._value == 0:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Too many uploads in progress. Please retry shortly.",
-        )
-    async with _upload_semaphore:
-        return await _do_upload_document(
-            file=file, bucket=bucket, title=title, tags=tags,
-            document_type=document_type, transcript=transcript,
-            x_bot_api_key=x_bot_api_key, current_user=current_user, db=db,
-        )
-
-
-async def _do_upload_document(
-    file: UploadFile,
-    bucket: str,
-    title: str | None,
-    tags: str | None,
-    document_type: str | None,
-    transcript: str | None,
-    x_bot_api_key: str | None,
-    current_user: User,
-    db: AsyncSession,
-) -> DocumentUploadResponse:
-    """Internal upload handler, called under the concurrency semaphore."""
-    # PRIORITY: Check user role FIRST (admin/superuser have full access)
-    logger.info(f"Upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}")
-    logger.info(f"x_bot_api_key present: {bool(x_bot_api_key)}, BOT_API_KEY configured: {bool(BOT_API_KEY)}")
-
-    # Validate bot API key if provided (used in conjunction with role checks)
-    is_bot = False
-    if x_bot_api_key:
-        if not BOT_API_KEY:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bot API key not configured")
-        if x_bot_api_key != BOT_API_KEY:
-            logger.warning(
-                f"Invalid Bot API Key. Received length: {len(x_bot_api_key)}, Expected length: {len(BOT_API_KEY)}"
-            )
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
-        is_bot = True
-        logger.info(f"Valid bot API key provided for user: {current_user.email}")
-
-    # CRITICAL SECURITY CHECK: Validate role-based access for confidential bucket
-    if bucket == "confidential":
-        # Only Admin and Super User roles can upload to confidential bucket
-        if current_user.role.value not in ["admin", "superuser"]:
-            logger.warning(
-                f"SECURITY: Blocked confidential upload attempt by user {current_user.email} "
-                f"(role: {current_user.role.value}). Admin or Super User role required."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: Admin or Super User role required for confidential bucket uploads",
-            )
-        logger.info(f"Confidential upload authorized for {current_user.role.value}: {current_user.email}")
-    else:
-        # Public bucket: any valid user can upload (with or without bot API key)
-        logger.info(f"Public upload authorized for {current_user.role.value}: {current_user.email}")
-
-    if bucket not in ["public", "confidential"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket. Use 'public' or 'confidential'"
-        )
-
-    # Validate file
-    if not file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided")
-
-    file_extension = get_file_extension(file.filename)
-    if file_extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
-        )
-
-    # Read file content
-    content = await file.read()
-
-    # Check file size
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
-        )
-
-    # Validate magic bytes — reject files where content doesn't match declared extension
-    if not validate_magic_bytes(file.filename, content):
-        logger.warning(f"SECURITY: Magic byte mismatch for {file.filename} uploaded by {current_user.email}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File content does not match its extension. Upload rejected.",
-        )
-
-    # Step 1: Calculate file hash for deduplication
-    file_hash = deduplication_service.calculate_hash(content)
-    logger.info(f"Calculated hash for {file.filename}: {file_hash[:16]}...")
-
-    # Step 2: Check for duplicates
-    duplicate_doc = await deduplication_service.is_duplicate(
-        file_hash=file_hash, filename=file.filename, size=len(content), db=db
-    )
-
-    if duplicate_doc:
-        logger.info(f"Duplicate detected: {file.filename} matches document {duplicate_doc.id}")
-        return DocumentUploadResponse(
-            document_id=duplicate_doc.id,
-            filename=duplicate_doc.filename,
-            status=duplicate_doc.status,
-            message="Document already exists (duplicate detected)",
-        )
-
-    # Step 3: Save file (only if not duplicate)
-    save_result = storage_service.save_file(file_content=content, original_filename=file.filename, bucket=bucket)
-
-    # Detect language from metadata or default
-    language = DocumentLanguage.UNKNOWN
-
-    # Create document record with PENDING status initially
-    document = Document(
-        filename=save_result["filename"],
-        original_filename=file.filename,
-        file_path=save_result["file_path"],
-        bucket=DocumentBucket(bucket),
-        status=DocumentStatus.PENDING,  # Set to PENDING until successfully queued
-        size=save_result["size"],
-        mime_type=get_mime_type(file.filename, content),
-        language=language,
-        uploaded_by=current_user.id,
-    )
-
-    # Set document metadata (e.g. journal type) — validate before persisting
-    if document_type:
-        if document_type == "journal" and bucket != "confidential":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Journal entries must use the confidential bucket",
-            )
-        metadata = {"document_type": document_type}
-        if document_type == "journal":
-            from datetime import datetime as dt
-
-            metadata["journal_timestamp"] = dt.now(UTC).isoformat()
-        document.document_metadata = metadata
-
-    # Store voice transcript if provided (skips OCR pipeline for audio with transcript)
-    if transcript:
-        document.document_metadata = {**(document.document_metadata or {}), "extracted_text": transcript}
-        document.ocr_processed = True  # Skip OCR pipeline for audio with transcript
-        # Write transcript to .txt file so the chunking/embedding pipeline can index it
-        txt_path = save_result["file_path"] + ".txt"
-        try:
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(transcript)
-            logger.info(f"Wrote voice transcript to {txt_path}")
-        except Exception as e:
-            logger.warning(f"Failed to write transcript file: {e}")
-
-    db.add(document)
-    await db.commit()
-    await db.refresh(document)
-
-    # Step 3b: Persist user-supplied tags (e.g. hashtags from Telegram caption)
-    if tags:
-        tag_names = [t.strip().lower() for t in tags.split(",") if t.strip()]
-        for tag_name in tag_names:
-            document_tag = DocumentTag(
-                document_id=document.id,
-                tag_name=tag_name,
-                tag_type="user",
-                auto_generated=False,
-            )
-            db.add(document_tag)
-        if tag_names:
-            await db.commit()
-            logger.info(f"Added {len(tag_names)} user tag(s) to document {document.id}: {tag_names}")
-
-    # Step 4: Register hash for future deduplication checks
-    await deduplication_service.register_upload(
-        file_hash=file_hash,
-        filename=file.filename,
-        size=len(content),
-        document_id=str(document.id),
-        db=db,
-    )
-    logger.info(f"Registered upload hash for document {document.id}")
-
-    # Log confidential document upload
-    if bucket == "confidential":
-        await create_audit_log(
-            db=db,
-            user_id=current_user.id,
-            action=AuditAction.CONFIDENTIAL_UPLOADED,
-            resource_type="document",
-            resource_id=str(document.id),
-            details={"filename": document.filename, "original_filename": file.filename},
-        )
-
-    # Dispatch Whisper transcription for audio uploads without a transcript (e.g. Telegram voice notes)
-    audio_extensions = {".ogg", ".webm", ".wav", ".mp3", ".m4a", ".flac", ".aac"}
-    file_ext = get_file_extension(file.filename)
-    if file_ext in audio_extensions and not transcript:
-        try:
-            from app.tasks.voice_tasks import transcribe_voice_note
-            transcribe_voice_note.delay(
-                audio_file_path=document.file_path,
-                document_id=str(document.id),
-            )
-            logger.info(f"Dispatched voice transcription for document {document.id}")
-        except Exception as e:
-            logger.warning(f"Failed to dispatch voice transcription: {e}")
-
-    return await _queue_document_for_processing(document, db)
-
-
-async def _queue_document_for_processing(
-    document: Document,
-    db: AsyncSession,
-    success_message: str = "Document uploaded successfully and queued for processing",
-) -> DocumentUploadResponse:
-    """Queue a persisted document for pipeline processing and return the response.
-
-    Uses the new pipeline orchestrator with Celery chains and backpressure.
-    Expects the document to already be committed (has a valid ``id``).
-    """
-    try:
-        import asyncio
-        from concurrent.futures import ThreadPoolExecutor
-
-        from app.models.pipeline import StageEnum, StageStatus
-        from app.tasks.pipeline_orchestrator import dispatch_document
-        from app.tasks.pipeline_tasks import update_stage
-
-        # Mark UPLOADED stage as completed (sync DB call — run in thread to avoid blocking event loop)
-        loop = asyncio.get_running_loop()
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            await loop.run_in_executor(
-                pool, update_stage, str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED
-            )
-
-        # Dispatch the pipeline chain (also sync — Redis llen + Celery apply_async)
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            result = await loop.run_in_executor(pool, dispatch_document, str(document.id))
-
-        if result == "dispatched":
-            document.status = DocumentStatus.PROCESSING
-            document.pipeline_stage = "ocr"
-        else:
-            # Backpressure — leave as PENDING, sweeper picks it up
-            document.status = DocumentStatus.PENDING
-            document.pipeline_stage = "uploaded"
-            document.document_metadata = {
-                **(document.document_metadata or {}),
-                "backpressure": result,
-            }
-
-        await db.commit()
-
-        logger.info(f"Document {document.id} pipeline {'dispatched' if result == 'dispatched' else 'deferred'}: {result}")
-        return DocumentUploadResponse(
-            document_id=document.id,
-            filename=document.filename,
-            status=document.status,
-            message=success_message if result == "dispatched" else "Document queued, processing will start when capacity is available",
-        )
-    except Exception as e:
-        logger.error(f"Failed to queue document {document.id} for processing: {e}")
-        try:
-            document.status = DocumentStatus.ERROR
-            document.pipeline_stage = "failed"
-            document.pipeline_error = str(e)[:500]
-            document.document_metadata = {
-                **(document.document_metadata or {}),
-                "processing_error": f"Failed to queue for processing: {str(e)}",
-            }
-            await db.commit()
-        except Exception:
-            await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Document saved but failed to queue for processing: {str(e)}",
-        )
-
-
-
-
-
-class JournalEntryRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=10000)
-    tags: list[str] = Field(default_factory=list)
-    timestamp: str | None = None  # ISO format, defaults to now
-
-
-@router.post("/journal", response_model=DocumentUploadResponse)
-async def create_journal_entry(
-    entry: JournalEntryRequest,
-    x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> DocumentUploadResponse:
-    """Create a text-only journal entry in the confidential bucket."""
-    # Only admin/superuser can create journal entries (confidential bucket)
-    if current_user.role.value not in ["admin", "superuser"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or Super User role required for journal entries",
-        )
-
-    # Validate bot API key if provided
-    if x_bot_api_key:
-        if not BOT_API_KEY or x_bot_api_key != BOT_API_KEY:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
-
-    # Save text as a .txt file
-    from datetime import datetime as dt
-
-    now = dt.now(UTC)
-    timestamp = entry.timestamp or now.isoformat()
-    content = entry.text.encode("utf-8")
-    filename = f"journal_{now.strftime('%Y%m%d_%H%M%S')}.txt"
-
-    save_result = storage_service.save_file(file_content=content, original_filename=filename, bucket="confidential")
-
-    document = Document(
-        filename=save_result["filename"],
-        original_filename=filename,
-        file_path=save_result["file_path"],
-        bucket=DocumentBucket.CONFIDENTIAL,
-        status=DocumentStatus.PENDING,
-        size=save_result["size"],
-        mime_type="text/plain",
-        language=DocumentLanguage.UNKNOWN,
-        uploaded_by=current_user.id,
-        document_metadata={
-            "document_type": "journal",
-            "journal_timestamp": timestamp,
-            "journal_text": entry.text[:500],  # Preview in metadata
-        },
-    )
-
-    db.add(document)
-    await db.flush()  # Get auto-generated ID without committing
-
-    # Add user tags
-    for tag_name in entry.tags:
-        tag = DocumentTag(
-            document_id=document.id,
-            tag_name=tag_name.strip().lower(),
-            tag_type="user",
-            auto_generated=False,
-        )
-        db.add(tag)
-
-    await db.commit()
-    await db.refresh(document)
-
-    # Log confidential upload
-    await create_audit_log(
-        db=db,
-        user_id=current_user.id,
-        action=AuditAction.CONFIDENTIAL_UPLOADED,
-        resource_type="journal_entry",
-        resource_id=str(document.id),
-        details={"filename": filename, "type": "journal"},
-    )
-
-    return await _queue_document_for_processing(
-        document, db, success_message="Journal entry created and queued for processing"
-    )
-
-
-@router.post("/journal/voice", response_model=DocumentUploadResponse)
-async def create_journal_entry_from_voice(
-    file: UploadFile = File(...),
-    language: str = Form("auto"),
-    x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> DocumentUploadResponse:
-    """Create a journal entry from a voice recording. Transcribes audio and creates a text journal entry in one call."""
-    # Only admin/superuser can create journal entries
-    if current_user.role.value not in ["admin", "superuser"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or Super User role required for journal entries",
-        )
-
-    # Validate bot API key if provided
-    if x_bot_api_key:
-        if not BOT_API_KEY or x_bot_api_key != BOT_API_KEY:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
-
-    # Validate file size (10MB max, same as voice endpoint)
-    MAX_AUDIO_SIZE = 10 * 1024 * 1024
-    ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/x-m4a"}
-    if file.content_type not in ALLOWED_AUDIO_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Unsupported audio format: {file.content_type}",
-        )
-
-    content = await file.read()
-    if len(content) > MAX_AUDIO_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Audio file exceeds maximum size of {MAX_AUDIO_SIZE // (1024 * 1024)}MB",
-        )
-
-    # Write audio to temp file for transcription
-    file_ext = os.path.splitext(file.filename)[1] if file.filename else ".webm"
-    with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        # Transcribe audio
-        result = await whisper_service.transcribe(tmp_path, language=language)
-        transcript = result.get("transcript", "").strip()
-        if not transcript:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Could not transcribe audio. Please speak clearly and try again.",
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Transcription failed for journal voice entry: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Transcription failed. Please try again.",
-        )
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-
-    # Create journal entry with transcript
-    now = datetime.now(UTC)
-    filename = f"journal_{now.strftime('%Y%m%d_%H%M%S')}.txt"
-    text_content = transcript.encode("utf-8")
-
-    save_result = storage_service.save_file(file_content=text_content, original_filename=filename, bucket="confidential")
-
-    document = Document(
-        filename=save_result["filename"],
-        original_filename=filename,
-        file_path=save_result["file_path"],
-        bucket=DocumentBucket.CONFIDENTIAL,
-        status=DocumentStatus.PENDING,
-        size=save_result["size"],
-        mime_type="text/plain",
-        language=DocumentLanguage.UNKNOWN,
-        uploaded_by=current_user.id,
-        document_metadata={
-            "document_type": "journal",
-            "journal_timestamp": now.isoformat(),
-            "journal_text": transcript[:500],  # Preview in metadata
-            "voice_transcript": transcript,
-        },
-    )
-
-    db.add(document)
-    await db.commit()
-    await db.refresh(document)
-
-    # Log confidential upload
-    await create_audit_log(
-        db=db,
-        user_id=current_user.id,
-        action=AuditAction.CONFIDENTIAL_UPLOADED,
-        resource_type="journal_entry",
-        resource_id=str(document.id),
-        details={"filename": filename, "type": "journal", "voice": True},
-    )
-
-    return await _queue_document_for_processing(
-        document, db, success_message="Journal entry created from voice and queued for processing"
-    )
-
-
-async def process_single_file_upload(
-    file: UploadFile,
-    bucket: str,
-    current_user: User,
-    db: AsyncSession,
-    batch_id: str | None = None,
-) -> tuple[DocumentUploadResponse | None, str | None]:
-    """Helper function to process a single file upload within a batch."""
-    try:
-        if not file.filename:
-            return None, "No filename provided"
-
-        file_extension = get_file_extension(file.filename)
-        if file_extension not in ALLOWED_EXTENSIONS:
-            return None, f"Invalid file type: {file_extension}"
-
-        content = await file.read()
-
-        if len(content) > MAX_FILE_SIZE:
-            return (
-                None,
-                f"File {file.filename} exceeds maximum size of {MAX_FILE_SIZE // (1024 * 1024)}MB",
-            )
-
-        if not validate_magic_bytes(file.filename, content):
-            logger.warning(f"SECURITY: Magic byte mismatch for {file.filename} in batch upload by {current_user.email}")
-            return None, f"File content does not match its extension: {file.filename}"
-
-        file_hash = deduplication_service.calculate_hash(content)
-
-        duplicate_doc = await deduplication_service.is_duplicate(
-            file_hash=file_hash, filename=file.filename, size=len(content), db=db
-        )
-
-        if duplicate_doc:
-            return DocumentUploadResponse(
-                document_id=duplicate_doc.id,
-                filename=duplicate_doc.filename,
-                status=duplicate_doc.status,
-                message="Document already exists (duplicate detected)",
-            ), None
-
-        save_result = storage_service.save_file(file_content=content, original_filename=file.filename, bucket=bucket)
-
-        language = DocumentLanguage.UNKNOWN
-
-        document = Document(
-            filename=save_result["filename"],
-            original_filename=file.filename,
-            file_path=save_result["file_path"],
-            bucket=DocumentBucket(bucket),
-            status=DocumentStatus.PENDING,
-            size=save_result["size"],
-            mime_type=get_mime_type(file.filename, content),
-            language=language,
-            uploaded_by=current_user.id,
-            batch_id=batch_id,
-        )
-
-        db.add(document)
-        await db.commit()
-        await db.refresh(document)
-
-        await deduplication_service.register_upload(
-            file_hash=file_hash,
-            filename=file.filename,
-            size=len(content),
-            document_id=str(document.id),
-            db=db,
-        )
-
-        if bucket == "confidential":
-            await create_audit_log(
-                db=db,
-                user_id=current_user.id,
-                action=AuditAction.CONFIDENTIAL_UPLOADED,
-                resource_type="document",
-                resource_id=str(document.id),
-                details={
-                    "filename": document.filename,
-                    "original_filename": file.filename,
-                },
-            )
-
-        # Use the new pipeline orchestrator (same as single upload) instead of
-        # the legacy monolithic process_document task.
-        response = await _queue_document_for_processing(document, db)
-        return response, None
-
-    except Exception as e:
-        logger.error(f"Error processing file {file.filename}: {str(e)}")
-        return None, f"Error processing file {file.filename}: {str(e)}"
-
-
-MAX_FILES_PER_BATCH = 20
-
-
-@router.post("/upload-batch", response_model=BatchUploadResponse, status_code=status.HTTP_202_ACCEPTED)
-async def upload_batch_documents(
-    files: list[UploadFile] = File(...),
-    bucket: str = Form("public"),
-    x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> BatchUploadResponse:
-    """
-    Upload multiple documents in a single request (batch upload)
-
-    - **files**: List of files to upload (multipart form)
-    - **bucket**: Either "public" or "confidential" (admin/superuser only)
-
-    SECURITY: Total batch size limit is 500MB.
-    - If total size exceeds 500MB, entire batch is rejected with HTTP 413
-    - Individual file size limit remains 100MB per file
-    - Role-based access control enforced for confidential bucket
-    """
-    logger.info(f"Batch upload attempt: user={current_user.email}, role={current_user.role.value}, bucket={bucket}")
-
-    is_bot = False
-    if x_bot_api_key:
-        if not BOT_API_KEY:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bot API key not configured")
-        if x_bot_api_key != BOT_API_KEY:
-            logger.warning("Invalid Bot API Key")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
-        is_bot = True
-
-    if bucket == "confidential":
-        if current_user.role.value not in ["admin", "superuser"]:
-            logger.warning(
-                f"SECURITY: Blocked confidential batch upload by user {current_user.email} "
-                f"(role: {current_user.role.value})"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: Admin or Super User role required for confidential bucket uploads",
-            )
-    else:
-        logger.info(f"Public batch upload authorized for {current_user.role.value}: {current_user.email}")
-
-    if bucket not in ["public", "confidential"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid bucket. Use 'public' or 'confidential'"
-        )
-
-    if not files:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No files provided")
-
-    if len(files) > MAX_FILES_PER_BATCH:  # max 20 files per batch
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Too many files: maximum {MAX_FILES_PER_BATCH} files per batch upload",
-        )
-
-    total_size = 0
-    file_sizes = {}
-
-    for file in files:
-        if file.filename:
-            content = await file.read()
-            file_sizes[file.filename] = len(content)
-            total_size += len(content)
-            await file.seek(0)
-
-    logger.info(
-        f"Batch upload: {len(files)} files, total size: {total_size} bytes ({total_size / (1024 * 1024):.2f}MB)"
-    )
-
-    if total_size > MAX_BATCH_SIZE:
-        logger.warning(
-            f"Batch upload rejected: total size {total_size} bytes ({total_size / (1024 * 1024):.2f}MB) "
-            f"exceeds limit of {MAX_BATCH_SIZE} bytes ({MAX_BATCH_SIZE / (1024 * 1024)}MB)"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=(
-                f"Batch total size exceeds limit. "
-                f"Received: {total_size / (1024 * 1024):.2f}MB, "
-                f"Limit: {int(MAX_BATCH_SIZE / (1024 * 1024))}MB. "
-                f"Please reduce the number or size of files in your batch."
-            ),
-        )
-
-    successful_docs = []
-    errors = []
-    successful_count = 0
-    failed_count = 0
-
-    # Generate a unique batch ID that groups all uploads in this request
-    batch_id = str(uuid.uuid4())
-
-    for file in files:
-        async with _upload_semaphore:
-            doc_response, error = await process_single_file_upload(
-                file=file, bucket=bucket, current_user=current_user, db=db, batch_id=batch_id
-            )
-
-        if doc_response:
-            successful_docs.append(doc_response)
-            successful_count += 1
-        else:
-            errors.append(error)
-            failed_count += 1
-
-    return BatchUploadResponse(
-        batch_id=batch_id,
-        total_files=len(files),
-        successful=successful_count,
-        failed=failed_count,
-        documents=successful_docs,
-        errors=errors,
-        total_size_bytes=total_size,
-        batch_limit_exceeded=False,
-        message=f"Batch upload completed: {successful_count} successful, {failed_count} failed",
-    )
-
-
-@router.get("/batch/{batch_id}/status")
-async def get_batch_status(
-    batch_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """
-    Get processing status for all documents in a batch upload.
-
-    Returns aggregate progress and per-document statuses.
-    """
-    result = await db.execute(
-        select(Document).where(
-            Document.batch_id == batch_id,
-            Document.uploaded_by == current_user.id,
-        )
-    )
-    documents = result.scalars().all()
-
-    if not documents:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
-
-    from collections import Counter
-
-    status_counts: Counter = Counter(doc.status.value for doc in documents)
-    total = len(documents)
-    completed = status_counts.get("indexed", 0)
-    progress = round(completed / total * 100, 1) if total else 0.0
-
-    return {
-        "batch_id": batch_id,
-        "total_documents": total,
-        "completed": completed,
-        "processing": status_counts.get("processing", 0) + status_counts.get("pending", 0),
-        "failed": status_counts.get("error", 0),
-        "progress_percentage": progress,
-        "documents": [
-            {
-                "id": str(doc.id),
-                "filename": doc.filename,
-                "status": doc.status.value,
-            }
-            for doc in documents
-        ],
-    }
+# ── CRUD Endpoints ──────────────────────────────────────────────────────────
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -1015,24 +62,15 @@ async def list_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentListResponse:
-    """
-    List documents with pagination and filtering
-
-    - Non-admin users only see public documents
-    - Admin users see all documents unless bucket is specified
-    """
+    """List documents with pagination and filtering."""
     stmt = select(Document)
 
-    # Apply bucket filter based on user role
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]:
-        # Non-admins and non-superusers only see public documents
         stmt = stmt.where(Document.bucket == DocumentBucket.PUBLIC)
     elif bucket:
-        # Admin can filter by bucket
         if bucket in ["public", "confidential"]:
             stmt = stmt.where(Document.bucket == DocumentBucket(bucket))
 
-    # Apply status filter
     if status:
         try:
             status_enum = DocumentStatus(status)
@@ -1040,30 +78,24 @@ async def list_documents(
         except ValueError:
             pass
 
-    # Apply search filter
     if search:
         stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
 
-    # Apply document_type metadata filter
     if document_type:
         stmt = stmt.where(Document.document_metadata["document_type"].astext == document_type)
 
-    # Apply tag filter
     if tag:
         stmt = stmt.where(
             Document.id.in_(select(DocumentTag.document_id).where(DocumentTag.tag_name == tag.strip().lower()))
         )
 
-    # Get total count
     count_result = await db.execute(select(func.count()).select_from(stmt.subquery()))
     total = count_result.scalar_one()
 
-    # Apply pagination
     offset = (page - 1) * page_size
     result = await db.execute(stmt.order_by(Document.created_at.desc()).offset(offset).limit(page_size))
     documents = result.scalars().all()
 
-    # Audit: log a summary entry when admin/superuser receives confidential documents
     if current_user.role in [UserRole.ADMIN, UserRole.SUPERUSER]:
         confidential_docs = [d for d in documents if d.bucket == DocumentBucket.CONFIDENTIAL]
         if confidential_docs:
@@ -1096,26 +128,19 @@ async def get_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentResponse:
-    """
-    Get a specific document by ID
-
-    SECURITY: Returns 404 (not 403) for confidential documents accessed by
-    regular users to prevent document enumeration.
-    """
+    """Get a specific document by ID."""
     db_result = await db.execute(select(Document).where(Document.id == document_id))
     document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Check access permission - return 404 for confidential docs to prevent enumeration
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
     ]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Log confidential document access
     if document.bucket == DocumentBucket.CONFIDENTIAL:
         await create_audit_log(
             db=db,
@@ -1135,12 +160,7 @@ async def get_document_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentStatusResponse:
-    """
-    Get the processing status of a specific document.
-
-    Returns status, error message and retry count from the processing queue.
-    SECURITY: Returns 404 (not 403) for confidential documents to prevent enumeration.
-    """
+    """Get the processing status of a specific document."""
     from app.models.processing import ProcessingQueue
 
     db_result = await db.execute(select(Document).where(Document.id == document_id))
@@ -1149,14 +169,12 @@ async def get_document_status(
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Confidential visibility: same rule as get_document
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
     ]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Pull processing details from ProcessingQueue if available
     pq_result = await db.execute(select(ProcessingQueue).where(ProcessingQueue.document_id == document_id))
     processing_task = pq_result.scalar_one_or_none()
 
@@ -1169,16 +187,13 @@ async def get_document_status(
         retry_count = processing_task.retry_count or 0
         processing_started_at = processing_task.started_at
 
-    # Also surface error stored directly in document metadata
     doc_meta = document.document_metadata or {}
     if not error_message and doc_meta.get("processing_error"):
         error_message = doc_meta["processing_error"]
 
-    # Fallback to pipeline_error for cases where metadata wasn't updated
     if not error_message and document.pipeline_error:
         error_message = document.pipeline_error
 
-    # Final fallback: new pipeline stage system stores errors in PipelineStage
     if not error_message:
         from app.models.pipeline import PipelineStage, StageStatus
         ps_result = await db.execute(
@@ -1216,26 +231,19 @@ async def download_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    """
-    Download a document file
-
-    SECURITY: Returns 404 (not 403) for confidential documents accessed by
-    regular users to prevent document enumeration.
-    """
+    """Download a document file."""
     db_result = await db.execute(select(Document).where(Document.id == document_id))
     document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Check access permission - return 404 for confidential docs to prevent enumeration
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
     ]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Log confidential document access
     if document.bucket == DocumentBucket.CONFIDENTIAL:
         await create_audit_log(
             db=db,
@@ -1246,7 +254,6 @@ async def download_document(
             details={"filename": document.filename, "action": "download"},
         )
 
-    # Get file content
     file_content = storage_service.get_file(filename=document.filename, bucket=document.bucket.value)
 
     if not file_content:
@@ -1266,18 +273,13 @@ async def update_document(
     current_user: User = Depends(require_admin_only),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentResponse:
-    """
-    Update document metadata (admin only)
-
-    SECURITY: Admin-only operation. SuperUsers cannot modify documents.
-    """
+    """Update document metadata (admin only)."""
     db_result = await db.execute(select(Document).where(Document.id == document_id))
     document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Update fields
     if updates.filename is not None:
         document.filename = updates.filename
     if updates.bucket is not None:
@@ -1297,22 +299,14 @@ async def delete_document(
     current_user: User = Depends(require_admin_only),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    """
-    Delete a document (admin only)
-
-    SECURITY: Admin-only operation. SuperUsers cannot delete documents.
-    """
-
+    """Delete a document (admin only)."""
     db_result = await db.execute(select(Document).where(Document.id == document_id))
     document = db_result.scalar_one_or_none()
 
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Delete file from storage
     storage_service.delete_file(filename=document.filename, bucket=document.bucket.value)
-
-    # Delete database record (cascade will handle tags, chunks, etc.)
     await db.delete(document)
     await db.commit()
 
@@ -1326,15 +320,7 @@ async def get_similar_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """
-    Return documents similar to the given document, ranked by embedding cosine similarity.
-
-    SECURITY:
-    - Regular users only see results from the public bucket.
-    - Admin/SuperUser see results across all buckets.
-    - Returns 404 if the source document doesn't exist or is inaccessible.
-    - Returns an empty list (not an error) when the document has no embeddings yet.
-    """
+    """Return documents similar to the given document, ranked by embedding cosine similarity."""
     from app.services.similarity_service import similarity_service
 
     db_result = await db.execute(select(Document).where(Document.id == document_id))
@@ -1343,7 +329,6 @@ async def get_similar_documents(
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Regular users cannot access confidential source documents
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
@@ -1360,9 +345,7 @@ async def get_similar_documents(
     return {"similar": results, "total": len(results)}
 
 
-# ---------------------------------------------------------------------------
-# Document Reprocessing
-# ---------------------------------------------------------------------------
+# ── Reprocessing ────────────────────────────────────────────────────────────
 
 
 @router.post("/{document_id}/reprocess")
@@ -1374,23 +357,7 @@ async def reprocess_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """
-    Reprocess a document (e.g., after fixing errors or upgrading models).
-
-    Args:
-        document_id:           Document UUID.
-        force:                 Allow reprocessing even if status=INDEXED.
-        regenerate_embeddings: Whether to regenerate embeddings (default True).
-        reason:                Optional reason string stored in metadata.
-
-    Returns:
-        {
-            "document_id": str,
-            "status": "PENDING",
-            "task_id": str,
-            "message": str
-        }
-    """
+    """Reprocess a document (e.g., after fixing errors or upgrading models)."""
     from app.tasks.document_tasks import process_document
     from app.tasks.embedding_tasks import recompute_embeddings_for_document
 
@@ -1399,7 +366,6 @@ async def reprocess_document(
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Confidential docs: only admin/superuser can trigger reprocessing
     if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
         UserRole.ADMIN,
         UserRole.SUPERUSER,
@@ -1418,7 +384,6 @@ async def reprocess_document(
             detail="Document is currently being processed. Wait for it to finish.",
         )
 
-    # Update document status and metadata
     document.status = DocumentStatus.PENDING
     meta = document.document_metadata or {}
     meta["reprocessed_at"] = datetime.utcnow().isoformat()
@@ -1427,7 +392,6 @@ async def reprocess_document(
     document.document_metadata = meta
     await db.commit()
 
-    # Queue appropriate task
     if regenerate_embeddings:
         task = recompute_embeddings_for_document.delay(str(document_id))
     else:

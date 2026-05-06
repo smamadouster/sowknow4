@@ -87,11 +87,9 @@ def generate_articles_for_document(self, document_id: str, force: bool = False) 
         language_map = {"fr": "french", "en": "english", "multi": "french", "unknown": "french"}
         language = language_map.get(language, language)
 
-        llm_service, provider_name = _get_llm_service()
-
         log_task_memory("generate_articles", "before_llm")
 
-        # Generate articles
+        # Generate articles (routed through LLM gateway)
         from app.services.article_generation_service import article_generation_service
 
         articles_data = asyncio.run(
@@ -101,8 +99,6 @@ def generate_articles_for_document(self, document_id: str, force: bool = False) 
                 filename=document.original_filename,
                 language=language,
                 bucket=document.bucket.value,
-                llm_service=llm_service,
-                provider_name=provider_name,
             )
         )
 
@@ -301,24 +297,4 @@ def backfill_articles() -> dict:
         db.close()
 
 
-def _get_llm_service():
-    """Get LLM service for article generation.
 
-    All documents (public + confidential) route through cloud APIs for
-    reliability and speed.  Preference: OpenRouter → MiniMax.
-    """
-    try:
-        from app.services.openrouter_service import openrouter_service
-        if getattr(openrouter_service, "api_key", None):
-            return openrouter_service, "openrouter"
-    except Exception:
-        pass
-
-    try:
-        from app.services.minimax_service import minimax_service
-        if getattr(minimax_service, "api_key", None):
-            return minimax_service, "minimax"
-    except Exception:
-        pass
-
-    raise RuntimeError("No LLM service available for article generation")

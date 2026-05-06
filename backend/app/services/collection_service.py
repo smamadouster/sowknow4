@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 # Redis-backed cache invalidation for collection LLM responses
 try:
-    from app.services.openrouter_service import openrouter_service as _openrouter_svc  # noqa: F401
+
 
     _CACHE_KEY_PREFIX = "collection"
     _cache_invalidation_enabled = True
@@ -43,7 +43,7 @@ from app.services.intent_parser import (
 from app.services.intent_parser import (
     intent_parser_service,
 )
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 from app.services.search_cache import SearchCache
 from app.services.search_service import search_service
 
@@ -56,7 +56,7 @@ class CollectionService:
     def __init__(self):
         self.intent_parser = intent_parser_service
         self.search_service = search_service
-        self.minimax_service = minimax_service
+        self.llm = llm_gateway
 
     def _get_user_visibility_filter(self, user: User) -> list[CollectionVisibility]:
         """Get allowed collection visibility levels for user"""
@@ -650,7 +650,7 @@ class CollectionService:
         if not _cache_invalidation_enabled:
             return
         try:
-            _openrouter_svc.invalidate_collection_cache(str(collection_id))
+            llm_gateway.invalidate_collection_cache(str(collection_id))
         except Exception as e:
             logger.warning(f"Cache invalidation failed for collection {collection_id}: {e}")
 
@@ -688,7 +688,7 @@ Summarize what this collection contains and its key themes. Be specific about th
         ]
 
         try:
-            summary = await self.minimax_service.chat_completion_non_stream(
+            summary = await self.llm.chat_completion_non_stream(
                 messages=messages, temperature=0.5, max_tokens=500,
             )
             return summary.strip()
@@ -757,10 +757,8 @@ Generate a concise summary describing what this collection contains and its key 
             ]
 
             response_parts = []
-            from app.services.openrouter_service import openrouter_service
-
-            async for chunk in openrouter_service.chat_completion(
-                messages=messages, stream=False, temperature=0.5, max_tokens=500
+            async for chunk in self.llm.chat_completion(
+                messages=messages, stream=False, temperature=0.5, max_tokens=500,
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)

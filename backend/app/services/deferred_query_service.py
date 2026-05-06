@@ -199,8 +199,8 @@ class DeferredQueryService:
     # ------------------------------------------------------------------
 
     async def _call_ollama(self, record: dict[str, Any]) -> str:
-        """Call Ollama to answer the deferred query."""
-        from app.services.ollama_service import ollama_service  # lazy import
+        """Answer the deferred query via LLM gateway (prefers local/Ollama for privacy)."""
+        from app.services.llm_gateway import llm_gateway
 
         messages: list[dict[str, str]] = []
         if record.get("system_prompt"):
@@ -208,7 +208,9 @@ class DeferredQueryService:
         messages.append({"role": "user", "content": record["query_text"]})
 
         response_parts: list[str] = []
-        async for chunk in ollama_service.chat_completion(messages, stream=False):
+        async for chunk in llm_gateway.chat_completion(
+            messages, stream=False, has_confidential=True, tier="standard"
+        ):
             response_parts.append(chunk)
 
         return "".join(response_parts)

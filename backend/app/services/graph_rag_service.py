@@ -21,7 +21,7 @@ from app.models.knowledge_graph import (
 )
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -30,22 +30,7 @@ class GraphRAGService:
     """Service for graph-augmented retrieval and generation"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
-        self._openrouter_service = None
-
-    def _get_openrouter_service(self):
-        if self._openrouter_service is None:
-            from app.services.openrouter_service import openrouter_service
-
-            self._openrouter_service = openrouter_service
-        return self._openrouter_service
-
-    def _get_ollama_service(self):
-        try:
-            from app.services.ollama_service import ollama_service
-            return ollama_service
-        except Exception:
-            return None
+        self.llm = llm_gateway
 
     def _strip_sensitive_content(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Strip sensitive entity names and relationship details from messages.
@@ -480,29 +465,20 @@ Key Principles:
             except Exception:
                 pass
 
-            # Route confidential queries to local Ollama; public to OpenRouter
-            if bucket == DocumentBucket.CONFIDENTIAL:
-                ollama = self._get_ollama_service()
-                if ollama and getattr(ollama, "available", True):
-                    logger.info("GraphRAG: Routing confidential query to Ollama (local)")
-                    llm_service = ollama
-                    tier = "standard"
-                else:
-                    logger.warning("GraphRAG: Ollama unavailable for confidential query — stripping entity details")
-                    # Strip sensitive entity names from messages before sending to cloud
-                    messages = self._strip_sensitive_content(messages)
-                    llm_service = self._get_openrouter_service()
-                    tier = "standard"
-            else:
-                llm_service = self._get_openrouter_service()
-                tier = "standard"
+            has_confidential = bucket == DocumentBucket.CONFIDENTIAL
+            if has_confidential:
+                messages = self._strip_sensitive_content(messages)
 
             if stream:
-                return llm_service.chat_completion(messages=messages, stream=True, temperature=0.7, max_tokens=2048, tier=tier)
+                return self.llm.chat_completion(
+                    messages=messages, stream=True, temperature=0.7, max_tokens=2048, tier="standard",
+                    has_confidential=has_confidential,
+                )
             else:
                 response = []
-                async for chunk in llm_service.chat_completion(
-                    messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier=tier
+                async for chunk in self.llm.chat_completion(
+                    messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier="standard",
+                    has_confidential=has_confidential,
                 ):
                     if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                         response.append(chunk)

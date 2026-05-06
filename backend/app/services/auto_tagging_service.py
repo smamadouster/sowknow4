@@ -14,7 +14,7 @@ from typing import Any
 from app.models.document import Document, DocumentBucket, DocumentLanguage
 from app.models.tag import Tag, TagType, TargetType
 from app.services.agent_identity import build_service_prompt
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +23,7 @@ class AutoTaggingService:
     """Service for automatic document tagging on ingestion"""
 
     def __init__(self):
-        self.minimax_service = minimax_service
-        self._openrouter_service = None
-
-    def _get_openrouter_service(self):
-        if self._openrouter_service is None:
-            from app.services.openrouter_service import openrouter_service
-
-            self._openrouter_service = openrouter_service
-        return self._openrouter_service
+        self.llm = llm_gateway
 
     async def tag_document(self, document: Document, extracted_text: str, db_session=None) -> list[Tag]:
         """
@@ -49,8 +41,8 @@ class AutoTaggingService:
             # Prepare the text for analysis (truncate if too long)
             analysis_text = self._prepare_text_for_analysis(extracted_text, document.filename)
 
-            # Call MiniMax to extract tags
-            tags_data = await self._extract_tags_with_minimax(analysis_text, document)
+            # Call LLM gateway to extract tags (auto-routed based on config)
+            tags_data = await self._extract_tags_with_llm(analysis_text, document)
 
             if not tags_data:
                 logger.warning(f"No tags extracted for document {document.id}")
@@ -170,8 +162,8 @@ Respond ONLY with valid JSON in this exact format:
             task_prompt=tagging_task,
         )
 
-    async def _extract_tags_with_minimax(self, text: str, document: Document) -> dict[str, Any] | None:
-        """Extract tags using MiniMax for public documents"""
+    async def _extract_tags_with_llm(self, text: str, document: Document) -> dict[str, Any] | None:
+        """Extract tags using the unified LLM gateway (auto-routed)."""
 
         system_prompt = self._build_tagging_system_prompt()
 
@@ -191,17 +183,12 @@ Extract the tags now:"""
 
         try:
             response_parts = []
-            # Use MiniMax for public documents
-            # TODO: migrate to llm_router.select_provider() (M1 tech debt)
-            warnings.warn(
-                "AutoTaggingService uses inline LLM routing. "
-                "Migrate to llm_router.select_provider() to remove this warning.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            llm_service = self.minimax_service
-            async for chunk in llm_service.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=1000
+            async for chunk in self.llm.chat_completion(
+                messages=messages,
+                stream=False,
+                temperature=0.3,
+                max_tokens=1000,
+                tier="simple",
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)
@@ -217,7 +204,7 @@ Extract the tags now:"""
                 return json.loads(json_text)
 
         except Exception as e:
-            logger.error(f"MiniMax tagging error: {e}")
+            logger.error(f"LLM tagging error: {e}")
 
         return None
 

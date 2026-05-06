@@ -1,0 +1,8 @@
+{
+  "include": ["app"],
+  "exclude": ["venv", "__pycache__", "alembic", "tests", "scripts"],
+  "venvPath": ".",
+  "venv": "venv",
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Linux"
+}

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.agent_identity import VERIFIER_IDENTITY
-from app.services.minimax_service import minimax_service
+from app.services.llm_gateway import llm_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class VerificationAgent:
     """
 
     def __init__(self):
-        self.minimax_service = minimax_service
+        self.llm = llm_gateway
 
     async def verify(self, request: VerificationRequest) -> VerificationResult:
         """
@@ -72,8 +72,8 @@ class VerificationAgent:
         Returns:
             Verification result with evidence and confidence
         """
-        # Always use MiniMax
-        self._llm_service = self.minimax_service
+        # Route through LLM gateway
+        self._llm_service = self.llm
 
         try:
             # Step 1: Analyze the claim

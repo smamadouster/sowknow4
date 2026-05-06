@@ -21,6 +21,7 @@ services:
         limits:
           memory: 2048m
           cpus: '1.5'
+    shm_size: '512mb'
 
   redis:
     image: redis:7-alpine

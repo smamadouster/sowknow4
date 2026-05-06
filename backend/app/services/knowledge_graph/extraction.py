@@ -141,11 +141,22 @@ class EntityExtractor:
         if not entities:
             return stats
 
-        # Step 2: Resolve or create nodes
+        # Step 2: Batch embeddings for all unique entities in this chunk
+        # This replaces the per-entity encode_single calls and cuts HTTP
+        # round-trips from N down to 1 per chunk.
+        entity_texts = [ent_text for ent_text, _ in entities]
+        if self._embed and entity_texts:
+            embeddings = await self._embed(entity_texts)
+        else:
+            embeddings = [None] * len(entity_texts)
+        entity_embedding_map = dict(zip(entity_texts, embeddings))
+
+        # Step 3: Resolve or create nodes
         node_ids = []
         for ent_text, ent_type in entities:
             node_id, created = await self._resolve_or_create(
-                ent_text, ent_type, bucket
+                ent_text, ent_type, bucket,
+                embedding=entity_embedding_map.get(ent_text),
             )
             node_ids.append(node_id)
             if created:
@@ -153,7 +164,7 @@ class EntityExtractor:
             else:
                 stats["nodes_merged"] += 1
 
-        # Step 3: MENTIONED_IN edges (entity → document node)
+        # Step 4: MENTIONED_IN edges (entity → document node)
         # Ensure the document itself is a graph node (node_type='document')
         doc_node_id = await self._ensure_document_node(document_id, bucket)
         for node_id in node_ids:
@@ -169,13 +180,13 @@ class EntityExtractor:
             if created:
                 stats["edges_created"] += 1
 
-        # Step 4: Domain rules — financial inference edges
+        # Step 5: Domain rules — financial inference edges
         financial_edges = await self._apply_financial_rules(
             entities, node_ids, document_id, chunk_id
         )
         stats["edges_created"] += financial_edges
 
-        # Step 5: LLM-assisted relationship extraction (co-occurring pairs)
+        # Step 6: LLM-assisted relationship extraction (co-occurring pairs)
         if self._llm and len(node_ids) >= 2:
             llm_edges = await self._llm_relationship_extraction(
                 chunk_text, entities, node_ids, document_id, chunk_id, bucket
@@ -261,16 +272,24 @@ class EntityExtractor:
     # ── Entity resolution / dedup ──────────────────────────────────
 
     async def _resolve_or_create(
-        self, surface_form: str, node_type: NodeType, bucket: str
+        self,
+        surface_form: str,
+        node_type: NodeType,
+        bucket: str,
+        embedding: list[float] | None = None,
     ) -> tuple[str, bool]:
         """
         Check if this entity already exists. If so, add alias. If not, create.
         Returns (node_id, was_created).
+
+        ``embedding`` can be pre-computed (batch path) or left None to compute
+        on demand (legacy single-entity path).
         """
         canonical = surface_form.strip().lower()
 
-        # Pre-compute embedding so we don't hold a DB connection during the HTTP call
-        embedding = await self._embed(surface_form) if self._embed else None
+        # Use pre-computed embedding when available; otherwise compute on demand
+        if embedding is None and self._embed is not None:
+            embedding = await self._embed(surface_form)
         embedding_str = _vec_to_str(embedding)
         # Defensive: asyncpg has no vector codec — ensure we always pass a string or None
         if embedding_str is not None and not isinstance(embedding_str, str):

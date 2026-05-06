@@ -7753,7 +7753,7 @@
 {"id":7753,"type":"edge","label":"item","outV":7751,"inVs":[7748],"document":7722}
 {"id":7754,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef process_chunk(self, chunk_text, document_id, chunk_id, bucket)\n```"}}}
 {"id":7755,"type":"edge","label":"hover","outV":7749,"inV":7754}
-{"id":7756,"type":"vertex","label":"range","start":{"line":193,"character":4},"end":{"line":193,"character":21}}
+{"id":7756,"type":"vertex","label":"range","start":{"line":204,"character":4},"end":{"line":204,"character":21}}
 {"id":7757,"type":"vertex","label":"resultSet"}
 {"id":7758,"type":"edge","label":"next","outV":7756,"inV":7757}
 {"id":7759,"type":"vertex","label":"definitionResult"}
@@ -7761,7 +7761,7 @@
 {"id":7761,"type":"edge","label":"item","outV":7759,"inVs":[7756],"document":7722}
 {"id":7762,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _extract_entities(self, text)\n```"}}}
 {"id":7763,"type":"edge","label":"hover","outV":7757,"inV":7762}
-{"id":7764,"type":"vertex","label":"range","start":{"line":221,"character":4},"end":{"line":221,"character":27}}
+{"id":7764,"type":"vertex","label":"range","start":{"line":232,"character":4},"end":{"line":232,"character":27}}
 {"id":7765,"type":"vertex","label":"resultSet"}
 {"id":7766,"type":"edge","label":"next","outV":7764,"inV":7765}
 {"id":7767,"type":"vertex","label":"definitionResult"}
@@ -7769,7 +7769,7 @@
 {"id":7769,"type":"edge","label":"item","outV":7767,"inVs":[7764],"document":7722}
 {"id":7770,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _financial_keyword_scan(self, text)\n```"}}}
 {"id":7771,"type":"edge","label":"hover","outV":7765,"inV":7770}
-{"id":7772,"type":"vertex","label":"range","start":{"line":232,"character":4},"end":{"line":232,"character":25}}
+{"id":7772,"type":"vertex","label":"range","start":{"line":243,"character":4},"end":{"line":243,"character":25}}
 {"id":7773,"type":"vertex","label":"resultSet"}
 {"id":7774,"type":"edge","label":"next","outV":7772,"inV":7773}
 {"id":7775,"type":"vertex","label":"definitionResult"}
@@ -7777,15 +7777,15 @@
 {"id":7777,"type":"edge","label":"item","outV":7775,"inVs":[7772],"document":7722}
 {"id":7778,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _ensure_document_node(self, document_id, bucket)\n```"}}}
 {"id":7779,"type":"edge","label":"hover","outV":7773,"inV":7778}
-{"id":7780,"type":"vertex","label":"range","start":{"line":262,"character":4},"end":{"line":262,"character":22}}
+{"id":7780,"type":"vertex","label":"range","start":{"line":273,"character":4},"end":{"line":273,"character":22}}
 {"id":7781,"type":"vertex","label":"resultSet"}
 {"id":7782,"type":"edge","label":"next","outV":7780,"inV":7781}
 {"id":7783,"type":"vertex","label":"definitionResult"}
 {"id":7784,"type":"edge","label":"definition","outV":7781,"inV":7783}
 {"id":7785,"type":"edge","label":"item","outV":7783,"inVs":[7780],"document":7722}
-{"id":7786,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _resolve_or_create(self, surface_form, node_type, bucket)\n```"}}}
+{"id":7786,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _resolve_or_create(self, surface_form, node_type, bucket, embedding)\n```"}}}
 {"id":7787,"type":"edge","label":"hover","outV":7781,"inV":7786}
-{"id":7788,"type":"vertex","label":"range","start":{"line":355,"character":4},"end":{"line":355,"character":16}}
+{"id":7788,"type":"vertex","label":"range","start":{"line":374,"character":4},"end":{"line":374,"character":16}}
 {"id":7789,"type":"vertex","label":"resultSet"}
 {"id":7790,"type":"edge","label":"next","outV":7788,"inV":7789}
 {"id":7791,"type":"vertex","label":"definitionResult"}
@@ -7793,7 +7793,7 @@
 {"id":7793,"type":"edge","label":"item","outV":7791,"inVs":[7788],"document":7722}
 {"id":7794,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _create_edge(self, source_id, target_id, edge_type, confidence, method, document_id, chunk_id)\n```"}}}
 {"id":7795,"type":"edge","label":"hover","outV":7789,"inV":7794}
-{"id":7796,"type":"vertex","label":"range","start":{"line":387,"character":4},"end":{"line":387,"character":26}}
+{"id":7796,"type":"vertex","label":"range","start":{"line":406,"character":4},"end":{"line":406,"character":26}}
 {"id":7797,"type":"vertex","label":"resultSet"}
 {"id":7798,"type":"edge","label":"next","outV":7796,"inV":7797}
 {"id":7799,"type":"vertex","label":"definitionResult"}
@@ -7801,7 +7801,7 @@
 {"id":7801,"type":"edge","label":"item","outV":7799,"inVs":[7796],"document":7722}
 {"id":7802,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _apply_financial_rules(self, entities, node_ids, document_id, chunk_id)\n```"}}}
 {"id":7803,"type":"edge","label":"hover","outV":7797,"inV":7802}
-{"id":7804,"type":"vertex","label":"range","start":{"line":421,"character":4},"end":{"line":421,"character":32}}
+{"id":7804,"type":"vertex","label":"range","start":{"line":440,"character":4},"end":{"line":440,"character":32}}
 {"id":7805,"type":"vertex","label":"resultSet"}
 {"id":7806,"type":"edge","label":"next","outV":7804,"inV":7805}
 {"id":7807,"type":"vertex","label":"definitionResult"}
@@ -13732,7 +13732,7 @@
 {"id":13732,"type":"edge","label":"item","outV":13730,"inVs":[13727],"document":13645}
 {"id":13733,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _graph_extract_document(document_id, chunks, bucket)\n```"}}}
 {"id":13734,"type":"edge","label":"hover","outV":13728,"inV":13733}
-{"id":13735,"type":"vertex","label":"range","start":{"line":758,"character":0},"end":{"line":758,"character":9}}
+{"id":13735,"type":"vertex","label":"range","start":{"line":764,"character":0},"end":{"line":764,"character":9}}
 {"id":13736,"type":"vertex","label":"resultSet"}
 {"id":13737,"type":"edge","label":"next","outV":13735,"inV":13736}
 {"id":13738,"type":"vertex","label":"definitionResult"}
@@ -13740,7 +13740,7 @@
 {"id":13740,"type":"edge","label":"item","outV":13738,"inVs":[13735],"document":13645}
 {"id":13741,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef ocr_stage(self, document_id)\n```"}}}
 {"id":13742,"type":"edge","label":"hover","outV":13736,"inV":13741}
-{"id":13743,"type":"vertex","label":"range","start":{"line":770,"character":0},"end":{"line":770,"character":11}}
+{"id":13743,"type":"vertex","label":"range","start":{"line":776,"character":0},"end":{"line":776,"character":11}}
 {"id":13744,"type":"vertex","label":"resultSet"}
 {"id":13745,"type":"edge","label":"next","outV":13743,"inV":13744}
 {"id":13746,"type":"vertex","label":"definitionResult"}
@@ -13748,7 +13748,7 @@
 {"id":13748,"type":"edge","label":"item","outV":13746,"inVs":[13743],"document":13645}
 {"id":13749,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef chunk_stage(self, document_id)\n```"}}}
 {"id":13750,"type":"edge","label":"hover","outV":13744,"inV":13749}
-{"id":13751,"type":"vertex","label":"range","start":{"line":782,"character":0},"end":{"line":782,"character":11}}
+{"id":13751,"type":"vertex","label":"range","start":{"line":788,"character":0},"end":{"line":788,"character":11}}
 {"id":13752,"type":"vertex","label":"resultSet"}
 {"id":13753,"type":"edge","label":"next","outV":13751,"inV":13752}
 {"id":13754,"type":"vertex","label":"definitionResult"}
@@ -13756,7 +13756,7 @@
 {"id":13756,"type":"edge","label":"item","outV":13754,"inVs":[13751],"document":13645}
 {"id":13757,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef embed_stage(self, document_id)\n```"}}}
 {"id":13758,"type":"edge","label":"hover","outV":13752,"inV":13757}
-{"id":13759,"type":"vertex","label":"range","start":{"line":794,"character":0},"end":{"line":794,"character":11}}
+{"id":13759,"type":"vertex","label":"range","start":{"line":800,"character":0},"end":{"line":800,"character":11}}
 {"id":13760,"type":"vertex","label":"resultSet"}
 {"id":13761,"type":"edge","label":"next","outV":13759,"inV":13760}
 {"id":13762,"type":"vertex","label":"definitionResult"}
@@ -13764,7 +13764,7 @@
 {"id":13764,"type":"edge","label":"item","outV":13762,"inVs":[13759],"document":13645}
 {"id":13765,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef index_stage(self, document_id)\n```"}}}
 {"id":13766,"type":"edge","label":"hover","outV":13760,"inV":13765}
-{"id":13767,"type":"vertex","label":"range","start":{"line":806,"character":0},"end":{"line":806,"character":13}}
+{"id":13767,"type":"vertex","label":"range","start":{"line":812,"character":0},"end":{"line":812,"character":13}}
 {"id":13768,"type":"vertex","label":"resultSet"}
 {"id":13769,"type":"edge","label":"next","outV":13767,"inV":13768}
 {"id":13770,"type":"vertex","label":"definitionResult"}
@@ -13772,7 +13772,7 @@
 {"id":13772,"type":"edge","label":"item","outV":13770,"inVs":[13767],"document":13645}
 {"id":13773,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef article_stage(self, document_id)\n```"}}}
 {"id":13774,"type":"edge","label":"hover","outV":13768,"inV":13773}
-{"id":13775,"type":"vertex","label":"range","start":{"line":818,"character":0},"end":{"line":818,"character":12}}
+{"id":13775,"type":"vertex","label":"range","start":{"line":824,"character":0},"end":{"line":824,"character":12}}
 {"id":13776,"type":"vertex","label":"resultSet"}
 {"id":13777,"type":"edge","label":"next","outV":13775,"inV":13776}
 {"id":13778,"type":"vertex","label":"definitionResult"}
@@ -13780,7 +13780,7 @@
 {"id":13780,"type":"edge","label":"item","outV":13778,"inVs":[13775],"document":13645}
 {"id":13781,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef entity_stage(self, document_id)\n```"}}}
 {"id":13782,"type":"edge","label":"hover","outV":13776,"inV":13781}
-{"id":13783,"type":"vertex","label":"range","start":{"line":822,"character":0},"end":{"line":822,"character":13}}
+{"id":13783,"type":"vertex","label":"range","start":{"line":828,"character":0},"end":{"line":828,"character":13}}
 {"id":13784,"type":"vertex","label":"resultSet"}
 {"id":13785,"type":"edge","label":"next","outV":13783,"inV":13784}
 {"id":13786,"type":"vertex","label":"definitionResult"}
@@ -13788,7 +13788,7 @@
 {"id":13788,"type":"edge","label":"item","outV":13786,"inVs":[13783],"document":13645}
 {"id":13789,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_finalize(document_id)\n```"}}}
 {"id":13790,"type":"edge","label":"hover","outV":13784,"inV":13789}
-{"id":13791,"type":"vertex","label":"range","start":{"line":850,"character":0},"end":{"line":850,"character":14}}
+{"id":13791,"type":"vertex","label":"range","start":{"line":856,"character":0},"end":{"line":856,"character":14}}
 {"id":13792,"type":"vertex","label":"resultSet"}
 {"id":13793,"type":"edge","label":"next","outV":13791,"inV":13792}
 {"id":13794,"type":"vertex","label":"definitionResult"}
@@ -13810,7 +13810,7 @@
 {"id":13810,"type":"vertex","label":"definitionResult"}
 {"id":13811,"type":"edge","label":"definition","outV":13808,"inV":13810}
 {"id":13812,"type":"edge","label":"item","outV":13810,"inVs":[13807],"document":13645}
-{"id":13813,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef embedding_fn(text)\n```"}}}
+{"id":13813,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef embedding_fn(texts)\n```"}}}
 {"id":13814,"type":"edge","label":"hover","outV":13808,"inV":13813}
 {"id":13815,"type":"edge","label":"contains","outV":13645,"inVs":[13647,13655,13663,13671,13679,13687,13695,13703,13711,13719,13727,13735,13743,13751,13759,13767,13775,13783,13791,13799,13807]}
 {"id":13816,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/report_tasks.py","languageId":"python"}

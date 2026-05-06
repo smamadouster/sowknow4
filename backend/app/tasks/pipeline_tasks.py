@@ -493,7 +493,7 @@ def _run_chunk(document_id: str) -> None:
 
 
 EMBED_CHUNK_CAP = int(os.getenv("EMBED_CHUNK_CAP", "64"))
-GRAPH_CHUNK_CAP = int(os.getenv("GRAPH_CHUNK_CAP", "20"))
+GRAPH_CHUNK_CAP = int(os.getenv("GRAPH_CHUNK_CAP", "5"))
 CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "5000"))
 
 
@@ -544,7 +544,7 @@ def _run_embed(document_id: str) -> None:
                 "quarantined to prevent embed queue starvation"
             )
 
-        batch_size = 8
+        batch_size = int(os.getenv("EMBED_BATCH_SIZE", "32"))
         total_embedded = 0
 
         while True:
@@ -710,9 +710,15 @@ async def _graph_extract_document(document_id: str, chunks, bucket: str) -> None
 
     pool = await get_graph_pool()
 
-    async def embedding_fn(text: str) -> list[float]:
+    async def embedding_fn(texts: str | list[str]) -> list[float] | list[list[float]]:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, embedding_service.encode_single, text)
+        if isinstance(texts, list):
+            if not texts:
+                return []
+            return await loop.run_in_executor(
+                None, lambda: embedding_service.encode(texts=texts, batch_size=32)
+            )
+        return await loop.run_in_executor(None, embedding_service.encode_single, texts)
 
     extractor = EntityExtractor(
         pool=pool,

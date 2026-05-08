@@ -110,6 +110,14 @@ class ArticleGenerationService:
             {"role": "user", "content": user_prompt},
         ]
 
+        def _is_retryable_error(e: Exception) -> bool:
+            import httpx
+            if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
+                return True
+            if isinstance(e, httpx.HTTPStatusError):
+                return e.response.status_code in (429, 502, 503, 504)
+            return False
+
         # Collect full response from streaming generator
         response_text = ""
         try:
@@ -123,6 +131,9 @@ class ArticleGenerationService:
                 if chunk and not chunk.startswith("__USAGE__"):
                     response_text += chunk
         except Exception as e:
+            if _is_retryable_error(e):
+                # Propagate transient errors so the pipeline stage can retry
+                raise
             logger.error(f"LLM call failed for article extraction: {e}")
             return []
 

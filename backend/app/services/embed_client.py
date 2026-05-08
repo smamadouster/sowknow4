@@ -13,9 +13,9 @@ When the embed server is unreachable the client raises RuntimeError so callers
 can retry or fail fast rather than silently poisoning the index with zero vectors.
 """
 
-import itertools
 import logging
 import os
+import random
 import time
 
 import httpx
@@ -44,12 +44,16 @@ def _base_urls() -> list[str]:
     return [u.strip() for u in raw.split(",") if u.strip()]
 
 
-# Round-robin URL picker — thread-safe because itertools.cycle is atomic in CPython
-_url_cycle = itertools.cycle(_base_urls())
+def _pick_url(attempt: int = 1) -> str:
+    """Pick a server URL, rotating on each attempt for automatic failover.
 
-
-def _base_url() -> str:
-    return next(_url_cycle)
+    The first attempt uses random selection so load is spread across all
+    servers instead of always hammering the first one.
+    """
+    urls = _base_urls()
+    if attempt == 1:
+        return random.choice(urls)
+    return urls[(attempt - 1) % len(urls)]
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -93,8 +97,9 @@ class EmbedClient:
 
     @property
     def can_embed(self) -> bool:
-        """Return True when the embed server is reachable and healthy (TTL-cached 30s).
+        """Return True when at least one embed server is reachable and healthy (TTL-cached 30s).
 
+        Checks all configured servers and returns True on the first healthy response.
         Respects the circuit breaker: if the circuit is open we skip the network
         call and fast-fail, preventing health-check storms against an overloaded
         embed server.
@@ -106,18 +111,23 @@ class EmbedClient:
         now = time.monotonic()
         if self._health_ok is not None and (now - self._health_checked_at) < _HEALTH_CACHE_TTL:
             return self._health_ok
-        try:
-            resp = self._health_client.get(f"{_base_url()}/health")
-            self._health_ok = resp.status_code == 200 and resp.json().get("status") == "healthy"
-            if self._health_ok:
-                self._record_success()
-            else:
-                self._record_failure()
-        except Exception:
-            self._health_ok = False
-            self._record_failure()
-        self._health_checked_at = time.monotonic()
-        return self._health_ok
+
+        urls = _base_urls()
+        for url in urls:
+            try:
+                resp = self._health_client.get(f"{url}/health")
+                if resp.status_code == 200 and resp.json().get("status") == "healthy":
+                    self._health_ok = True
+                    self._record_success()
+                    self._health_checked_at = now
+                    return True
+            except Exception:
+                pass
+
+        self._health_ok = False
+        self._record_failure()
+        self._health_checked_at = now
+        return False
 
     def _clear_health_cache(self) -> None:
         """Force next can_embed call to hit the server again."""
@@ -157,13 +167,18 @@ class EmbedClient:
             logger.info("EmbedClient circuit breaker RESET after success")
 
     def _post_with_retry(self, endpoint: str, payload: dict, timeout: float) -> dict | list:
-        """POST to embed server with transient-failure retry, exponential backoff,
-        and circuit-breaker protection."""
+        """POST to embed server with per-attempt failover, transient-failure retry,
+        exponential backoff, and circuit-breaker protection.
+
+        On each retry we rotate to the next configured server so a slow/overloaded
+        server doesn't block all requests.
+        """
         self._circuit_breaker_check()
-        url = f"{_base_url()}{endpoint}"
+        urls = _base_urls()
         last_exc: Exception | None = None
 
         for attempt in range(1, _MAX_RETRIES + 1):
+            url = f"{_pick_url(attempt)}{endpoint}"
             try:
                 resp = self._client.post(url, json=payload)
                 resp.raise_for_status()

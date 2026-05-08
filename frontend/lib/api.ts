@@ -927,6 +927,15 @@ class ApiClient {
     }>('/v1/admin/pipeline/status');
   }
 
+  async getPipelineHealth() {
+    return this.request<{
+      status: 'green' | 'yellow' | 'red';
+      message: string;
+      total_queue_depth: number;
+      queues: Record<string, { depth: number; max: number | null }>;
+    }>('/v1/status/pipeline-health');
+  }
+
   async retryFailedPipelineStages(stage?: string, limit: number = 100) {
     const params = new URLSearchParams();
     if (stage) params.set('stage', stage);

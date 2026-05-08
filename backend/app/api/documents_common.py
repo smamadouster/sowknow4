@@ -7,6 +7,7 @@ Extracted from documents.py to enable sub-router splitting without circular impo
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import uuid
 from datetime import UTC, datetime
@@ -27,11 +28,11 @@ BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 
 # Allowed file types and size limits
 ALLOWED_EXTENSIONS = {
-    ".pdf", ".docx", ".doc", ".pptx", ".ppsx", ".ppt", ".xlsx", ".xls",
+    ".pdf", ".docx", ".doc", ".pptx", ".ppsx", ".ppt", ".xlsx", ".xls", ".xlt", ".xltx",
     ".txt", ".md", ".json", ".jpg", ".jpeg", ".png", ".gif", ".bmp",
     ".heic", ".mp4", ".avi", ".mov", ".mkv", ".mp3", ".wav", ".ogg",
     ".flac", ".aac", ".wma", ".m4a", ".webm", ".epub", ".csv", ".xml",
-    ".html", ".htm", ".tiff", ".tif", ".rtf", ".zip", ".xmind", ".msg",
+    ".html", ".htm", ".tiff", ".tif", ".rtf", ".zip", ".xmind", ".msg", ".oft",
 }
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 MAX_BATCH_SIZE = 500 * 1024 * 1024  # 500MB
@@ -80,6 +81,10 @@ def get_mime_type(filename: str, content: bytes = b"") -> str:
         ".pdf": "application/pdf",
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".doc": "application/msword",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".xlt": "application/vnd.ms-excel",
+        ".xltx": "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
         ".txt": "text/plain",
         ".md": "text/markdown",
         ".html": "text/html",
@@ -110,6 +115,8 @@ def get_mime_type(filename: str, content: bytes = b"") -> str:
         ".xml": "application/xml",
         ".zip": "application/zip",
         ".rtf": "application/rtf",
+        ".msg": "application/vnd.ms-outlook",
+        ".oft": "application/vnd.ms-outlook",
     }
     if mime_map.get(ext):
         return mime_map[ext]

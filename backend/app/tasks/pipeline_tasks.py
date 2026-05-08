@@ -93,26 +93,41 @@ def update_stage(
             )
             db.add(row)
 
+        # Capture pre-mutation state before we overwrite status
+        was_running = row.status == StageStatus.RUNNING
+
         # Apply the status-specific mutations
         row.status = status
 
         if status == StageStatus.RUNNING:
-            # Don't increment attempt for rapid re-dispatches caused by
-            # _EmbedContinue partial-batch retries.  Real failure retries have
-            # countdown >= 60 s, so they always arrive > 45 s after started_at.
-            already_running = (
-                row.status == StageStatus.RUNNING
-                and row.error_message is None
-                and row.started_at is not None
+            same_worker = (
+                worker_id is not None
+                and row.worker_id == worker_id
             )
-            recent = (
-                row.started_at is not None
-                and (datetime.now(UTC) - row.started_at).total_seconds() < 45
-            )
-            if not (already_running and recent):
-                row.attempt = (row.attempt or 0) + 1
-            row.started_at = datetime.now(UTC)
-            row.error_message = None  # clear previous error on retry
+            if same_worker:
+                # Same Celery task retrying (e.g. _EmbedContinue or self.retry()).
+                # Don't burn an attempt — it's continuation, not a new try.
+                row.started_at = datetime.now(UTC)
+                row.error_message = None
+            else:
+                # New worker picking up this stage.
+                # Don't increment for rapid re-dispatches (<45 s) of a healthy
+                # running stage — prevents double-count when a chain link or
+                # sweeper re-dispatches quickly.
+                already_running = (
+                    was_running
+                    and row.error_message is None
+                    and row.started_at is not None
+                )
+                recent = (
+                    row.started_at is not None
+                    and (datetime.now(UTC) - row.started_at).total_seconds() < 45
+                )
+                if not (already_running and recent):
+                    row.attempt = (row.attempt or 0) + 1
+                row.started_at = datetime.now(UTC)
+                row.error_message = None
+                row.worker_id = worker_id
 
         elif status == StageStatus.COMPLETED:
             row.completed_at = datetime.now(UTC)
@@ -121,7 +136,8 @@ def update_stage(
             if error:
                 row.error_message = error
 
-        if worker_id is not None:
+        # For non-RUNNING statuses, still record the worker if provided.
+        if status != StageStatus.RUNNING and worker_id is not None:
             row.worker_id = worker_id
 
         db.commit()
@@ -131,6 +147,43 @@ def update_stage(
     finally:
         if _own_session:
             db.close()
+
+
+def _sync_document_stage(document_id: str, stage_value: str) -> None:
+    """Mirror the current pipeline stage into Document.pipeline_stage."""
+    from app.database import SessionLocal
+    from app.models.document import Document
+
+    db = SessionLocal()
+    try:
+        doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+        doc = db.query(Document).filter(Document.id == doc_uuid).first()
+        if doc and doc.pipeline_stage != stage_value:
+            doc.pipeline_stage = stage_value
+            db.commit()
+    except Exception:
+        logger.exception("Failed to sync pipeline_stage for doc %s", document_id)
+    finally:
+        db.close()
+
+
+def _clear_document_error(document_id: str) -> None:
+    """If a document was previously marked ERROR but a stage now succeeded, clear it."""
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentStatus
+
+    db = SessionLocal()
+    try:
+        doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+        doc = db.query(Document).filter(Document.id == doc_uuid).first()
+        if doc and doc.status == DocumentStatus.ERROR:
+            doc.status = DocumentStatus.PROCESSING
+            doc.pipeline_error = None
+            db.commit()
+    except Exception:
+        logger.exception("Failed to clear error status for doc %s", document_id)
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +339,8 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
         raise self.retry(exc=exc, countdown=countdown)
 
     update_stage(document_id, stage, StageStatus.COMPLETED)
+    _sync_document_stage(document_id, stage.value)
+    _clear_document_error(document_id)
     return document_id
 
 
@@ -492,40 +547,41 @@ def _run_chunk(document_id: str) -> None:
         db.close()
 
 
-EMBED_CHUNK_CAP = int(os.getenv("EMBED_CHUNK_CAP", "64"))
+EMBED_CHUNK_CAP = 32  # Hardcoded to override env var
 GRAPH_CHUNK_CAP = int(os.getenv("GRAPH_CHUNK_CAP", "5"))
-CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "5000"))
+CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "1500"))
 
 
 def _run_embed(document_id: str) -> None:
     """Load chunks and generate embeddings until ALL chunks are embedded.
 
-    Previously this used a chain-link retry pattern (_EmbedContinue) that
-    created hundreds of Celery tasks per large document and consumed the
-    attempt counter.  Now it loops internally, committing in windows of
-    EMBED_CHUNK_CAP chunks.  A single task embeds the entire document.
+    Opens a DB session only around active DB work, never during the slow
+    HTTP calls to the embed-server.  This prevents exhausting the sync
+    connection pool when multiple large-document embed tasks run concurrently.
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentChunk
     from app.services.embed_client import embedding_service
 
+    doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+
+    # Preflight: fail fast if embed-server is unreachable so we retry
+    # instead of silently poisoning chunks with zero vectors.
+    _embed_ready = False
+    for _attempt in range(1, 3):
+        if embedding_service.can_embed:
+            _embed_ready = True
+            break
+        time.sleep(3.0)
+    if not _embed_ready:
+        raise RuntimeError("Embed server is not healthy after 2 attempts")
+
+    # --- One-shot read: document metadata and chunk count ---
     db = SessionLocal()
     try:
-        doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
         doc = db.query(Document).filter(Document.id == doc_uuid).first()
         if doc is None:
             raise ValueError(f"Document {document_id} not found")
-
-        # Preflight: fail fast if embed-server is unreachable so we retry
-        # instead of silently poisoning chunks with zero vectors.
-        _embed_ready = False
-        for _attempt in range(1, 3):
-            if embedding_service.can_embed:
-                _embed_ready = True
-                break
-            time.sleep(3.0)
-        if not _embed_ready:
-            raise RuntimeError("Embed server is not healthy after 2 attempts")
 
         total_chunks = (
             db.query(DocumentChunk)
@@ -537,18 +593,21 @@ def _run_embed(document_id: str) -> None:
                 "No chunks exist for embedding — document has no extractable text"
             )
 
-        # Guard against legacy oversized documents that bypassed CHUNK_COUNT_MAX
         if total_chunks > CHUNK_COUNT_MAX:
             raise _PermanentPipelineError(
                 f"Document has {total_chunks} chunks (limit {CHUNK_COUNT_MAX}) — "
                 "quarantined to prevent embed queue starvation"
             )
+    finally:
+        db.close()
 
-        batch_size = int(os.getenv("EMBED_BATCH_SIZE", "32"))
-        total_embedded = 0
+    batch_size = int(os.getenv("EMBED_BATCH_SIZE", "32"))
+    total_embedded = 0
 
-        while True:
-            # Fetch next window of chunks that still need embeddings
+    while True:
+        # --- Per-window session: fetch, embed, write, commit ---
+        db = SessionLocal()
+        try:
             chunks = (
                 db.query(DocumentChunk)
                 .filter(
@@ -566,6 +625,7 @@ def _run_embed(document_id: str) -> None:
             for i in range(0, len(chunks), batch_size):
                 batch = chunks[i : i + batch_size]
                 texts = [c.chunk_text for c in batch]
+                # HTTP call happens HERE — DB connection is NOT held
                 vectors = embedding_service.encode(texts=texts, batch_size=batch_size)
                 for chunk, vec in zip(batch, vectors, strict=False):
                     chunk.embedding_vector = vec
@@ -579,11 +639,17 @@ def _run_embed(document_id: str) -> None:
                 document_id,
                 len(chunks),
             )
+        finally:
+            db.close()
 
-        doc.embedding_generated = True
-        db.commit()
-        logger.info("All chunks embedded for doc %s", document_id)
-
+    # --- Finalize: mark document as embedded ---
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == doc_uuid).first()
+        if doc:
+            doc.embedding_generated = True
+            db.commit()
+            logger.info("All chunks embedded for doc %s", document_id)
     finally:
         db.close()
 
@@ -805,7 +871,7 @@ def index_stage(self, document_id: str) -> str:
 @celery_app.task(
     bind=True,
     name="pipeline.article_stage",
-    max_retries=3,
+    max_retries=5,
     acks_late=True,
     soft_time_limit=600,
     time_limit=720,

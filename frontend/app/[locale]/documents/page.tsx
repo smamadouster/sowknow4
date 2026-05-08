@@ -68,6 +68,8 @@ export default function DocumentsPage() {
   const [uploadBucket, setUploadBucket] = useState<'public' | 'confidential'>('public');
   const isMobile = useIsMobile();
   const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [pipelineHealth, setPipelineHealth] = useState<'green' | 'yellow' | 'red' | null>(null);
+  const [pipelineMessage, setPipelineMessage] = useState<string>('');
 
   const pageSize = 50;
 
@@ -147,6 +149,24 @@ export default function DocumentsPage() {
 
     return () => clearInterval(interval);
   }, [documents, refreshDocuments]);
+
+  // Poll pipeline health for traffic-light indicator
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await api.getPipelineHealth();
+        if (res.status === 200 && res.data) {
+          setPipelineHealth(res.data.status);
+          setPipelineMessage(res.data.message);
+        }
+      } catch (e) {
+        // silently ignore — don't spam users if endpoint is unavailable
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSort = (col: typeof sortBy) => {
     if (sortBy === col) {
@@ -511,6 +531,69 @@ export default function DocumentsPage() {
 
           {/* Always-present dropzone input (used by FAB on mobile via openDropzone()) */}
           <input {...getInputProps()} className="sr-only" />
+
+          {/* Pipeline traffic light — shows system capacity before uploading */}
+          {pipelineHealth && (
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all"
+              style={{
+                backgroundColor:
+                  pipelineHealth === 'green'
+                    ? 'rgba(34,197,94,0.10)'
+                    : pipelineHealth === 'yellow'
+                      ? 'rgba(234,179,8,0.10)'
+                      : 'rgba(239,68,68,0.10)',
+                borderColor:
+                  pipelineHealth === 'green'
+                    ? 'rgba(34,197,94,0.25)'
+                    : pipelineHealth === 'yellow'
+                      ? 'rgba(234,179,8,0.25)'
+                      : 'rgba(239,68,68,0.25)',
+                color:
+                  pipelineHealth === 'green'
+                    ? '#4ade80'
+                    : pipelineHealth === 'yellow'
+                      ? '#facc15'
+                      : '#f87171',
+              }}
+              title={pipelineMessage}
+            >
+              <span
+                className="relative flex h-2.5 w-2.5"
+                aria-hidden="true"
+              >
+                <span
+                  className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                  style={{
+                    backgroundColor:
+                      pipelineHealth === 'green'
+                        ? '#22c55e'
+                        : pipelineHealth === 'yellow'
+                          ? '#eab308'
+                          : '#ef4444',
+                  }}
+                />
+                <span
+                  className="relative inline-flex rounded-full h-2.5 w-2.5"
+                  style={{
+                    backgroundColor:
+                      pipelineHealth === 'green'
+                        ? '#22c55e'
+                        : pipelineHealth === 'yellow'
+                          ? '#eab308'
+                          : '#ef4444',
+                  }}
+                />
+              </span>
+              <span className="hidden lg:inline">
+                {pipelineHealth === 'green'
+                  ? 'System OK'
+                  : pipelineHealth === 'yellow'
+                    ? 'Slow Down'
+                    : 'Stop Uploads'}
+              </span>
+            </div>
+          )}
 
           {/* Upload button — hidden on mobile (FAB handles it) */}
           <div {...getRootProps()} className="hidden md:block cursor-pointer">

@@ -42,7 +42,7 @@ STAGE_RETRY_CONFIG = {
     StageEnum.CHUNKED: {"max_attempts": 2, "backoff": [15, 30], "soft_timeout": 120, "hard_timeout": 180},
     StageEnum.EMBEDDED: {"max_attempts": 6, "backoff": [60, 120, 300], "soft_timeout": 1800, "hard_timeout": 1980},
     StageEnum.INDEXED: {"max_attempts": 2, "backoff": [15, 30], "soft_timeout": 120, "hard_timeout": 180},
-    StageEnum.ARTICLES: {"max_attempts": 3, "backoff": [60, 120, 300], "soft_timeout": 600, "hard_timeout": 720},
+    StageEnum.ARTICLES: {"max_attempts": 6, "backoff": [60, 120, 300, 600, 900, 1200], "soft_timeout": 600, "hard_timeout": 720},
     StageEnum.ENTITIES: {"max_attempts": 3, "backoff": [60, 120, 300], "soft_timeout": 600, "hard_timeout": 720},
 }
 

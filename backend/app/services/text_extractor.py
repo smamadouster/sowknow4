@@ -23,6 +23,8 @@ class TextExtractor:
             ".ppt": self._extract_from_ppt,
             ".xlsx": self._extract_from_xlsx,
             ".xls": self._extract_from_xls,
+            ".xlt": self._extract_from_xls,
+            ".xltx": self._extract_from_xlsx,
             ".txt": self._extract_from_txt,
             ".md": self._extract_from_txt,
             ".json": self._extract_from_json,
@@ -35,6 +37,7 @@ class TextExtractor:
             ".zip": self._extract_from_zip,
             ".xmind": self._extract_from_zip,
             ".msg": self._extract_from_msg,
+            ".oft": self._extract_from_msg,
         }
 
     def get_file_extension(self, filename: str) -> str:

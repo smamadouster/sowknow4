@@ -4,11 +4,71 @@ API status endpoint.
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.deps import get_current_user
+from app.models.user import User
 from app.services.llm_gateway import llm_gateway
 
 router = APIRouter(prefix="/status", tags=["status"])
+
+
+@router.get("/pipeline-health")
+async def pipeline_health(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """
+    Public pipeline health indicator for upload throttling.
+
+    Returns RED/YELLOW/GREEN so users know when to stop uploading.
+    """
+    try:
+        import redis as _redis
+        from app.core.redis_url import safe_redis_url
+        from app.tasks.pipeline_orchestrator import MAX_QUEUE_DEPTH
+
+        r = _redis.from_url(safe_redis_url(), socket_timeout=5)
+        queues = {}
+        total_depth = 0
+        for queue_name in [
+            "pipeline.ocr",
+            "pipeline.chunk",
+            "pipeline.embed",
+            "pipeline.index",
+            "pipeline.articles",
+            "pipeline.entities",
+        ]:
+            depth = r.llen(queue_name)
+            queues[queue_name] = {
+                "depth": depth,
+                "max": MAX_QUEUE_DEPTH.get(queue_name),
+            }
+            total_depth += depth
+
+        embed_depth = queues.get("pipeline.embed", {}).get("depth", 0)
+
+        # Traffic-light logic tuned for CPU-only embed VPS
+        if total_depth > 700 or embed_depth > 300:
+            status = "red"
+            message = "Pipeline overloaded — stop uploading until queue drains"
+        elif total_depth > 300 or embed_depth > 150:
+            status = "yellow"
+            message = "Pipeline busy — slow down uploads"
+        else:
+            status = "green"
+            message = "Pipeline healthy — upload freely"
+
+        return {
+            "status": status,
+            "message": message,
+            "total_queue_depth": total_depth,
+            "queues": queues,
+        }
+    except Exception as exc:
+        return {
+            "status": "yellow",
+            "message": f"Could not read pipeline status: {exc}",
+            "total_queue_depth": -1,
+            "queues": {},
+        }
 
 
 @router.get("")

@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 @shared_task(
     bind=True,
     name="app.tasks.article_tasks.generate_articles_for_document",
-    autoretry_for=(httpx.TimeoutException, httpx.ConnectError),
+    autoretry_for=(httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError),
     max_retries=5,
     retry_backoff=True,
-    retry_backoff_max=300,
+    retry_backoff_max=600,
     soft_time_limit=600,
     time_limit=660,
 )

@@ -53,9 +53,10 @@ celery_app = Celery(
 # Celery configuration
 # ---------------------------------------------------------------------------
 
-# visibility_timeout must be > task_time_limit to prevent premature re-delivery
-# Defaults: visibility_timeout = 7200 (2h), task_time_limit = 600 (10min) → 7200 > 600 ✓
-visibility_timeout = int(os.getenv("CELERY_VISIBILITY_TIMEOUT", "7200"))  # 2 hours
+# visibility_timeout must be STRICTLY GREATER than the longest task time_limit
+# to prevent Redis from re-delivering a task at the exact moment Celery kills it.
+# Max embed time_limit = 7200s (2h) for very large docs → visibility_timeout = 9000s (2.5h)
+visibility_timeout = int(os.getenv("CELERY_VISIBILITY_TIMEOUT", "9000"))  # 2.5 hours
 task_time_limit = int(os.getenv("CELERY_TASK_TIME_LIMIT", "600"))  # 10 minutes
 _visibility_timeout = visibility_timeout
 _task_time_limit = task_time_limit

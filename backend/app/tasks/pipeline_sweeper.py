@@ -136,6 +136,7 @@ def pipeline_sweeper() -> dict:
                     if doc:
                         error_text = ps.error_message
                         doc.pipeline_error = error_text[:500]
+                        doc.pipeline_stage = "failed"
                         meta = doc.document_metadata or {}
                         meta["processing_error"] = error_text[:500]
                         meta["last_error_at"] = datetime.now(UTC).isoformat()
@@ -161,6 +162,7 @@ def pipeline_sweeper() -> dict:
                     doc = db.query(Document).filter(Document.id == ps.document_id).first()
                     if doc:
                         doc.status = DocumentStatus.ERROR
+                        doc.pipeline_stage = "failed"
                         doc.pipeline_error = ps.error_message[:500]
                         meta = doc.document_metadata or {}
                         meta["processing_error"] = ps.error_message[:500]
@@ -241,6 +243,17 @@ def pipeline_sweeper() -> dict:
         for i, completed_stage in enumerate(stages[:-1]):
             next_stage = stages[i + 1]
             if next_stage not in _DISPATCHABLE_STAGES:
+                continue
+
+            # CRITICAL: skip missing-row creation for embed/chunk when embed
+            # backpressure is active.  Creating the row and then failing to
+            # dispatch leaves a PENDING row that the next sweeper run will
+            # treat as "stalled" and re-dispatch, causing an infinite loop.
+            if embed_backpressure and next_stage in (StageEnum.CHUNKED, StageEnum.EMBEDDED):
+                logger.info(
+                    "Sweeper skipping missing-intermediate %s creation due to embed backpressure",
+                    next_stage.name,
+                )
                 continue
 
             NextAlias = aliased(PipelineStage)

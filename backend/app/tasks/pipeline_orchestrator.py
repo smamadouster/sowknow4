@@ -1,5 +1,6 @@
 """Pipeline orchestrator — builds and dispatches Celery chains with backpressure."""
 import logging
+import uuid
 
 import redis
 from celery import chain
@@ -28,7 +29,7 @@ MAX_QUEUE_DEPTH = {
 
 # Global safety limit: if total pipeline queue depth exceeds this, stop all dispatching.
 # Prevents system-wide queue flooding during batch uploads or recovery from outage.
-MAX_TOTAL_QUEUE_DEPTH = 800
+MAX_TOTAL_QUEUE_DEPTH = 1000
 
 _PIPELINE_QUEUES = ["pipeline.embed", "pipeline.ocr", "pipeline.chunk", "pipeline.index",
                     "pipeline.articles", "pipeline.entities"]
@@ -242,6 +243,28 @@ def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -
         )
         return "inflight"
 
+    # Don't dispatch a document that is globally in ERROR unless someone
+    # explicitly cleared its pipeline stages (indicating a manual retry).
+    try:
+        from app.database import SessionLocal
+        from app.models.document import Document, DocumentStatus
+
+        db_check = SessionLocal()
+        try:
+            doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+            doc = db_check.query(Document).filter(Document.id == doc_uuid).first()
+            if doc and doc.status == DocumentStatus.ERROR:
+                logger.warning(
+                    "Refusing to dispatch document %s — status is ERROR. "
+                    "Clear status manually before retrying.",
+                    document_id,
+                )
+                return "error: document status is ERROR"
+        finally:
+            db_check.close()
+    except Exception:
+        logger.exception("Error checking document status for dispatch %s", document_id)
+
     pipeline = _build_chain(document_id, from_stage)
     if pipeline is None:
         logger.warning(f"No tasks to dispatch for document {document_id} from stage {from_stage}")
@@ -266,6 +289,24 @@ def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -
             db.close()
 
     pipeline.apply_async()
+
+    # Keep Document.pipeline_stage in sync so the UI and status API don't lie
+    try:
+        from app.database import SessionLocal
+        from app.models.document import Document
+
+        db_sync = SessionLocal()
+        try:
+            doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+            doc = db_sync.query(Document).filter(Document.id == doc_uuid).first()
+            if doc and doc.pipeline_stage != from_stage.value:
+                doc.pipeline_stage = from_stage.value
+                db_sync.commit()
+        finally:
+            db_sync.close()
+    except Exception:
+        logger.exception("Failed to sync pipeline_stage in dispatch for doc %s", document_id)
+
     logger.info(f"Pipeline chain dispatched for document {document_id} from stage {from_stage.name}")
     return "dispatched"
 

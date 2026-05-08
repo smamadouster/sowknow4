@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +246,12 @@ class OpenRouterService:
             logger.warning(f"Cost ceiling check failed, allowing call: {e}")
             return True
 
+    @retry(
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
+        reraise=True,
+    )
     async def chat_completion(
         self,
         messages: list[dict[str, str]],

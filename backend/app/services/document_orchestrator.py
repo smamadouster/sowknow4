@@ -8,6 +8,7 @@ reducing the API router's responsibility to HTTP concerns only
 This is Step 1 in decoupling the 1,441-line documents.py god-router.
 """
 
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -32,10 +33,12 @@ logger = logging.getLogger(__name__)
 
 # File upload constraints
 ALLOWED_EXTENSIONS = {
-    ".pdf", ".docx", ".txt", ".md", ".html", ".epub",
-    ".jpg", ".jpeg", ".png", ".webp", ".tiff",
-    ".mp3", ".wav", ".ogg", ".webm", ".m4a", ".flac", ".aac",
+    ".pdf", ".docx", ".doc", ".pptx", ".ppsx", ".ppt", ".xlsx", ".xls", ".xlt", ".xltx",
+    ".txt", ".md", ".json", ".csv", ".xml", ".html", ".htm", ".epub",
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif", ".heic",
+    ".mp3", ".wav", ".ogg", ".webm", ".m4a", ".flac", ".aac", ".wma",
     ".mp4", ".mov", ".avi", ".mkv",
+    ".rtf", ".zip", ".xmind", ".msg", ".oft",
 }
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 
@@ -51,15 +54,31 @@ def get_mime_type(filename: str, content: bytes = b"") -> str:
     mime_map = {
         ".pdf": "application/pdf",
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc": "application/msword",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".ppsx": "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+        ".ppt": "application/vnd.ms-powerpoint",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".xlt": "application/vnd.ms-excel",
+        ".xltx": "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
         ".txt": "text/plain",
         ".md": "text/markdown",
+        ".json": "application/json",
+        ".csv": "text/csv",
+        ".xml": "application/xml",
         ".html": "text/html",
+        ".htm": "text/html",
         ".epub": "application/epub+zip",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".png": "image/png",
+        ".gif": "image/gif",
+        ".bmp": "image/bmp",
         ".webp": "image/webp",
         ".tiff": "image/tiff",
+        ".tif": "image/tiff",
+        ".heic": "image/heic",
         ".mp3": "audio/mpeg",
         ".wav": "audio/wav",
         ".ogg": "audio/ogg",
@@ -67,10 +86,16 @@ def get_mime_type(filename: str, content: bytes = b"") -> str:
         ".m4a": "audio/mp4",
         ".flac": "audio/flac",
         ".aac": "audio/aac",
+        ".wma": "audio/x-ms-wma",
         ".mp4": "video/mp4",
         ".mov": "video/quicktime",
         ".avi": "video/x-msvideo",
         ".mkv": "video/x-matroska",
+        ".rtf": "application/rtf",
+        ".zip": "application/zip",
+        ".xmind": "application/zip",
+        ".msg": "application/vnd.ms-outlook",
+        ".oft": "application/vnd.ms-outlook",
     }
     return mime_map.get(ext, "application/octet-stream")
 
@@ -306,7 +331,7 @@ class DocumentOrchestrator:
             action=AuditAction.CONFIDENTIAL_UPLOADED,
             resource_type="document",
             resource_id=str(document.id),
-            details={"filename": document.filename, "original_filename": original_filename},
+            details=json.dumps({"filename": document.filename, "original_filename": original_filename}),
             created_at=datetime.now(UTC),
         )
         db.add(audit)

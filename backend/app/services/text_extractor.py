@@ -220,39 +220,81 @@ class TextExtractor:
         Rows are batched into blocks of ~50 rows so the chunking service can
         create proper 512-token chunks instead of one chunk per row (which
         caused 40k+ chunks from a single spreadsheet).
+
+        Safety bounds:
+        - Max 20 visible sheets (skip hidden/very-hidden)
+        - Max 5,000 rows per sheet
+        - Max 500,000 characters total text (truncate with notice)
+        - Skip rows where all cells are empty/whitespace
         """
         try:
             from openpyxl import load_workbook
 
+            _MAX_SHEETS = 20
+            _MAX_ROWS_PER_SHEET = 5000
+            _MAX_TOTAL_CHARS = 500_000
+            _ROW_BATCH_SIZE = 50
+
             wb = load_workbook(file_path, read_only=True)
             text_parts = []
-            sheet_count = len(wb.sheetnames)
-            _ROW_BATCH_SIZE = 50  # keep under chunking window
+            sheets_processed = 0
+            total_chars = 0
+            truncated = False
 
             for sheet_name in wb.sheetnames:
+                if sheets_processed >= _MAX_SHEETS:
+                    break
+
                 sheet = wb[sheet_name]
+                # Skip hidden/very-hidden sheets
+                if sheet.sheet_state != "visible":
+                    continue
+
+                sheets_processed += 1
                 sheet_text_parts = [f"[Sheet: {sheet_name}]"]
                 batch_rows: list[str] = []
+                row_count = 0
 
                 for row in sheet.iter_rows(values_only=True):
+                    row_count += 1
+                    if row_count > _MAX_ROWS_PER_SHEET:
+                        sheet_text_parts.append("[... rows truncated at 5000 ...]")
+                        break
+
+                    # Skip rows where all cells are None or whitespace-only
+                    if not any(cell is not None and str(cell).strip() for cell in row):
+                        continue
+
                     row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
-                    empty_row = " | " * (len(row) - 1)
-                    if row_text.strip() and row_text != empty_row:
-                        batch_rows.append(row_text)
+                    batch_rows.append(row_text)
 
                     if len(batch_rows) >= _ROW_BATCH_SIZE:
-                        sheet_text_parts.append("\n".join(batch_rows))
+                        batch_text = "\n".join(batch_rows)
+                        if total_chars + len(batch_text) > _MAX_TOTAL_CHARS:
+                            truncated = True
+                            break
+                        sheet_text_parts.append(batch_text)
+                        total_chars += len(batch_text) + 2  # +2 for \n\n
                         batch_rows = []
 
-                if batch_rows:
-                    sheet_text_parts.append("\n".join(batch_rows))
+                if not truncated and batch_rows:
+                    batch_text = "\n".join(batch_rows)
+                    if total_chars + len(batch_text) <= _MAX_TOTAL_CHARS:
+                        sheet_text_parts.append(batch_text)
+                        total_chars += len(batch_text) + 2
+                    else:
+                        truncated = True
 
                 if len(sheet_text_parts) > 1:
                     text_parts.append("\n\n".join(sheet_text_parts))
 
+                if truncated:
+                    text_parts.append("[... document truncated at 500,000 characters ...]")
+                    break
+
             return {
                 "text": "\n\n".join(text_parts),
-                "pages": sheet_count,
+                "pages": sheets_processed,
                 "source": "openpyxl",
             }
 
@@ -261,13 +303,82 @@ class TextExtractor:
             return {"text": "", "error": str(e), "pages": 0}
 
     async def _extract_from_xls(self, file_path: str) -> dict[str, Any]:
-        """Extract text from legacy XLS file"""
-        return {
-            "text": "",
-            "error": "Legacy XLS files require xlrd library",
-            "pages": 0,
-            "source": "error",
-        }
+        """Extract text from legacy XLS file using xlrd.
+
+        Uses the same safety bounds as XLSX to prevent monster documents.
+        """
+        try:
+            import xlrd
+
+            _MAX_SHEETS = 20
+            _MAX_ROWS_PER_SHEET = 5000
+            _MAX_TOTAL_CHARS = 500_000
+            _ROW_BATCH_SIZE = 50
+
+            wb = xlrd.open_workbook(file_path, on_demand=True)
+            text_parts = []
+            sheets_processed = 0
+            total_chars = 0
+            truncated = False
+
+            for sheet_idx in range(min(wb.nsheets, _MAX_SHEETS)):
+                sheet = wb.sheet_by_index(sheet_idx)
+                sheets_processed += 1
+                sheet_text_parts = [f"[Sheet: {sheet.name}]"]
+                batch_rows: list[str] = []
+                row_count = min(sheet.nrows, _MAX_ROWS_PER_SHEET)
+
+                if sheet.nrows > _MAX_ROWS_PER_SHEET:
+                    row_count = _MAX_ROWS_PER_SHEET
+
+                for row_idx in range(row_count):
+                    if row_idx >= _MAX_ROWS_PER_SHEET:
+                        sheet_text_parts.append("[... rows truncated at 5000 ...]")
+                        break
+
+                    row_values = sheet.row_values(row_idx)
+                    # Skip rows where all cells are empty/whitespace
+                    if not any(cell is not None and str(cell).strip() for cell in row_values):
+                        continue
+
+                    row_text = " | ".join([str(cell) if cell is not None else "" for cell in row_values])
+                    batch_rows.append(row_text)
+
+                    if len(batch_rows) >= _ROW_BATCH_SIZE:
+                        batch_text = "\n".join(batch_rows)
+                        if total_chars + len(batch_text) > _MAX_TOTAL_CHARS:
+                            truncated = True
+                            break
+                        sheet_text_parts.append(batch_text)
+                        total_chars += len(batch_text) + 2
+                        batch_rows = []
+
+                if not truncated and batch_rows:
+                    batch_text = "\n".join(batch_rows)
+                    if total_chars + len(batch_text) <= _MAX_TOTAL_CHARS:
+                        sheet_text_parts.append(batch_text)
+                        total_chars += len(batch_text) + 2
+                    else:
+                        truncated = True
+
+                if len(sheet_text_parts) > 1:
+                    text_parts.append("\n\n".join(sheet_text_parts))
+
+                if truncated:
+                    text_parts.append("[... document truncated at 500,000 characters ...]")
+                    break
+
+            wb.release_resources()
+
+            return {
+                "text": "\n\n".join(text_parts),
+                "pages": sheets_processed,
+                "source": "xlrd",
+            }
+
+        except Exception as e:
+            logger.error(f"Error extracting from XLS: {str(e)}")
+            return {"text": "", "error": str(e), "pages": 0}
 
     async def _extract_from_txt(self, file_path: str) -> dict[str, Any]:
         """Extract text from TXT or MD file"""

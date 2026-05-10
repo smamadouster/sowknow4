@@ -26,13 +26,6 @@ from app.models.pipeline import STAGE_RETRY_CONFIG, PipelineStage, StageEnum, St
 logger = logging.getLogger(__name__)
 
 
-class _EmbedContinue(Exception):
-    """Raised by _run_embed when more chunks remain and the task was re-queued."""
-
-    def __init__(self, remaining: int):
-        self.remaining = remaining
-
-
 class _PermanentPipelineError(Exception):
     """Raised by work functions when a failure is permanent (unsupported format,
     empty text, zero chunks, etc.).  The stage is marked FAILED immediately
@@ -204,20 +197,12 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
 
     try:
         work_fn(document_id)
-    except _EmbedContinue as cont:
-        # Partial embed — retry this chain link so the next stage does NOT
-        # run until all chunks are fully embedded.  The retry countdown
-        # gives other documents a turn between windows.
-        logger.info(
-            "Stage %s partial for doc %s — %d chunks remaining, retrying chain link",
-            stage, document_id, cont.remaining,
-        )
-        raise self.retry(countdown=10)
     except _PermanentPipelineError as exc:
         error_text = str(exc)
         update_stage(document_id, stage, StageStatus.FAILED, error=error_text)
 
         # Mirror error to Document so the status API can surface it
+        from app.database import SessionLocal
         from app.models.document import Document, DocumentStatus
 
         doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
@@ -400,6 +385,11 @@ def _run_ocr(document_id: str) -> None:
             if extraction_error and "Unsupported file format" in extraction_error:
                 raise _PermanentPipelineError(extraction_error)
 
+            # For office documents (xls, xlt, xlsx, doc, docx, ppt, etc.) OCR is
+            # never attempted — a native extraction error is therefore permanent.
+            if extraction_error and doc.mime_type and not doc.mime_type.startswith(("image/", "application/pdf")):
+                raise _PermanentPipelineError(f"Text extraction failed: {extraction_error}")
+
         # If OCR is needed (image files, PDFs without text layer, etc.)
         should_ocr, reason = ocr_service.should_use_ocr(
             mime_type=doc.mime_type,
@@ -549,7 +539,7 @@ def _run_chunk(document_id: str) -> None:
 
 EMBED_CHUNK_CAP = 32  # Hardcoded to override env var
 GRAPH_CHUNK_CAP = int(os.getenv("GRAPH_CHUNK_CAP", "5"))
-CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "1500"))
+CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "10000"))
 
 
 def _run_embed(document_id: str) -> None:
@@ -825,8 +815,8 @@ async def _graph_extract_document(document_id: str, chunks, bucket: str) -> None
     name="pipeline.ocr_stage",
     max_retries=3,
     acks_late=True,
-    soft_time_limit=300,
-    time_limit=360,
+    soft_time_limit=600,
+    time_limit=900,
 )
 def ocr_stage(self, document_id: str) -> str:
     return _stage_task(self, document_id, StageEnum.OCR, _run_ocr)
@@ -837,8 +827,8 @@ def ocr_stage(self, document_id: str) -> str:
     name="pipeline.chunk_stage",
     max_retries=2,
     acks_late=True,
-    soft_time_limit=120,
-    time_limit=180,
+    soft_time_limit=600,
+    time_limit=900,
 )
 def chunk_stage(self, document_id: str) -> str:
     return _stage_task(self, document_id, StageEnum.CHUNKED, _run_chunk)

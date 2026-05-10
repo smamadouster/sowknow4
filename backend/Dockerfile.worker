@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y \
     libpoppler-cpp-dev \
     # For legacy .doc extraction
     antiword \
+    # For legacy .ppt extraction
+    catdoc \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Whisper.cpp for voice note transcription

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -685,10 +686,18 @@ async def get_pipeline_stats(
     db: AsyncSession = Depends(get_db),
 ) -> PipelineStatsResponse:
     """Per-stage pipeline funnel with throughput rates (Admin only)."""
+    from app.models.document import Document, DocumentStatus
+
     # Query 1: active counts grouped by stage + status
+    # Exclude documents that are permanently failed (status=ERROR) so the
+    # dashboard reflects only actionable pipeline state.
     active_result = await db.execute(
         select(PipelineStage.stage, PipelineStage.status, func.count().label("cnt"))
-        .where(PipelineStage.status.in_([StageStatus.PENDING, StageStatus.RUNNING, StageStatus.FAILED]))
+        .join(Document, Document.id == PipelineStage.document_id)
+        .where(
+            PipelineStage.status.in_([StageStatus.PENDING, StageStatus.RUNNING, StageStatus.FAILED]),
+            Document.status != DocumentStatus.ERROR,
+        )
         .group_by(PipelineStage.stage, PipelineStage.status)
     )
     active_rows = active_result.all()
@@ -1139,7 +1148,7 @@ async def get_whisper_model() -> dict[str, Any]:
 
 @router.post("/whisper-model", dependencies=[Depends(require_admin_only)])
 async def set_whisper_model(
-    request: Request,
+    request: Request = None,
     size: str = Query(..., description="Model size to load (e.g. 'base', 'tiny', 'small')"),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -1186,3 +1195,425 @@ async def set_whisper_model(
         "previous_model": previous,
         "model": size,
     }
+
+
+# ── Force-reset a specific stuck document ──────────────────────────────────
+
+
+@router.post("/documents/{document_id}/force-reset", dependencies=[Depends(require_admin_only)])
+async def force_reset_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
+) -> dict[str, Any]:
+    """Hard-reset a single document: wipe pipeline state, clear chunks, and re-queue.
+
+    Use this from the anomalies dashboard when a document is permanently stuck
+    (e.g. corrupted file, missing dependency, worker crash) and normal reprocess
+    does not help.
+    """
+    from app.models.document import DocumentChunk
+    from app.services.storage_service import storage_service
+    from app.tasks.pipeline_orchestrator import dispatch_document
+    from app.tasks.pipeline_tasks import update_stage
+
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    document = result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # 1. Delete all pipeline stage rows
+    await db.execute(
+        select(PipelineStage)
+        .where(PipelineStage.document_id == document_id)
+    )
+    await db.execute(
+        PipelineStage.__table__.delete().where(PipelineStage.document_id == document_id)
+    )
+
+    # 2. Delete all chunks
+    await db.execute(
+        DocumentChunk.__table__.delete().where(DocumentChunk.document_id == document_id)
+    )
+
+    # 3. Delete sidecar .txt if it exists
+    txt_path = None
+    if document.file_path:
+        txt_path = document.file_path + ".txt"
+        try:
+            if os.path.exists(txt_path):
+                os.remove(txt_path)
+        except Exception as e:
+            logger.warning("Could not remove sidecar %s: %s", txt_path, e)
+
+    # 4. Reset document fields
+    document.status = DocumentStatus.PENDING
+    document.pipeline_stage = "uploaded"
+    document.pipeline_error = None
+    document.pipeline_retry_count = 0
+    document.pipeline_last_attempt = None
+    document.chunk_count = 0
+    document.embedding_generated = False
+    document.ocr_processed = False
+    meta = document.document_metadata or {}
+    meta["force_reset_at"] = datetime.utcnow().isoformat()
+    meta["force_reset_by"] = str(current_user.id)
+    meta.pop("processing_error", None)
+    meta.pop("extraction_empty", None)
+    document.document_metadata = meta
+    await db.commit()
+
+    # 5. Re-create UPLOADED stage and dispatch
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        await loop.run_in_executor(
+            pool, update_stage, str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED
+        )
+        dispatch_result = await loop.run_in_executor(pool, dispatch_document, str(document.id))
+
+    if dispatch_result == "dispatched":
+        document.status = DocumentStatus.PROCESSING
+        document.pipeline_stage = "ocr"
+    else:
+        document.status = DocumentStatus.PENDING
+        meta = document.document_metadata or {}
+        meta["backpressure"] = dispatch_result
+        document.document_metadata = meta
+    await db.commit()
+
+    # 6. Audit log
+    try:
+        await create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.DOCUMENT_UPDATED,
+            resource_type="document",
+            resource_id=str(document_id),
+            details={
+                "action": "force_reset",
+                "filename": document.original_filename or document.filename,
+                "dispatch_result": dispatch_result,
+                "sidecar_deleted": txt_path is not None,
+            },
+            request=request,
+        )
+    except Exception:
+        pass
+
+    return {
+        "document_id": str(document_id),
+        "status": document.status.value,
+        "dispatch_result": dispatch_result,
+        "message": "Document force-reset and re-queued" if dispatch_result == "dispatched"
+        else "Document force-reset but pipeline is backpressured",
+    }
+
+
+# ── Enhanced pipeline diagnostics ──────────────────────────────────────────
+
+
+@router.get("/pipeline/diagnostics", dependencies=[Depends(require_superuser_or_admin)])
+async def pipeline_diagnostics(
+    current_user: User = Depends(require_superuser_or_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Deep-diagnostics for the upload pipeline: queues, workers, stuck docs, embed health."""
+    from datetime import UTC, datetime as _dt
+
+    now = _dt.now(UTC)
+
+    # 1. Redis queue depths
+    queues: dict[str, Any] = {}
+    try:
+        import redis
+
+        from app.core.redis_url import safe_redis_url
+        from app.tasks.pipeline_orchestrator import MAX_QUEUE_DEPTH
+
+        r = redis.from_url(safe_redis_url())
+        for q in [
+            "pipeline.ocr", "pipeline.chunk", "pipeline.embed",
+            "pipeline.index", "pipeline.articles", "pipeline.entities",
+            "celery", "scheduled",
+        ]:
+            try:
+                queues[q] = {"depth": r.llen(q), "max": MAX_QUEUE_DEPTH.get(q)}
+            except Exception:
+                queues[q] = {"depth": -1, "max": MAX_QUEUE_DEPTH.get(q)}
+    except Exception as e:
+        queues = {"error": str(e)}
+
+    # 2. Document status counts
+    doc_counts: dict[str, int] = {}
+    for status in DocumentStatus:
+        cnt = await db.execute(
+            select(func.count(Document.id)).where(Document.status == status)
+        )
+        doc_counts[status.value] = cnt.scalar_one() or 0
+
+    # 3. Stuck documents per stage (RUNNING longer than 2× hard_timeout)
+    from app.models.pipeline import STAGE_RETRY_CONFIG
+
+    stuck_per_stage: dict[str, dict[str, Any]] = {}
+    for stage in StageEnum:
+        cfg = STAGE_RETRY_CONFIG.get(stage)
+        if not cfg:
+            continue
+        threshold = now - timedelta(seconds=cfg["hard_timeout"] * 2)
+        cnt = await db.execute(
+            select(func.count(PipelineStage.id)).where(
+                PipelineStage.stage == stage,
+                PipelineStage.status == StageStatus.RUNNING,
+                PipelineStage.started_at < threshold,
+            )
+        )
+        stuck_per_stage[stage.value] = {
+            "stuck_count": cnt.scalar_one() or 0,
+            "threshold_seconds": cfg["hard_timeout"] * 2,
+        }
+
+    # 4. Embed server health
+    embed_health: dict[str, Any] = {"status": "unknown"}
+    try:
+        from app.services.embed_client import embedding_service
+
+        if embedding_service.can_embed:
+            embed_health = {"status": "healthy", "can_embed": True}
+        else:
+            embed_health = {"status": "unhealthy", "can_embed": False}
+    except Exception as e:
+        embed_health = {"status": "error", "detail": str(e)}
+
+    # 5. Celery workers
+    workers: dict[str, Any] = {}
+    try:
+        from app.celery_app import celery_app
+
+        inspect = celery_app.control.inspect(timeout=5.0)
+        stats = inspect.stats() or {}
+        active = inspect.active() or {}
+        workers = {
+            "count": len(stats),
+            "names": list(stats.keys()),
+            "active_tasks": {w: len(tasks) for w, tasks in active.items()},
+        }
+    except Exception as e:
+        workers = {"error": str(e)}
+
+    # 6. Oldest pending document
+    oldest_pending = None
+    try:
+        oldest = await db.execute(
+            select(Document)
+            .where(Document.status == DocumentStatus.PENDING)
+            .order_by(Document.created_at.asc())
+            .limit(1)
+        )
+        doc = oldest.scalar_one_or_none()
+        if doc:
+            oldest_pending = {
+                "id": str(doc.id),
+                "filename": doc.original_filename or doc.filename,
+                "age_hours": round((now - doc.created_at.replace(tzinfo=UTC)).total_seconds() / 3600, 1)
+                if doc.created_at else None,
+            }
+    except Exception:
+        pass
+
+    return {
+        "timestamp": now.isoformat(),
+        "queues": queues,
+        "document_counts": doc_counts,
+        "stuck_per_stage": stuck_per_stage,
+        "embed_server": embed_health,
+        "workers": workers,
+        "oldest_pending_document": oldest_pending,
+    }
+
+
+# ── Bulk force-reset for anomalies ─────────────────────────────────────────
+
+
+class _BulkForceResetRequest(BaseModel):
+    document_ids: list[uuid.UUID]
+
+
+@router.post("/anomalies/force-reset-all", dependencies=[Depends(require_admin_only)])
+async def bulk_force_reset_anomalies(
+    body: _BulkForceResetRequest,
+    current_user: User = Depends(require_admin_only),
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
+) -> dict[str, Any]:
+    """Hard-reset multiple documents in one call (e.g. all anomalies).
+
+    Returns per-document results so the UI can show which succeeded/failed.
+    """
+    from app.models.document import DocumentChunk
+    from app.tasks.pipeline_orchestrator import dispatch_document
+    from app.tasks.pipeline_tasks import update_stage
+
+    results: list[dict[str, Any]] = []
+    success_count = 0
+    failed_count = 0
+
+    for doc_id in body.document_ids:
+        doc_result = await db.execute(select(Document).where(Document.id == doc_id))
+        document = doc_result.scalar_one_or_none()
+        if not document:
+            results.append({"document_id": str(doc_id), "status": "not_found"})
+            failed_count += 1
+            continue
+
+        try:
+            # 1. Delete pipeline stages
+            await db.execute(
+                PipelineStage.__table__.delete().where(PipelineStage.document_id == doc_id)
+            )
+
+            # 2. Delete chunks
+            await db.execute(
+                DocumentChunk.__table__.delete().where(DocumentChunk.document_id == doc_id)
+            )
+
+            # 3. Delete sidecar .txt
+            if document.file_path:
+                txt_path = document.file_path + ".txt"
+                try:
+                    if os.path.exists(txt_path):
+                        os.remove(txt_path)
+                except Exception:
+                    pass
+
+            # 4. Reset document
+            document.status = DocumentStatus.PENDING
+            document.pipeline_stage = "uploaded"
+            document.pipeline_error = None
+            document.pipeline_retry_count = 0
+            document.pipeline_last_attempt = None
+            document.chunk_count = 0
+            document.embedding_generated = False
+            document.ocr_processed = False
+            meta = document.document_metadata or {}
+            meta["force_reset_at"] = datetime.utcnow().isoformat()
+            meta["force_reset_by"] = str(current_user.id)
+            meta.pop("processing_error", None)
+            meta.pop("extraction_empty", None)
+            document.document_metadata = meta
+            await db.commit()
+
+            # 5. Re-dispatch
+            loop = asyncio.get_running_loop()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                await loop.run_in_executor(
+                    pool, update_stage, str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED
+                )
+                dispatch_result = await loop.run_in_executor(pool, dispatch_document, str(document.id))
+
+            if dispatch_result == "dispatched":
+                document.status = DocumentStatus.PROCESSING
+                document.pipeline_stage = "ocr"
+            else:
+                document.status = DocumentStatus.PENDING
+                meta = document.document_metadata or {}
+                meta["backpressure"] = dispatch_result
+                document.document_metadata = meta
+            await db.commit()
+
+            results.append({
+                "document_id": str(doc_id),
+                "status": document.status.value,
+                "dispatch_result": dispatch_result,
+                "success": True,
+            })
+            success_count += 1
+        except Exception as exc:
+            logger.exception("Bulk force-reset failed for doc %s", doc_id)
+            results.append({"document_id": str(doc_id), "status": "error", "error": str(exc)})
+            failed_count += 1
+
+    # Audit log (single entry for the bulk action)
+    try:
+        await create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.DOCUMENT_UPDATED,
+            resource_type="document",
+            resource_id="bulk",
+            details={
+                "action": "bulk_force_reset",
+                "total": len(body.document_ids),
+                "success": success_count,
+                "failed": failed_count,
+            },
+            request=request,
+        )
+    except Exception:
+        pass
+
+    return {
+        "total": len(body.document_ids),
+        "success": success_count,
+        "failed": failed_count,
+        "results": results,
+        "message": f"Force-reset {success_count} documents, {failed_count} failed.",
+    }
+
+
+# ── Upload pause / resume ──────────────────────────────────────────────────
+
+
+@router.get("/upload-pause", dependencies=[Depends(require_superuser_or_admin)])
+async def get_upload_pause_status() -> dict[str, Any]:
+    """Check whether uploads are currently paused and why."""
+    from app.api.documents_common import is_upload_paused
+
+    paused, reason = is_upload_paused()
+    return {
+        "paused": paused,
+        "reason": reason,
+    }
+
+
+@router.post("/upload-pause", dependencies=[Depends(require_admin_only)])
+async def pause_uploads(
+    current_user: User = Depends(require_admin_only),
+    request: Request = None,
+) -> dict[str, Any]:
+    """Manually pause all document uploads."""
+    from app.api.documents_common import set_upload_paused
+
+    try:
+        set_upload_paused(True)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Cannot pause uploads: {exc}",
+        )
+
+    # Audit log best-effort (no db session readily available in this simple endpoint)
+    logger.info("Uploads paused by admin %s", current_user.email)
+
+    return {"paused": True, "message": "Uploads are now paused"}
+
+
+@router.delete("/upload-pause", dependencies=[Depends(require_admin_only)])
+async def resume_uploads(
+    current_user: User = Depends(require_admin_only),
+    request: Request = None,
+) -> dict[str, Any]:
+    """Resume document uploads (clear manual pause)."""
+    from app.api.documents_common import set_upload_paused
+
+    try:
+        set_upload_paused(False)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Cannot resume uploads: {exc}",
+        )
+
+    logger.info("Uploads resumed by admin %s", current_user.email)
+
+    return {"paused": False, "message": "Uploads are now resumed"}

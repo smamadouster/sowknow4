@@ -70,6 +70,7 @@ export default function DocumentsPage() {
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [pipelineHealth, setPipelineHealth] = useState<'green' | 'yellow' | 'red' | null>(null);
   const [pipelineMessage, setPipelineMessage] = useState<string>('');
+  const [uploadPaused, setUploadPaused] = useState<{ paused: boolean; reason: string } | null>(null);
 
   const pageSize = 50;
 
@@ -165,6 +166,23 @@ export default function DocumentsPage() {
     };
     checkHealth();
     const interval = setInterval(checkHealth, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Poll upload pause status
+  useEffect(() => {
+    const checkPause = async () => {
+      try {
+        const res = await api.getUploadPauseStatus();
+        if (res.status === 200 && res.data) {
+          setUploadPaused(res.data);
+        }
+      } catch (e) {
+        // silently ignore
+      }
+    };
+    checkPause();
+    const interval = setInterval(checkPause, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -272,7 +290,7 @@ export default function DocumentsPage() {
     },
     maxSize: MAX_FILE_SIZE,
     multiple: true,
-    disabled: uploading,
+    disabled: uploading || uploadPaused?.paused,
   });
 
   useEffect(() => {
@@ -532,6 +550,16 @@ export default function DocumentsPage() {
           {/* Always-present dropzone input (used by FAB on mobile via openDropzone()) */}
           <input {...getInputProps()} className="sr-only" />
 
+          {/* Upload paused banner */}
+          {uploadPaused?.paused && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium bg-red-500/10 border-red-500/25 text-red-400">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>{uploadPaused.reason}</span>
+            </div>
+          )}
+
           {/* Pipeline traffic light — shows system capacity before uploading */}
           {pipelineHealth && (
             <div
@@ -598,13 +626,13 @@ export default function DocumentsPage() {
           {/* Upload button — hidden on mobile (FAB handles it) */}
           <div {...getRootProps()} className="hidden md:block cursor-pointer">
             <button
-              disabled={uploading}
+              disabled={uploading || uploadPaused?.paused}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20 text-sm font-medium font-display"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
-              {uploading ? t('uploading') : t('upload')}
+              {uploadPaused?.paused ? 'Uploads Paused' : uploading ? t('uploading') : t('upload')}
             </button>
           </div>
 

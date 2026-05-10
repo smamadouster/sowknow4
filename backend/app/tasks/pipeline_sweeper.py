@@ -26,6 +26,36 @@ _EMBED_QUEUE_SOFT_LIMIT = int(os.getenv("SWEEPER_EMBED_QUEUE_LIMIT", "250"))
 # mark it permanently failed instead of re-dispatching.
 _POISON_PILL_ATTEMPTS = int(os.getenv("SWEEPER_POISON_PILL_ATTEMPTS", "5"))
 
+# Permanent error patterns — these should NEVER be retried because they will
+# always fail with the same error.
+_PERMANENT_ERROR_PATTERNS = [
+    "too many chunks",
+    "document has",
+    "chunks (limit",
+    "unsupported file format",
+    "no text content extracted",
+    "video and audio files cannot be processed",
+    "quarantined to prevent embed queue starvation",
+    "quarantined poison pill",
+    "no chunks exist for embedding",
+    "no chunks generated",
+]
+
+# Queue depth alert thresholds — if any queue exceeds these for multiple
+# consecutive sweeper runs, something is wrong (workers down, backpressure, etc.)
+_QUEUE_ALERT_THRESHOLDS = {
+    "pipeline.ocr": 50,
+    "pipeline.chunk": 50,
+    "pipeline.embed": 100,
+    "pipeline.index": 50,
+    "pipeline.articles": 50,
+    "pipeline.entities": 50,
+}
+
+# How many consecutive sweeper runs a queue must be over threshold before
+# we raise a critical alert.
+_QUEUE_ALERT_CONSECUTIVE = int(os.getenv("SWEEPER_QUEUE_ALERT_CONSECUTIVE", "3"))
+
 
 @celery_app.task(name="pipeline.sweeper")
 def pipeline_sweeper() -> dict:
@@ -182,6 +212,15 @@ def pipeline_sweeper() -> dict:
                     ps.status = StageStatus.PENDING
                     ps.error_message = f"Sweeper: reset from stuck RUNNING (attempt {ps.attempt})"
                     db.commit()
+
+                    # Mirror the reset to Document.status so the UI and reprocess
+                    # endpoint don't disagree about whether the doc is active.
+                    from app.models.document import Document, DocumentStatus
+
+                    doc = db.query(Document).filter(Document.id == ps.document_id).first()
+                    if doc and doc.status == DocumentStatus.PROCESSING:
+                        doc.status = DocumentStatus.PENDING
+                        db.commit()
 
                     result = dispatch_document(str(ps.document_id), from_stage=stage)
                     if result == "dispatched":
@@ -408,7 +447,89 @@ def pipeline_sweeper() -> dict:
                 elif result.startswith("backpressure"):
                     break
 
-        # ── 5. Corrupted pipeline data: upstream stages completed but 0 chunks ──
+        # ── 5. Auto-retry FAILED stages that may have failed transiently ──
+        # Some failures are transient (missing dependency, temporary network
+        # error, worker crash). If attempt < max_attempts and the error does
+        # NOT match a known permanent pattern, reset to PENDING and re-dispatch.
+        failed_retried = 0
+        failed_permanent = 0
+        failed_stages = (
+            db.query(PipelineStage)
+            .filter(PipelineStage.status == StageStatus.FAILED)
+            .limit(500)
+            .all()
+        )
+
+        for ps in failed_stages:
+            if _skip_if_error(ps.document_id):
+                continue
+            if ps.attempt >= ps.max_attempts:
+                failed_permanent += 1
+                continue
+
+            error_lower = (ps.error_message or "").lower()
+            is_permanent = any(p in error_lower for p in _PERMANENT_ERROR_PATTERNS)
+            if is_permanent:
+                failed_permanent += 1
+                continue
+
+            # Transient failure — retry with backoff based on attempt count
+            # Wait at least 5 minutes × attempt before retrying
+            min_age = timedelta(minutes=5 * (ps.attempt + 1))
+            if ps.updated_at and (now - ps.updated_at) < min_age:
+                continue
+
+            # Skip embed retries during backpressure
+            if embed_backpressure and ps.stage == StageEnum.EMBEDDED:
+                continue
+
+            ps.status = StageStatus.PENDING
+            ps.error_message = f"Sweeper: auto-retrying after transient failure (attempt {ps.attempt})"
+            db.commit()
+
+            result = dispatch_document(str(ps.document_id), from_stage=ps.stage)
+            if result == "dispatched":
+                failed_retried += 1
+                total_dispatched += 1
+                logger.info(
+                    "Sweeper auto-retried doc=%s stage=%s attempt=%d",
+                    ps.document_id, ps.stage.name, ps.attempt,
+                )
+            elif result.startswith("backpressure"):
+                break
+
+        if failed_retried:
+            logger.info("Sweeper auto-retried %d failed stages", failed_retried)
+
+        # ── 6. Queue depth alerting ──
+        if _redis is not None:
+            for q, threshold in _QUEUE_ALERT_THRESHOLDS.items():
+                depth = queue_depths.get(q, 0)
+                if depth > threshold:
+                    alert_key = f"pipeline:alert:queue_depth:{q}"
+                    try:
+                        consecutive = int(_redis.get(alert_key) or 0)
+                    except Exception:
+                        consecutive = 0
+                    consecutive += 1
+                    try:
+                        _redis.setex(alert_key, 900, str(consecutive))
+                    except Exception:
+                        pass
+                    if consecutive >= _QUEUE_ALERT_CONSECUTIVE:
+                        logger.error(
+                            "CRITICAL: Queue %s depth=%d exceeds threshold=%d for %d consecutive sweeper runs. "
+                            "Workers may be down or overwhelmed.",
+                            q, depth, threshold, consecutive,
+                        )
+                else:
+                    alert_key = f"pipeline:alert:queue_depth:{q}"
+                    try:
+                        _redis.delete(alert_key)
+                    except Exception:
+                        pass
+
+        # ── 7. Corrupted pipeline data: upstream stages completed but 0 chunks ──
         # This catches backfilled/migrated documents that have fake COMPLETED
         # pipeline rows without actual chunk data, or documents that failed
         # permanently but never had their status updated.
@@ -480,6 +601,8 @@ def pipeline_sweeper() -> dict:
             "premature_deleted": premature_deleted,
             "missing_enriched_dispatched": missing_enriched_dispatched,
             "backpressure_dispatched": backpressure_dispatched,
+            "failed_retried": failed_retried,
+            "failed_permanent": failed_permanent,
             "corrupted_fixed": corrupted_fixed,
             "total_dispatched": total_dispatched,
             "embed_queue_depth": embed_queue_depth,

@@ -378,11 +378,23 @@ async def reprocess_document(
             detail="Document already indexed. Pass force=true to reprocess.",
         )
 
+    # A document may be marked PROCESSING at the Document level while its
+    # PipelineStage was reset to PENDING by the sweeper (e.g. after a worker
+    # crash).  Allow reprocess when no stage is actually RUNNING.
     if document.status == DocumentStatus.PROCESSING:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Document is currently being processed. Wait for it to finish.",
+        from app.models.pipeline import PipelineStage, StageStatus
+
+        running_stage = await db.execute(
+            select(PipelineStage).where(
+                PipelineStage.document_id == document_id,
+                PipelineStage.status == StageStatus.RUNNING,
+            )
         )
+        if running_stage.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document is currently being processed. Wait for it to finish.",
+            )
 
     document.status = DocumentStatus.PENDING
     meta = document.document_metadata or {}

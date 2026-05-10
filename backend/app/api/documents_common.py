@@ -40,6 +40,68 @@ MAX_BATCH_SIZE = 500 * 1024 * 1024  # 500MB
 # Concurrency limiter: cap simultaneous uploads to prevent starving other endpoints
 _upload_semaphore = asyncio.Semaphore(3)
 
+# Redis key for admin upload pause toggle
+_UPLOAD_PAUSE_KEY = "pipeline:uploads:paused"
+
+
+def _get_redis_client() -> Any | None:
+    """Best-effort Redis client for upload-pause checks."""
+    try:
+        import redis
+        from app.core.redis_url import safe_redis_url
+        return redis.from_url(safe_redis_url(), socket_timeout=2)
+    except Exception:
+        return None
+
+
+def is_upload_paused() -> tuple[bool, str]:
+    """Check whether uploads are currently paused.
+
+    Returns (paused: bool, reason: str).
+    Priority:
+      1. Admin manual pause (Redis key)
+      2. Automatic red-state throttling (pipeline health)
+    """
+    # 1. Manual admin pause
+    r = _get_redis_client()
+    if r is not None:
+        try:
+            if r.get(_UPLOAD_PAUSE_KEY):
+                return True, "Uploads are paused by an administrator"
+        except Exception:
+            pass
+
+    # 2. Automatic red-state throttling
+    try:
+        from app.tasks.pipeline_orchestrator import MAX_TOTAL_QUEUE_DEPTH
+        if r is not None:
+            total_depth = 0
+            for q in [
+                "pipeline.ocr", "pipeline.chunk", "pipeline.embed",
+                "pipeline.index", "pipeline.articles", "pipeline.entities",
+            ]:
+                try:
+                    total_depth += r.llen(q)
+                except Exception:
+                    pass
+            if total_depth > MAX_TOTAL_QUEUE_DEPTH:
+                return True, "Pipeline is critically backlogged — uploads temporarily paused"
+    except Exception:
+        pass
+
+    return False, ""
+
+
+def set_upload_paused(paused: bool) -> None:
+    """Toggle the admin upload-pause flag in Redis."""
+    r = _get_redis_client()
+    if r is None:
+        raise RuntimeError("Redis is not available")
+    if paused:
+        r.set(_UPLOAD_PAUSE_KEY, "1")
+    else:
+        r.delete(_UPLOAD_PAUSE_KEY)
+
 
 async def create_audit_log(
     db: AsyncSession,

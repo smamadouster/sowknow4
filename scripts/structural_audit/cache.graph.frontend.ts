@@ -346,6 +346,12 @@
 [export]: dynamic
 
 ---
+### FILE: frontend/app/[locale]/subscriptions/page.tsx
+[ext_deps]: react, next-intl, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB
+[fn]: default()
+[export]: dynamic
+
+---
 ### FILE: frontend/app/api/health/route.ts
 [ext_deps]: next/server
 [fn]: GET()

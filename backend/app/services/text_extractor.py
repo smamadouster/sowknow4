@@ -206,13 +206,46 @@ class TextExtractor:
             return {"text": "", "error": str(e), "pages": 0}
 
     async def _extract_from_ppt(self, file_path: str) -> dict[str, Any]:
-        """Extract text from legacy PPT file"""
-        return {
-            "text": "",
-            "error": "Legacy PPT files require conversion tool",
-            "pages": 0,
-            "source": "error",
-        }
+        """Extract text from legacy PPT file using catppt."""
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["catppt", file_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                return {
+                    "text": "",
+                    "error": f"catppt failed: {result.stderr}",
+                    "pages": 0,
+                    "source": "catppt-error",
+                }
+
+            text = result.stdout.strip()
+            # catppt emits page breaks as "^L" (form feed); count them as pages
+            pages = text.count("\f") + 1 if text else 0
+            return {
+                "text": text,
+                "pages": pages,
+                "source": "catppt",
+            }
+        except FileNotFoundError:
+            return {
+                "text": "",
+                "error": "Legacy PPT files require catppt (install catdoc package)",
+                "pages": 0,
+                "source": "error",
+            }
+        except Exception as e:
+            return {
+                "text": "",
+                "error": f"PPT extraction failed: {e}",
+                "pages": 0,
+                "source": "error",
+            }
 
     async def _extract_from_xlsx(self, file_path: str) -> dict[str, Any]:
         """Extract text from XLSX file.
@@ -306,6 +339,8 @@ class TextExtractor:
         """Extract text from legacy XLS file using xlrd.
 
         Uses the same safety bounds as XLSX to prevent monster documents.
+        If xlrd fails (e.g. missing dependency or newer-format file masquerading
+        as .xlt), falls back to openpyxl.
         """
         try:
             import xlrd
@@ -377,6 +412,16 @@ class TextExtractor:
             }
 
         except Exception as e:
+            logger.warning(f"xlrd failed for {file_path}: {e} — trying openpyxl fallback")
+            # Some .xlt files are actually newer-format templates; try openpyxl
+            try:
+                fallback = await self._extract_from_xlsx(file_path)
+                if fallback.get("text") or not fallback.get("error"):
+                    fallback["source"] = "openpyxl-fallback"
+                    return fallback
+            except Exception as fallback_err:
+                logger.warning(f"openpyxl fallback also failed for {file_path}: {fallback_err}")
+
             logger.error(f"Error extracting from XLS: {str(e)}")
             return {"text": "", "error": str(e), "pages": 0}
 

@@ -250,8 +250,14 @@ class TestOcrStage:
         mock_self = MagicMock()
         mock_self.request.id = "fake-task-id"
 
+        mock_doc = MagicMock()
+        mock_doc.document_metadata = {}
+
         mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = existing
+        mock_db.query.return_value.filter.return_value.first.side_effect = [
+            existing,
+            mock_doc,
+        ]
 
         def exploding_work(_):
             raise RuntimeError("OCR failed")
@@ -344,10 +350,12 @@ class TestFinalizeStage:
         assert result == doc_id
         assert mock_doc.pipeline_stage == "enriched"
         mock_db.commit.assert_called_once()
-        mock_db.close.assert_called_once()
+        # _run_finalize + update_stage each open their own SessionLocal
+        assert mock_db.close.call_count >= 1
 
-        # update_stage called with ENRICHED / COMPLETED
-        mock_update.assert_called_once_with(doc_id, StageEnum.ENRICHED, StageStatus.COMPLETED)
+        # update_stage called first with RUNNING, then with COMPLETED
+        assert mock_update.call_count == 2
+        assert mock_update.call_args_list[-1] == call(doc_id, StageEnum.ENRICHED, StageStatus.COMPLETED)
 
     def test_handles_missing_document_gracefully(self):
         """finalize_stage does not raise if document row is not found."""

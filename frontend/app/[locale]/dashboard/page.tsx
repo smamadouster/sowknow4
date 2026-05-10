@@ -104,7 +104,20 @@ export default function DashboardPage() {
     workers: Record<string, { status: string; pool: string }> | { error: string };
   } | null>(null);
   const [retryingStage, setRetryingStage] = useState<string | null>(null);
+  const [resettingAnomaly, setResettingAnomaly] = useState<string | null>(null);
+  const [resettingAll, setResettingAll] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [uploadPause, setUploadPause] = useState<{ paused: boolean; reason: string } | null>(null);
+  const [togglingPause, setTogglingPause] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<{
+    queues: Record<string, { depth: number; max: number | null } | { error: string }>;
+    document_counts: Record<string, number>;
+    stuck_per_stage: Record<string, { stuck_count: number; threshold_seconds: number }>;
+    embed_server: { status: string; can_embed?: boolean; detail?: string };
+    workers: { count?: number; names?: string[]; active_tasks?: Record<string, number>; error?: string };
+    oldest_pending_document: { id: string; filename: string; age_hours: number } | null;
+  } | null>(null);
+  const [lastDiagnosticsUpdate, setLastDiagnosticsUpdate] = useState<Date>(new Date());
 
   // Role guard: redirect non-admins
   useEffect(() => {
@@ -165,10 +178,11 @@ export default function DashboardPage() {
 
   const loadLiveStats = async () => {
     try {
-      const [articlesRes, pipelineRes, statusRes] = await Promise.all([
+      const [articlesRes, pipelineRes, statusRes, diagnosticsRes] = await Promise.all([
         api.getArticlesStats(),
         api.getPipelineStats(),
         api.getPipelineStatus(),
+        api.getPipelineDiagnostics(),
       ]);
 
       if (articlesRes.data) {
@@ -187,6 +201,13 @@ export default function DashboardPage() {
         setPipelineStatus(statusRes.data as typeof pipelineStatus);
       } else {
         console.error('Pipeline status error:', statusRes.error);
+      }
+
+      if (diagnosticsRes.data) {
+        setDiagnostics(diagnosticsRes.data as typeof diagnostics);
+        setLastDiagnosticsUpdate(new Date());
+      } else {
+        console.error('Diagnostics error:', diagnosticsRes.error);
       }
       setLastPipelineUpdate(new Date());
     } catch (e) {
@@ -213,15 +234,95 @@ export default function DashboardPage() {
     }
   };
 
+  const handleForceReset = async (documentId: string) => {
+    if (!confirm('This will wipe all pipeline state and chunks for this document and re-queue it. Continue?')) {
+      return;
+    }
+    setResettingAnomaly(documentId);
+    try {
+      const res = await api.forceResetDocument(documentId);
+      if (res.data) {
+        setToast({ message: res.data.message, type: 'success' });
+        await loadSlowStats();
+      } else {
+        setToast({ message: `Force reset failed: ${res.error}`, type: 'error' });
+      }
+    } catch (e) {
+      setToast({ message: 'Force reset request failed.', type: 'error' });
+    } finally {
+      setResettingAnomaly(null);
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const handleBulkForceReset = async () => {
+    if (anomalies.length === 0) return;
+    if (!confirm(`Force reset ALL ${anomalies.length} anomalous documents? This cannot be undone.`)) {
+      return;
+    }
+    setResettingAll(true);
+    try {
+      const res = await api.bulkForceResetDocuments(anomalies.map((a) => a.document_id));
+      if (res.data) {
+        setToast({ message: res.data.message, type: 'success' });
+        await loadSlowStats();
+      } else {
+        setToast({ message: `Bulk reset failed: ${res.error}`, type: 'error' });
+      }
+    } catch (e) {
+      setToast({ message: 'Bulk reset request failed.', type: 'error' });
+    } finally {
+      setResettingAll(false);
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const loadUploadPause = async () => {
+    try {
+      const res = await api.getUploadPauseStatus();
+      if (res.data) {
+        setUploadPause(res.data);
+      }
+    } catch (e) {
+      console.error('Upload pause status error:', e);
+    }
+  };
+
+  const handleToggleUploadPause = async () => {
+    setTogglingPause(true);
+    try {
+      if (uploadPause?.paused) {
+        const res = await api.resumeUploads();
+        if (res.data) {
+          setToast({ message: res.data.message, type: 'success' });
+          setUploadPause({ paused: false, reason: '' });
+        }
+      } else {
+        const res = await api.pauseUploads();
+        if (res.data) {
+          setToast({ message: res.data.message, type: 'success' });
+          setUploadPause({ paused: true, reason: 'Uploads are paused by an administrator' });
+        }
+      }
+    } catch (e) {
+      setToast({ message: 'Failed to toggle upload pause.', type: 'error' });
+    } finally {
+      setTogglingPause(false);
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadSlowStats(), loadLiveStats()]).finally(() => setLoading(false));
+    Promise.all([loadSlowStats(), loadLiveStats(), loadUploadPause()]).finally(() => setLoading(false));
 
     const slowInterval = setInterval(loadSlowStats, 60_000);
     const liveInterval = setInterval(loadLiveStats, 10_000);
+    const pauseInterval = setInterval(loadUploadPause, 15_000);
     return () => {
       clearInterval(slowInterval);
       clearInterval(liveInterval);
+      clearInterval(pauseInterval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -566,8 +667,50 @@ export default function DashboardPage() {
               </span>
             )}
           </div>
-          <div className="text-xs text-gray-400">
-            Updated {lastPipelineUpdate.toLocaleTimeString()}
+          <div className="flex items-center gap-3">
+            {uploadPause && (
+              <button
+                onClick={handleToggleUploadPause}
+                disabled={togglingPause}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
+                  uploadPause.paused
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                    : 'bg-red-100 text-red-800 hover:bg-red-200'
+                }`}
+              >
+                {togglingPause ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    {uploadPause.paused ? 'Resuming...' : 'Pausing...'}
+                  </>
+                ) : (
+                  <>
+                    {uploadPause.paused ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Resume Uploads
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Pause Uploads
+                      </>
+                    )}
+                  </>
+                )}
+              </button>
+            )}
+            <div className="text-xs text-gray-400">
+              Updated {lastPipelineUpdate.toLocaleTimeString()}
+            </div>
           </div>
         </div>
 
@@ -689,21 +832,147 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Pipeline Diagnostics */}
+      {diagnostics && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-gray-900">Pipeline Diagnostics</h2>
+              <span className="text-xs text-gray-400">
+                Updated {lastDiagnosticsUpdate.toLocaleTimeString()}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Embed Server */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Embed Server</p>
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${diagnostics.embed_server.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span className="text-sm font-semibold text-gray-800 capitalize">
+                  {diagnostics.embed_server.status}
+                </span>
+              </div>
+            </div>
+
+            {/* Workers */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Celery Workers</p>
+              <p className="text-sm font-semibold text-gray-800">
+                {'error' in diagnostics.workers && diagnostics.workers.error ? (
+                  <span className="text-red-600">Error</span>
+                ) : (
+                  <>{(diagnostics.workers.count || 0)} connected</>
+                )}
+              </p>
+            </div>
+
+            {/* Oldest Pending */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Oldest Pending</p>
+              <p className="text-sm font-semibold text-gray-800">
+                {diagnostics.oldest_pending_document ? (
+                  <span className="text-yellow-700">
+                    {diagnostics.oldest_pending_document.age_hours}h
+                  </span>
+                ) : (
+                  <span className="text-green-600">None</span>
+                )}
+              </p>
+              {diagnostics.oldest_pending_document && (
+                <p className="text-xs text-gray-500 truncate" title={diagnostics.oldest_pending_document.filename}>
+                  {diagnostics.oldest_pending_document.filename}
+                </p>
+              )}
+            </div>
+
+            {/* Total Stuck */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Stuck Documents</p>
+              <p className="text-sm font-semibold text-gray-800">
+                {Object.values(diagnostics.stuck_per_stage).reduce((sum, s) => sum + (s.stuck_count || 0), 0)}
+              </p>
+            </div>
+          </div>
+
+          {/* Queue Depths */}
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Queue Depths</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {Object.entries(diagnostics.queues).map(([name, info]) => {
+                if ('error' in info) return null;
+                const pct = info.max ? Math.min(100, Math.round((info.depth / info.max) * 100)) : 0;
+                const color = pct >= 90 ? 'bg-red-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-green-500';
+                return (
+                  <div key={name} className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 truncate" title={name}>{name.replace('pipeline.', '')}</p>
+                    <p className="text-lg font-bold text-gray-800">{info.depth}</p>
+                    {info.max !== null && (
+                      <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                        <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Document Counts */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Documents by Status</h3>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(diagnostics.document_counts).map(([status, count]) => (
+                <span
+                  key={status}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
+                  {status}: {count}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Anomalies Report */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">
             {tAdmin('anomalies_title')}
           </h2>
-          <button
-            onClick={() => { loadSlowStats().catch(console.error); loadLiveStats().catch(console.error); }}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {anomalies.length > 0 && (
+              <button
+                onClick={handleBulkForceReset}
+                disabled={resettingAll}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {resettingAll ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Resetting all...
+                  </>
+                ) : (
+                  <>Force Reset All ({anomalies.length})</>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => { loadSlowStats().catch(console.error); loadLiveStats().catch(console.error); }}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </button>
+          </div>
         </div>
 
         {anomalies.length === 0 ? (
@@ -729,6 +998,7 @@ export default function DashboardPage() {
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Status</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Stuck Time</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Error</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -750,6 +1020,15 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-3 px-4">
                         <p className="text-sm text-gray-600 max-w-xs truncate">{anomaly.error_message}</p>
+                      </td>
+                      <td className="py-3 px-4">
+                        <button
+                          onClick={() => handleForceReset(anomaly.document_id)}
+                          disabled={resettingAnomaly === anomaly.document_id}
+                          className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {resettingAnomaly === anomaly.document_id ? 'Resetting...' : 'Force Reset'}
+                        </button>
                       </td>
                     </tr>
                   ))}

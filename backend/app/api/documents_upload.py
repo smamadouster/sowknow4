@@ -21,6 +21,7 @@ from app.api.documents_common import (
     create_audit_log,
     get_file_extension,
     get_mime_type,
+    is_upload_paused,
     validate_magic_bytes,
     _queue_document_for_processing,
 )
@@ -50,6 +51,12 @@ async def upload_document(
     db: AsyncSession = Depends(get_db),
 ) -> DocumentUploadResponse:
     """Upload a document to the specified bucket."""
+    paused, reason = is_upload_paused()
+    if paused:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=reason,
+        )
     if _upload_semaphore._value == 0:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -276,6 +283,14 @@ async def upload_batch_documents(
                 f"Received: {total_size / (1024 * 1024):.2f}MB, "
                 f"Limit: {int(MAX_BATCH_SIZE / (1024 * 1024))}MB."
             ),
+        )
+
+    # Check upload pause before processing batch
+    paused, reason = is_upload_paused()
+    if paused:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=reason,
         )
 
     successful_docs: list[DocumentUploadResponse] = []

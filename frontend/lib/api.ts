@@ -945,6 +945,68 @@ class ApiClient {
       { method: 'POST' }
     );
   }
+
+  async getPipelineDiagnostics() {
+    return this.request<{
+      timestamp: string;
+      queues: Record<string, { depth: number; max: number | null } | { error: string }>;
+      document_counts: Record<string, number>;
+      stuck_per_stage: Record<string, { stuck_count: number; threshold_seconds: number }>;
+      embed_server: { status: string; can_embed?: boolean; detail?: string };
+      workers: { count?: number; names?: string[]; active_tasks?: Record<string, number>; error?: string };
+      oldest_pending_document: { id: string; filename: string; age_hours: number } | null;
+    }>('/v1/admin/pipeline/diagnostics');
+  }
+
+  async forceResetDocument(documentId: string) {
+    return this.request<{
+      document_id: string;
+      status: string;
+      dispatch_result: string;
+      message: string;
+    }>(`/v1/admin/documents/${documentId}/force-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  async bulkForceResetDocuments(documentIds: string[]) {
+    return this.request<{
+      total: number;
+      success: number;
+      failed: number;
+      results: Array<{
+        document_id: string;
+        status: string;
+        dispatch_result?: string;
+        success?: boolean;
+        error?: string;
+      }>;
+      message: string;
+    }>('/v1/admin/anomalies/force-reset-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_ids: documentIds }),
+    });
+  }
+
+  async getUploadPauseStatus() {
+    return this.request<{ paused: boolean; reason: string }>('/v1/admin/upload-pause');
+  }
+
+  async pauseUploads() {
+    return this.request<{ paused: boolean; message: string }>('/v1/admin/upload-pause', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  async resumeUploads() {
+    return this.request<{ paused: boolean; message: string }>('/v1/admin/upload-pause', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 export const api = new ApiClient(API_BASE);

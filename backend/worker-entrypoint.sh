@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Validate extraction dependencies before starting
+python /app/scripts/validate_worker_deps.py || exit 1
+
 # Only download model for worker (not beat — beat has no model volume and only 128MB)
 if [ "${SKIP_MODEL_DOWNLOAD:-0}" != "1" ]; then
     MODEL_DIR="${SENTENCE_TRANSFORMERS_HOME:-/models}"

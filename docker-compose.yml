@@ -391,7 +391,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4096M
+          memory: 5120M
           cpus: '1.0'
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=4
@@ -446,7 +446,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4096M
+          memory: 6144M
           cpus: '2.0'
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=2
@@ -495,7 +495,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3072M
+          memory: 4096M
           cpus: '1.0'
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=2
@@ -549,8 +549,8 @@ services:
         limits:
           # celery-heavy handles pipeline.embed queue; tasks call embed-server via HTTP
           # Memory footprint grows with chunk count per doc (batch buffers).
-          # OOM kills observed at ~1.2GB → give headroom.
-          memory: 1536M
+          # OOM kills observed at ~1.2GB with 1.5GB limit → doubled to 3GB.
+          memory: 3072M
           cpus: '2.0'
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=4

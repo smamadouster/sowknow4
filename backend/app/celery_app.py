@@ -144,6 +144,11 @@ celery_app.conf.update(
             "schedule": 1800,  # Every 30 minutes
             "args": (),
         },
+        "pipeline-daily-health-report": {
+            "task": "pipeline.daily_health_report",
+            "schedule": crontab(hour=7, minute=30),  # 07:30 UTC daily
+            "args": (),
+        },
     },
 )
 

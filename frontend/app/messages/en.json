@@ -66,7 +66,8 @@
     "bookmarks": "Bookmarks",
     "notes": "Notes",
     "spaces": "Spaces",
-    "subscriptions": "Subscriptions"
+    "subscriptions": "Subscriptions",
+    "tasks": "Tasks"
   },
   "auth": {
     "login_title": "Login to SOWKNOW",
@@ -560,6 +561,8 @@
     "last_payment": "Last Payment",
     "usage_status": "Usage Status",
     "using": "Using",
+    "clear_all": "Clear All",
+    "clear_all_confirm": "Are you sure you want to remove all subscriptions?",
     "empty": "No subscriptions yet. Add your first one!",
     "empty_filtered": "No subscriptions match this filter."
   },
@@ -591,6 +594,33 @@
     "no_content": "No content",
     "updated": "Updated",
     "dictation_target": "← dictation target"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "new": "New Task",
+    "edit": "Edit Task",
+    "title_label": "Title",
+    "description_label": "Description",
+    "notes_label": "Notes",
+    "status_label": "Status",
+    "priority_label": "Priority",
+    "due_date_label": "Due Date",
+    "alarm_at_label": "Alarm",
+    "tags_label": "Tags",
+    "search_placeholder": "Search tasks...",
+    "empty": "No tasks yet. Create your first task!",
+    "delete_confirm": "Delete this task?",
+    "saved": "Task saved",
+    "deleted": "Task deleted",
+    "status_pending": "Pending",
+    "status_in_progress": "In Progress",
+    "status_completed": "Completed",
+    "status_cancelled": "Cancelled",
+    "priority_low": "Low",
+    "priority_medium": "Medium",
+    "priority_high": "High",
+    "alarm_set": "Alarm set",
+    "alarm_triggered": "Alarm triggered"
   },
   "spaces": {
     "title": "Spaces",

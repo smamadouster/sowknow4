@@ -46,6 +46,7 @@ celery_app = Celery(
         "app.tasks.guardian_tasks",
         "app.tasks.smart_folder_tasks",
         "app.tasks.collection_report_tasks",
+        "app.tasks.task_alarm_tasks",
     ],
 )
 
@@ -147,6 +148,16 @@ celery_app.conf.update(
         "pipeline-daily-health-report": {
             "task": "pipeline.daily_health_report",
             "schedule": crontab(hour=7, minute=30),  # 07:30 UTC daily
+            "args": (),
+        },
+        "subscription-payment-reminders": {
+            "task": "app.tasks.subscription_tasks.send_payment_reminders",
+            "schedule": crontab(hour=8, minute=0),  # 08:00 UTC daily
+            "args": (),
+        },
+        "task-alarm-checker": {
+            "task": "app.tasks.task_alarm_tasks.check_task_alarms",
+            "schedule": 60,  # Every 60 seconds
             "args": (),
         },
     },

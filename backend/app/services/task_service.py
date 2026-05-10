@@ -1,0 +1,195 @@
+import logging
+import uuid
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.tag import Tag, TagType, TargetType
+from app.models.task import Task, TaskBucket, TaskStatus
+from app.models.user import User, UserRole
+
+logger = logging.getLogger(__name__)
+
+
+def _escape_like(value: str) -> str:
+    """Escape ILIKE wildcard characters in user input."""
+    return value.replace("%", r"\%").replace("_", r"\_")
+
+
+class TaskService:
+    async def create_task(
+        self, db: AsyncSession, user: User, title: str, tags: list[dict],
+        description: str | None = None,
+        status: str = "pending",
+        priority: str = "medium",
+        due_date=None,
+        alarm_at=None,
+        notes: str | None = None,
+        bucket: str = "public",
+    ) -> Task:
+        task = Task(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            title=title,
+            description=description,
+            status=status,
+            priority=priority,
+            due_date=due_date,
+            alarm_at=alarm_at,
+            notes=notes,
+            bucket=TaskBucket(bucket),
+        )
+        db.add(task)
+        await db.flush()
+
+        for tag_data in tags:
+            tag = Tag(
+                id=uuid.uuid4(),
+                tag_name=tag_data["tag_name"].lower().strip(),
+                tag_type=TagType(tag_data.get("tag_type", "custom")),
+                target_type=TargetType.TASK,
+                target_id=task.id,
+                auto_generated=False,
+            )
+            db.add(tag)
+
+        await db.commit()
+        await db.refresh(task)
+        return task
+
+    async def get_task(self, db: AsyncSession, task_id: uuid.UUID, user: User) -> Task | None:
+        query = select(Task).where(Task.id == task_id)
+        query = self._apply_access_filter(query, user)
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def list_tasks(
+        self, db: AsyncSession, user: User, page: int = 1, page_size: int = 50,
+        tag: str | None = None,
+    ) -> tuple[list[Task], int]:
+        query = select(Task)
+        query = self._apply_access_filter(query, user)
+
+        if tag:
+            tag_subq = select(Tag.target_id).where(
+                Tag.target_type == TargetType.TASK,
+                func.lower(Tag.tag_name) == tag.lower(),
+            )
+            query = query.where(Task.id.in_(tag_subq))
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        query = query.order_by(Task.created_at.desc())
+        query = query.offset((page - 1) * page_size).limit(page_size)
+        result = await db.execute(query)
+        return list(result.scalars().all()), total
+
+    async def update_task(
+        self, db: AsyncSession, task: Task, update_data: dict,
+    ) -> Task:
+        for key, value in update_data.items():
+            if key == "tags":
+                continue
+            if value is not None:
+                setattr(task, key, value)
+
+        if "tags" in update_data and update_data["tags"] is not None:
+            existing = await db.execute(
+                select(Tag).where(
+                    Tag.target_type == TargetType.TASK,
+                    Tag.target_id == task.id,
+                )
+            )
+            for old_tag in existing.scalars().all():
+                await db.delete(old_tag)
+            for tag_data in update_data["tags"]:
+                tag = Tag(
+                    id=uuid.uuid4(),
+                    tag_name=tag_data["tag_name"].lower().strip(),
+                    tag_type=TagType(tag_data.get("tag_type", "custom")),
+                    target_type=TargetType.TASK,
+                    target_id=task.id,
+                    auto_generated=False,
+                )
+                db.add(tag)
+
+        await db.commit()
+        await db.refresh(task)
+        return task
+
+    async def delete_task(self, db: AsyncSession, task: Task) -> None:
+        existing = await db.execute(
+            select(Tag).where(
+                Tag.target_type == TargetType.TASK,
+                Tag.target_id == task.id,
+            )
+        )
+        for old_tag in existing.scalars().all():
+            await db.delete(old_tag)
+        await db.delete(task)
+        await db.commit()
+
+    async def search_tasks(
+        self, db: AsyncSession, user: User, query_str: str, page: int = 1, page_size: int = 50,
+    ) -> tuple[list[Task], int]:
+        query = select(Task)
+        query = self._apply_access_filter(query, user)
+
+        tag_subq = select(Tag.target_id).where(
+            Tag.target_type == TargetType.TASK,
+            func.lower(Tag.tag_name).contains(query_str.lower()),
+        )
+        query = query.where(
+            or_(
+                Task.title.ilike(f"%{_escape_like(query_str)}%"),
+                Task.description.ilike(f"%{_escape_like(query_str)}%"),
+                Task.notes.ilike(f"%{_escape_like(query_str)}%"),
+                Task.id.in_(tag_subq),
+            )
+        )
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        query = query.order_by(Task.created_at.desc())
+        query = query.offset((page - 1) * page_size).limit(page_size)
+        result = await db.execute(query)
+        return list(result.scalars().all()), total
+
+    async def get_tags_for_task(self, db: AsyncSession, task_id: uuid.UUID) -> list[Tag]:
+        result = await db.execute(
+            select(Tag).where(
+                Tag.target_type == TargetType.TASK,
+                Tag.target_id == task_id,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_tasks_with_pending_alarms(
+        self, db: AsyncSession,
+    ) -> list[Task]:
+        """Return tasks whose alarm has fired but not yet triggered."""
+        query = select(Task).where(
+            Task.alarm_at <= func.now(),
+            Task.alarm_triggered.is_(None),
+            Task.status != TaskStatus.COMPLETED,
+            Task.status != TaskStatus.CANCELLED,
+        )
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    async def mark_alarm_triggered(self, db: AsyncSession, task: Task) -> None:
+        task.alarm_triggered = True
+        await db.commit()
+
+    def _apply_access_filter(self, query, user: User):
+        query = query.where(Task.user_id == user.id)
+        if user.role == UserRole.USER:
+            query = query.where(Task.bucket == TaskBucket.PUBLIC)
+        return query
+
+
+task_service = TaskService()

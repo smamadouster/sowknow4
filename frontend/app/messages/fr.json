@@ -66,7 +66,8 @@
     "bookmarks": "Favoris",
     "notes": "Notes",
     "spaces": "Espaces",
-    "subscriptions": "Abonnements"
+    "subscriptions": "Abonnements",
+    "tasks": "Tâches"
   },
   "auth": {
     "login_title": "Connexion à SOWKNOW",
@@ -560,6 +561,8 @@
     "last_payment": "Dernier Paiement",
     "usage_status": "Statut d'Utilisation",
     "using": "Utilisé",
+    "clear_all": "Tout effacer",
+    "clear_all_confirm": "Êtes-vous sûr de vouloir supprimer tous les abonnements ?",
     "empty": "Aucun abonnement pour l'instant. Ajoutez votre premier !",
     "empty_filtered": "Aucun abonnement ne correspond à ce filtre."
   },
@@ -591,6 +594,33 @@
     "no_content": "Aucun contenu",
     "updated": "Modifié",
     "dictation_target": "← cible de dictée"
+  },
+  "tasks": {
+    "title": "Tâches",
+    "new": "Nouvelle tâche",
+    "edit": "Modifier la tâche",
+    "title_label": "Titre",
+    "description_label": "Description",
+    "notes_label": "Notes",
+    "status_label": "Statut",
+    "priority_label": "Priorité",
+    "due_date_label": "Date d'échéance",
+    "alarm_at_label": "Alarme",
+    "tags_label": "Tags",
+    "search_placeholder": "Rechercher dans les tâches...",
+    "empty": "Aucune tâche. Créez votre première tâche !",
+    "delete_confirm": "Supprimer cette tâche ?",
+    "saved": "Tâche enregistrée",
+    "deleted": "Tâche supprimée",
+    "status_pending": "En attente",
+    "status_in_progress": "En cours",
+    "status_completed": "Terminée",
+    "status_cancelled": "Annulée",
+    "priority_low": "Basse",
+    "priority_medium": "Moyenne",
+    "priority_high": "Haute",
+    "alarm_set": "Alarme configurée",
+    "alarm_triggered": "Alarme déclenchée"
   },
   "spaces": {
     "title": "Espaces",

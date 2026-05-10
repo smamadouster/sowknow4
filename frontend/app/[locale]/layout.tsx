@@ -6,6 +6,9 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 import Navigation from '@/components/Navigation';
 import CommandPalette from '@/components/CommandPalette';
 import PrivacyBadge from '@/components/PrivacyBadge';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt';
+import OfflineIndicator from '@/components/OfflineIndicator';
+import AppHooks from '@/components/AppHooks';
 
 export default async function LocaleLayout({
   children,
@@ -68,6 +71,8 @@ export default async function LocaleLayout({
         </div>
       </header>
 
+      <AppHooks />
+      <OfflineIndicator />
       <div className="flex" style={{ minHeight: 'calc(100dvh - 3.5rem)' }}>
         <Navigation />
 
@@ -75,6 +80,7 @@ export default async function LocaleLayout({
           <main id="main-content" className="flex-1 min-w-0">
             {children}
           </main>
+          <PWAInstallPrompt />
 
           {/* Footer */}
           <footer className="border-t border-white/[0.06] bg-vault-950/50">

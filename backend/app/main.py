@@ -32,12 +32,15 @@ from app.api import (
     internal,
     knowledge_graph,
     notes,
+    push,
     search_agent_router,
     search_feedback,
     search_suggest,
     smart_folders,
     spaces,
+    subscriptions,
     tags,
+    tasks,
     voice,
 )
 from app.api import health as health_router
@@ -359,6 +362,9 @@ app.include_router(tags.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
 app.include_router(health_router.router, prefix="/api/v1")
 app.include_router(status_router.router, prefix="/api/v1")
+app.include_router(subscriptions.router, prefix="/api/v1")
+app.include_router(tasks.router, prefix="/api/v1")
+app.include_router(push.router, prefix="/api/v1")
 
 
 @app.get("/")

@@ -2,11 +2,12 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import MobileSheet from '@/components/mobile/MobileSheet';
 import FAB from '@/components/mobile/FAB';
+import { api } from '@/lib/api';
 
 interface Subscription {
   id: string;
@@ -250,6 +251,26 @@ const CURRENCIES = [
   { code: 'GBP', symbol: '£', label: 'GBP (£)' },
 ];
 
+async function syncToBackend(items: Subscription[]) {
+  try {
+    await api.syncSubscriptions(
+      items.map((s) => ({
+        id: s.id,
+        name: s.name,
+        domain: s.domain,
+        price: s.price,
+        billing_cycle: s.billingCycle,
+        description: s.description,
+        last_payment: s.lastPayment,
+        status: s.status,
+        color: s.color,
+      }))
+    );
+  } catch {
+    // Backend sync is best-effort; localStorage is the source of truth
+  }
+}
+
 function getInitials(name: string) {
   return name
     .split(/\s+/)
@@ -257,6 +278,39 @@ function getInitials(name: string) {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+}
+
+function getDaysUntilDue(sub: Subscription): { days: number; dueDate: Date; overdue: boolean } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const last = new Date(sub.lastPayment);
+  last.setHours(0, 0, 0, 0);
+
+  let due = new Date(last);
+  if (sub.billingCycle === 'monthly') {
+    due.setMonth(due.getMonth() + 1);
+  } else {
+    due.setFullYear(due.getFullYear() + 1);
+  }
+
+  // Advance until we find a future due date
+  while (due < today) {
+    if (sub.billingCycle === 'monthly') {
+      due.setMonth(due.getMonth() + 1);
+    } else {
+      due.setFullYear(due.getFullYear() + 1);
+    }
+  }
+
+  const diffMs = due.getTime() - today.getTime();
+  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  return { days, dueDate: due, overdue: days < 0 };
+}
+
+function dueBadgeColor(days: number): string {
+  if (days <= 3) return 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+  if (days <= 7) return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+  return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
 }
 
 function formatCurrency(amount: number, symbol: string) {
@@ -274,6 +328,7 @@ export default function SubscriptionsPage() {
   const [currency, setCurrency] = useState(CURRENCIES[0]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const hasLoaded = useRef(false);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -283,24 +338,55 @@ export default function SubscriptionsPage() {
   const [formDescription, setFormDescription] = useState('');
   const [formLastPayment, setFormLastPayment] = useState('');
   const [formStatus, setFormStatus] = useState<'active' | 'unused'>('active');
+  const [testLoading, setTestLoading] = useState(false);
 
+  // Load subscriptions: backend first, fallback to localStorage
   useEffect(() => {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('sowknow_subscriptions') : null;
-    if (raw) {
-      try {
-        setSubs(JSON.parse(raw));
-      } catch {
-        setSubs(DEFAULT_SUBSCRIPTIONS);
+    let cancelled = false;
+    async function load() {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('sowknow_subscriptions') : null;
+      let localSubs: Subscription[] = [];
+      if (raw) {
+        try { localSubs = JSON.parse(raw); } catch { /* ignore */ }
       }
-    } else {
-      setSubs(DEFAULT_SUBSCRIPTIONS);
+
+      const res = await api.listSubscriptions();
+      if (!cancelled) {
+        if (res.status === 200 && res.data && res.data.subscriptions.length > 0) {
+          const mapped = res.data.subscriptions.map((s) => ({
+            id: s.id,
+            name: s.name,
+            domain: s.domain || s.name.toLowerCase().replace(/\s+/g, '') + '.com',
+            price: Number(s.price),
+            billingCycle: (s.billing_cycle === 'yearly' ? 'yearly' : 'monthly') as 'monthly' | 'yearly',
+            description: s.description || '',
+            lastPayment: s.last_payment,
+            status: (s.status === 'unused' ? 'unused' : 'active') as 'active' | 'unused',
+            color: s.color || PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)],
+          }));
+          setSubs(mapped);
+          localStorage.setItem('sowknow_subscriptions', JSON.stringify(mapped));
+        } else if (localSubs.length > 0) {
+          // Push localStorage data to backend if user is authenticated
+          setSubs(localSubs);
+          syncToBackend(localSubs);
+        } else {
+          setSubs([]);
+        }
+      }
     }
+    load();
+    return () => { cancelled = true; };
   }, []);
 
+  // Persist to localStorage and backend on change
   useEffect(() => {
-    if (subs.length > 0) {
-      localStorage.setItem('sowknow_subscriptions', JSON.stringify(subs));
+    if (!hasLoaded.current) {
+      hasLoaded.current = true;
+      return;
     }
+    localStorage.setItem('sowknow_subscriptions', JSON.stringify(subs));
+    syncToBackend(subs);
   }, [subs]);
 
   const filteredSubs = useMemo(() => {
@@ -475,6 +561,17 @@ export default function SubscriptionsPage() {
     </div>
   );
 
+  const handleTestReminder = async () => {
+    setTestLoading(true);
+    const res = await api.testSubscriptionReminder();
+    setTestLoading(false);
+    if (res.status === 200 && res.data?.sent) {
+      alert(`Test reminder sent to ${res.data.recipient}`);
+    } else {
+      alert(res.error || 'Failed to send test reminder');
+    }
+  };
+
   const filterTabs = (
     <div className="flex items-center gap-2">
       {(['all', 'active', 'unused'] as const).map((f) => (
@@ -506,6 +603,19 @@ export default function SubscriptionsPage() {
             <p className="text-sm text-text-muted mt-1">{t('subtitle')}</p>
           </div>
           <div className="flex items-center gap-3">
+            {subs.length > 0 && (
+              <button
+                onClick={() => {
+                  if (confirm(t('clear_all_confirm'))) {
+                    setSubs([]);
+                    localStorage.removeItem('sowknow_subscriptions');
+                  }
+                }}
+                className="hidden md:inline-flex px-3 py-2 text-xs text-rose-400 border border-rose-500/30 rounded-lg hover:bg-rose-500/10 transition-colors font-medium"
+              >
+                {t('clear_all')}
+              </button>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-muted">{t('currency')}</span>
               <select
@@ -523,6 +633,13 @@ export default function SubscriptionsPage() {
                 ))}
               </select>
             </div>
+            <button
+              onClick={handleTestReminder}
+              disabled={testLoading}
+              className="hidden md:inline-flex px-3 py-2 text-xs text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/10 transition-colors font-medium disabled:opacity-50"
+            >
+              {testLoading ? 'Sending…' : 'Test Reminder'}
+            </button>
             <button
               onClick={openCreate}
               className="hidden md:inline-flex px-4 py-2 bg-amber-500 text-vault-1000 rounded-lg hover:bg-amber-400 transition-colors font-medium"
@@ -601,6 +718,15 @@ export default function SubscriptionsPage() {
                       /{sub.billingCycle === 'monthly' ? t('mo') : t('yr')}
                     </span>
                   </p>
+                  {(() => {
+                    const { days } = getDaysUntilDue(sub);
+                    const badgeClass = dueBadgeColor(days);
+                    return (
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border mb-2 ${badgeClass}`}>
+                        {days === 0 ? 'Due today' : days === 1 ? 'Due tomorrow' : `${days} days left`}
+                      </span>
+                    );
+                  })()}
                   <p className="text-sm text-text-secondary line-clamp-2 min-h-[2.5rem]">{sub.description}</p>
                 </div>
 

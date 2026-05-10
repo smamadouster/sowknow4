@@ -458,3 +458,19 @@ a {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* PWA install prompt animation */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}

@@ -23,6 +23,33 @@ interface BookmarkListData { bookmarks: BookmarkItem[]; total: number; page: num
 interface NoteItem { id: string; title: string; content: string | null; bucket: string; tags: BookmarkTag[]; created_at: string; updated_at: string; }
 interface NoteListData { notes: NoteItem[]; total: number; page: number; page_size: number; }
 
+// --- Task types ---
+interface TaskItem {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  priority: 'low' | 'medium' | 'high';
+  due_date: string | null;
+  alarm_at: string | null;
+  alarm_triggered: boolean;
+  notes: string | null;
+  bucket: string;
+  tags: BookmarkTag[];
+  created_at: string;
+  updated_at: string;
+}
+interface TaskListData { tasks: TaskItem[]; total: number; page: number; page_size: number; }
+interface PushSubscriptionResponse {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  created_at: string;
+}
+
 // --- Space types ---
 interface SpaceTagItem { id: string; tag_name: string; tag_type: string; }
 interface SpaceItemData { id: string; space_id: string; item_type: string; document_id: string | null; bookmark_id: string | null; note_id: string | null; added_by: string; added_at: string; note: string | null; is_excluded: boolean; item_title: string | null; item_url: string | null; item_tags: SpaceTagItem[]; }
@@ -756,6 +783,81 @@ class ApiClient {
     return this.request<NoteListData>(`/v1/notes/search?${params}`);
   }
 
+  // --- Tasks ---
+
+  async getTasks(page: number = 1, pageSize: number = 50, tag?: string) {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (tag) params.set('tag', tag);
+    return this.request<TaskListData>(`/v1/tasks?${params}`, { cache: 'no-store' });
+  }
+
+  async createTask(data: {
+    title: string;
+    description?: string;
+    status?: string;
+    priority?: string;
+    due_date?: string;
+    alarm_at?: string;
+    notes?: string;
+    bucket?: string;
+    tags?: Array<{ tag_name: string; tag_type?: string }>;
+  }) {
+    return this.request<TaskItem>('/v1/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getTask(id: string) {
+    return this.request<TaskItem>(`/v1/tasks/${id}`, { cache: 'no-store' });
+  }
+
+  async updateTask(id: string, data: {
+    title?: string;
+    description?: string;
+    status?: string;
+    priority?: string;
+    due_date?: string;
+    alarm_at?: string;
+    notes?: string;
+    bucket?: string;
+    tags?: Array<{ tag_name: string; tag_type?: string }>;
+  }) {
+    return this.request<TaskItem>(`/v1/tasks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteTask(id: string) {
+    return this.request<void>(`/v1/tasks/${id}`, { method: 'DELETE' });
+  }
+
+  async searchTasks(query: string, page: number = 1, pageSize: number = 50) {
+    const params = new URLSearchParams({ q: query, page: String(page), page_size: String(pageSize) });
+    return this.request<TaskListData>(`/v1/tasks/search?${params}`, { cache: 'no-store' });
+  }
+
+  // --- Push ---
+
+  async subscribePush(subscription: { endpoint: string; p256dh: string; auth: string }) {
+    return this.request<PushSubscriptionResponse>('/v1/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription),
+    });
+  }
+
+  async unsubscribePush(subscription: { endpoint: string; p256dh: string; auth: string }) {
+    return this.request<void>('/v1/push/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription),
+    });
+  }
+
   // --- Spaces ---
 
   async getSpaces(page: number = 1, pageSize: number = 50, search?: string) {
@@ -1005,6 +1107,66 @@ class ApiClient {
     return this.request<{ paused: boolean; message: string }>('/v1/admin/upload-pause', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Subscription endpoints
+  async listSubscriptions() {
+    return this.request<{
+      subscriptions: Array<{
+        id: string;
+        user_id: string;
+        name: string;
+        domain: string | null;
+        price: number;
+        billing_cycle: string;
+        description: string | null;
+        last_payment: string;
+        status: string;
+        color: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+    }>('/v1/subscriptions');
+  }
+
+  async testSubscriptionReminder() {
+    return this.request<{ sent: boolean; recipient: string }>('/v1/subscriptions/test-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  async syncSubscriptions(items: Array<{
+    id?: string;
+    name: string;
+    domain?: string | null;
+    price: number;
+    billing_cycle: string;
+    description?: string | null;
+    last_payment: string;
+    status: string;
+    color?: string | null;
+  }>) {
+    return this.request<{
+      subscriptions: Array<{
+        id: string;
+        user_id: string;
+        name: string;
+        domain: string | null;
+        price: number;
+        billing_cycle: string;
+        description: string | null;
+        last_payment: string;
+        status: string;
+        color: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+    }>('/v1/subscriptions/sync', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(items),
     });
   }
 }

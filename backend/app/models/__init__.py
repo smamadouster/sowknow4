@@ -29,12 +29,15 @@ from app.models.smart_folder import (
     SmartFolderReport,
     SmartFolderStatus,
 )
+from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
 from app.models.note import Note, NoteBucket  # noqa: F401
 from app.models.note_audio import NoteAudio  # noqa: F401
+from app.models.push_subscription import PushSubscription  # noqa: F401
 from app.models.pipeline import PipelineStage, StageEnum, StageStatus
 from app.models.processing import ProcessingQueue, TaskStatus, TaskType
 from app.models.space import Space, SpaceBucket, SpaceItem, SpaceItemType, SpaceRule, SpaceRuleType  # noqa: F401
 from app.models.tag import Tag, TagType, TargetType  # noqa: F401
+from app.models.task import Task, TaskBucket, TaskPriority, TaskStatus  # noqa: F401
 from app.models.user import User
 
 __all__ = [
@@ -68,6 +71,9 @@ __all__ = [
     "SmartFolderReport",
     "SmartFolderStatus",
     "RelationshipType",
+    "Subscription",
+    "BillingCycle",
+    "SubscriptionStatus",
     "AuditLog",
     "AuditAction",
     "FailedCeleryTask",
@@ -76,6 +82,10 @@ __all__ = [
     "Tag",
     "TagType",
     "TargetType",
+    "Task",
+    "TaskBucket",
+    "TaskPriority",
+    "TaskStatus",
     "Bookmark",
     "BookmarkBucket",
     "Note",

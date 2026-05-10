@@ -16,6 +16,11 @@
 [export]: metadata
 
 ---
+### FILE: frontend/components/AppHooks.tsx
+[ext_deps]: @/hooks/useTaskAlarms, @/hooks/usePushNotifications, react
+[fn]: default()
+
+---
 ### FILE: frontend/components/BatchUploader.tsx
 [ext_deps]: react, next-intl
 [fn]: default({
@@ -31,6 +36,11 @@
 [fn]: default()
 
 ---
+### FILE: frontend/components/DateTimePicker.tsx
+[ext_deps]: react
+[fn]: default({ value, onChange, label })
+
+---
 ### FILE: frontend/components/LanguageSelector.tsx
 [ext_deps]: next-intl, @/i18n/routing, react
 [fn]: LanguageSelector()
@@ -42,8 +52,18 @@
 [fn]: default()
 
 ---
+### FILE: frontend/components/OfflineIndicator.tsx
+[ext_deps]: react
+[fn]: default()
+
+---
 ### FILE: frontend/components/PrivacyBadge.tsx
 [ext_deps]: next-intl
+[fn]: default()
+
+---
+### FILE: frontend/components/PWAInstallPrompt.tsx
+[ext_deps]: react
 [fn]: default()
 
 ---
@@ -78,6 +98,11 @@
 [fn]: useIsStandalone()
 
 ---
+### FILE: frontend/hooks/usePushNotifications.ts
+[ext_deps]: react
+[fn]: usePushNotifications()
+
+---
 ### FILE: frontend/hooks/useScrollDirection.ts
 [ext_deps]: react
 [fn]: useScrollDirection(threshold)
@@ -98,6 +123,11 @@
 [ext_deps]: react
 [fn]: useTagSuggestions(query, limit)
 [interface]: TagSuggestion { props: [tag_name, count] }
+
+---
+### FILE: frontend/hooks/useTaskAlarms.ts
+[ext_deps]: react
+[fn]: useTaskAlarms()
 
 ---
 ### FILE: frontend/hooks/useVoiceRecorder.ts
@@ -137,7 +167,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/layout.tsx
-[ext_deps]: next-intl, next-intl/server, next/navigation, @/i18n/routing, @/components/LanguageSelector, @/components/Navigation, @/components/CommandPalette, @/components/PrivacyBadge
+[ext_deps]: next-intl, next-intl/server, next/navigation, @/i18n/routing, @/components/LanguageSelector, @/components/Navigation, @/components/CommandPalette, @/components/PrivacyBadge, @/components/PWAInstallPrompt, @/components/OfflineIndicator, @/components/AppHooks
 [fn]: default({
   children,
   params,
@@ -347,7 +377,13 @@
 
 ---
 ### FILE: frontend/app/[locale]/subscriptions/page.tsx
-[ext_deps]: react, next-intl, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB
+[ext_deps]: react, next-intl, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/lib/api
+[fn]: default()
+[export]: dynamic
+
+---
+### FILE: frontend/app/[locale]/tasks/page.tsx
+[ext_deps]: react, next-intl, next/navigation, @/components/TagSelector, @/components/DateTimePicker, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/components/mobile/SwipeableRow, @/components/mobile/PullToRefresh
 [fn]: default()
 [export]: dynamic
 
@@ -374,6 +410,12 @@
 ---
 ### FILE: frontend/app/[locale]/spaces/[id]/page.tsx
 [ext_deps]: react, next-intl, next/navigation
+[fn]: default()
+[export]: dynamic
+
+---
+### FILE: frontend/app/[locale]/tasks/[id]/page.tsx
+[ext_deps]: react, next-intl, next/navigation, @/components/TagSelector, @/components/DateTimePicker
 [fn]: default()
 [export]: dynamic
 

@@ -7,6 +7,7 @@ const withPWA = require('next-pwa')({
   fallbacks: {
     document: '/offline',
   },
+  importScripts: ['/push-sw.js'],
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/fonts\.(?:gstatic)\.com\/.*/i,
@@ -36,6 +37,16 @@ const withPWA = require('next-pwa')({
       handler: 'StaleWhileRevalidate',
       options: {
         cacheName: 'static-assets',
+      },
+    },
+    {
+      urlPattern: /^\/api\/v1\/tasks/i,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'tasks-api',
+        expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
+        cacheableResponse: { statuses: [0, 200] },
+        networkTimeoutSeconds: 3,
       },
     },
   ],

@@ -501,6 +501,19 @@ def pipeline_sweeper() -> dict:
         if failed_retried:
             logger.info("Sweeper auto-retried %d failed stages", failed_retried)
 
+        # Collect depths for all pipeline queues (needed for alerting + metrics)
+        queue_depths = {}
+        if _redis is not None:
+            for q in [
+                "pipeline.ocr", "pipeline.chunk", "pipeline.embed",
+                "pipeline.index", "pipeline.articles", "pipeline.entities",
+                "celery", "scheduled",
+            ]:
+                try:
+                    queue_depths[q] = _redis.llen(q)
+                except Exception:
+                    queue_depths[q] = -1
+
         # ── 6. Queue depth alerting ──
         if _redis is not None:
             for q, threshold in _QUEUE_ALERT_THRESHOLDS.items():
@@ -578,19 +591,6 @@ def pipeline_sweeper() -> dict:
                     )
         except Exception:
             logger.exception("Sweeper corrupted-data check failed")
-
-        # Collect depths for all pipeline queues for observability
-        queue_depths = {}
-        if _redis is not None:
-            for q in [
-                "pipeline.ocr", "pipeline.chunk", "pipeline.embed",
-                "pipeline.index", "pipeline.articles", "pipeline.entities",
-                "celery", "scheduled",
-            ]:
-                try:
-                    queue_depths[q] = _redis.llen(q)
-                except Exception:
-                    queue_depths[q] = -1
 
         metrics = {
             "timestamp": now.isoformat(),

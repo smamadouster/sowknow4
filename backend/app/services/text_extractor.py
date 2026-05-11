@@ -248,181 +248,69 @@ class TextExtractor:
             }
 
     async def _extract_from_xlsx(self, file_path: str) -> dict[str, Any]:
-        """Extract text from XLSX file.
+        """Extract text from XLSX file via subprocess with a 120-second timeout.
 
-        Rows are batched into blocks of ~50 rows so the chunking service can
-        create proper 512-token chunks instead of one chunk per row (which
-        caused 40k+ chunks from a single spreadsheet).
-
-        Safety bounds:
-        - Max 20 visible sheets (skip hidden/very-hidden)
-        - Max 5,000 rows per sheet
-        - Max 500,000 characters total text (truncate with notice)
-        - Skip rows where all cells are empty/whitespace
+        openpyxl can hang on malformed or pathologically large spreadsheets.
+        Running extraction in a subprocess prevents a stuck parser from blocking
+        the Celery worker indefinitely.
         """
-        try:
-            from openpyxl import load_workbook
-
-            _MAX_SHEETS = 20
-            _MAX_ROWS_PER_SHEET = 5000
-            _MAX_TOTAL_CHARS = 500_000
-            _ROW_BATCH_SIZE = 50
-
-            wb = load_workbook(file_path, read_only=True)
-            text_parts = []
-            sheets_processed = 0
-            total_chars = 0
-            truncated = False
-
-            for sheet_name in wb.sheetnames:
-                if sheets_processed >= _MAX_SHEETS:
-                    break
-
-                sheet = wb[sheet_name]
-                # Skip hidden/very-hidden sheets
-                if sheet.sheet_state != "visible":
-                    continue
-
-                sheets_processed += 1
-                sheet_text_parts = [f"[Sheet: {sheet_name}]"]
-                batch_rows: list[str] = []
-                row_count = 0
-
-                for row in sheet.iter_rows(values_only=True):
-                    row_count += 1
-                    if row_count > _MAX_ROWS_PER_SHEET:
-                        sheet_text_parts.append("[... rows truncated at 5000 ...]")
-                        break
-
-                    # Skip rows where all cells are None or whitespace-only
-                    if not any(cell is not None and str(cell).strip() for cell in row):
-                        continue
-
-                    row_text = " | ".join([str(cell) if cell is not None else "" for cell in row])
-                    batch_rows.append(row_text)
-
-                    if len(batch_rows) >= _ROW_BATCH_SIZE:
-                        batch_text = "\n".join(batch_rows)
-                        if total_chars + len(batch_text) > _MAX_TOTAL_CHARS:
-                            truncated = True
-                            break
-                        sheet_text_parts.append(batch_text)
-                        total_chars += len(batch_text) + 2  # +2 for \n\n
-                        batch_rows = []
-
-                if not truncated and batch_rows:
-                    batch_text = "\n".join(batch_rows)
-                    if total_chars + len(batch_text) <= _MAX_TOTAL_CHARS:
-                        sheet_text_parts.append(batch_text)
-                        total_chars += len(batch_text) + 2
-                    else:
-                        truncated = True
-
-                if len(sheet_text_parts) > 1:
-                    text_parts.append("\n\n".join(sheet_text_parts))
-
-                if truncated:
-                    text_parts.append("[... document truncated at 500,000 characters ...]")
-                    break
-
-            return {
-                "text": "\n\n".join(text_parts),
-                "pages": sheets_processed,
-                "source": "openpyxl",
-            }
-
-        except Exception as e:
-            logger.error(f"Error extracting from XLSX: {str(e)}")
-            return {"text": "", "error": str(e), "pages": 0}
+        return await self._extract_spreadsheet(file_path, "xlsx")
 
     async def _extract_from_xls(self, file_path: str) -> dict[str, Any]:
-        """Extract text from legacy XLS file using xlrd.
+        """Extract text from legacy XLS file via subprocess with a 120-second timeout.
 
-        Uses the same safety bounds as XLSX to prevent monster documents.
-        If xlrd fails (e.g. missing dependency or newer-format file masquerading
-        as .xlt), falls back to openpyxl.
+        xlrd can hang on corrupted BIFF streams.  If xlrd fails, we fall back to
+        the openpyxl subprocess parser (some .xlt files are actually OOXML).
         """
+        result = await self._extract_spreadsheet(file_path, "xls")
+        if result.get("error"):
+            logger.warning(
+                "xlrd failed for %s: %s — trying openpyxl fallback",
+                file_path, result["error"],
+            )
+            fallback = await self._extract_spreadsheet(file_path, "xlsx")
+            if fallback.get("text") or not fallback.get("error"):
+                fallback["source"] = "openpyxl-fallback"
+                return fallback
+        return result
+
+    async def _extract_spreadsheet(self, file_path: str, fmt: str) -> dict[str, Any]:
+        """Run the standalone spreadsheet extractor in a subprocess with timeout."""
+        import json
+        import os
+        import subprocess
+        import sys
+
+        # Locate the standalone script so we can invoke it by absolute path.
+        # This works regardless of PYTHONPATH in the subprocess.
+        script_path = os.path.join(
+            os.path.dirname(__file__), "_spreadsheet_extractor.py"
+        )
+
         try:
-            import xlrd
-
-            _MAX_SHEETS = 20
-            _MAX_ROWS_PER_SHEET = 5000
-            _MAX_TOTAL_CHARS = 500_000
-            _ROW_BATCH_SIZE = 50
-
-            wb = xlrd.open_workbook(file_path, on_demand=True)
-            text_parts = []
-            sheets_processed = 0
-            total_chars = 0
-            truncated = False
-
-            for sheet_idx in range(min(wb.nsheets, _MAX_SHEETS)):
-                sheet = wb.sheet_by_index(sheet_idx)
-                sheets_processed += 1
-                sheet_text_parts = [f"[Sheet: {sheet.name}]"]
-                batch_rows: list[str] = []
-                row_count = min(sheet.nrows, _MAX_ROWS_PER_SHEET)
-
-                if sheet.nrows > _MAX_ROWS_PER_SHEET:
-                    row_count = _MAX_ROWS_PER_SHEET
-
-                for row_idx in range(row_count):
-                    if row_idx >= _MAX_ROWS_PER_SHEET:
-                        sheet_text_parts.append("[... rows truncated at 5000 ...]")
-                        break
-
-                    row_values = sheet.row_values(row_idx)
-                    # Skip rows where all cells are empty/whitespace
-                    if not any(cell is not None and str(cell).strip() for cell in row_values):
-                        continue
-
-                    row_text = " | ".join([str(cell) if cell is not None else "" for cell in row_values])
-                    batch_rows.append(row_text)
-
-                    if len(batch_rows) >= _ROW_BATCH_SIZE:
-                        batch_text = "\n".join(batch_rows)
-                        if total_chars + len(batch_text) > _MAX_TOTAL_CHARS:
-                            truncated = True
-                            break
-                        sheet_text_parts.append(batch_text)
-                        total_chars += len(batch_text) + 2
-                        batch_rows = []
-
-                if not truncated and batch_rows:
-                    batch_text = "\n".join(batch_rows)
-                    if total_chars + len(batch_text) <= _MAX_TOTAL_CHARS:
-                        sheet_text_parts.append(batch_text)
-                        total_chars += len(batch_text) + 2
-                    else:
-                        truncated = True
-
-                if len(sheet_text_parts) > 1:
-                    text_parts.append("\n\n".join(sheet_text_parts))
-
-                if truncated:
-                    text_parts.append("[... document truncated at 500,000 characters ...]")
-                    break
-
-            wb.release_resources()
-
+            proc = subprocess.run(
+                [sys.executable, script_path, fmt, file_path],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if proc.returncode != 0:
+                stderr = proc.stderr.strip() if proc.stderr else "unknown error"
+                return {
+                    "text": "",
+                    "error": f"{fmt.upper()} extraction failed: {stderr}",
+                    "pages": 0,
+                }
+            return json.loads(proc.stdout)
+        except subprocess.TimeoutExpired:
+            logger.error("%s extraction timed out after 120s: %s", fmt.upper(), file_path)
             return {
-                "text": "\n\n".join(text_parts),
-                "pages": sheets_processed,
-                "source": "xlrd",
+                "text": "",
+                "error": f"{fmt.upper()} extraction timed out after 120s",
+                "pages": 0,
             }
-
         except Exception as e:
-            logger.warning(f"xlrd failed for {file_path}: {e} — trying openpyxl fallback")
-            # Some .xlt files are actually newer-format templates; try openpyxl
-            try:
-                fallback = await self._extract_from_xlsx(file_path)
-                if fallback.get("text") or not fallback.get("error"):
-                    fallback["source"] = "openpyxl-fallback"
-                    return fallback
-            except Exception as fallback_err:
-                logger.warning(f"openpyxl fallback also failed for {file_path}: {fallback_err}")
-
-            logger.error(f"Error extracting from XLS: {str(e)}")
+            logger.error("%s extraction error: %s", fmt.upper(), e)
             return {"text": "", "error": str(e), "pages": 0}
 
     async def _extract_from_txt(self, file_path: str) -> dict[str, Any]:

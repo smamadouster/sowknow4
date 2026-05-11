@@ -1085,9 +1085,12 @@ async def recover_failed_uploads(
     """
     Bulk-recover documents stuck in ERROR state due to task dispatch verification failures.
 
-    Resets matching documents to PENDING and re-queues them for processing.
+    Resets matching documents to PENDING and dispatches them via the new pipeline.
     """
-    from app.tasks.document_tasks import process_document
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.tasks.pipeline_orchestrator import dispatch_document
 
     result = await db.execute(
         select(Document)
@@ -1105,6 +1108,8 @@ async def recover_failed_uploads(
     recovered = []
     for doc in documents:
         doc.status = DocumentStatus.PENDING
+        doc.pipeline_stage = "uploaded"
+        doc.pipeline_error = None
         meta = doc.document_metadata or {}
         meta.pop("processing_error", None)
         meta["recovered_at"] = datetime.utcnow().isoformat()
@@ -1113,17 +1118,25 @@ async def recover_failed_uploads(
 
     await db.commit()
 
-    # Queue tasks after commit to avoid partial state
-    for doc in documents:
-        try:
-            task = process_document.delay(str(doc.id))
-            doc.status = DocumentStatus.PROCESSING
-            doc.document_metadata = {**(doc.document_metadata or {}), "celery_task_id": task.id}
-        except Exception as e:
-            doc.status = DocumentStatus.ERROR
-            doc.document_metadata = {**(doc.document_metadata or {}), "processing_error": str(e)}
+    # Dispatch via the new pipeline orchestrator (sync, so run in executor)
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        for doc in documents:
+            try:
+                dispatch_result = await loop.run_in_executor(pool, dispatch_document, str(doc.id))
+                if dispatch_result == "dispatched":
+                    doc.status = DocumentStatus.PROCESSING
+                    doc.pipeline_stage = "ocr"
+                else:
+                    doc.status = DocumentStatus.PENDING
+                    meta = doc.document_metadata or {}
+                    meta["backpressure"] = dispatch_result
+                    doc.document_metadata = meta
+            except Exception as e:
+                doc.status = DocumentStatus.ERROR
+                doc.document_metadata = {**(doc.document_metadata or {}), "processing_error": str(e)}
 
-        recovered.append(str(doc.id))
+            recovered.append(str(doc.id))
 
     await db.commit()
 

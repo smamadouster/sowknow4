@@ -77,15 +77,19 @@ def main():
         # ─── STEP 3: Queue reprocessing ───────────────────────────
         step("STEP 3: Queuing all documents for full reprocessing")
 
-        from app.tasks.document_tasks import process_document
+        from app.tasks.pipeline_orchestrator import dispatch_document
+        from app.tasks.pipeline_tasks import update_stage
+        from app.models.pipeline import StageEnum, StageStatus
 
-        task_ids = {}
+        dispatch_results = {}
         for d in docs:
             d.status = DocumentStatus.PENDING
+            d.pipeline_stage = "uploaded"
             db.commit()
-            result = process_document.delay(str(d.id))
-            task_ids[d.original_filename] = result.id
-            print(f"    Queued: {d.original_filename[:50]} -> task {result.id}")
+            update_stage(str(d.id), StageEnum.UPLOADED, StageStatus.COMPLETED)
+            result = dispatch_document(str(d.id))
+            dispatch_results[d.original_filename] = result
+            print(f"    Queued: {d.original_filename[:50]} -> {result}")
 
         # ─── STEP 4: Wait for processing ──────────────────────────
         step("STEP 4: Waiting for document processing (OCR + chunking + embedding)")

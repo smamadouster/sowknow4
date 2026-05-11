@@ -115,10 +115,11 @@ def classify_and_recover_errors(
 
         # Phase C: Queue full reprocessing (smallest batches, highest cost)
         reprocess_queued = 0
-        from app.tasks.document_tasks import process_document
+        from app.tasks.pipeline_orchestrator import dispatch_batch
 
         reprocess_batch = min(batch_size // 2, 25)  # Smaller batches for full reprocess
-        for i, doc in enumerate(full_reprocess[:reprocess_batch]):
+        doc_ids = []
+        for doc in full_reprocess[:reprocess_batch]:
             doc.status = DocumentStatus.PENDING
             doc.pipeline_stage = "uploaded"
             doc.pipeline_error = None
@@ -129,11 +130,10 @@ def classify_and_recover_errors(
             meta["original_error"] = meta.get("processing_error", "unknown")
             doc.document_metadata = meta
             db.commit()
-            process_document.apply_async(
-                args=(str(doc.id),),
-                countdown=i * delay_seconds * 2,  # Double stagger for full pipeline
-            )
-            reprocess_queued += 1
+            doc_ids.append(str(doc.id))
+
+        dispatch_result = dispatch_batch(doc_ids)
+        reprocess_queued = dispatch_result["dispatched"]
 
         return {
             "status": "success",
@@ -172,7 +172,7 @@ def reprocess_failed_documents(
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentStatus
-    from app.tasks.document_tasks import process_document
+    from app.tasks.pipeline_orchestrator import dispatch_batch
 
     db = SessionLocal()
     try:
@@ -192,10 +192,11 @@ def reprocess_failed_documents(
 
         logger.info(f"Reprocess backfill: found {len(docs)} ERROR documents in [{date_from}, {date_to})")
 
-        reset_count = 0
-        for i, doc in enumerate(docs):
+        doc_ids = []
+        for doc in docs:
             meta = doc.document_metadata or {}
             doc.status = DocumentStatus.PENDING
+            doc.pipeline_stage = "uploaded"
             doc.document_metadata = {
                 **meta,
                 "recovery_count": 0,
@@ -204,14 +205,12 @@ def reprocess_failed_documents(
                 "original_error": meta.get("processing_error", "unknown"),
             }
             db.commit()
+            doc_ids.append(str(doc.id))
 
-            process_document.apply_async(
-                args=(str(doc.id),),
-                countdown=i * delay_seconds,
-            )
-            reset_count += 1
+        dispatch_result = dispatch_batch(doc_ids)
+        reset_count = dispatch_result["dispatched"]
 
-        logger.info(f"Reprocess backfill: reset {reset_count} documents, stagger={delay_seconds}s")
+        logger.info(f"Reprocess backfill: reset {reset_count} documents, backpressured={dispatch_result['backpressured']}")
 
         return {
             "status": "success",

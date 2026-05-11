@@ -200,7 +200,10 @@ def validate_magic_bytes(filename: str, content: bytes) -> bool:
         ".docx": (content[:4] == b"PK\x03\x04"),
         ".pptx": (content[:4] == b"PK\x03\x04"),
         ".xlsx": (content[:4] == b"PK\x03\x04"),
+        ".xltx": (content[:4] == b"PK\x03\x04"),
         ".epub": (content[:4] == b"PK\x03\x04"),
+        ".xls": (content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+        ".xlt": (content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
         ".mp3": (content[:3] == b"ID3" or content[:2] == b"\xff\xfb"),
         ".wav": (content[:4] == b"RIFF" and content[8:12] == b"WAVE"),
     }

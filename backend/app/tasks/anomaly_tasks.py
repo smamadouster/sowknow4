@@ -509,7 +509,7 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
     from app.database import SessionLocal
     from app.models.document import Document, DocumentStatus
     from app.models.processing import ProcessingQueue, TaskStatus
-    from app.tasks.document_tasks import process_document
+    from app.tasks.pipeline_orchestrator import dispatch_document
 
     MAX_RECOVERY_PER_RUN = 10  # Never flood the queue
 
@@ -609,8 +609,18 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
 
                 db.commit()
 
-                # Re-queue the document for processing
-                process_document.delay(str(doc.id))
+                # Re-queue via the new pipeline dispatcher
+                dispatch_result = dispatch_document(str(doc.id))
+                if dispatch_result == "dispatched":
+                    doc.status = DocumentStatus.PROCESSING
+                    doc.pipeline_stage = "ocr"
+                else:
+                    doc.status = DocumentStatus.PENDING
+                    doc.pipeline_stage = "uploaded"
+                    meta = doc.document_metadata or {}
+                    meta["backpressure"] = dispatch_result
+                    doc.document_metadata = meta
+                db.commit()
 
                 recovered.append(
                     {
@@ -618,11 +628,12 @@ def recover_stuck_documents(max_processing_minutes: int = 15) -> dict:
                         "filename": doc.filename,
                         "stuck_duration_minutes": round(stuck_duration, 1),
                         "recovery_attempt": recovery_count,
+                        "dispatch_result": dispatch_result,
                     }
                 )
 
                 logger.info(
-                    f"Re-queued stuck document {doc.id} for processing (attempt {recovery_count}/{MAX_RECOVERY_ATTEMPTS})"
+                    f"Re-queued stuck document {doc.id} for processing (attempt {recovery_count}/{MAX_RECOVERY_ATTEMPTS}, dispatch={dispatch_result})"
                 )
 
             except Exception as e:
@@ -669,7 +680,7 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
     """
     from app.database import SessionLocal
     from app.models.document import Document, DocumentStatus
-    from app.tasks.document_tasks import process_document
+    from app.tasks.pipeline_orchestrator import dispatch_document
 
     db = SessionLocal()
     recovered = []
@@ -776,15 +787,21 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
                     )
                     continue
 
-                # Try to queue the document for processing
-                task = process_document.delay(str(doc.id))
+                # Dispatch via the new pipeline orchestrator
+                dispatch_result = dispatch_document(str(doc.id))
+                if dispatch_result == "dispatched":
+                    doc.status = DocumentStatus.PROCESSING
+                    doc.pipeline_stage = "ocr"
+                else:
+                    doc.status = DocumentStatus.PENDING
+                    doc.pipeline_stage = "uploaded"
+                    meta = doc.document_metadata or {}
+                    meta["backpressure"] = dispatch_result
+                    doc.document_metadata = meta
 
-                # Success - update status to PROCESSING
-                doc.status = DocumentStatus.PROCESSING
                 doc.document_metadata = {
                     **existing_meta,
                     "pending_recovery_count": recovery_count,
-                    "celery_task_id": task.id,
                     "recovered_from_pending": True,
                     "recovered_at": datetime.now(UTC).isoformat(),
                 }
@@ -794,11 +811,11 @@ def recover_pending_documents(pending_threshold_minutes: int = 5) -> dict:
                     {
                         "document_id": str(doc.id),
                         "filename": doc.filename,
-                        "celery_task_id": task.id,
+                        "dispatch_result": dispatch_result,
                         "recovery_attempt": recovery_count,
                     }
                 )
-                logger.info(f"Successfully recovered PENDING document {doc.id}, queued with task {task.id}")
+                logger.info(f"Successfully recovered PENDING document {doc.id}, dispatch={dispatch_result}")
 
             except Exception as e:
                 logger.error(f"Failed to recover PENDING document {doc.id}: {e}")

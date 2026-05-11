@@ -110,9 +110,13 @@ def validate_magic_bytes(filename: str, content: bytes) -> bool:
         ".jpeg": (content[:3] == b"\xff\xd8\xff"),
         ".gif": (content[:6] in (b"GIF87a", b"GIF89a")),
         ".webp": (content[:4] == b"RIFF" and content[8:12] == b"WEBP"),
-        ".zip": (content[:4] == b"PK\x03\x04"),  # docx, epub
+        ".zip": (content[:4] == b"PK\x03\x04"),  # docx, epub, xlsx
         ".docx": (content[:4] == b"PK\x03\x04"),
+        ".xlsx": (content[:4] == b"PK\x03\x04"),
+        ".xltx": (content[:4] == b"PK\x03\x04"),
         ".epub": (content[:4] == b"PK\x03\x04"),
+        ".xls": (content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+        ".xlt": (content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
         ".mp3": (content[:3] == b"ID3" or content[:2] == b"\xff\xfb"),
         ".wav": (content[:4] == b"RIFF" and content[8:12] == b"WAVE"),
     }

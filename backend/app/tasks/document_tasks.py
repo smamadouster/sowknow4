@@ -430,7 +430,7 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
 @shared_task(name="app.tasks.document_tasks.process_batch_documents")
 def process_batch_documents(document_ids: list) -> dict:
     """
-    Process multiple documents in batch
+    Process multiple documents in batch via the new pipeline dispatcher.
 
     Args:
         document_ids: List of document UUIDs to process
@@ -438,18 +438,24 @@ def process_batch_documents(document_ids: list) -> dict:
     Returns:
         dict with batch processing results
     """
+    from app.tasks.pipeline_orchestrator import dispatch_document
+
     results = []
     for doc_id in document_ids:
         try:
-            result = process_document.delay(str(doc_id))
-            results.append({"document_id": doc_id, "task_id": result.id, "status": "queued"})
+            dispatch_result = dispatch_document(str(doc_id))
+            if dispatch_result == "dispatched":
+                results.append({"document_id": doc_id, "dispatch_result": dispatch_result, "status": "queued"})
+            else:
+                results.append({"document_id": doc_id, "dispatch_result": dispatch_result, "status": "backpressure"})
         except Exception as e:
-            logger.error(f"Failed to queue document {doc_id}: {str(e)}")
+            logger.error(f"Failed to dispatch document {doc_id}: {str(e)}")
             results.append({"document_id": doc_id, "status": "error", "message": str(e)})
 
     return {
         "total": len(document_ids),
         "queued": sum(1 for r in results if r["status"] == "queued"),
+        "backpressured": sum(1 for r in results if r["status"] == "backpressure"),
         "errors": sum(1 for r in results if r["status"] == "error"),
         "results": results,
     }
@@ -878,12 +884,12 @@ def build_smart_collection(self, collection_id: str, user_id: str) -> dict:
 
 @shared_task(name="app.tasks.document_tasks.reprocess_pending_documents")
 def reprocess_pending_documents() -> dict:
-    """Dispatch processing for all pending documents in staggered batches."""
+    """Dispatch processing for all pending documents via the new pipeline."""
     from app.database import SessionLocal
     from app.models.document import Document, DocumentStatus
+    from app.tasks.pipeline_orchestrator import dispatch_batch
 
     BATCH_SIZE = 40
-    BATCH_INTERVAL_SECONDS = 30
 
     db = SessionLocal()
     try:
@@ -894,25 +900,23 @@ def reprocess_pending_documents() -> dict:
             .all()
         )
 
-        queued = 0
-        for batch_index, offset in enumerate(range(0, len(docs), BATCH_SIZE)):
-            batch = docs[offset : offset + BATCH_SIZE]
-            countdown = batch_index * BATCH_INTERVAL_SECONDS
-            for doc in batch:
-                process_document.apply_async(
-                    args=[str(doc.id)],
-                    countdown=countdown,
-                )
-                queued += 1
+        doc_ids = [str(doc.id) for doc in docs]
+        total_dispatched = 0
+        total_backpressured = 0
+        for offset in range(0, len(doc_ids), BATCH_SIZE):
+            batch = doc_ids[offset : offset + BATCH_SIZE]
+            result = dispatch_batch(batch)
+            total_dispatched += result["dispatched"]
+            total_backpressured += result["backpressured"]
+            if result["backpressured"] > 0:
+                break  # Stop when backpressure kicks in
 
         logger.info(
-            "Reprocess: queued %d pending documents in %d batches of %d, %ds apart",
-            queued,
-            (queued + BATCH_SIZE - 1) // BATCH_SIZE if queued else 0,
-            BATCH_SIZE,
-            BATCH_INTERVAL_SECONDS,
+            "Reprocess: dispatched %d pending documents, %d backpressured",
+            total_dispatched,
+            total_backpressured,
         )
-        return {"status": "success", "queued": queued}
+        return {"status": "success", "queued": total_dispatched, "backpressured": total_backpressured}
 
     finally:
         db.close()

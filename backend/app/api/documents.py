@@ -397,6 +397,7 @@ async def reprocess_document(
             )
 
     document.status = DocumentStatus.PENDING
+    document.pipeline_stage = "uploaded"
     meta = document.document_metadata or {}
     meta["reprocessed_at"] = datetime.utcnow().isoformat()
     meta["reprocess_reason"] = reason or "manual"
@@ -406,12 +407,41 @@ async def reprocess_document(
 
     if regenerate_embeddings:
         task = recompute_embeddings_for_document.delay(str(document_id))
+        return {
+            "document_id": str(document_id),
+            "status": "pending",
+            "task_id": task.id,
+            "message": "Re-embedding queued successfully",
+        }
+
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.tasks.pipeline_orchestrator import dispatch_document
+    from app.tasks.pipeline_tasks import update_stage
+    from app.models.pipeline import StageEnum, StageStatus
+
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        # Reset pipeline tracking so the document starts fresh
+        await loop.run_in_executor(
+            pool, update_stage, str(document_id), StageEnum.UPLOADED, StageStatus.COMPLETED
+        )
+        dispatch_result = await loop.run_in_executor(pool, dispatch_document, str(document_id))
+
+    if dispatch_result == "dispatched":
+        document.status = DocumentStatus.PROCESSING
+        document.pipeline_stage = "ocr"
     else:
-        task = process_document.delay(str(document_id), "full_pipeline")
+        document.status = DocumentStatus.PENDING
+        meta = document.document_metadata or {}
+        meta["backpressure"] = dispatch_result
+        document.document_metadata = meta
+    await db.commit()
 
     return {
         "document_id": str(document_id),
-        "status": "pending",
-        "task_id": task.id,
-        "message": "Reprocessing queued successfully",
+        "status": document.status.value,
+        "task_id": dispatch_result,
+        "message": "Reprocessing queued successfully" if dispatch_result == "dispatched" else f"Pipeline backpressure: {dispatch_result}",
     }

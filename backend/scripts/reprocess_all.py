@@ -125,15 +125,19 @@ def main():
 
         # 5. Queue them for reprocessing
         if to_reprocess:
-            from app.tasks.document_tasks import process_document
+            from app.tasks.pipeline_orchestrator import dispatch_document
+            from app.tasks.pipeline_tasks import update_stage
+            from app.models.pipeline import StageEnum, StageStatus
 
             print(f"\n=== QUEUING {len(to_reprocess)} DOCUMENTS ===")
             for d in to_reprocess:
                 d.status = DocumentStatus.PENDING
+                d.pipeline_stage = "uploaded"
                 db.commit()
-                result = process_document.delay(str(d.id))
-                print(f"  Queued: {d.original_filename[:50]} -> task {result.id}")
-            print("\nDone! Monitor with: docker logs -f sowknow4-celery-worker")
+                update_stage(str(d.id), StageEnum.UPLOADED, StageStatus.COMPLETED)
+                result = dispatch_document(str(d.id))
+                print(f"  Queued: {d.original_filename[:50]} -> {result}")
+            print("\nDone! Monitor with: docker logs -f sowknow4-celery-light")
         else:
             print("\nAll documents are indexed with chunks.")
 

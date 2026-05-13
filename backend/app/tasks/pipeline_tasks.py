@@ -539,7 +539,7 @@ def _run_chunk(document_id: str) -> None:
 
 EMBED_CHUNK_CAP = 32  # Hardcoded to override env var
 GRAPH_CHUNK_CAP = int(os.getenv("GRAPH_CHUNK_CAP", "5"))
-CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "10000"))
+CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "75000"))
 
 
 def _run_embed(document_id: str) -> None:

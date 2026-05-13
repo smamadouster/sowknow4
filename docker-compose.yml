@@ -9,7 +9,7 @@
 # Memory Allocation:
 #   celery-light:    4096MB  (CPU/IO tasks, concurrency=4, max-tasks-per-child=20)
 #   celery-entities:  4096MB  (pipeline.entities queue — spaCy NER + LLM, concurrency=4)
-#   celery-heavy:     1536MB  (pipeline.embed queue — I/O-bound HTTP to embed-server)
+#   celery-heavy:     3072MB  (pipeline.embed queue — I/O-bound HTTP to embed-server; concurrency=2)
 #   embed-server:    10240MB  (embedding model — 1.3GB model needs headroom during load)
 #   postgres:        3072MB  (pgvector, 5 concurrent users)
 #   backend:          1536MB  (FastAPI)
@@ -553,7 +553,7 @@ services:
           memory: 3072M
           cpus: '2.0'
     command: >-
-      celery -A app.celery_app worker --loglevel=info --concurrency=4
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
       --pool=prefork
       --max-tasks-per-child=10
       -Q pipeline.embed

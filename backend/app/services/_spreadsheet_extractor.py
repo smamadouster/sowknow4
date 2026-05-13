@@ -165,6 +165,13 @@ if __name__ == "__main__":
             result = extract_xls(path)
         else:
             result = {"text": "", "error": f"Unknown format: {fmt}", "pages": 0}
+    except AttributeError as exc:
+        # xlrd 1.2.0 triggers getiterator() which was removed in Python 3.9+.
+        # Surface a cleaner error so the caller can fall back to openpyxl.
+        err_msg = str(exc)
+        if "getiterator" in err_msg:
+            err_msg = "xlrd parser incompatible with this file on Python 3.11+"
+        result = {"text": "", "error": err_msg, "pages": 0}
     except Exception as exc:
         result = {"text": "", "error": str(exc), "pages": 0}
     print(json.dumps(result))

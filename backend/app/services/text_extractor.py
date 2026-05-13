@@ -55,6 +55,17 @@ class TextExtractor:
         Returns:
             dict with extracted text, metadata, and page count
         """
+        import os as _os
+
+        if _os.path.getsize(file_path) == 0:
+            return {
+                "text": "",
+                "error": "Empty file (0 bytes)",
+                "pages": 0,
+                "format": self.get_file_extension(filename),
+                "success": False,
+            }
+
         file_extension = self.get_file_extension(filename)
 
         if file_extension not in self.supported_formats:
@@ -271,6 +282,11 @@ class TextExtractor:
             fallback = await self._extract_spreadsheet(file_path, "xlsx")
             if fallback.get("text") or not fallback.get("error"):
                 fallback["source"] = "openpyxl-fallback"
+                return fallback
+            # xlrd 1.2.0 uses getiterator() which was removed in Python 3.9+.
+            # If xlrd failed for that reason, return the (more accurate) fallback
+            # error instead of the cryptic internal AttributeError.
+            if "getiterator" in result.get("error", ""):
                 return fallback
         return result
 

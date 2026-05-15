@@ -36,6 +36,7 @@ from app.schemas.document import (
     DocumentStatusResponse,
     DocumentUpdate,
 )
+from app.services.search_service import HybridSearchService
 from app.services.storage_service import storage_service
 
 logger = logging.getLogger(__name__)
@@ -78,8 +79,31 @@ async def list_documents(
         except ValueError:
             pass
 
-    if search:
-        stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
+    content_doc_ids: set[uuid.UUID] = set()
+    if search and len(search.strip()) >= 2:
+        # Phase 2: Unify search — also search document content via hybrid search
+        # so that /documents and /search return overlapping results.
+        try:
+            search_svc = HybridSearchService()
+            hybrid_result = await search_svc.hybrid_search(
+                query=search, limit=100, offset=0, db=db, user=current_user
+            )
+            for sr in hybrid_result.get("results", []):
+                try:
+                    content_doc_ids.add(uuid.UUID(str(sr.document_id)))
+                except ValueError:
+                    pass
+        except Exception as exc:
+            logger.warning("Hybrid search fallback in list_documents failed: %s", exc)
+
+        # Match either filename (existing behavior) OR content (new)
+        if content_doc_ids:
+            stmt = stmt.where(
+                (Document.original_filename.ilike(f"%{search}%"))
+                | (Document.id.in_(content_doc_ids))
+            )
+        else:
+            stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
 
     if document_type:
         stmt = stmt.where(Document.document_metadata["document_type"].astext == document_type)

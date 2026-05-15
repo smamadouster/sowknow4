@@ -5,12 +5,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { api, getCsrfToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useAuthStore, useSearchCacheStore } from '@/lib/store';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { useIsMobile } from '@/hooks/useIsMobile';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 type PipelineStage = 'idle' | 'intent' | 'retrieval' | 'reranking' | 'synthesis' | 'done' | 'error';
 type ResultTypeFilter = 'all' | 'document' | 'bookmark' | 'note' | 'space';
@@ -264,17 +262,12 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
     if (feedback) return;
     setFeedback(type);
     try {
-      await fetch('/api/v1/search/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
-        credentials: 'include',
-        body: JSON.stringify({
-          query,
-          document_id: result.document_id,
-          chunk_id: result.chunk_id ?? null,
-          feedback_type: type,
-        }),
-      });
+      await api.searchFeedback(
+        query,
+        result.document_id,
+        result.chunk_id ?? null,
+        type,
+      );
     } catch (err) {
       console.error('Feedback failed:', err);
     }
@@ -284,7 +277,7 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
     e.preventDefault();
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/v1/documents/${result.document_id}/download`, { credentials: 'include' });
+      const res = await api.downloadDocumentBlob(String(result.document_id));
       if (res.ok) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -519,16 +512,16 @@ export default function SearchPage() {
     setShowCitations(false);
     setStream({ stage: 'intent', stageMessage: t('stage.intent'), intent: null, results: [], synthesis: null, citations: [], suggestions: [], hasConfidential: false, totalFound: 0, modelUsed: null, globalResults: [] });
 
-    fetch(`${API_BASE}/v1/search/global?q=${encodeURIComponent(searchQuery)}&types=bookmark,note,space`, { credentials: 'include', headers: { 'X-CSRF-Token': getCsrfToken() }, signal: abortRef.current.signal })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => { setStream((prev) => ({ ...prev, globalResults: (data.results || []) as GlobalSearchResult[] })); })
+    api.searchGlobal(searchQuery, 'document,bookmark,note,space', abortRef.current.signal)
+      .then((res) => {
+        if (res.data) {
+          setStream((prev) => ({ ...prev, globalResults: (res.data?.results || []) as GlobalSearchResult[] }));
+        }
+      })
       .catch((err) => { console.error('Global search failed', err); });
 
     try {
-      const response = await fetch(`${API_BASE}/v1/search/stream`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() }, credentials: 'include',
-        body: JSON.stringify({ query: searchQuery, mode: 'auto', top_k: 12, include_suggestions: true }), signal: abortRef.current.signal,
-      });
+      const response = await api.searchStream(searchQuery, 'auto', 24, true, abortRef.current.signal);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const reader = response.body!.getReader();

@@ -82,25 +82,15 @@ class ApiClient {
     );
   }
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
-
+  private getRequestHeaders(options: RequestInit): Record<string, string> {
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
-
-    // Only set Content-Type if not already set (e.g., for FormData)
-    // Don't override for FormData/Blob — browser must set multipart boundary
     const body = options.body;
     const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
     if (!headers['Content-Type'] && !isFormData) {
       headers['Content-Type'] = 'application/json';
     }
-
-    // CSRF: echo the double-submit cookie back in a header on unsafe methods
     const unsafeMethods = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
     if (unsafeMethods.has((options.method ?? 'GET').toUpperCase())) {
       const csrfToken = this.getCsrfToken();
@@ -108,57 +98,77 @@ class ApiClient {
         headers['X-CSRF-Token'] = csrfToken;
       }
     }
+    return headers;
+  }
 
-    // Note: Backend uses httpOnly cookies for authentication
-    // Cookies are sent automatically with credentials: 'include'
-    // No Authorization header needed
+  /**
+   * Low-level fetch that handles 401/403 by attempting token refresh
+   * and returns the raw Response for streaming or custom parsing.
+   */
+  private async fetchWithAuth(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<Response> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const headers = this.getRequestHeaders(options);
 
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
+
+    const status = response.status;
+
+    if ((status === 401 || status === 403) && typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+      try {
+        const refreshHeaders: Record<string, string> = {};
+        const csrfToken = this.getCsrfToken();
+        if (csrfToken) {
+          refreshHeaders['X-CSRF-Token'] = csrfToken;
+        }
+        const refreshResponse = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
+          method: 'POST',
+          headers: refreshHeaders,
+          credentials: 'include',
+        });
+        if (refreshResponse.ok) {
+          const retryHeaders = { ...headers };
+          const nextCsrfToken = this.getCsrfToken();
+          const unsafeMethods = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
+          if (nextCsrfToken && unsafeMethods.has((options.method ?? 'GET').toUpperCase())) {
+            retryHeaders['X-CSRF-Token'] = nextCsrfToken;
+          }
+          // Don't pass the original signal to the retry — it may already be aborted
+          const { signal: _, ...retryOptions } = options;
+          const retryResponse = await fetch(url, {
+            ...retryOptions,
+            headers: retryHeaders,
+            credentials: 'include',
+          });
+          const retryStatus = retryResponse.status;
+          if (retryStatus >= 200 && retryStatus < 300) {
+            return retryResponse;
+          }
+        }
+      } catch (refreshError) {
+        // Refresh failed
+      }
+    }
+
+    return response;
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        credentials: 'include', // Include cookies for httpOnly cookie auth
-      });
-
+      const response = await this.fetchWithAuth(endpoint, options);
       const status = response.status;
 
-      // Handle 401 unauthorized or 403 CSRF failure
       if (status === 401 || status === 403) {
-        // Try to refresh token before redirecting
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          try {
-            const refreshHeaders: Record<string, string> = {};
-            const csrfToken = this.getCsrfToken();
-            if (csrfToken) {
-              refreshHeaders['X-CSRF-Token'] = csrfToken;
-            }
-            const refreshResponse = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
-              method: 'POST',
-              headers: refreshHeaders,
-              credentials: 'include', // Include cookies for refresh
-            });
-            if (refreshResponse.ok) {
-              const retryHeaders = { ...headers };
-              const nextCsrfToken = this.getCsrfToken();
-              if (nextCsrfToken && unsafeMethods.has((options.method ?? 'GET').toUpperCase())) {
-                retryHeaders['X-CSRF-Token'] = nextCsrfToken;
-              }
-              // Refresh successful, retry original request
-              const retryResponse = await fetch(url, {
-                ...options,
-                headers: retryHeaders,
-                credentials: 'include',
-              });
-              const retryStatus = retryResponse.status;
-              if (retryStatus >= 200 && retryStatus < 300) {
-                const retryData = await retryResponse.json();
-                return { status: retryStatus, data: retryData };
-              }
-            }
-          } catch (refreshError) {
-            // Refresh failed, redirect to login
-          }
-          // Extract locale from current path (e.g. /fr/chat → fr)
           const pathLocale = window.location.pathname.split('/')[1];
           const locale = ['fr', 'en'].includes(pathLocale) ? pathLocale : 'fr';
           window.location.href = `/${locale}/login`;
@@ -404,6 +414,58 @@ class ApiClient {
     }
     const params = new URLSearchParams({ q, limit: limit.toString() });
     return this.request<SuggestResponse>(`/v1/search/suggest?${params.toString()}`);
+  }
+
+  async searchGlobal(query: string, types: string = 'bookmark,note,space', signal?: AbortSignal) {
+    interface GlobalSearchResponse {
+      results: Array<{
+        result_type: 'document' | 'bookmark' | 'note' | 'space';
+        id: string;
+        title: string;
+        description: string;
+        tags: string[];
+        score: number;
+        bucket?: string;
+        url?: string;
+        icon?: string;
+      }>;
+    }
+    const params = new URLSearchParams({ q: query, types });
+    return this.request<GlobalSearchResponse>(`/v1/search/global?${params.toString()}`, { signal });
+  }
+
+  async searchStream(
+    query: string,
+    mode: string = 'auto',
+    top_k: number = 12,
+    include_suggestions: boolean = true,
+    signal?: AbortSignal
+  ): Promise<Response> {
+    return this.fetchWithAuth('/v1/search/stream', {
+      method: 'POST',
+      body: JSON.stringify({ query, mode, top_k, include_suggestions }),
+      signal,
+    });
+  }
+
+  async searchFeedback(
+    query: string,
+    document_id: string | number,
+    chunk_id: string | number | null,
+    feedback_type: 'thumbs_up' | 'thumbs_down'
+  ) {
+    return this.request('/v1/search/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ query, document_id, chunk_id, feedback_type }),
+    });
+  }
+
+  async searchHealth() {
+    return this.request<{ status: string; embed_server: string; message: string }>('/v1/search/health');
+  }
+
+  async downloadDocumentBlob(id: string) {
+    return this.fetchWithAuth(`/v1/documents/${id}/download`);
   }
 
   // Chat endpoints

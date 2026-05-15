@@ -35,6 +35,7 @@ from app.services.search_models import (
     SearchMode,
 )
 from app.services.search_service import HybridSearchService
+from app.services.embed_client import embedding_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/search", tags=["Search"])
@@ -377,6 +378,21 @@ async def search_history(
         {"uid": str(current_user.id), "lim": limit},
     )).mappings().all()
     return [dict(r) for r in rows]
+
+
+@router.get("/health")
+async def search_health():
+    """Return the health status of search infrastructure (embed server)."""
+    embed_healthy = embedding_service.can_embed
+    return {
+        "status": "healthy" if embed_healthy else "degraded",
+        "embed_server": "healthy" if embed_healthy else "unavailable",
+        "message": (
+            "Recherche par contenu active"
+            if embed_healthy
+            else "Recherche par mots-cles uniquement — serveur d'embeddings indisponible"
+        ),
+    }
 
 
 async def _save_search_history(db: AsyncSession, user_id: UUID, response: AgenticSearchResponse):

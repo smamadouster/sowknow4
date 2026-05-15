@@ -474,8 +474,26 @@ export default function SearchPage() {
   const [stream, setStream] = useState<StreamState>({
     stage: 'idle', stageMessage: '', intent: null, results: [], synthesis: null, citations: [], suggestions: [], hasConfidential: false, totalFound: 0, modelUsed: null, globalResults: [],
   });
+  const [embedHealth, setEmbedHealth] = useState<'healthy' | 'degraded' | 'unknown'>('unknown');
 
   const isMobile = useIsMobile();
+
+  // Phase 4: Poll embed server health to show degraded-mode indicator
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await api.searchHealth();
+        if (res.status === 200 && res.data) {
+          setEmbedHealth(res.data.status === 'healthy' ? 'healthy' : 'degraded');
+        }
+      } catch {
+        setEmbedHealth('unknown');
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -688,6 +706,11 @@ export default function SearchPage() {
           </div>
           {stream.hasConfidential && canSeeConfidential && (
             <div className="ml-auto bg-vault-1000 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide border border-amber-400/20">🔒 {t('confidentialNotice')}</div>
+          )}
+          {embedHealth === 'degraded' && (
+            <div className="ml-auto bg-vault-1000 text-amber-400/80 px-3 py-1.5 rounded-lg text-xs font-medium tracking-wide border border-amber-400/20" title="Recherche par mots-cles uniquement">
+              ⚠️ {t('degradedSearch') || 'Recherche limitee'}
+            </div>
           )}
         </div>
 

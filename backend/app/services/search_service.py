@@ -602,6 +602,66 @@ class HybridSearchService:
             for row in result
         ]
 
+    async def _substring_fallback_search(
+        self,
+        query: str,
+        limit: int = 20,
+        db: AsyncSession = None,
+        user: User = None,
+    ) -> list[SearchResult]:
+        """Direct substring fallback using ILIKE.
+
+        Catches edge cases where PostgreSQL tsvector tokenization rules
+        prevent a match (e.g. hyphenated words, raw numbers, code tokens).
+        """
+        if not query or len(query.strip()) < 2:
+            return []
+
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+        sql_query = text("""
+            SELECT DISTINCT ON (dc.document_id)
+                dc.id as chunk_id,
+                dc.document_id,
+                COALESCE(d.original_filename, d.filename) as document_name,
+                d.bucket as document_bucket,
+                dc.chunk_text,
+                dc.chunk_index,
+                dc.page_number
+            FROM sowknow.document_chunks dc
+            JOIN sowknow.documents d ON dc.document_id = d.id
+            WHERE d.bucket::text = ANY(:buckets)
+              AND d.status != 'error'
+              AND dc.chunk_text ILIKE :query_pattern
+            ORDER BY dc.document_id, dc.chunk_index
+            LIMIT :limit
+        """)
+
+        result = await db.execute(
+            sql_query,
+            {
+                "query_pattern": f"%{query}%",
+                "buckets": bucket_filter,
+                "limit": limit,
+            },
+        )
+
+        return [
+            SearchResult(
+                chunk_id=str(row.chunk_id),
+                document_id=str(row.document_id),
+                document_name=row.document_name,
+                document_bucket=row.document_bucket,
+                chunk_text=row.chunk_text,
+                chunk_index=row.chunk_index,
+                page_number=row.page_number,
+                semantic_score=0.0,
+                keyword_score=0.5,
+                final_score=0.5,
+            )
+            for row in result
+        ]
+
     async def article_keyword_search(
         self,
         query: str,
@@ -875,6 +935,15 @@ class HybridSearchService:
         else:
             sem_w, kw_w = self.semantic_weight, self.keyword_weight
 
+        # Phase 3: When semantic search is unavailable (embed server down),
+        # shift all weight to keyword so results are not silently dropped.
+        if not semantic_results and not embedding_service.can_embed:
+            sem_w, kw_w = 0.0, 1.0
+            logger.warning(
+                "Semantic search unavailable (embed server down) — "
+                "using keyword-only search with full weight for query='%s'", query
+            )
+
         # Dynamic minimum threshold: lowered from 0.25/0.15 to 0.08/0.05 so that
         # keyword-only matches (e.g. when embed server is down) are not silently
         # dropped for short queries.  The MIN_RRF_NORM_FLOOR already prevents
@@ -920,6 +989,27 @@ class HybridSearchService:
 
         # Filter out low-relevance results
         filtered = {k: v for k, v in merged_scores.items() if v["result"].final_score >= min_threshold}
+
+        # Phase 3: Direct substring fallback when very few results are found.
+        # This catches edge cases where tsvector tokenization rules prevent a
+        # match (e.g. hyphenated words, numbers, or certain proper nouns).
+        if len(filtered) < 3 and len(query.strip()) >= 2:
+            try:
+                substring_results = await self._substring_fallback_search(
+                    query=query, limit=limit, db=db, user=user
+                )
+                seen = {k for k in filtered}
+                for sr in substring_results:
+                    key = f"substring:{sr.document_id}"
+                    if key not in seen:
+                        filtered[key] = {
+                            "result": sr,
+                            "semantic_score": 0.0,
+                            "keyword_score": 0.5,
+                            "rrf_score": 0.05,
+                        }
+            except Exception as exc:
+                logger.debug("Substring fallback search failed: %s", exc)
 
         # Sort by final score and apply pagination
         sorted_results = sorted(filtered.values(), key=lambda x: x["result"].final_score, reverse=True)

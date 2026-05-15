@@ -17,6 +17,7 @@ from app.models.document import DocumentBucket
 from app.models.user import User, UserRole
 from app.services.input_guard import input_guard
 from app.services.search_agent import (
+    _count_unindexed_filename_matches,
     _sanitize_search_query,
     build_citations,
     build_search_queries,
@@ -283,11 +284,16 @@ async def search_stream(
                 yield _sse_event("citations", {"citations": [c.model_dump() for c in citations]})
 
                 elapsed_ms = int((time.monotonic() - start) * 1000)
+                try:
+                    unindexed_count = await _count_unindexed_filename_matches(db, request.query, current_user)
+                except Exception:
+                    unindexed_count = 0
                 yield _sse_event("done", {
                     "total_found": len(results),
                     "model": model_used,
                     "has_confidential": has_confidential,
                     "search_time_ms": elapsed_ms,
+                    "unindexed_matches_count": unindexed_count,
                 })
 
             except Exception as exc:

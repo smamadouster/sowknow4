@@ -145,4 +145,5 @@ class AgenticSearchResponse(BaseModel):
     llm_model_used: str | None = None
     agent_trace: AgentTrace | None = None
     search_time_ms: int
+    unindexed_matches_count: int = 0
     performed_at: datetime = Field(default_factory=datetime.utcnow)

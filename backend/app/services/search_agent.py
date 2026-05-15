@@ -380,16 +380,23 @@ def _clean_json(raw: str) -> str:
 
 # ---- STAGE 1: INTENT AGENT ----
 
-# Simple in-memory intent cache (LRU-like, no TTL — intents are stable)
-_intent_cache: dict[str, ParsedIntent] = {}
+# Simple in-memory intent cache with TTL (Phase 3 fix)
+_intent_cache: dict[str, tuple[ParsedIntent, float]] = {}
 _MAX_INTENT_CACHE = 200
+_INTENT_CACHE_TTL_SECONDS = 600  # 10 minutes
 
 
 async def parse_intent(query: str) -> ParsedIntent:
     cache_key = query.lower().strip()
-    if cache_key in _intent_cache:
-        logger.info("Intent cache hit for '%s'", query)
-        return _intent_cache[cache_key]
+    now = time.monotonic()
+    cached = _intent_cache.get(cache_key)
+    if cached:
+        intent, cached_at = cached
+        if now - cached_at < _INTENT_CACHE_TTL_SECONDS:
+            logger.info("Intent cache hit for '%s'", query)
+            return intent
+        # Expired — remove
+        _intent_cache.pop(cache_key, None)
 
     try:
         raw, _ = await asyncio.wait_for(
@@ -415,10 +422,10 @@ async def parse_intent(query: str) -> ParsedIntent:
             requires_synthesis=bool(data.get("requires_synthesis", False)),
             temporal_range=data.get("temporal_range"),
         )
-        # Cache the result
+        # Cache the result with TTL
         if len(_intent_cache) >= _MAX_INTENT_CACHE:
             _intent_cache.pop(next(iter(_intent_cache)))
-        _intent_cache[cache_key] = intent
+        _intent_cache[cache_key] = (intent, now)
         return intent
     except asyncio.TimeoutError:
         logger.warning("Intent parsing timed out after 6s for '%s', using fallback", query)
@@ -585,6 +592,38 @@ async def _strip_confidential_chunks(
         )
 
     return stripped
+
+
+async def _count_unindexed_filename_matches(
+    db: AsyncSession,
+    query: str,
+    user: Any,
+) -> int:
+    """Count documents whose filename matches the query but are not yet indexed.
+
+    Surfaces documents that exist in the system but haven't completed the
+    pipeline, so users know why results may be missing.
+    """
+    if not query or len(query.strip()) < 2:
+        return 0
+
+    from sqlalchemy import func
+    from app.models.document import Document, DocumentBucket
+
+    buckets = HybridSearchService()._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+    try:
+        result = await db.execute(
+            sa_select(func.count(Document.id)).where(
+                Document.bucket.in_(buckets),
+                Document.status != "indexed",
+                Document.original_filename.ilike(f"%{query}%"),
+            )
+        )
+        return result.scalar_one() or 0
+    except Exception as exc:
+        logger.debug("_count_unindexed_filename_matches failed: %s", exc)
+        return 0
 
 
 # ---- MAIN ORCHESTRATOR ----
@@ -784,6 +823,9 @@ async def run_agentic_search(
     citations = build_citations(results, all_chunks)
     elapsed_ms = int((time.monotonic() - start_ms) * 1000)
 
+    # Phase 3: Surface unindexed documents that match by filename
+    unindexed_count = await _count_unindexed_filename_matches(db, request.query, user)
+
     trace = AgentTrace(
         intent_detected=intent.intent,
         intent_confidence=intent.confidence,
@@ -809,6 +851,7 @@ async def run_agentic_search(
         llm_model_used=model_used if model_used != "none" else None,
         agent_trace=trace,
         search_time_ms=elapsed_ms,
+        unindexed_matches_count=unindexed_count,
     )
 
     # --- Store result in cache ---

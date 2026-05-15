@@ -39,6 +39,7 @@ class SearchResult:
         article_id: str | None = None,
         article_title: str | None = None,
         article_summary: str | None = None,
+        match_source: str = "unknown",
     ):
         self.chunk_id = chunk_id
         self.document_id = document_id
@@ -54,6 +55,7 @@ class SearchResult:
         self.article_id = article_id
         self.article_title = article_title
         self.article_summary = article_summary
+        self.match_source = match_source
 
 
 LANGUAGE_MAP = {
@@ -218,6 +220,7 @@ class HybridSearchService:
                     semantic_score=float(row.similarity),
                     keyword_score=0.0,
                     final_score=float(row.similarity),  # Will be recalculated
+                    match_source="semantic",
                 )
             )
 
@@ -254,7 +257,10 @@ class HybridSearchService:
 
         # plainto_tsquery converts free-form text to a tsquery (automatic AND,
         # stemming, stop-word removal) — safe with parameterised input.
-        # regconfig is now passed from the caller based on detected query language.
+        # Dual-query strategy: match with both the caller-supplied regconfig
+        # (e.g. 'french' for stemming precision) AND 'simple' (language-agnostic
+        # fallback).  Language-specific matches get a 1.2x rank boost so they
+        # surface higher, but simple matches prevent cross-language misses.
         sql_query = text("""
             SELECT
                 dc.id          AS chunk_id,
@@ -264,31 +270,35 @@ class HybridSearchService:
                 dc.chunk_text,
                 dc.chunk_index,
                 dc.page_number,
-                ts_rank_cd(
+                COALESCE(ts_rank_cd(
                     dc.search_vector,
-                    plainto_tsquery(
-                        CAST(:regconfig AS regconfig),
-                        :query
-                    ),
+                    plainto_tsquery(CAST(:regconfig AS regconfig), :query),
                     32
-                ) + COALESCE(
-                    ts_rank_cd(
-                        dc.search_vector,
-                        phraseto_tsquery(
-                            CAST(:regconfig AS regconfig),
-                            :query
-                        ),
-                        32
-                    ), 0
-                ) * 3.0 AS rank
+                ), 0) * 1.2
+                + COALESCE(ts_rank_cd(
+                    dc.search_vector,
+                    phraseto_tsquery(CAST(:regconfig AS regconfig), :query),
+                    32
+                ), 0) * 3.6
+                + COALESCE(ts_rank_cd(
+                    dc.search_vector,
+                    plainto_tsquery('simple', :query),
+                    32
+                ), 0)
+                + COALESCE(ts_rank_cd(
+                    dc.search_vector,
+                    phraseto_tsquery('simple', :query),
+                    32
+                ), 0) * 3.0
+                AS rank
             FROM sowknow.document_chunks dc
             JOIN sowknow.documents d ON dc.document_id = d.id
             WHERE d.bucket::text = ANY(:buckets)
               AND dc.search_vector IS NOT NULL
-              AND dc.search_vector @@ plainto_tsquery(
-                      CAST(:regconfig AS regconfig),
-                      :query
-                  )
+              AND (
+                  dc.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), :query)
+                  OR dc.search_vector @@ plainto_tsquery('simple', :query)
+              )
             ORDER BY rank DESC
             LIMIT :limit OFFSET :offset
         """)
@@ -318,6 +328,7 @@ class HybridSearchService:
                     semantic_score=0.0,
                     keyword_score=float(row.rank),
                     final_score=float(row.rank),  # Will be recalculated by hybrid_search
+                    match_source="keyword",
                 )
             )
 
@@ -406,6 +417,7 @@ class HybridSearchService:
                     keyword_score=float(row.similarity),
                     final_score=float(row.similarity),
                     result_type="tag_match",
+                    match_source="tag",
                 )
             )
 
@@ -472,6 +484,98 @@ class HybridSearchService:
                     keyword_score=1.0,
                     final_score=0.0,
                     result_type="filename_match",
+                    match_source="filename",
+                )
+            )
+
+        return search_results
+
+    async def document_search(
+        self,
+        query: str,
+        limit: int = 100,
+        db: AsyncSession = None,
+        user: User = None,
+    ) -> list[SearchResult]:
+        """Fast metadata-only search over the documents table.
+
+        Uses the existing GIN-indexed title_search_vector (migration 025) and
+        ILIKE on filename columns (now backed by trigram indexes, migration 032).
+        This avoids hitting the much larger document_chunks table, making it
+        suitable for the /documents list endpoint on deployments with 10k+ docs.
+
+        Args:
+            query: Search query text
+            limit: Maximum number of results
+            db: Database session
+            user: Current user for access control
+
+        Returns:
+            List of search results ordered by created_at DESC
+        """
+        if not query or len(query.strip()) < 2:
+            return []
+
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+        sql_query = text("""
+            SELECT
+                d.id as document_id,
+                COALESCE(d.original_filename, d.filename) as document_name,
+                d.bucket as document_bucket,
+                d.page_count,
+                d.created_at,
+                'metadata' as match_type
+            FROM sowknow.documents d
+            WHERE d.bucket::text = ANY(:buckets)
+              AND d.status != 'error'
+              AND d.title_search_vector @@ plainto_tsquery('simple', :query)
+            UNION
+            SELECT
+                d.id as document_id,
+                COALESCE(d.original_filename, d.filename) as document_name,
+                d.bucket as document_bucket,
+                d.page_count,
+                d.created_at,
+                'filename' as match_type
+            FROM sowknow.documents d
+            WHERE d.bucket::text = ANY(:buckets)
+              AND d.status != 'error'
+              AND (
+                  d.original_filename ILIKE :query_pattern
+                  OR d.filename ILIKE :query_pattern
+              )
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """)
+
+        result = await db.execute(
+            sql_query,
+            {
+                "query": query,
+                "query_pattern": f"%{query}%",
+                "buckets": bucket_filter,
+                "limit": limit,
+            },
+        )
+
+        search_results = []
+        for row in result:
+            doc_name = row.document_name or "—"
+            search_results.append(
+                SearchResult(
+                    chunk_id=str(row.document_id),
+                    document_id=str(row.document_id),
+                    document_name=doc_name,
+                    document_bucket=row.document_bucket,
+                    chunk_text=f"[Document match: {doc_name}]",
+                    chunk_index=0,
+                    page_number=row.page_count,
+                    semantic_score=0.0,
+                    keyword_score=0.0,
+                    final_score=0.0,
+                    result_type="document_metadata",
+                    match_source="document_metadata",
                 )
             )
 
@@ -535,6 +639,7 @@ class HybridSearchService:
                 article_id=str(row.article_id),
                 article_title=row.title,
                 article_summary=row.summary,
+                match_source="article_semantic",
             )
             for row in result
         ]
@@ -598,6 +703,7 @@ class HybridSearchService:
                 semantic_score=0.0,
                 keyword_score=float(row.rank),
                 final_score=float(row.rank),
+                match_source="fallback",
             )
             for row in result
         ]
@@ -658,6 +764,7 @@ class HybridSearchService:
                 semantic_score=0.0,
                 keyword_score=0.5,
                 final_score=0.5,
+                match_source="fallback",
             )
             for row in result
         ]
@@ -681,22 +788,25 @@ class HybridSearchService:
                 a.bucket as document_bucket,
                 a.title,
                 a.summary,
-                ts_rank_cd(
+                COALESCE(ts_rank_cd(
                     a.search_vector,
-                    plainto_tsquery(
-                        CAST(:regconfig AS regconfig),
-                        :query
-                    ),
+                    plainto_tsquery(CAST(:regconfig AS regconfig), :query),
                     32
-                ) AS rank
+                ), 0) * 1.2
+                + COALESCE(ts_rank_cd(
+                    a.search_vector,
+                    plainto_tsquery('simple', :query),
+                    32
+                ), 0)
+                AS rank
             FROM sowknow.articles a
             JOIN sowknow.documents d ON a.document_id = d.id
             WHERE a.bucket = ANY(:buckets)
               AND a.search_vector IS NOT NULL
-              AND a.search_vector @@ plainto_tsquery(
-                      CAST(:regconfig AS regconfig),
-                      :query
-                  )
+              AND (
+                  a.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), :query)
+                  OR a.search_vector @@ plainto_tsquery('simple', :query)
+              )
             ORDER BY rank DESC
             LIMIT :limit
         """)
@@ -727,6 +837,7 @@ class HybridSearchService:
                 article_id=str(row.article_id),
                 article_title=row.title,
                 article_summary=row.summary,
+                match_source="article_keyword",
             )
             for row in result
         ]
@@ -789,12 +900,13 @@ class HybridSearchService:
         semantic_results = await _safe_call(
             "semantic", self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
         )
-        # Use language-agnostic 'simple' regconfig to avoid missing results when
-        # chunk search_language (set at index time) differs from query-detected
-        # language.  This fixes the critical language-mismatch bug where French
-        # queries missed English-indexed chunks and vice-versa.
+        # Pass the caller-supplied regconfig (e.g. 'french' when the query
+        # language is detected).  keyword_search() now uses a dual-query
+        # strategy that boosts language-specific matches while still matching
+        # via 'simple' as a fallback, so cross-language misses are prevented
+        # without sacrificing stemming precision.
         keyword_results = await _safe_call(
-            "keyword", self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user, regconfig="simple")
+            "keyword", self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user, regconfig=regconfig)
         )
         filename_results = await _safe_call(
             "filename", self._filename_search(query=query, limit=limit, db=db, user=user)
@@ -803,7 +915,7 @@ class HybridSearchService:
             "article_semantic", self.article_semantic_search(query=query, limit=limit, db=db, user=user)
         )
         article_kw_results = await _safe_call(
-            "article_keyword", self.article_keyword_search(query=query, limit=limit, db=db, user=user, regconfig="simple")
+            "article_keyword", self.article_keyword_search(query=query, limit=limit, db=db, user=user, regconfig=regconfig)
         )
         tag_results = await _safe_call(
             "tag", self.tag_search(query=query, limit=limit, offset=0, db=db, user=user)
@@ -967,6 +1079,16 @@ class HybridSearchService:
             raw_score = sem_w * semantic + kw_w * keyword
             final_score = raw_score + rrf
             result.final_score = min(final_score, 1.0)
+
+            # Determine merged match_source for chunk results
+            if result.result_type == "chunk":
+                if semantic > 0 and keyword > 0:
+                    result.match_source = "hybrid"
+                elif semantic > 0:
+                    result.match_source = "semantic"
+                elif keyword > 0:
+                    result.match_source = "keyword"
+            # For non-chunk results, keep the original match_source from sub-search
 
         # Cross-encoder re-ranking on top candidates (optional, graceful fallback)
         if rerank and len(merged_scores) > 1:

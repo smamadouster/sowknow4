@@ -200,6 +200,26 @@ class ApiClient {
     }
   }
 
+  // Generic HTTP helpers
+  async post<T>(endpoint: string, body: unknown): Promise<T> {
+    const res = await this.request<T>(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    if (res.error) {
+      throw new Error(res.error);
+    }
+    return res.data as T;
+  }
+
+  async get<T>(endpoint: string): Promise<T> {
+    const res = await this.request<T>(endpoint);
+    if (res.error) {
+      throw new Error(res.error);
+    }
+    return res.data as T;
+  }
+
   // Auth endpoints
   async login(email: string, password: string) {
     const formData = new URLSearchParams();

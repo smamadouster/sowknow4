@@ -134,6 +134,7 @@ def rerank_and_build_results(
             document_date=best.created_at,
             match_reason=_build_match_reason(best, intent),
             is_confidential=(best.document_bucket == DocumentBucket.CONFIDENTIAL),
+            match_source=best.match_source,
         ))
 
     results.sort(key=lambda r: r.relevance_score, reverse=True)
@@ -725,6 +726,7 @@ async def run_agentic_search(
                     fts_rank=sr.keyword_score,
                     rrf_score=sr.final_score,
                     tags=[],
+                    match_source=sr.match_source,
                 ))
         except Exception as exc:
             logger.warning("Sub-query search failed: %s", exc)

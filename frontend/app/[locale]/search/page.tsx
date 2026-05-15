@@ -45,6 +45,7 @@ interface SearchResult {
   tags?: string[];
   rank?: number;
   is_confidential?: boolean;
+  match_source?: string;
 }
 
 interface GlobalSearchResult {
@@ -99,6 +100,18 @@ const TYPE_BADGE_STYLES: Record<string, { bg: string; text: string; icon: string
 
 const SUGGESTION_ICONS: Record<string, string> = {
   related_query: '→', refine: '◎', expand: '⊕', temporal: '◷', entity_search: '◈',
+};
+
+const MATCH_SOURCE_STYLES: Record<string, { icon: string; color: string; bg: string; label: string }> = {
+  semantic:        { icon: '🔮', color: 'text-purple-400',  bg: 'bg-purple-500/10',  label: 'Semantic' },
+  keyword:         { icon: '🔑', color: 'text-blue-400',    bg: 'bg-blue-500/10',    label: 'Keyword' },
+  hybrid:          { icon: '⚡', color: 'text-teal-400',    bg: 'bg-teal-500/10',    label: 'Hybrid' },
+  filename:        { icon: '📁', color: 'text-gray-400',    bg: 'bg-gray-500/10',    label: 'Filename' },
+  article_semantic:{ icon: '📰', color: 'text-amber-400',   bg: 'bg-amber-500/10',   label: 'Article' },
+  article_keyword: { icon: '📰', color: 'text-amber-400',   bg: 'bg-amber-500/10',   label: 'Article' },
+  tag:             { icon: '🏷️', color: 'text-emerald-400', bg: 'bg-emerald-500/10', label: 'Tag' },
+  fallback:        { icon: '🔧', color: 'text-rose-400',    bg: 'bg-rose-500/10',    label: 'Fallback' },
+  document_metadata:{ icon: '📁', color: 'text-gray-400',   bg: 'bg-gray-500/10',    label: 'Metadata' },
 };
 
 function renderInlineSynthesis(text: string, keyPrefix: string): ReactNode[] {
@@ -309,6 +322,11 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
             <span className={`inline-block w-1.5 h-1.5 rounded-full ${colors.dot}`} />
             {relevanceTierLabel}
           </span>
+          {result.match_source && MATCH_SOURCE_STYLES[result.match_source] && (
+            <span className={`text-xs font-medium flex items-center gap-1 rounded px-1.5 py-0.5 ${MATCH_SOURCE_STYLES[result.match_source].bg} ${MATCH_SOURCE_STYLES[result.match_source].color}`}>
+              {MATCH_SOURCE_STYLES[result.match_source].icon} {MATCH_SOURCE_STYLES[result.match_source].label}
+            </span>
+          )}
           <span className="text-xs text-text-muted tabular-nums">{Math.round(result.relevance_score * 100)}%</span>
           <div className="hidden sm:flex items-center gap-1 ml-1">
             <Link href={`/${locale}/documents/${result.document_id}`} className="p-1 text-text-muted hover:text-amber-400 rounded transition-colors" title="View document">

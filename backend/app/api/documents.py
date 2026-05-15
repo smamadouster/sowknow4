@@ -81,20 +81,39 @@ async def list_documents(
 
     content_doc_ids: set[uuid.UUID] = set()
     if search and len(search.strip()) >= 2:
-        # Phase 2: Unify search — also search document content via hybrid search
-        # so that /documents and /search return overlapping results.
+        # Phase 1 fix: Use lightweight document_search (metadata + filename only)
+        # instead of heavy hybrid_search that scans the chunk table.
+        # Falls back to hybrid_search only when few metadata matches are found.
+        from time import perf_counter
+
+        t0 = perf_counter()
         try:
             search_svc = HybridSearchService()
-            hybrid_result = await search_svc.hybrid_search(
-                query=search, limit=100, offset=0, db=db, user=current_user
+            doc_results = await search_svc.document_search(
+                query=search, limit=100, db=db, user=current_user
             )
-            for sr in hybrid_result.get("results", []):
+            for sr in doc_results:
                 try:
                     content_doc_ids.add(uuid.UUID(str(sr.document_id)))
                 except ValueError:
                     pass
+
+            # Fallback: if metadata search finds < 5 hits, also run hybrid search
+            # to catch content matches inside documents.
+            if len(content_doc_ids) < 5:
+                hybrid_result = await search_svc.hybrid_search(
+                    query=search, limit=100, offset=0, db=db, user=current_user
+                )
+                for sr in hybrid_result.get("results", []):
+                    try:
+                        content_doc_ids.add(uuid.UUID(str(sr.document_id)))
+                    except ValueError:
+                        pass
         except Exception as exc:
-            logger.warning("Hybrid search fallback in list_documents failed: %s", exc)
+            logger.warning("Document search in list_documents failed: %s", exc)
+
+        elapsed = perf_counter() - t0
+        logger.info("list_documents search took %.3fs query='%s' results=%d", elapsed, search, len(content_doc_ids))
 
         # Match either filename (existing behavior) OR content (new)
         if content_doc_ids:

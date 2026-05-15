@@ -85,6 +85,7 @@ class RawChunk(BaseModel):
     rrf_score: float = 0.0
     created_at: datetime | None = None
     tags: list[str] = Field(default_factory=list)
+    match_source: str = "unknown"
 
 
 class Citation(BaseModel):
@@ -112,6 +113,7 @@ class SearchResult(BaseModel):
     document_date: datetime | None = None
     match_reason: str
     is_confidential: bool = False
+    match_source: str = "unknown"
 
 
 class SearchSuggestion(BaseModel):

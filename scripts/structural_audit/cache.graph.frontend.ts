@@ -393,6 +393,11 @@
 [fn]: GET()
 
 ---
+### FILE: frontend/app/[locale]/admin/search-debug/page.tsx
+[ext_deps]: react, next-intl, @/lib/api
+[fn]: default()
+
+---
 ### FILE: frontend/app/[locale]/collections/[id]/page.tsx
 [ext_deps]: react, next/navigation, next-intl, @/lib/api
 [fn]: default()

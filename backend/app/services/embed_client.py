@@ -37,23 +37,18 @@ _RETRY_BACKOFF = [1.0, 2.0, 4.0]  # seconds
 _CIRCUIT_FAILURE_THRESHOLD = 5
 _CIRCUIT_OPEN_DURATION = 60.0  # seconds
 
+# Adaptive circuit-breaker: lower threshold when all servers are overloaded
+_ADAPTIVE_QUEUE_DEPTH_THRESHOLD = 10
+_ADAPTIVE_FAILURE_THRESHOLD = 3
+
+# Health-data freshness for load-aware routing
+_HEALTH_DATA_FRESHNESS = 5.0  # seconds
+
 
 def _base_urls() -> list[str]:
     """Parse EMBED_SERVER_URL as comma-separated list for round-robin load balancing."""
     raw = os.getenv("EMBED_SERVER_URL", "http://embed-server:8000")
     return [u.strip() for u in raw.split(",") if u.strip()]
-
-
-def _pick_url(attempt: int = 1) -> str:
-    """Pick a server URL, rotating on each attempt for automatic failover.
-
-    The first attempt uses random selection so load is spread across all
-    servers instead of always hammering the first one.
-    """
-    urls = _base_urls()
-    if attempt == 1:
-        return random.choice(urls)
-    return urls[(attempt - 1) % len(urls)]
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -90,10 +85,61 @@ class EmbedClient:
         self._circuit_open_until: float = 0.0
         self._client = httpx.Client(http2=False, timeout=httpx.Timeout(_ENCODE_TIMEOUT))
         self._health_client = httpx.Client(http2=False, timeout=httpx.Timeout(_HEALTH_TIMEOUT))
+        # Per-server health state for queue-depth-aware routing
+        self._server_health: dict[str, dict] = {}
 
     @property
     def embedding_dim(self) -> int:
         return EMBEDDING_DIM
+
+    def _update_server_health(self, url: str, health_ok: bool, queue_depth: int = 0) -> None:
+        """Store parsed health data for a single embed server."""
+        self._server_health[url] = {
+            "health_ok": health_ok,
+            "queue_depth": queue_depth,
+            "checked_at": time.monotonic(),
+        }
+
+    def _pick_url(self, attempt: int = 1) -> str:
+        """Pick a server URL, preferring the least-loaded healthy server.
+
+        First attempt: pick the URL with the lowest queue_depth among servers
+        with fresh health data.  If no fresh data is available, fall back to
+        random selection so load is spread across all servers.
+
+        Subsequent retries: rotate round-robin, skipping servers whose circuit
+        is open or whose queue_depth exceeds the overload threshold.
+        """
+        urls = _base_urls()
+        now = time.monotonic()
+
+        if attempt == 1:
+            # Prefer least-loaded server with fresh health data
+            fresh = {
+                url: data for url, data in self._server_health.items()
+                if data.get("checked_at", 0) > now - _HEALTH_DATA_FRESHNESS
+                and data.get("health_ok", False)
+                and data.get("queue_depth", 0) < _ADAPTIVE_QUEUE_DEPTH_THRESHOLD
+            }
+            if fresh:
+                return min(fresh, key=lambda u: fresh[u]["queue_depth"])
+            # No fresh data → random spread
+            return random.choice(urls)
+
+        # Retry: round-robin rotation, skipping unhealthy/overloaded servers
+        idx = (attempt - 1) % len(urls)
+        candidate = urls[idx]
+        data = self._server_health.get(candidate, {})
+        if (
+            not data.get("health_ok", True)
+            or data.get("queue_depth", 0) >= _ADAPTIVE_QUEUE_DEPTH_THRESHOLD
+        ):
+            # Try to find any healthy server
+            for url in urls:
+                ud = self._server_health.get(url, {})
+                if ud.get("health_ok", True) and ud.get("queue_depth", 0) < _ADAPTIVE_QUEUE_DEPTH_THRESHOLD:
+                    return url
+        return candidate
 
     @property
     def can_embed(self) -> bool:
@@ -113,21 +159,28 @@ class EmbedClient:
             return self._health_ok
 
         urls = _base_urls()
+        any_healthy = False
         for url in urls:
             try:
                 resp = self._health_client.get(f"{url}/health")
-                if resp.status_code == 200 and resp.json().get("status") == "healthy":
-                    self._health_ok = True
-                    self._record_success()
-                    self._health_checked_at = now
-                    return True
+                if resp.status_code == 200:
+                    body = resp.json()
+                    healthy = body.get("status") == "healthy"
+                    queue_depth = body.get("queue_depth", 0)
+                    self._update_server_health(url, healthy, queue_depth)
+                    if healthy:
+                        any_healthy = True
+                        self._record_success()
+                else:
+                    self._update_server_health(url, False)
             except Exception:
-                pass
+                self._update_server_health(url, False)
 
-        self._health_ok = False
-        self._record_failure()
+        self._health_ok = any_healthy
         self._health_checked_at = now
-        return False
+        if not any_healthy:
+            self._record_failure()
+        return any_healthy
 
     def _clear_health_cache(self) -> None:
         """Force next can_embed call to hit the server again."""
@@ -135,9 +188,10 @@ class EmbedClient:
         self._health_checked_at = 0.0
 
     def health_check(self) -> dict:
-        """Proxy to embed server /health endpoint."""
+        """Proxy to embed server /health endpoint (least-loaded server)."""
         try:
-            resp = self._health_client.get(f"{_base_url()}/health")
+            url = self._pick_url(attempt=1)
+            resp = self._health_client.get(f"{url}/health")
             resp.raise_for_status()
             return resp.json()
         except Exception as exc:
@@ -149,15 +203,35 @@ class EmbedClient:
             remaining = int(self._circuit_open_until - time.monotonic())
             raise RuntimeError(f"Embed server circuit breaker OPEN (cooldown {remaining}s)")
 
+    def _adaptive_failure_threshold(self) -> int:
+        """Lower failure threshold when all servers are overloaded."""
+        now = time.monotonic()
+        fresh_overloaded = [
+            data for url, data in self._server_health.items()
+            if data.get("checked_at", 0) > now - _HEALTH_DATA_FRESHNESS
+            and data.get("queue_depth", 0) > _ADAPTIVE_QUEUE_DEPTH_THRESHOLD
+        ]
+        all_overloaded = len(fresh_overloaded) >= len(_base_urls())
+        return _ADAPTIVE_FAILURE_THRESHOLD if all_overloaded else _CIRCUIT_FAILURE_THRESHOLD
+
     def _record_failure(self) -> None:
         """Increment consecutive failures and trip the circuit breaker if threshold reached."""
         self._consecutive_failures += 1
-        if self._consecutive_failures >= _CIRCUIT_FAILURE_THRESHOLD:
+        threshold = self._adaptive_failure_threshold()
+        if self._consecutive_failures >= threshold:
             self._circuit_open_until = time.monotonic() + _CIRCUIT_OPEN_DURATION
-            logger.error(
-                "EmbedClient circuit breaker TRIPPED: %d consecutive failures. "
-                "Cooling down for %.0fs.",
-                self._consecutive_failures, _CIRCUIT_OPEN_DURATION,
+            # Gather queue depths for structured logging
+            depths = {
+                url: data.get("queue_depth", 0)
+                for url, data in self._server_health.items()
+            }
+            logger.warning(
+                "embed_circuit_open url=%s queue_depths=%s consecutive_failures=%d threshold=%d cooldown=%.0fs",
+                _base_urls()[0] if _base_urls() else "none",
+                depths,
+                self._consecutive_failures,
+                threshold,
+                _CIRCUIT_OPEN_DURATION,
             )
 
     def _record_success(self) -> None:
@@ -178,7 +252,7 @@ class EmbedClient:
         last_exc: Exception | None = None
 
         for attempt in range(1, _MAX_RETRIES + 1):
-            url = f"{_pick_url(attempt)}{endpoint}"
+            url = f"{self._pick_url(attempt)}{endpoint}"
             try:
                 resp = self._client.post(url, json=payload)
                 resp.raise_for_status()

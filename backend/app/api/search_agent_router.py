@@ -76,6 +76,7 @@ def _convert_search_results_to_chunks(search_results) -> list[RawChunk]:
             fts_rank=sr.keyword_score,
             rrf_score=sr.final_score,
             tags=[],
+            match_source=sr.match_source,
         ))
     return chunks
 

@@ -1630,3 +1630,97 @@ async def resume_uploads(
     logger.info("Uploads resumed by admin %s", current_user.email)
 
     return {"paused": False, "message": "Uploads are now resumed"}
+
+
+# ── Search Debug / A-B Comparison ──────────────────────────────────────────
+
+class SearchDebugParams(BaseModel):
+    query: str
+    semantic_weight: float = 0.7
+    keyword_weight: float = 0.3
+    regconfig: str = "simple"
+    rerank: bool = True
+    limit: int = 20
+
+
+class SearchDebugVariantResponse(BaseModel):
+    results: list[dict]
+    elapsed_ms: int
+    source_counts: dict[str, int]
+
+
+class SearchDebugResponse(BaseModel):
+    variant_a: SearchDebugVariantResponse
+    variant_b: SearchDebugVariantResponse
+    common_ids: list[str]
+    only_in_a: list[str]
+    only_in_b: list[str]
+
+
+@router.post("/search-debug", dependencies=[Depends(require_superuser_or_admin)])
+async def search_debug(
+    payload: dict[str, Any],
+    current_user: User = Depends(require_superuser_or_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Run two search variants side-by-side and return a diff for A/B debugging."""
+    from time import perf_counter
+
+    from app.services.search_service import HybridSearchService
+
+    variant_a_cfg = payload.get("variant_a", {})
+    variant_b_cfg = payload.get("variant_b", {})
+    query = payload.get("query", "")
+
+    if not query or len(query.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+
+    async def _run_variant(cfg: dict) -> dict:
+        t0 = perf_counter()
+        svc = HybridSearchService(
+            semantic_weight=cfg.get("semantic_weight", 0.7),
+            keyword_weight=cfg.get("keyword_weight", 0.3),
+        )
+        result = await svc.hybrid_search(
+            query=query,
+            limit=cfg.get("limit", 20),
+            db=db,
+            user=current_user,
+            regconfig=cfg.get("regconfig", "simple"),
+            rerank=cfg.get("rerank", True),
+        )
+        elapsed_ms = int((perf_counter() - t0) * 1000)
+        results = result.get("results", [])
+        source_counts: dict[str, int] = {}
+        for r in results:
+            src = getattr(r, "match_source", "unknown")
+            source_counts[src] = source_counts.get(src, 0) + 1
+        return {
+            "results": [
+                {
+                    "document_id": str(r.document_id),
+                    "document_name": r.document_name,
+                    "chunk_text": r.chunk_text[:200] if r.chunk_text else "",
+                    "final_score": round(r.final_score, 4),
+                    "match_source": getattr(r, "match_source", "unknown"),
+                    "result_type": r.result_type,
+                }
+                for r in results
+            ],
+            "elapsed_ms": elapsed_ms,
+            "source_counts": source_counts,
+        }
+
+    variant_a = await _run_variant(variant_a_cfg)
+    variant_b = await _run_variant(variant_b_cfg)
+
+    ids_a = {r["document_id"] for r in variant_a["results"]}
+    ids_b = {r["document_id"] for r in variant_b["results"]}
+
+    return {
+        "variant_a": variant_a,
+        "variant_b": variant_b,
+        "common_ids": sorted(list(ids_a & ids_b)),
+        "only_in_a": sorted(list(ids_a - ids_b)),
+        "only_in_b": sorted(list(ids_b - ids_a)),
+    }

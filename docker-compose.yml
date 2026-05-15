@@ -211,6 +211,8 @@ services:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    command: >
+      sh -c "chmod 777 /app/backups 2>/dev/null || true; exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
     healthcheck:
       # NOTE: Bind mount loads main.py (not main_minimal.py), so health is at /api/v1/health
       # main_minimal.py has /health at root, but that's overridden by the bind mount.
@@ -247,14 +249,17 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - VECLIB_MAXIMUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - EMBED_MAX_BATCH_SIZE=32
+      - EMBED_BATCH_WINDOW_MS=50
     volumes:
       - sowknow-model-cache:/models
       - ./backend:/app
-    # Periodic worker restart prevents PyTorch memory pool fragmentation.
+    # Single worker to stay within memory limits (model ~3GB + activations ~2-4GB).
+    # Periodic restart prevents PyTorch memory pool fragmentation.
     # 10000 requests ≈ 2-4h of embedding work; restart window is ~5s.
     command: >
       uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
-      --workers 2 --limit-max-requests 10000
+      --workers 1 --limit-max-requests 10000
     # NO ports — internal only. Access: http://embed-server:8000
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
@@ -265,7 +270,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 10240M
+          memory: 12288M
           cpus: '2.0'
     networks:
       - sowknow-net
@@ -290,13 +295,16 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - VECLIB_MAXIMUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - EMBED_MAX_BATCH_SIZE=32
+      - EMBED_BATCH_WINDOW_MS=50
     volumes:
       - sowknow-model-cache:/models
       - ./backend:/app
+    # Single worker to stay within memory limits (model ~3GB + activations ~2-4GB).
     # Staggered restart limit (12k vs 10k) so both servers never restart simultaneously
     command: >
       uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
-      --workers 2 --limit-max-requests 12000
+      --workers 1 --limit-max-requests 12000
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
       interval: 30s
@@ -306,7 +314,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 10240M
+          memory: 12288M
           cpus: '2.0'
     networks:
       - sowknow-net
@@ -521,7 +529,7 @@ services:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_HOST=redis
       - EMBED_SERVER_URL=http://embed-server:8000,http://embed-server-2:8000
-      - EMBED_CHUNK_CAP=64
+      - EMBED_CHUNK_CAP=512
       - SKIP_MODEL_DOWNLOAD=1
     volumes:
       - sowknow-public-data:/data/public

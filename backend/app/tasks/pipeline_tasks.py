@@ -537,7 +537,7 @@ def _run_chunk(document_id: str) -> None:
         db.close()
 
 
-EMBED_CHUNK_CAP = 32  # Hardcoded to override env var
+EMBED_CHUNK_CAP = int(os.getenv("EMBED_CHUNK_CAP", "512"))
 GRAPH_CHUNK_CAP = int(os.getenv("GRAPH_CHUNK_CAP", "5"))
 CHUNK_COUNT_MAX = int(os.getenv("CHUNK_COUNT_MAX", "75000"))
 
@@ -612,8 +612,15 @@ def _run_embed(document_id: str) -> None:
             if not chunks:
                 break  # All chunks embedded
 
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i : i + batch_size]
+            # Sort by ascending text length so short chunks are batched together.
+            # Prevents a single long chunk from padding an entire batch to max
+            # sequence length, which multiplies CPU time by 10-50x on the embed
+            # server (sentence-transformers pads every text in a batch to the
+            # longest token count).
+            chunks_sorted = sorted(chunks, key=lambda c: len(c.chunk_text or ""))
+
+            for i in range(0, len(chunks_sorted), batch_size):
+                batch = chunks_sorted[i : i + batch_size]
                 texts = [c.chunk_text for c in batch]
                 # HTTP call happens HERE — DB connection is NOT held
                 vectors = embedding_service.encode(texts=texts, batch_size=batch_size)

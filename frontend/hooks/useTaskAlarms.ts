@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useAuthStore } from '@/lib/store';
 
 interface TaskItem {
   id: string;
@@ -14,9 +15,11 @@ const CHECK_INTERVAL_MS = 30_000; // Check every 30 seconds
 
 export function useTaskAlarms() {
   const notifiedTasks = useRef<Set<string>>(new Set());
+  const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!isAuthenticated) return;
 
     // Request notification permission on first mount
     if ('Notification' in window && Notification.permission === 'default') {
@@ -58,5 +61,5 @@ export function useTaskAlarms() {
     checkAlarms();
     const interval = setInterval(checkAlarms, CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 }

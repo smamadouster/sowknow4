@@ -444,39 +444,37 @@ class CollectionService:
         results = []
 
         for attempt in range(max_attempts):
-            # Phase 1: Run the 4 core searches concurrently (fast)
-            core_tasks = [
-                asyncio.create_task(self.search_service.article_semantic_search(query=search_query, limit=25, db=db, user=user)),
-                asyncio.create_task(self.search_service.article_keyword_search(query=search_query, limit=25, db=db, user=user)),
-                asyncio.create_task(self.search_service.semantic_search(query=search_query, limit=25, offset=0, db=db, user=user)),
-                asyncio.create_task(self.search_service.keyword_search(query=search_query, limit=25, offset=0, db=db, user=user)),
-            ]
-
-            done, pending = await asyncio.wait(core_tasks, timeout=12.0)
-            for task in pending:
-                task.cancel()
-
-            # Collect core results
+            # Phase 1: Run the 4 core searches SEQUENTIALLY.
+            # Concurrent use of the same AsyncSession corrupts the connection
+            # (PendingRollbackError) because asyncpg connections are not safe
+            # for concurrent query execution.
             all_results = []
-            for task in done:
+            for search_name, coro in [
+                ("article_semantic", self.search_service.article_semantic_search(query=search_query, limit=25, db=db, user=user)),
+                ("article_keyword", self.search_service.article_keyword_search(query=search_query, limit=25, db=db, user=user)),
+                ("semantic", self.search_service.semantic_search(query=search_query, limit=25, offset=0, db=db, user=user)),
+                ("keyword", self.search_service.keyword_search(query=search_query, limit=25, offset=0, db=db, user=user)),
+            ]:
                 try:
-                    all_results.extend(task.result())
+                    res = await asyncio.wait_for(coro, timeout=12.0)
+                    all_results.extend(res)
+                except asyncio.TimeoutError:
+                    logger.warning(f"Collection gather {search_name} timed out")
                 except Exception as e:
-                    logger.warning(f"Search task failed: {e}")
+                    logger.warning(f"Collection gather {search_name} failed: {e}")
 
             # Phase 2: If still low, run tag search (slower LIKE scan)
             if len(all_results) < min_results * 3:
-                tag_task = asyncio.create_task(
-                    self.search_service.tag_search(query=search_query, limit=25, offset=0, db=db, user=user)
-                )
-                tag_done, tag_pending = await asyncio.wait([tag_task], timeout=8.0)
-                for task in tag_pending:
-                    task.cancel()
-                for task in tag_done:
-                    try:
-                        all_results.extend(task.result())
-                    except Exception as e:
-                        logger.warning(f"Tag search failed: {e}")
+                try:
+                    tag_res = await asyncio.wait_for(
+                        self.search_service.tag_search(query=search_query, limit=25, offset=0, db=db, user=user),
+                        timeout=8.0,
+                    )
+                    all_results.extend(tag_res)
+                except asyncio.TimeoutError:
+                    logger.warning("Collection gather tag_search timed out")
+                except Exception as e:
+                    logger.warning(f"Collection gather tag_search failed: {e}")
 
             # Group by document_id, prefer articles
             grouped = {}

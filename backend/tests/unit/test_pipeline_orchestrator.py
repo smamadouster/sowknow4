@@ -20,14 +20,38 @@ class TestDispatchDocument:
     def test_returns_backpressure_when_embed_queue_full(self, mock_redis):
         from app.models.pipeline import StageEnum
         from app.tasks.pipeline_orchestrator import dispatch_document
-        mock_redis.llen.return_value = 301  # embed max is 300
+
+        def llen_side_effect(queue_name):
+            # Only embed is over limit; keep global total under 1000
+            return {
+                "pipeline.embed": 301,
+                "pipeline.ocr": 10,
+                "pipeline.chunk": 10,
+                "pipeline.index": 10,
+                "pipeline.articles": 10,
+                "pipeline.entities": 10,
+            }.get(queue_name, 0)
+
+        mock_redis.llen.side_effect = llen_side_effect
         result = dispatch_document(str(uuid.uuid4()), from_stage=StageEnum.EMBEDDED)
         assert result == "backpressure:pipeline.embed"
 
     @patch("app.tasks.pipeline_orchestrator.redis_client")
     def test_returns_backpressure_when_ocr_queue_full(self, mock_redis):
         from app.tasks.pipeline_orchestrator import dispatch_document
-        mock_redis.llen.return_value = 501  # ocr max is 500
+
+        def llen_side_effect(queue_name):
+            # Only OCR is over limit; keep global total under 1000
+            return {
+                "pipeline.embed": 10,
+                "pipeline.ocr": 501,
+                "pipeline.chunk": 10,
+                "pipeline.index": 10,
+                "pipeline.articles": 10,
+                "pipeline.entities": 10,
+            }.get(queue_name, 0)
+
+        mock_redis.llen.side_effect = llen_side_effect
         result = dispatch_document(str(uuid.uuid4()))
         assert result == "backpressure:pipeline.ocr"
 

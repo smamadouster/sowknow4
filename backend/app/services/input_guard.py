@@ -43,7 +43,7 @@ class GuardResult:
 
 _MAX_TOKEN_BUDGET = 4096
 _TOKEN_RATIO = 1.3          # words -> approximate token count
-_DEDUP_TTL_SECONDS = 30
+_DEDUP_TTL_SECONDS = 5
 _DEDUP_KEY_PREFIX = "sowknow:dedup:"
 
 # French indicator words — common enough to distinguish FR from EN reliably.
@@ -227,17 +227,20 @@ class InputGuard:
         try:
             r = await self._get_redis()
             if r is None:
+                logger.info("InputGuard: dedup Redis unavailable")
                 return False
             h = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
             key = f"{_DEDUP_KEY_PREFIX}{h}"
             existing = await r.get(key)
+            logger.info("InputGuard: dedup key=%s existing=%r", key, existing)
             if existing is not None:
-                logger.debug("InputGuard: duplicate query detected (key=%s)", key)
+                logger.info("InputGuard: duplicate query detected (key=%s)", key)
                 return True
             await r.set(key, "1", ex=_DEDUP_TTL_SECONDS)
+            logger.info("InputGuard: dedup key set (key=%s)", key)
             return False
-        except Exception:
-            logger.debug("InputGuard: dedup check failed — skipping")
+        except Exception as exc:
+            logger.warning("InputGuard: dedup check failed — %s", exc)
             return False
 
     @staticmethod

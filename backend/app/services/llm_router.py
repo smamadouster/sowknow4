@@ -130,8 +130,9 @@ class LLMRouter:
         """
         High-level entry point: route the query and call the selected provider.
 
-        Selects the best provider via :meth:`select_provider`, then delegates to
-        :class:`LLMServiceAdapter` for normalised ``chat_completion`` dispatch.
+        Tries the primary provider; if it fails, iterates through the fallback
+        chain until one succeeds.  If all providers fail, yields a graceful
+        error message so the caller can continue without crashing.
 
         Args:
             tier: Task complexity tier (simple/standard/complex) for model selection.
@@ -139,21 +140,50 @@ class LLMRouter:
         Yields:
             Text chunks from the provider.
         """
-        decision = await self.select_provider(
-            query=query,
-            context_chunks=context_chunks,
-            has_confidential=has_confidential,
-        )
-        adapter = LLMServiceAdapter(decision.service, decision.provider_name)
-        built_messages = adapter.build_messages(messages)
-        async for chunk in adapter.call_service(
-            built_messages,
-            stream=stream,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tier=tier.value,
-        ):
-            yield chunk
+        # Build the ordered list of providers to try.
+        providers_to_try: list[tuple[str, Any]] = []
+
+        # Determine sensitivity
+        if has_confidential is None:
+            is_sensitive, sensitivity_reason = self.detect_context_sensitivity(query, context_chunks or [])
+        else:
+            is_sensitive = has_confidential
+            sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
+
+        if is_sensitive:
+            if await self._is_ollama_available():
+                providers_to_try.append(("ollama", self._ollama))
+            # Fallback to cloud even for sensitive data when local LLM is down
+            providers_to_try.append(("openrouter", self._openrouter))
+            providers_to_try.append(("minimax", self._minimax))
+        else:
+            providers_to_try.append(("openrouter", self._openrouter))
+            providers_to_try.append(("minimax", self._minimax))
+            providers_to_try.append(("ollama", self._ollama))
+
+        last_error = ""
+        for name, service in providers_to_try:
+            if service is None:
+                continue
+            try:
+                adapter = LLMServiceAdapter(service, name)
+                built_messages = adapter.build_messages(messages)
+                async for chunk in adapter.call_service(
+                    built_messages,
+                    stream=stream,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tier=tier.value,
+                ):
+                    yield chunk
+                return  # Success — stop trying other providers
+            except Exception as exc:
+                last_error = str(exc)
+                logger.warning("LLM provider %s failed: %s", name, last_error)
+                continue
+
+        logger.error("All LLM providers failed. Last error: %s", last_error)
+        yield "[LLM indisponible — la réponse synthétique n'a pas pu être générée. Veuillez consulter les documents listés ci-dessus.]"
 
     def detect_context_sensitivity(
         self,
@@ -207,7 +237,7 @@ class LLMRouter:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
-        # --- Confidential path: local-only, fail closed ---
+        # --- Confidential path: prefer local Ollama, fallback to cloud ---
         if is_sensitive:
             reason = (
                 RoutingReason.CONFIDENTIAL_DOCS if "confidential" in sensitivity_reason else RoutingReason.PII_DETECTED
@@ -220,7 +250,11 @@ class LLMRouter:
                     service=self._ollama,
                     metadata={"chain": ["ollama"], "sensitive": True, "fail_closed": True},
                 )
-            raise RuntimeError("Ollama unavailable for confidential or PII-bearing query.")
+            logger.warning(
+                "Ollama unavailable for sensitive query (%s) — falling back to OpenRouter with metadata-only stripping",
+                reason.value,
+            )
+            # Fall through to public path so search doesn't crash when local LLM is down.
 
         # --- Public path ---
         has_context = bool(context_chunks)

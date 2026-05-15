@@ -24,6 +24,90 @@ def _make_stage(
     return ps
 
 
+def _query_router(
+    stuck_stages=None,
+    uploaded_stages=None,
+    ocr_check_result=None,
+    doc_error=None,
+):
+    """Build a db.query side-effect that routes by model class, call count, and filter expressions.
+
+    The sweeper has a predictable query sequence based on StageEnum.  We use
+    call-counting for the first stuck-stage query (always OCR) and for the
+    backpressure-dispatch section, plus expression matching as a safety check.
+    """
+    stuck_stages = stuck_stages or []
+    uploaded_stages = uploaded_stages or []
+    ps_calls = [0]
+
+    def _extract_values(expr):
+        """Recursively extract literal values from SQLAlchemy filter expressions."""
+        values = []
+        try:
+            from sqlalchemy.sql.elements import BinaryExpression
+
+            if hasattr(expr, "clauses"):
+                for clause in expr.clauses:
+                    values.extend(_extract_values(clause))
+            elif isinstance(expr, BinaryExpression) and hasattr(expr.right, "value"):
+                val = expr.right.value
+                if hasattr(val, "value"):
+                    values.append(val.value)
+                else:
+                    values.append(val)
+        except Exception:
+            pass
+        return values
+
+    def side_effect(model, *args, **kwargs):
+        model_name = getattr(model, "__name__", None)
+        # Document queries → return doc_error from .first()
+        if model_name == "Document":
+            q = MagicMock()
+            q.filter.return_value = q
+            q.limit.return_value = q
+            q.first.return_value = doc_error
+            q.all.return_value = []
+            return q
+
+        # PipelineStage (or column) queries
+        ps_calls[0] += 1
+
+        # First PipelineStage query is always the first stuck-stage query (OCR)
+        if ps_calls[0] == 1 and stuck_stages:
+            q = MagicMock()
+            q.filter.return_value = q
+            q.limit.return_value = q
+            q.all.return_value = stuck_stages
+            q.first.return_value = None
+            return q
+
+        q = MagicMock()
+        q.filter.return_value = q
+        q.limit.return_value = q
+        q.all.return_value = []
+        q.first.return_value = None
+
+        def filter_side_effect(*fargs, **fkwargs):
+            values = []
+            for arg in fargs:
+                values.extend(_extract_values(arg))
+
+            # Backpressured uploads query (UPLOADED + COMPLETED) — ps_call 30
+            if ps_calls[0] == 30 and "uploaded" in values and "completed" in values:
+                q.all.return_value = uploaded_stages
+            # OCR check in backpressure section (no RUNNING status) — ps_call 31
+            elif ps_calls[0] == 31 and "ocr" in values and ocr_check_result is not None and "running" not in values:
+                q.first.return_value = ocr_check_result
+                q.all.return_value = []
+            return q
+
+        q.filter.side_effect = filter_side_effect
+        return q
+
+    return side_effect
+
+
 class TestResumesStuckRunningStages:
     """Stage RUNNING for > 2x hard_timeout with attempt < max_attempts → reset to PENDING + re-dispatch."""
 
@@ -46,25 +130,7 @@ class TestResumesStuckRunningStages:
 
         db = MagicMock()
         mock_session_local.return_value = db
-
-        # Query returning stuck stage only for the first stage (OCR), empty for others
-        ocr_stuck_query = MagicMock()
-        ocr_stuck_query.filter.return_value = ocr_stuck_query
-        ocr_stuck_query.all.return_value = [stuck_stage]
-
-        empty_query = MagicMock()
-        empty_query.filter.return_value = empty_query
-        empty_query.all.return_value = []
-
-        call_count = [0]
-
-        def query_side_effect(model):
-            call_count[0] += 1
-            if call_count[0] == 1:  # first stage query (OCR) returns stuck stage
-                return ocr_stuck_query
-            return empty_query
-
-        db.query.side_effect = query_side_effect
+        db.query.side_effect = _query_router(stuck_stages=[stuck_stage])
 
         result = pipeline_sweeper()
 
@@ -94,25 +160,7 @@ class TestMarksExhaustedStagesAsFailed:
 
         db = MagicMock()
         mock_session_local.return_value = db
-
-        # Return exhausted stage only for first stage (OCR), empty for all others
-        ocr_stuck_query = MagicMock()
-        ocr_stuck_query.filter.return_value = ocr_stuck_query
-        ocr_stuck_query.all.return_value = [exhausted_stage]
-
-        empty_query = MagicMock()
-        empty_query.filter.return_value = empty_query
-        empty_query.all.return_value = []
-
-        call_count = [0]
-
-        def query_side_effect(model):
-            call_count[0] += 1
-            if call_count[0] == 1:  # first stage query (OCR) returns exhausted stage
-                return ocr_stuck_query
-            return empty_query
-
-        db.query.side_effect = query_side_effect
+        db.query.side_effect = _query_router(stuck_stages=[exhausted_stage])
 
         result = pipeline_sweeper()
 
@@ -143,35 +191,10 @@ class TestDispatchesBackpressuredDocuments:
 
         db = MagicMock()
         mock_session_local.return_value = db
-
-        # Queries for stuck stages return empty
-        stuck_query = MagicMock()
-        stuck_query.filter.return_value = stuck_query
-        stuck_query.all.return_value = []
-
-        # Query for UPLOADED completed returns one document
-        uploaded_query = MagicMock()
-        uploaded_query.filter.return_value = uploaded_query
-        uploaded_query.all.return_value = [uploaded_stage]
-
-        # Query for OCR stage returns None (not started)
-        ocr_check_query = MagicMock()
-        ocr_check_query.filter.return_value = ocr_check_query
-        ocr_check_query.first.return_value = None
-
-        call_count = [0]
-
-        def query_side_effect(model):
-            call_count[0] += 1
-            # Step 1: 6 stuck-stage queries; Step 2: 7 pairs × 2 queries = 14
-            # Total before step 3: 20 queries
-            if call_count[0] <= 20:
-                return stuck_query
-            if call_count[0] == 21:
-                return uploaded_query
-            return ocr_check_query
-
-        db.query.side_effect = query_side_effect
+        db.query.side_effect = _query_router(
+            uploaded_stages=[uploaded_stage],
+            ocr_check_result=None,
+        )
 
         result = pipeline_sweeper()
 

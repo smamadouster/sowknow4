@@ -18,6 +18,7 @@ class TargetType(StrEnum):
     BOOKMARK = "bookmark"
     NOTE = "note"
     SPACE = "space"
+    TASK = "task"
 
 
 class TagCreate(BaseModel):

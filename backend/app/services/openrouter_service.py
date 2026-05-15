@@ -12,6 +12,7 @@ CONTEXT CACHING:
 - Confidential responses are NEVER cached - handled by caller
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -335,7 +336,7 @@ class OpenRouterService:
             redis_client = _get_redis_client()
             if redis_client and effective_cache_key:
                 try:
-                    cached_response = redis_client.get(effective_cache_key)
+                    cached_response = await asyncio.to_thread(redis_client.get, effective_cache_key)
                     if cached_response and isinstance(cached_response, str):
                         logger.info(f"OpenRouter cache HIT: key={effective_cache_key[:50]}...")
                         # Record cache hit metrics
@@ -452,7 +453,8 @@ class OpenRouterService:
                             redis_client = _get_redis_client()
                             if redis_client:
                                 try:
-                                    redis_client.setex(
+                                    await asyncio.to_thread(
+                                        redis_client.setex,
                                         effective_cache_key,
                                         CACHE_TTL_SECONDS,
                                         content,
@@ -463,8 +465,8 @@ class OpenRouterService:
                                     # Track key under collection for bulk invalidation
                                     if collection_id:
                                         tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
-                                        redis_client.sadd(tracking_key, effective_cache_key)
-                                        redis_client.expire(tracking_key, CACHE_TTL_SECONDS)
+                                        await asyncio.to_thread(redis_client.sadd, tracking_key, effective_cache_key)
+                                        await asyncio.to_thread(redis_client.expire, tracking_key, CACHE_TTL_SECONDS)
                                 except Exception as cache_error:
                                     logger.warning(f"Failed to cache response: {cache_error}")
 

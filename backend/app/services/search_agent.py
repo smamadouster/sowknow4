@@ -22,7 +22,7 @@ from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
 from app.services.llm_router import llm_router
 from app.services.search_cache import SearchCache
-from app.services.search_service import HybridSearchService, _get_regconfig
+from app.services.search_service import HybridSearchService
 
 from .search_models import (
     AgenticSearchRequest,
@@ -599,9 +599,14 @@ async def run_agentic_search(
     start_ms = time.monotonic()
     logger.info("Agentic search started | user=%s role=%s query='%s'", user_id, user_role, request.query)
 
-    # --- Result cache check ---
+    # --- Result cache check (no DB) ---
     bucket_filter = HybridSearchService()._get_user_bucket_filter(user) if user else ["public"]
-    cached = SearchCache.get_result(request.query, user_role.value, request.top_k, bucket_filter)
+    try:
+        cached = SearchCache.get_result(request.query, user_role.value, request.top_k, bucket_filter)
+        logger.info("run_agentic_search: SearchCache.get_result succeeded")
+    except Exception as exc:
+        logger.warning("run_agentic_search: SearchCache.get_result failed: %s", exc)
+        cached = None
     if cached:
         logger.info("Cache hit for query='%s'", request.query)
         return AgenticSearchResponse(**cached)
@@ -610,8 +615,9 @@ async def run_agentic_search(
     _context_block: str | None = None
     try:
         _context_block = await get_cached_context_block(db)
-    except Exception:
-        pass
+        logger.info("run_agentic_search: get_cached_context_block succeeded")
+    except Exception as exc:
+        logger.warning("run_agentic_search: get_cached_context_block failed: %s", exc)
 
     mode = request.mode
     if mode == SearchMode.AUTO:
@@ -634,7 +640,12 @@ async def run_agentic_search(
         intent.confidence = 0.6
         logger.info("Fast path: skipped LLM intent for simple query '%s'", request.query)
     else:
-        intent = await parse_intent(request.query)
+        try:
+            intent = await parse_intent(request.query)
+            logger.info("run_agentic_search: parse_intent succeeded")
+        except Exception as exc:
+            logger.warning("run_agentic_search: parse_intent failed: %s", exc)
+            intent = _fallback_intent(request.query)
         logger.info("Intent: %s (%.2f) | sub_queries: %d", intent.intent, intent.confidence, len(intent.sub_queries))
 
     if request.language:
@@ -647,43 +658,37 @@ async def run_agentic_search(
     # Stage 2: Query expansion
     queries = build_search_queries(intent, search_query)
 
-    # Stage 3: Hybrid retrieval (parallel sub-queries)
+    # Stage 3: Hybrid retrieval (sequential sub-queries to avoid
+    # concurrent use of the same AsyncSession)
     search_service = HybridSearchService()
     all_chunks: list[RawChunk] = []
 
-    async def _search_one(query_text: str) -> list[RawChunk]:
-        result = await search_service.hybrid_search(
-            query=query_text,
-            limit=request.top_k * 3,
-            offset=0,
-            db=db,
-            user=user,
-            regconfig=_get_regconfig(intent.detected_language),
-        )
-        chunks: list[RawChunk] = []
-        for sr in result.get("results", []):
-            chunks.append(RawChunk(
-                chunk_id=sr.chunk_id,
-                document_id=sr.document_id,
-                document_title=sr.document_name,
-                document_bucket=DocumentBucket(sr.document_bucket),
-                document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
-                chunk_index=sr.chunk_index,
-                page_number=sr.page_number,
-                text=sr.chunk_text,
-                semantic_score=sr.semantic_score,
-                fts_rank=sr.keyword_score,
-                rrf_score=sr.final_score,
-                tags=[],
-            ))
-        return chunks
-
-    sub_results = await asyncio.gather(*[_search_one(qt) for qt in queries], return_exceptions=True)
-    for res in sub_results:
-        if isinstance(res, Exception):
-            logger.warning("Sub-query search failed: %s", res)
-            continue
-        all_chunks.extend(res)
+    for query_text in queries:
+        try:
+            result = await search_service.hybrid_search(
+                query=query_text,
+                limit=request.top_k * 3,
+                offset=0,
+                db=db,
+                user=user,
+            )
+            for sr in result.get("results", []):
+                all_chunks.append(RawChunk(
+                    chunk_id=sr.chunk_id,
+                    document_id=sr.document_id,
+                    document_title=sr.document_name,
+                    document_bucket=DocumentBucket(sr.document_bucket),
+                    document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
+                    chunk_index=sr.chunk_index,
+                    page_number=sr.page_number,
+                    text=sr.chunk_text,
+                    semantic_score=sr.semantic_score,
+                    fts_rank=sr.keyword_score,
+                    rrf_score=sr.final_score,
+                    tags=[],
+                ))
+        except Exception as exc:
+            logger.warning("Sub-query search failed: %s", exc)
 
     # Stage 3b: Filter to journal entries if requested
     if request.journal_only:

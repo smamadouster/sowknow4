@@ -17,6 +17,7 @@ from app.models.document import DocumentBucket
 from app.models.user import User, UserRole
 from app.services.input_guard import input_guard
 from app.services.search_agent import (
+    _sanitize_search_query,
     build_citations,
     build_search_queries,
     generate_suggestions,
@@ -32,7 +33,7 @@ from app.services.search_models import (
     RawChunk,
     SearchMode,
 )
-from app.services.search_service import HybridSearchService, _get_regconfig
+from app.services.search_service import HybridSearchService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/search", tags=["Search"])
@@ -148,7 +149,6 @@ async def search(
 async def search_stream(
     request: AgenticSearchRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     user_role = _role_from_user(current_user)
 
@@ -181,94 +181,118 @@ async def search_stream(
         logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
 
     async def event_generator():
-        start = time.monotonic()
-        try:
-            yield _sse_event("stage", {"stage": "intent", "message": "Analyse de votre requete..."})
-            intent = await parse_intent(request.query)
-            yield _sse_event("intent", {
-                "intent": intent.intent.value,
-                "confidence": intent.confidence,
-                "keywords": intent.keywords,
-                "sub_queries": intent.sub_queries,
-                "language": intent.detected_language,
-            })
-
-            if request.language:
-                intent.detected_language = request.language
-
-            queries = build_search_queries(intent, request.query)
-            yield _sse_event("stage", {"stage": "retrieval", "message": f"Recherche dans {len(queries)} requete(s)..."})
-
-            search_service = HybridSearchService()
-
-            async def _search_one(query_text: str) -> list[RawChunk]:
-                result = await search_service.hybrid_search(
-                    query=query_text, limit=request.top_k * 3,
-                    offset=0, db=db, user=current_user,
-                    regconfig=_get_regconfig(intent.detected_language),
-                )
-                return _convert_search_results_to_chunks(result.get("results", []))
-
-            sub_results = await asyncio.gather(*[_search_one(qt) for qt in queries], return_exceptions=True)
-            all_chunks: list[RawChunk] = []
-            for res in sub_results:
-                if isinstance(res, Exception):
-                    logger.warning("Streaming sub-query failed: %s", res)
-                    continue
-                all_chunks.extend(res)
-
-            all_chunks = _deduplicate_chunks(all_chunks)
-
-            yield _sse_event("stage", {
-                "stage": "reranking",
-                "message": f"{len(all_chunks)} extraits recuperes, reclassement...",
-            })
-
-            results, has_confidential = rerank_and_build_results(
-                all_chunks, request.query, intent, request.top_k, user_role,
-            )
-            yield _sse_event("results", {
-                "results": [r.model_dump() for r in results],
-                "total_found": len(results),
-                "has_confidential_results": has_confidential,
-            })
-
-            mode = request.mode
-            if mode == SearchMode.AUTO:
-                mode = SearchMode.FAST if len(request.query.split()) <= 5 else SearchMode.DEEP
-
-            model_used = None
-            if results and (
-                mode == SearchMode.DEEP
-                or intent.requires_synthesis
-                or intent.intent in (QueryIntent.SYNTHESIS, QueryIntent.TEMPORAL, QueryIntent.COMPARATIVE, QueryIntent.FINANCIAL)
-            ):
-                yield _sse_event("stage", {"stage": "synthesis", "message": "Synthese de la reponse..."})
-                answer, model_used = await synthesize_answer(
-                    request.query, results, all_chunks, intent, has_confidential, intent.detected_language,
-                )
-                yield _sse_event("synthesis", {
-                    "answer": answer, "model": model_used, "language": intent.detected_language,
+        from app.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            start = time.monotonic()
+            try:
+                yield _sse_event("stage", {"stage": "intent", "message": "Analyse de votre requete..."})
+                intent = await parse_intent(request.query)
+                yield _sse_event("intent", {
+                    "intent": intent.intent.value,
+                    "confidence": intent.confidence,
+                    "keywords": intent.keywords,
+                    "sub_queries": intent.sub_queries,
+                    "language": intent.detected_language,
                 })
 
-            if request.include_suggestions and results:
-                suggestions = await generate_suggestions(request.query, results, intent, has_confidential)
-                yield _sse_event("suggestions", {"suggestions": [s.model_dump() for s in suggestions]})
+                if request.language:
+                    intent.detected_language = request.language
 
-            citations = build_citations(results, all_chunks)
-            yield _sse_event("citations", {"citations": [c.model_dump() for c in citations]})
+                # Sanitize query to match the non-streaming search path
+                search_query = _sanitize_search_query(request.query)
+                queries = build_search_queries(intent, search_query)
+                yield _sse_event("stage", {"stage": "retrieval", "message": f"Recherche dans {len(queries)} requete(s)..."})
 
-            elapsed_ms = int((time.monotonic() - start) * 1000)
-            yield _sse_event("done", {
-                "total_found": len(results),
-                "model": model_used,
-                "has_confidential": has_confidential,
-                "search_time_ms": elapsed_ms,
-            })
+                search_service = HybridSearchService()
 
-        except Exception as exc:
-            logger.exception("Streaming search error: %s", exc)
-            yield _sse_event("error", {"message": "Erreur lors de la recherche. Veuillez reessayer."})
+                all_chunks: list[RawChunk] = []
+                for query_text in queries:
+                    try:
+                        result = await search_service.hybrid_search(
+                            query=query_text, limit=request.top_k * 3,
+                            offset=0, db=db, user=current_user,
+                        )
+                        all_chunks.extend(_convert_search_results_to_chunks(result.get("results", [])))
+                    except Exception as exc:
+                        logger.warning("Streaming sub-query failed: %s", exc)
+
+                all_chunks = _deduplicate_chunks(all_chunks)
+
+                yield _sse_event("stage", {
+                    "stage": "reranking",
+                    "message": f"{len(all_chunks)} extraits recuperes, reclassement...",
+                })
+
+                results, has_confidential = rerank_and_build_results(
+                    all_chunks, request.query, intent, request.top_k, user_role,
+                )
+                yield _sse_event("results", {
+                    "results": [r.model_dump() for r in results],
+                    "total_found": len(results),
+                    "has_confidential_results": has_confidential,
+                })
+
+                mode = request.mode
+                if mode == SearchMode.AUTO:
+                    mode = SearchMode.FAST if len(request.query.split()) <= 5 else SearchMode.DEEP
+
+                model_used = None
+                if results and (
+                    mode == SearchMode.DEEP
+                    or intent.requires_synthesis
+                    or intent.intent in (QueryIntent.SYNTHESIS, QueryIntent.TEMPORAL, QueryIntent.COMPARATIVE, QueryIntent.FINANCIAL)
+                ):
+                    yield _sse_event("stage", {"stage": "synthesis", "message": "Synthese de la reponse..."})
+                    try:
+                        answer, model_used = await asyncio.wait_for(
+                            synthesize_answer(
+                                request.query, results, all_chunks, intent, has_confidential, intent.detected_language,
+                            ),
+                            timeout=45.0,
+                        )
+                        yield _sse_event("synthesis", {
+                            "answer": answer, "model": model_used, "language": intent.detected_language,
+                        })
+                    except asyncio.TimeoutError:
+                        logger.warning("Synthesis timed out after 45s")
+                        yield _sse_event("synthesis", {
+                            "answer": "", "model": None, "language": intent.detected_language,
+                        })
+                    except Exception as exc:
+                        logger.warning("Synthesis failed: %s", exc)
+                        yield _sse_event("synthesis", {
+                            "answer": "[Synthèse indisponible — veuillez consulter les documents ci-dessus]",
+                            "model": None, "language": intent.detected_language,
+                        })
+
+                if request.include_suggestions and results:
+                    try:
+                        suggestions = await asyncio.wait_for(
+                            generate_suggestions(request.query, results, intent, has_confidential),
+                            timeout=20.0,
+                        )
+                        yield _sse_event("suggestions", {"suggestions": [s.model_dump() for s in suggestions]})
+                    except asyncio.TimeoutError:
+                        logger.warning("Suggestion generation timed out after 20s")
+                        yield _sse_event("suggestions", {"suggestions": []})
+                    except Exception as exc:
+                        logger.warning("Suggestion generation failed: %s", exc)
+                        yield _sse_event("suggestions", {"suggestions": []})
+
+                citations = build_citations(results, all_chunks)
+                yield _sse_event("citations", {"citations": [c.model_dump() for c in citations]})
+
+                elapsed_ms = int((time.monotonic() - start) * 1000)
+                yield _sse_event("done", {
+                    "total_found": len(results),
+                    "model": model_used,
+                    "has_confidential": has_confidential,
+                    "search_time_ms": elapsed_ms,
+                })
+
+            except Exception as exc:
+                logger.exception("Streaming search error: %s", exc)
+                yield _sse_event("error", {"message": "Erreur lors de la recherche. Veuillez reessayer."})
 
     return StreamingResponse(
         event_generator(),

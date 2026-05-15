@@ -29,10 +29,13 @@ class TestLanguageAwareSearch:
         assert _get_regconfig("xx") == "simple"
 
     @pytest.mark.asyncio
-    async def test_hybrid_search_uses_regconfig_parameter(self):
+    async def test_hybrid_search_uses_simple_regconfig_for_reliability(self):
+        """Phase 1 fix: keyword search uses language-agnostic 'simple' regconfig
+        to prevent French queries from missing English-indexed chunks."""
         svc = HybridSearchService()
         svc.semantic_search = AsyncMock(return_value=[])
         svc.keyword_search = AsyncMock(return_value=[])
+        svc._filename_search = AsyncMock(return_value=[])
         svc.article_semantic_search = AsyncMock(return_value=[])
         svc.article_keyword_search = AsyncMock(return_value=[])
         svc.tag_search = AsyncMock(return_value=[])
@@ -44,7 +47,9 @@ class TestLanguageAwareSearch:
 
         svc.keyword_search.assert_awaited_once()
         call_kwargs = svc.keyword_search.call_args.kwargs
-        assert call_kwargs.get("regconfig") == "english"
+        # Phase 1: hybrid_search now hardcodes "simple" for keyword search
+        # regardless of the regconfig parameter, fixing the language-mismatch bug.
+        assert call_kwargs.get("regconfig") == "simple"
 
 
 class TestTrigramFallback:
@@ -92,6 +97,7 @@ class TestTrigramFallback:
         ]
         svc.keyword_search = AsyncMock(return_value=fake_results)
         svc._trigram_fallback_search = AsyncMock(return_value=[])
+        svc._filename_search = AsyncMock(return_value=[])
         svc.semantic_search = AsyncMock(return_value=[])
         svc.article_semantic_search = AsyncMock(return_value=[])
         svc.article_keyword_search = AsyncMock(return_value=[])
@@ -112,6 +118,7 @@ class TestRerankerGracefulDegradation:
         svc = HybridSearchService()
         svc.semantic_search = AsyncMock(return_value=[])
         svc.keyword_search = AsyncMock(return_value=[])
+        svc._filename_search = AsyncMock(return_value=[])
         svc.article_semantic_search = AsyncMock(return_value=[])
         svc.article_keyword_search = AsyncMock(return_value=[])
         svc.tag_search = AsyncMock(return_value=[])
@@ -130,17 +137,19 @@ class TestDynamicThreshold:
     """QA Gate: P2.6 Short queries use stricter threshold"""
 
     @pytest.mark.asyncio
-    async def test_short_query_filters_weak_matches(self):
-        """Short query (1 word) with score 0.20 should be filtered by 0.25 threshold."""
+    async def test_short_query_allows_moderate_matches(self):
+        """Phase 1 fix: threshold lowered from 0.25 to 0.08 so keyword-only
+        matches are not silently dropped for short queries."""
         from app.services.search_service import SearchResult
         svc = HybridSearchService(min_score_threshold=0.1)
 
-        low_score = SearchResult(
+        moderate_score = SearchResult(
             chunk_id="c1", document_id="d1", document_name="x.pdf",
             document_bucket="public", chunk_text="x", chunk_index=0,
             page_number=None, semantic_score=0.0, keyword_score=0.2, final_score=0.2,
         )
-        svc.keyword_search = AsyncMock(return_value=[low_score])
+        svc.keyword_search = AsyncMock(return_value=[moderate_score])
+        svc._filename_search = AsyncMock(return_value=[])
         svc.semantic_search = AsyncMock(return_value=[])
         svc.article_semantic_search = AsyncMock(return_value=[])
         svc.article_keyword_search = AsyncMock(return_value=[])
@@ -150,22 +159,23 @@ class TestDynamicThreshold:
             query="fin", db=None, user=None,
             regconfig="simple", rerank=False
         )
-        # Score 0.20 < 0.25 threshold for short query => filtered out
-        assert result["total"] == 0
+        # Phase 1: Score 0.20 >= 0.08 threshold for short query => included
+        assert result["total"] == 1
 
     @pytest.mark.asyncio
     async def test_long_query_allows_moderate_matches(self):
-        """Long query (5 words) with keyword score 0.6 should pass 0.15 threshold."""
+        """Long query (5 words) with keyword score 0.6 should pass 0.05 threshold."""
         from app.services.search_service import SearchResult
         svc = HybridSearchService(min_score_threshold=0.1)
 
-        # keyword_score=0.6 * kw_w=0.3 => final_score=0.18 >= 0.15 threshold
+        # keyword_score=0.6 * kw_w=0.3 => final_score=0.18 >= 0.05 threshold
         moderate_score = SearchResult(
             chunk_id="c1", document_id="d1", document_name="x.pdf",
             document_bucket="public", chunk_text="x", chunk_index=0,
             page_number=None, semantic_score=0.0, keyword_score=0.6, final_score=0.6,
         )
         svc.keyword_search = AsyncMock(return_value=[moderate_score])
+        svc._filename_search = AsyncMock(return_value=[])
         svc.semantic_search = AsyncMock(return_value=[])
         svc.article_semantic_search = AsyncMock(return_value=[])
         svc.article_keyword_search = AsyncMock(return_value=[])
@@ -175,5 +185,5 @@ class TestDynamicThreshold:
             query="financial report for last year", db=None, user=None,
             regconfig="simple", rerank=False
         )
-        # Score 0.18 >= 0.15 threshold for long query => included
+        # Phase 1: Score 0.18 >= 0.05 threshold for long query => included
         assert result["total"] == 1

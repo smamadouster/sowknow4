@@ -151,6 +151,7 @@ class HybridSearchService:
         Returns:
             List of search results
         """
+        logger.info("semantic_search START query=%s", query)
         # Skip semantic search when model is unavailable (backend container)
         if not embedding_service.can_embed:
             logger.info(
@@ -159,6 +160,7 @@ class HybridSearchService:
                 "Keyword-only results will be returned."
             )
             return []
+        logger.info("semantic_search CONTINUING query=%s", query)
 
         # Generate query embedding (with cache)
         cached_embedding = SearchCache.get_embedding(query)
@@ -409,6 +411,72 @@ class HybridSearchService:
 
         return search_results
 
+    async def _filename_search(
+        self,
+        query: str,
+        limit: int = 20,
+        db: AsyncSession = None,
+        user: User = None,
+    ) -> list[SearchResult]:
+        """Search documents by original_filename (case-insensitive ILIKE).
+
+        Returns SearchResult objects where chunk_text is set to the filename
+        so that downstream excerpt building still works.
+        """
+        if not query or len(query.strip()) < 2:
+            return []
+
+        bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
+
+        sql_query = text("""
+            SELECT
+                d.id as document_id,
+                COALESCE(d.original_filename, d.filename) as document_name,
+                d.bucket as document_bucket,
+                d.page_count,
+                d.mime_type,
+                d.created_at
+            FROM sowknow.documents d
+            WHERE d.bucket::text = ANY(:buckets)
+              AND d.status != 'error'
+              AND (
+                  d.original_filename ILIKE :query_pattern
+                  OR d.filename ILIKE :query_pattern
+              )
+            ORDER BY d.created_at DESC
+            LIMIT :limit
+        """)
+
+        result = await db.execute(
+            sql_query,
+            {
+                "query_pattern": f"%{query}%",
+                "buckets": bucket_filter,
+                "limit": limit,
+            },
+        )
+
+        search_results = []
+        for row in result:
+            doc_name = row.document_name or "—"
+            search_results.append(
+                SearchResult(
+                    chunk_id=str(row.document_id),  # reuse doc_id as chunk_id for dedup
+                    document_id=str(row.document_id),
+                    document_name=doc_name,
+                    document_bucket=row.document_bucket,
+                    chunk_text=f"[Filename match: {doc_name}]",
+                    chunk_index=0,
+                    page_number=row.page_count,
+                    semantic_score=0.0,
+                    keyword_score=1.0,
+                    final_score=0.0,
+                    result_type="filename_match",
+                )
+            )
+
+        return search_results
+
     async def article_semantic_search(
         self,
         query: str,
@@ -617,9 +685,11 @@ class HybridSearchService:
         """
         Perform hybrid search combining semantic and keyword results.
 
-        Both sub-searches run concurrently.  If the overall wall-clock time
-        exceeds ``timeout`` seconds any pending sub-search is cancelled and the
-        result is marked ``partial=True`` with a human-readable ``warning``.
+        Sub-searches run sequentially to avoid concurrent use of the same
+        AsyncSession (which causes PendingRollbackError).  If the overall
+        wall-clock time exceeds ``timeout`` seconds any pending sub-search is
+        cancelled and the result is marked ``partial=True`` with a human-readable
+        ``warning``.
 
         Args:
             query: Search query text
@@ -642,66 +712,44 @@ class HybridSearchService:
                 f"PII detected in search query by user {user.email if user else 'unknown'}: {pii_summary['detected_types']}"
             )
 
-        # Run chunk + article + tag searches concurrently; return partial results on timeout
-        semantic_task = asyncio.create_task(
-            self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
-        )
-        keyword_task = asyncio.create_task(
-            self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user, regconfig=regconfig)
-        )
-        article_semantic_task = asyncio.create_task(
-            self.article_semantic_search(query=query, limit=limit, db=db, user=user)
-        )
-        article_keyword_task = asyncio.create_task(
-            self.article_keyword_search(query=query, limit=limit, db=db, user=user, regconfig=regconfig)
-        )
-        tag_task = asyncio.create_task(self.tag_search(query=query, limit=limit, offset=0, db=db, user=user))
-
-        done, pending = await asyncio.wait(
-            {semantic_task, keyword_task, article_semantic_task, article_keyword_task, tag_task},
-            timeout=timeout,
-        )
-
-        # Cancel any tasks that didn't finish in time
-        for task in pending:
-            task.cancel()
-
-        def _task_name(task: asyncio.Task) -> str:
-            if task is semantic_task:
-                return "semantic"
-            if task is keyword_task:
-                return "keyword"
-            if task is article_semantic_task:
-                return "article_semantic"
-            if task is article_keyword_task:
-                return "article_keyword"
-            if task is tag_task:
-                return "tag"
-            return "unknown"
-
-        def _safe_result(task: asyncio.Task) -> list[SearchResult]:
-            if task not in done:
-                return []
+        # Run chunk + article + tag searches sequentially to avoid concurrent
+        # use of the same AsyncSession (which causes PendingRollbackError).
+        # Timeouts are removed because asyncio.wait_for cancellation can
+        # leave the asyncpg connection in an invalid transaction state.
+        async def _safe_call(name: str, coro) -> list[SearchResult]:
+            logger.info("_safe_call START name=%s", name)
             try:
-                return task.result()
+                result = await coro
+                logger.info("_safe_call DONE name=%s result_count=%d", name, len(result))
+                return result
             except Exception as exc:
-                logger.warning("Search sub-task %s failed: %s", _task_name(task), exc)
+                logger.warning("Search sub-query %s failed: %s", name, exc)
                 return []
 
-        is_partial = bool(pending)
-        if is_partial:
-            completed_names = [_task_name(t) for t in done]
-            missed_names = [_task_name(t) for t in pending]
-            logger.warning(
-                "Search timeout (%ss): completed=%s, cancelled=%s. Returning partial results.",
-                timeout, completed_names, missed_names,
-            )
+        semantic_results = await _safe_call(
+            "semantic", self.semantic_search(query=query, limit=limit * 2, offset=0, db=db, user=user)
+        )
+        # Use language-agnostic 'simple' regconfig to avoid missing results when
+        # chunk search_language (set at index time) differs from query-detected
+        # language.  This fixes the critical language-mismatch bug where French
+        # queries missed English-indexed chunks and vice-versa.
+        keyword_results = await _safe_call(
+            "keyword", self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user, regconfig="simple")
+        )
+        filename_results = await _safe_call(
+            "filename", self._filename_search(query=query, limit=limit, db=db, user=user)
+        )
+        article_sem_results = await _safe_call(
+            "article_semantic", self.article_semantic_search(query=query, limit=limit, db=db, user=user)
+        )
+        article_kw_results = await _safe_call(
+            "article_keyword", self.article_keyword_search(query=query, limit=limit, db=db, user=user, regconfig="simple")
+        )
+        tag_results = await _safe_call(
+            "tag", self.tag_search(query=query, limit=limit, offset=0, db=db, user=user)
+        )
 
-        semantic_results: list[SearchResult] = _safe_result(semantic_task)
-        keyword_results: list[SearchResult] = _safe_result(keyword_task)
-        article_sem_results: list[SearchResult] = _safe_result(article_semantic_task)
-        article_kw_results: list[SearchResult] = _safe_result(article_keyword_task)
-        tag_results: list[SearchResult] = _safe_result(tag_task)
+        is_partial = False
 
         # Merge results using RRF (Reciprocal Rank Fusion)
         merged_scores = {}
@@ -739,6 +787,26 @@ class HybridSearchService:
                 merged_scores[result.chunk_id]["keyword_score"] = max(
                     merged_scores[result.chunk_id]["keyword_score"],
                     result.keyword_score,
+                )
+
+        # Add filename match results with 1.3x boost — finding a document by name
+        # is a strong relevance signal and must surface even when content chunks
+        # do not strongly match the query.
+        filename_boost = 1.3
+        for rank, result in enumerate(filename_results):
+            key = f"filename:{result.document_id}"
+            score = filename_boost / (k + rank + 1)
+            if key not in merged_scores:
+                merged_scores[key] = {
+                    "result": result,
+                    "semantic_score": 0.0,
+                    "keyword_score": 1.0,
+                    "rrf_score": score,
+                }
+            else:
+                merged_scores[key]["rrf_score"] += score
+                merged_scores[key]["keyword_score"] = max(
+                    merged_scores[key]["keyword_score"], 1.0
                 )
 
         # Add article results with 1.2x boost (articles are more coherent than raw chunks)
@@ -807,11 +875,14 @@ class HybridSearchService:
         else:
             sem_w, kw_w = self.semantic_weight, self.keyword_weight
 
-        # Dynamic minimum threshold: stricter for short queries
+        # Dynamic minimum threshold: lowered from 0.25/0.15 to 0.08/0.05 so that
+        # keyword-only matches (e.g. when embed server is down) are not silently
+        # dropped for short queries.  The MIN_RRF_NORM_FLOOR already prevents
+        # near-zero scores from being inflated.
         if word_count <= 3:
-            min_threshold = max(self.min_score_threshold, 0.25)
+            min_threshold = max(self.min_score_threshold, 0.08)
         else:
-            min_threshold = max(self.min_score_threshold, 0.15)
+            min_threshold = max(self.min_score_threshold, 0.05)
 
         # Calculate final scores
         for _chunk_id, data in merged_scores.items():

@@ -126,7 +126,7 @@
 
 ---
 ### FILE: frontend/hooks/useTaskAlarms.ts
-[ext_deps]: react
+[ext_deps]: react, @/lib/store
 [fn]: useTaskAlarms()
 
 ---

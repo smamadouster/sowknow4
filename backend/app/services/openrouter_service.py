@@ -1,8 +1,9 @@
 """
-OpenRouter service for LLM access — DeepSeek V4 Pro primary
+OpenRouter service for LLM access — Mistral Small primary
 OpenRouter provides OpenAI-compatible API access to multiple LLMs.
-Primary model: deepseek/deepseek-v4-pro (1M context, frontier reasoning).
-Tiered fallback: deepseek-v4-pro → qwen/qwen3.5-plus-20260420 → minimax/minimax-m2.5
+Primary model: mistralai/mistral-small-2409 (best FR/EN balance for family narrative).
+Tiered stack: simple=google/gemini-2.0-flash-001, standard=mistralai/mistral-small-2409,
+complex=anthropic/claude-3.5-sonnet.
 
 CONTEXT CACHING:
 - Redis-backed cache for repeated queries to reduce API costs

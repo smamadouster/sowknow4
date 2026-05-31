@@ -385,6 +385,7 @@ When answering:
         response_parts = []
 
         async for chunk in self.llm.chat_completion(
+            # §3.3: standard tier (Mistral Small) — better French family narrative, lower latency
             messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier="standard",
         ):
             if chunk and not chunk.startswith("Error:"):

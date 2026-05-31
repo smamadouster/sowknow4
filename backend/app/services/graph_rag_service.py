@@ -471,12 +471,14 @@ Key Principles:
 
             if stream:
                 return self.llm.chat_completion(
+                    # §3.3: standard tier (Mistral Small) — French entity name preservation is critical
                     messages=messages, stream=True, temperature=0.7, max_tokens=2048, tier="standard",
                     has_confidential=has_confidential,
                 )
             else:
                 response = []
                 async for chunk in self.llm.chat_completion(
+                    # §3.3: standard tier (Mistral Small) — French entity name preservation is critical
                     messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier="standard",
                     has_confidential=has_confidential,
                 ):

@@ -419,6 +419,7 @@ Extract all entities, relationships, and dated events now:"""
         try:
             response_parts = []
             async for chunk in self.llm.chat_completion(
+                # §3.3: simple tier (Gemini Flash) — structured JSON from 3K tokens, 20× cheaper/faster
                 messages=messages, stream=False, temperature=0.3, max_tokens=2048, tier="simple"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):

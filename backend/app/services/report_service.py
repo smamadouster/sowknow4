@@ -289,6 +289,7 @@ Generate the complete report now:"""
         response_parts = []
         # Route through LLM gateway (auto-selects best provider for complex tasks)
         async for chunk in self.llm.chat_completion(
+            # §3.3: complex tier (Claude Sonnet) — best JSON adherence for cited reports
             messages=messages, stream=False, temperature=0.5, max_tokens=8192, tier="complex"
         ):
             if chunk and not chunk.startswith("Error:"):

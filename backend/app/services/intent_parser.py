@@ -399,6 +399,7 @@ Now parse the user's query:"""
 
             response_parts = []
             async for chunk in self.llm.chat_completion(
+                # §3.3: simple tier (Gemini Flash) — reliable, fast, no cold-start for intent parsing
                 messages=messages, stream=False, temperature=0.3, max_tokens=1024, tier="simple"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):

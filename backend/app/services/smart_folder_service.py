@@ -552,7 +552,7 @@ Write the article now:"""
             stream=False,
             temperature=0.5,
             max_tokens=4096,
-            tier="complex",
+            tier="standard",  # §3.3: Mistral Small sufficient for 2–6 paragraph articles
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
@@ -627,7 +627,7 @@ Write the article now:"""
                 stream=False,
                 temperature=0.5,
                 max_tokens=4096,
-                tier="complex",
+                tier="standard",  # §3.3: Mistral Small sufficient for 2–6 paragraph articles
             ):
                 if chunk and not chunk.startswith("Error:"):
                     response_parts.append(chunk)

@@ -133,6 +133,10 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = Field(default="https://openrouter.ai/api/v1")
     OPENROUTER_SITE_URL: str = Field(default="https://sowknow.gollamtech.com")
     OPENROUTER_SITE_NAME: str = Field(default="SOWKNOW")
+    LLM_DEPRECATED_MODELS: str = Field(
+        default="gpt-4,gpt-4o,claude-3-opus,minimax-01,llama-3.3-70b-instruct:free,qwen3-235b-a22b:free",
+        description="Comma-separated blacklist of deprecated model identifiers.",
+    )
 
     # ------------------------------------------------------------------
     # Validators
@@ -166,11 +170,15 @@ class Settings(BaseSettings):
     @field_validator("OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX")
     @classmethod
     def validate_not_deprecated_model(cls, v: str, info) -> str:  # noqa: N805
-        """Reject known deprecated model identifiers."""
-        deprecated = {
-            "gpt-4", "gpt-4o", "claude-3-opus", "minimax-01",
-            "llama-3.3-70b-instruct:free", "qwen3-235b-a22b:free",
-        }
+        """Reject deprecated model identifiers (from LLM_DEPRECATED_MODELS env var)."""
+        # Get deprecated list from settings or use sensible defaults
+        deprecated_raw = os.getenv("LLM_DEPRECATED_MODELS", "")
+        deprecated = {d.strip() for d in deprecated_raw.split(",") if d.strip()}
+        if not deprecated:
+            deprecated = {
+                "gpt-4", "gpt-4o", "claude-3-opus", "minimax-01",
+                "llama-3.3-70b-instruct:free", "qwen3-235b-a22b:free",
+            }
         if any(d in v for d in deprecated):
             raise ValueError(
                 f"Field '{info.field_name}' uses a deprecated model ('{v}'). "

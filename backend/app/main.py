@@ -130,16 +130,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Startup: Validate LLM model configuration (block deprecated/free-tier models in production)
     if _is_production:
-        deprecated_models = {
-            "gpt-4",
-            "gpt-4o",
-            "claude-3-opus",
-            "minimax-01",
-            "llama-3.3-70b-instruct:free",
-            "qwen3-235b-a22b:free",
-        }
         from app.core.config import settings
 
+        deprecated_models = {
+            d.strip()
+            for d in settings.LLM_DEPRECATED_MODELS.split(",")
+            if d.strip()
+        }
         models_to_check = [
             settings.OPENROUTER_MODEL,
             settings.OPENROUTER_TIER_SIMPLE,

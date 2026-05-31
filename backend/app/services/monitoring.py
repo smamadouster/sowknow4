@@ -115,12 +115,12 @@ class CostTracker:
             "input": 0.00026,
             "output": 0.00200,
         },
-        # Legacy / fallback — kept for backwards compatibility on old records
+        # DEPRECATED providers — kept for accurate historical cost lookups only.
+        # These models are no longer used in the active LLM stack (§3.2/§4 cleanup).
         "moonshotai/kimi-k2.6": {
             "input": 0.000745,
             "output": 0.004655,
         },
-        # MiniMax (direct)
         "minimax/minimax-m2.7": {
             "input": 0.00030,
             "output": 0.00120,

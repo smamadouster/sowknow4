@@ -125,7 +125,7 @@ class TestChatCompletionNonStream:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(return_value=mock_resp)
 
-        with patch("app.services.kimi_service.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm_http_client.LLMHTTPClient.get_client", return_value=mock_client):
             chunks = []
             async for chunk in svc.chat_completion(
                 [{"role": "user", "content": "hello"}], stream=False
@@ -155,7 +155,7 @@ class TestChatCompletionNonStream:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(return_value=mock_resp)
 
-        with patch("app.services.kimi_service.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm_http_client.LLMHTTPClient.get_client", return_value=mock_client):
             chunks = []
             async for chunk in svc.chat_completion(
                 [{"role": "user", "content": "hello"}], stream=False
@@ -197,7 +197,7 @@ class TestChatCompletionStream:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.stream = MagicMock(return_value=mock_stream)
 
-        with patch("app.services.kimi_service.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm_http_client.LLMHTTPClient.get_client", return_value=mock_client):
             chunks = []
             async for chunk in svc.chat_completion(
                 [{"role": "user", "content": "hello"}], stream=True
@@ -232,7 +232,7 @@ class TestChatCompletionStream:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.stream = MagicMock(return_value=mock_stream)
 
-        with patch("app.services.kimi_service.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm_http_client.LLMHTTPClient.get_client", return_value=mock_client):
             chunks = []
             async for chunk in svc.chat_completion(
                 [{"role": "user", "content": "test"}], stream=True
@@ -311,7 +311,7 @@ class TestRateLimitRetry:
         mock_client.post = AsyncMock(side_effect=error)
 
         # tenacity will re-raise after exhausting retries
-        with patch("app.services.kimi_service.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm_http_client.LLMHTTPClient.get_client", return_value=mock_client):
             with pytest.raises(httpx.HTTPStatusError):
                 # Consume the generator to trigger the network call
                 async for _ in svc.chat_completion(
@@ -353,7 +353,7 @@ class TestHealthCheck:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(return_value=mock_resp)
 
-        with patch("app.services.kimi_service.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm_http_client.LLMHTTPClient.get_client", return_value=mock_client):
             result = await svc.health_check()
 
         assert result["status"] == "healthy"
@@ -376,7 +376,7 @@ class TestHealthCheck:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
-        with patch("app.services.kimi_service.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.services.llm_http_client.LLMHTTPClient.get_client", return_value=mock_client):
             result = await svc.health_check()
 
         # ConnectError is caught inside chat_completion and returned as "Error: ..."

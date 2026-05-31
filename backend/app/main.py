@@ -94,7 +94,9 @@ _error_rate_tracker = ErrorRateTracker(window_seconds=300)
 
 # ---- Request-ID middleware (T01) ----
 class RequestIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id
         response = await call_next(request)
@@ -105,7 +107,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 class ErrorRateMiddleware(BaseHTTPMiddleware):
     """Middleware to track 5xx error rates."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         start_time = time.time()
         response = await call_next(request)
         duration = time.time() - start_time
@@ -123,6 +127,44 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_pgvector()  # Initialize pgvector extension
     await create_all_tables()
     print("Database tables created/verified")
+
+    # Startup: Validate LLM model configuration (block deprecated/free-tier models in production)
+    if _is_production:
+        deprecated_models = {
+            "gpt-4",
+            "gpt-4o",
+            "claude-3-opus",
+            "minimax-01",
+            "llama-3.3-70b-instruct:free",
+            "qwen3-235b-a22b:free",
+        }
+        from app.core.config import settings
+
+        models_to_check = [
+            settings.OPENROUTER_MODEL,
+            settings.OPENROUTER_TIER_SIMPLE,
+            settings.OPENROUTER_TIER_STANDARD,
+            settings.OPENROUTER_TIER_COMPLEX,
+        ]
+        for model in models_to_check:
+            if any(d in model for d in deprecated_models):
+                raise RuntimeError(
+                    f"CRITICAL: Deprecated/free-tier model '{model}' configured. "
+                    f"Aborting startup. Update .env to use production-grade models."
+                )
+        print("LLM model configuration validated (no deprecated models)")
+
+    # Startup: Confirm shared LLM HTTP client / connection pool is healthy
+    try:
+        from app.services.llm_http_client import LLMHTTPClient
+
+        client = LLMHTTPClient.get_client()
+        print(
+            f"LLM HTTP client ready (keepalive={client._limits.max_keepalive_connections}, "
+            f"max_connections={client._limits.max_connections})"
+        )
+    except Exception as exc:
+        print(f"LLM HTTP client initialization warning: {exc}")
 
     # Startup: Initialize NATS messaging (optional — app runs without it)
     try:
@@ -152,6 +194,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         print(f"Error closing Redis pool: {exc}")
     try:
+        from app.services.llm_http_client import LLMHTTPClient
+
+        await LLMHTTPClient.close()
+        print("LLM HTTP client closed")
+    except Exception as exc:
+        print(f"Error closing LLM HTTP client: {exc}")
+    try:
         from app.services.messaging import close_messaging_client
 
         await close_messaging_client()
@@ -178,7 +227,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 _is_production = os.getenv("APP_ENV", "development").lower() == "production"
 
 
-def _error_response(error_type: str, message: str, detail: str | None, http_status: int) -> JSONResponse:
+def _error_response(
+    error_type: str, message: str, detail: str | None, http_status: int
+) -> JSONResponse:
     """Build a consistent error envelope."""
     body: dict = {
         "error": {
@@ -192,7 +243,9 @@ def _error_response(error_type: str, message: str, detail: str | None, http_stat
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     """Return 400 with structured error for invalid request bodies / query params."""
     return _error_response(
         error_type="validation_error",
@@ -203,9 +256,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 @app.exception_handler(SQLAlchemyError)
-async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+async def sqlalchemy_exception_handler(
+    request: Request, exc: SQLAlchemyError
+) -> JSONResponse:
     """Return 503 on database errors to avoid leaking SQL details."""
-    logger.exception("SQLAlchemy error while handling %s %s", request.method, request.url.path)
+    logger.exception(
+        "SQLAlchemy error while handling %s %s", request.method, request.url.path
+    )
     return _error_response(
         error_type="database_error",
         message="A database error occurred. Please try again later.",
@@ -261,7 +318,9 @@ if APP_ENV == "production":
             "Example: ALLOWED_ORIGINS=https://sowknow.gollamtech.com,https://www.sowknow.gollamtech.com"
         )
     # Split and strip whitespace, filter empty strings
-    ALLOWED_ORIGINS = [origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()]
+    ALLOWED_ORIGINS = [
+        origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()
+    ]
 
     # Security check: reject wildcards in production
     if "*" in ALLOWED_ORIGINS:
@@ -290,7 +349,9 @@ if APP_ENV == "production":
             "SECURITY ERROR: ALLOWED_HOSTS environment variable is required in production. "
             "Example: ALLOWED_HOSTS=sowknow.gollamtech.com,www.sowknow.gollamtech.com"
         )
-    ALLOWED_HOSTS = [host.strip() for host in _allowed_hosts_str.split(",") if host.strip()]
+    ALLOWED_HOSTS = [
+        host.strip() for host in _allowed_hosts_str.split(",") if host.strip()
+    ]
 else:
     # Development: Allow any host for local testing
     ALLOWED_HOSTS = ["*"]

@@ -155,53 +155,55 @@ class KimiService(BaseLLMService):
             "stream": stream,
         }
 
+        from app.services.llm_http_client import LLMHTTPClient
+
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                if stream:
-                    async with client.stream(
-                        "POST",
-                        f"{self.base_url}/chat/completions",
-                        headers=self._get_headers(),
-                        json=payload,
-                    ) as response:
-                        response.raise_for_status()
-                        async for line in response.aiter_lines():
-                            if not line.strip():
-                                continue
-                            if line.startswith("data: "):
-                                data_str = line[6:]
-                                if data_str == "[DONE]":
-                                    break
-                                try:
-                                    data = json.loads(data_str)
-                                    if "choices" in data and len(data["choices"]) > 0:
-                                        delta = data["choices"][0].get("delta", {})
-                                        content = delta.get("content", "")
-                                        if content:
-                                            yield content
-                                except json.JSONDecodeError:
-                                    continue
-                else:
-                    response = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=self._get_headers(),
-                        json=payload,
-                    )
+            client = LLMHTTPClient.get_client()
+            if stream:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=self._get_headers(),
+                    json=payload,
+                ) as response:
                     response.raise_for_status()
-                    result = response.json()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                if "choices" in data and len(data["choices"]) > 0:
+                                    delta = data["choices"][0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+            else:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self._get_headers(),
+                    json=payload,
+                )
+                response.raise_for_status()
+                result = response.json()
 
-                    if "choices" in result and len(result["choices"]) > 0:
-                        content = result["choices"][0].get("message", {}).get("content", "")
-                        usage = result.get("usage", {})
+                if "choices" in result and len(result["choices"]) > 0:
+                    content = result["choices"][0].get("message", {}).get("content", "")
+                    usage = result.get("usage", {})
 
-                        yield content
+                    yield content
 
-                        # Emit usage sentinel to match OpenRouter pattern
-                        if usage:
-                            yield f"\n__USAGE__: {json.dumps(usage)}"
-                    else:
-                        logger.error(f"Unexpected Kimi response: {result}")
-                        yield "Error: Unexpected response from Kimi API"
+                    # Emit usage sentinel to match OpenRouter pattern
+                    if usage:
+                        yield f"\n__USAGE__: {json.dumps(usage)}"
+                else:
+                    logger.error(f"Unexpected Kimi response: {result}")
+                    yield "Error: Unexpected response from Kimi API"
 
         except httpx.HTTPStatusError as e:
             error_body = ""
@@ -242,6 +244,8 @@ class KimiService(BaseLLMService):
             status["status"] = "unhealthy"
             status["error"] = "KIMI_API_KEY not configured"
             return status
+
+        from app.services.llm_http_client import LLMHTTPClient
 
         try:
             test_messages = [{"role": "user", "content": "ping"}]

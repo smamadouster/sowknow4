@@ -75,10 +75,17 @@ class MiniMaxService(BaseLLMService):
             "Content-Type": "application/json",
         }
 
-    def _check_cost_ceiling(self, estimated_input_tokens: int, estimated_output_tokens: int) -> bool:
+    def _check_cost_ceiling(
+        self,
+        estimated_input_tokens: int,
+        estimated_output_tokens: int,
+        user_id: str | None = None,
+        user_role: str | None = None,
+    ) -> bool:
         """Check if a call would exceed the cost ceiling."""
         try:
             from app.services.monitoring import get_cost_ceiling
+
             ceiling = get_cost_ceiling()
             return ceiling.check_call_allowed(
                 service="minimax",
@@ -86,6 +93,8 @@ class MiniMaxService(BaseLLMService):
                 estimated_input_tokens=estimated_input_tokens,
                 estimated_output_tokens=estimated_output_tokens,
                 tier="standard",
+                user_id=user_id,
+                user_role=user_role,
             )
         except Exception as e:
             logger.warning(f"Cost ceiling check failed, allowing call: {e}")
@@ -110,10 +119,14 @@ class MiniMaxService(BaseLLMService):
         truncated_messages = self._truncate_messages(messages)
 
         # --- Cost ceiling pre-flight check ---
-        est_input = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
+        est_input = sum(
+            self._estimate_tokens(m.get("content", "")) for m in truncated_messages
+        )
         est_output = max_tokens
         if not self._check_cost_ceiling(est_input, est_output):
-            logger.error(f"MiniMax call BLOCKED by cost ceiling (est_input={est_input}, est_output={est_output})")
+            logger.error(
+                f"MiniMax call BLOCKED by cost ceiling (est_input={est_input}, est_output={est_output})"
+            )
             yield "Error: LLM cost ceiling reached. Please try again later or contact support."
             return
 
@@ -125,63 +138,72 @@ class MiniMaxService(BaseLLMService):
             "stream": stream,
         }
 
+        from app.services.llm_http_client import LLMHTTPClient
+
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                if stream:
-                    async with client.stream(
-                        "POST",
-                        f"{self.base_url}/v1/text/chatcompletion_v2",
-                        json=payload,
-                        headers=self._get_headers(),
-                    ) as response:
-                        response.raise_for_status()
-                        async for line in response.aiter_lines():
-                            if not line.strip():
-                                continue
-                            if line.startswith("data: "):
-                                data_str = line[6:]
-                                if data_str == "[DONE]":
-                                    break
-                                try:
-                                    data = json.loads(data_str)
-                                    if "choices" in data and len(data["choices"]) > 0:
-                                        delta = data["choices"][0].get("delta", {})
-                                        content = delta.get("content", "")
-                                        if content:
-                                            yield content
-                                except json.JSONDecodeError:
-                                    continue
-                else:
-                    response = await client.post(
-                        f"{self.base_url}/v1/text/chatcompletion_v2",
-                        json=payload,
-                        headers=self._get_headers(),
-                    )
+            client = LLMHTTPClient.get_client()
+            if stream:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/v1/text/chatcompletion_v2",
+                    json=payload,
+                    headers=self._get_headers(),
+                ) as response:
                     response.raise_for_status()
-                    data = response.json()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                if "choices" in data and len(data["choices"]) > 0:
+                                    delta = data["choices"][0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+            else:
+                response = await client.post(
+                    f"{self.base_url}/v1/text/chatcompletion_v2",
+                    json=payload,
+                    headers=self._get_headers(),
+                )
+                response.raise_for_status()
+                data = response.json()
 
-                    if "choices" in data and len(data["choices"]) > 0:
-                        content = data["choices"][0].get("message", {}).get("content", "")
-                        usage = data.get("usage", {})
+                if "choices" in data and len(data["choices"]) > 0:
+                    content = data["choices"][0].get("message", {}).get("content", "")
+                    usage = data.get("usage", {})
 
-                        # Record actual cost for budget tracking
-                        try:
-                            from app.services.monitoring import get_cost_tracker
-                            tracker = get_cost_tracker()
-                            tracker.record_api_call(
-                                service="minimax",
-                                operation="chat",
-                                model=self.model,
-                                input_tokens=usage.get("prompt_tokens", 0) if usage else est_input,
-                                output_tokens=usage.get("completion_tokens", 0) if usage else 0,
-                            )
-                        except Exception as cost_err:
-                            logger.debug(f"MiniMax cost tracking failed: {cost_err}")
+                    # Record actual cost for budget tracking
+                    try:
+                        from app.services.monitoring import get_cost_tracker
 
-                        yield content
+                        tracker = get_cost_tracker()
+                        tracker.record_api_call(
+                            service="minimax",
+                            operation="chat",
+                            model=self.model,
+                            input_tokens=(
+                                usage.get("prompt_tokens", 0) if usage else est_input
+                            ),
+                            output_tokens=(
+                                usage.get("completion_tokens", 0) if usage else 0
+                            ),
+                        )
+                    except Exception as cost_err:
+                        logger.debug(f"MiniMax cost tracking failed: {cost_err}")
+
+                    yield content
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"MiniMax API error: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"MiniMax API error: {e.response.status_code} - {e.response.text}"
+            )
             yield f"Error: MiniMax API returned {e.response.status_code}"
         except Exception as e:
             logger.error(f"MiniMax service error: {str(e)}")
@@ -195,23 +217,35 @@ class MiniMaxService(BaseLLMService):
     ) -> str:
         """Non-streaming version"""
         result = ""
-        async for chunk in self.chat_completion(messages, stream=False, temperature=temperature, max_tokens=max_tokens):
+        async for chunk in self.chat_completion(
+            messages, stream=False, temperature=temperature, max_tokens=max_tokens
+        ):
             result += chunk
         return result
 
     async def health_check(self) -> dict:
         """Check whether MiniMax API is reachable."""
         if not self.api_key:
-            return {"service": "minimax", "status": "unhealthy", "reason": "MINIMAX_API_KEY not configured"}
+            return {
+                "service": "minimax",
+                "status": "unhealthy",
+                "reason": "MINIMAX_API_KEY not configured",
+            }
+        from app.services.llm_http_client import LLMHTTPClient
+
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/v1/text/chatcompletion_v2",
-                    headers=self._get_headers(),
-                )
-                if response.status_code in (200, 400, 405):
-                    return {"service": "minimax", "status": "healthy", "model": self.model}
-                return {"service": "minimax", "status": "degraded", "http_status": response.status_code}
+            client = LLMHTTPClient.get_client()
+            response = await client.get(
+                f"{self.base_url}/v1/text/chatcompletion_v2",
+                headers=self._get_headers(),
+            )
+            if response.status_code in (200, 400, 405):
+                return {"service": "minimax", "status": "healthy", "model": self.model}
+            return {
+                "service": "minimax",
+                "status": "degraded",
+                "http_status": response.status_code,
+            }
         except Exception as e:
             return {"service": "minimax", "status": "unhealthy", "reason": str(e)}
 

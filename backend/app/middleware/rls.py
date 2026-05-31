@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.context import current_user_id, current_user_role
 from app.utils.security import ALGORITHM, SECRET_KEY, _get_secret_key
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,11 @@ async def apply_rls_context(session: AsyncSession, context: RLSContext) -> None:
                 "       set_config('app.user_role', :role, true), "
                 "       set_config('app.client_ip', :ip,   true)"
             ),
-            {"uid": context.user_id, "role": context.user_role, "ip": context.client_ip},
+            {
+                "uid": context.user_id,
+                "role": context.user_role,
+                "ip": context.client_ip,
+            },
         )
     except Exception:
         logger.debug("RLS context set failed (non-fatal)", exc_info=True)
@@ -75,5 +80,15 @@ async def set_rls_context(request: Request, call_next) -> Response:
     """HTTP middleware that stores RLS context for request-scoped DB sessions."""
     request.state.rls_context = extract_rls_context(request)
 
-    response = await call_next(request)
+    # Propagate user identity to contextvars so service-layer code can access it
+    ctx = request.state.rls_context
+    token_id = current_user_id.set(ctx.user_id) if ctx.user_id else None
+    token_role = current_user_role.set(ctx.user_role) if ctx.user_role else None
+    try:
+        response = await call_next(request)
+    finally:
+        if token_id is not None:
+            current_user_id.reset(token_id)
+        if token_role is not None:
+            current_user_role.reset(token_role)
     return response

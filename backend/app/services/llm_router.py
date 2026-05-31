@@ -8,15 +8,15 @@ All chat services should route through this module instead of embedding routing 
 
 Routing strategy
 ----------------
-* Confidential docs or PII detected → Ollama (local) → OpenRouter → MiniMax
-* Public docs (RAG)                 → OpenRouter tiered → MiniMax
-* General chat (no docs)            → OpenRouter tiered → MiniMax
+* Confidential docs or PII detected → OpenRouter (metadata-only stripping)
+* Public docs (RAG)                 → OpenRouter tiered
+* General chat (no docs)            → OpenRouter tiered
 
 Tiered model routing (OpenRouter)
 ---------------------------------
-* simple:    qwen/qwen3-235b-a22b:free  (classification, tagging, intent)
-* standard:  qwen/qwen3.5-plus-20260420  (chat, synthesis, articles)
-* complex:   deepseek/deepseek-v4-pro    (reasoning, coding, verification)
+* simple:    google/gemini-2.0-flash-001  (classification, tagging, intent)
+* standard:  mistralai/mistral-small-2409  (chat, synthesis, articles)
+* complex:   anthropic/claude-3.5-sonnet  (reasoning, reports, verification)
 """
 
 import logging

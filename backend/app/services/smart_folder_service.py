@@ -40,18 +40,51 @@ logger = logging.getLogger(__name__)
 # generate an article.  These are stripped from the query before search.
 _GATHER_KEYWORDS = {
     # French
-    "rassembler", "rassemble", "tous les documents", "tous les docs",
-    "documents concernant", "docs concernant", "trouver", "rechercher",
-    "liste des", "lister", "donne-moi", "montre-moi", "affiche",
-    "documents sur", "docs sur", "documents à propos", "docs à propos",
-    "fichiers concernant", "fichiers sur",
+    "rassembler",
+    "rassemble",
+    "tous les documents",
+    "tous les docs",
+    "documents concernant",
+    "docs concernant",
+    "trouver",
+    "rechercher",
+    "liste des",
+    "lister",
+    "donne-moi",
+    "montre-moi",
+    "affiche",
+    "documents sur",
+    "docs sur",
+    "documents à propos",
+    "docs à propos",
+    "fichiers concernant",
+    "fichiers sur",
     # English
-    "gather", "gather all", "find all", "find documents", "find docs",
-    "list all", "list documents", "show me", "give me", "display",
-    "documents about", "docs about", "documents regarding",
-    "files about", "files regarding", "search for", "look for",
-    "all documents", "all docs", "documents on", "docs on",
-    "retrieve", "fetch", "pull up", "bring up",
+    "gather",
+    "gather all",
+    "find all",
+    "find documents",
+    "find docs",
+    "list all",
+    "list documents",
+    "show me",
+    "give me",
+    "display",
+    "documents about",
+    "docs about",
+    "documents regarding",
+    "files about",
+    "files regarding",
+    "search for",
+    "look for",
+    "all documents",
+    "all docs",
+    "documents on",
+    "docs on",
+    "retrieve",
+    "fetch",
+    "pull up",
+    "bring up",
 }
 
 # Meta-words to remove when extracting the real subject from a gather query
@@ -73,8 +106,6 @@ _MIN_RELEVANCE_SCORE = 0.25
 
 class SmartFolderService:
     """Service for generating AI content from document collections"""
-
-    FALLBACK_MODEL = "qwen/qwen3-235b-a22b:free"
 
     def __init__(self):
         self.llm = llm_gateway
@@ -107,7 +138,10 @@ class SmartFolderService:
             return await self._handle_gather_intent(
                 topic=topic,
                 include_confidential=include_confidential
-                and (user.role in [UserRole.ADMIN, UserRole.SUPERUSER] or user.can_access_confidential),
+                and (
+                    user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+                    or user.can_access_confidential
+                ),
                 user=user,
                 db=db,
             )
@@ -117,7 +151,10 @@ class SmartFolderService:
             style=style,
             length=length,
             include_confidential=include_confidential
-            and (user.role in [UserRole.ADMIN, UserRole.SUPERUSER] or user.can_access_confidential),
+            and (
+                user.role in [UserRole.ADMIN, UserRole.SUPERUSER]
+                or user.can_access_confidential
+            ),
             user=user,
             db=db,
         )
@@ -171,7 +208,7 @@ class SmartFolderService:
                 "topic": topic,
                 "generated_content": (
                     f"Aucun document pertinent trouvé pour : {subject}\n\n"
-                    f"(Recherche lancée à partir de votre demande : \"{topic}\")"
+                    f'(Recherche lancée à partir de votre demande : "{topic}")'
                 ),
                 "sources_used": [],
                 "word_count": 0,
@@ -185,7 +222,7 @@ class SmartFolderService:
         )
 
         summary_prompt = (
-            f"Résume en 2 phrases ce qui relie ces documents au sujet \"{subject}\". "
+            f'Résume en 2 phrases ce qui relie ces documents au sujet "{subject}". '
             f"Sois factuel. N'invente rien.\n\nDocuments trouvés:\n{doc_list_text}"
         )
 
@@ -284,7 +321,9 @@ class SmartFolderService:
         llm_used = "minimax"
 
         if not generated:
-            logger.warning("MiniMax generation returned empty, falling back to OpenRouter")
+            logger.warning(
+                "MiniMax generation returned empty, falling back to OpenRouter"
+            )
             generated = await self._generate_with_openrouter_fallback(
                 topic=topic,
                 document_context=document_context,
@@ -382,7 +421,9 @@ class SmartFolderService:
 
         return (await db.execute(stmt)).scalars().all()[:20]
 
-    async def _build_document_context(self, documents: list[Document], db: AsyncSession) -> list[dict[str, Any]]:
+    async def _build_document_context(
+        self, documents: list[Document], db: AsyncSession
+    ) -> list[dict[str, Any]]:
         """Build context from documents for content generation"""
         context = []
         for doc in documents[:10]:
@@ -404,7 +445,10 @@ class SmartFolderService:
             doc_info = {
                 "filename": doc.filename,
                 "created_at": doc.created_at.isoformat(),
-                "chunks": [{"text": chunk.chunk_text, "page": chunk.page_number} for chunk in chunks],
+                "chunks": [
+                    {"text": chunk.chunk_text, "page": chunk.page_number}
+                    for chunk in chunks
+                ],
             }
             context.append(doc_info)
 
@@ -428,7 +472,11 @@ class SmartFolderService:
         ]
         try:
             async for chunk in self.llm.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=300, tier="simple"
+                messages=messages,
+                stream=False,
+                temperature=0.3,
+                max_tokens=300,
+                tier="simple",
             ):
                 if chunk and not chunk.startswith("Error:"):
                     return chunk.strip()
@@ -448,7 +496,9 @@ class SmartFolderService:
         context_text = "\n\n".join(
             [
                 f"Document: {doc['filename']}\n"
-                + "\n".join([f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]])
+                + "\n".join(
+                    [f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]]
+                )
                 for doc in document_context
             ]
         )
@@ -498,7 +548,11 @@ Write the article now:"""
 
         response_parts = []
         async for chunk in self.llm.chat_completion(
-            messages=messages, stream=False, temperature=0.5, max_tokens=4096, tier="complex"
+            messages=messages,
+            stream=False,
+            temperature=0.5,
+            max_tokens=4096,
+            tier="complex",
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
@@ -512,12 +566,14 @@ Write the article now:"""
         style: str,
         length: str,
     ) -> str:
-        """Fallback: generate content using OpenRouter with Qwen free model."""
+        """Fallback: generate content via the LLM gateway with tiered model selection."""
 
         context_text = "\n\n".join(
             [
                 f"Document: {doc['filename']}\n"
-                + "\n".join([f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]])
+                + "\n".join(
+                    [f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]]
+                )
                 for doc in document_context
             ]
         )
@@ -567,7 +623,11 @@ Write the article now:"""
         try:
             response_parts = []
             async for chunk in self.llm.chat_completion(
-                messages=messages, stream=False, temperature=0.5, max_tokens=4096, tier="complex"
+                messages=messages,
+                stream=False,
+                temperature=0.5,
+                max_tokens=4096,
+                tier="complex",
             ):
                 if chunk and not chunk.startswith("Error:"):
                     response_parts.append(chunk)

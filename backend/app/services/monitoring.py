@@ -77,68 +77,57 @@ class AlertState:
 class CostTracker:
     """Track API costs with daily caps and budgeting."""
 
-    # Pricing (as of 2026-04-27) — per 1K tokens
+    # Pricing (as of 2026-05-31) — per 1K tokens
     OPENROUTER_PRICING = {
-        # DeepSeek (primary)
+        # Primary / standard tier
+        "mistralai/mistral-small-2409": {
+            "input": 0.00020,
+            "output": 0.00060,
+        },
+        "mistralai/mistral-large-2407": {
+            "input": 0.00200,
+            "output": 0.00600,
+        },
+        # Complex tier
+        "anthropic/claude-3.5-sonnet": {
+            "input": 0.00300,
+            "output": 0.01500,
+        },
         "deepseek/deepseek-v4-pro": {
-            "input": 0.00174,   # $1.74 per 1M
-            "output": 0.00348,  # $3.48 per 1M
+            "input": 0.00174,
+            "output": 0.00348,
         },
         "deepseek/deepseek-v4-flash": {
             "input": 0.00014,
             "output": 0.00028,
         },
-        # Qwen (standard tier)
+        # Simple tier
+        "google/gemini-2.0-flash-001": {
+            "input": 0.00010,
+            "output": 0.00040,
+        },
+        "qwen/qwen3-8b": {
+            "input": 0.00005,
+            "output": 0.00010,
+        },
+        # Qwen standard
         "qwen/qwen3.5-plus-20260420": {
             "input": 0.00026,
             "output": 0.00200,
         },
-        "qwen/qwen3-235b-a22b:free": {
-            "input": 0.0,
-            "output": 0.0,
-        },
-        # Legacy / fallback
+        # Legacy / fallback — kept for backwards compatibility on old records
         "moonshotai/kimi-k2.6": {
             "input": 0.000745,
             "output": 0.004655,
-        },
-        "moonshotai/kimi-k2.5": {
-            "input": 0.00044,
-            "output": 0.00200,
         },
         # MiniMax (direct)
         "minimax/minimax-m2.7": {
             "input": 0.00030,
             "output": 0.00120,
         },
-        "minimax/minimax-m2.5": {
-            "input": 0.00015,
-            "output": 0.00095,
-        },
         "MiniMax-M2.7": {
             "input": 0.00030,
             "output": 0.00120,
-        },
-        "MiniMax-M2.5": {
-            "input": 0.00015,
-            "output": 0.00095,
-        },
-        # Older references
-        "minimax/minimax-01": {
-            "input": 0.00055,
-            "output": 0.0022,
-        },
-        "openai/gpt-4o": {
-            "input": 0.0025,
-            "output": 0.01,
-        },
-        "openai/gpt-4o-mini": {
-            "input": 0.00015,
-            "output": 0.0006,
-        },
-        "anthropic/claude-3.5-sonnet": {
-            "input": 0.003,
-            "output": 0.015,
         },
     }
 
@@ -190,11 +179,19 @@ class CostTracker:
         cost = 0.0
 
         if service == "openrouter":
-            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING.get("deepseek/deepseek-v4-pro"))
-            cost = (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
+            pricing = self.OPENROUTER_PRICING.get(
+                model, self.OPENROUTER_PRICING.get("mistralai/mistral-small-2409")
+            )
+            cost = (input_tokens / 1000) * pricing["input"] + (
+                output_tokens / 1000
+            ) * pricing["output"]
         elif service == "minimax":
-            pricing = self.OPENROUTER_PRICING.get(model, self.OPENROUTER_PRICING.get("minimax/minimax-m2.7"))
-            cost = (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
+            pricing = self.OPENROUTER_PRICING.get(
+                model, self.OPENROUTER_PRICING.get("minimax/minimax-m2.7")
+            )
+            cost = (input_tokens / 1000) * pricing["input"] + (
+                output_tokens / 1000
+            ) * pricing["output"]
         elif service in ("paddleocr", "tesseract"):
             # Local OCR - no API cost, just compute resources
             cost = 0.0  # Free open source OCR
@@ -213,6 +210,9 @@ class CostTracker:
 
         with self._lock:
             self._cost_records.append(record)
+            # Prevent unbounded memory growth
+            if len(self._cost_records) > 10_000:
+                self._cost_records = self._cost_records[-5_000:]
             today = datetime.now().date()
             key = f"{today.isoformat()}_{service}"
             self._daily_totals[key] += cost
@@ -317,7 +317,9 @@ class CostTracker:
             Cost in USD (0.0 for local engines)
         """
         cost = self._record_cost(method, mode, pages)
-        logger.debug(f"OCR cost tracked: {method}/{mode} × {pages} page(s) = ${cost:.4f}")
+        logger.debug(
+            f"OCR cost tracked: {method}/{mode} × {pages} page(s) = ${cost:.4f}"
+        )
         return cost
 
     def _record_cost(self, method: str, mode: str, pages: int) -> float:
@@ -338,6 +340,112 @@ class CostTracker:
         with self._lock:
             self._cost_records.append(record)
         return total
+
+
+class BudgetExceededError(Exception):
+    """Raised when a user exceeds their daily LLM cost budget."""
+
+    def __init__(
+        self, user_id: str, role: str, spent_usd: float, limit_usd: float
+    ) -> None:
+        self.user_id = user_id
+        self.role = role
+        self.spent_usd = spent_usd
+        self.limit_usd = limit_usd
+        super().__init__(
+            f"Cost budget exceeded for user {user_id} ({role}): "
+            f"${spent_usd:.4f} / ${limit_usd:.4f} USD spent today."
+        )
+
+
+class PerUserCostBudget:
+    """Redis-backed per-user daily cost budget with role-aware limits."""
+
+    ROLE_BUDGETS: dict[str, float] = {
+        "admin": float(os.getenv("USER_BUDGET_ADMIN_USD", "2.0")),
+        "superuser": float(os.getenv("USER_BUDGET_SUPERUSER_USD", "1.0")),
+        "user": float(os.getenv("USER_BUDGET_USER_USD", "0.5")),
+    }
+
+    REDIS_KEY_PREFIX = "sowknow:user_cost"
+
+    def __init__(self, redis_client: Any | None = None) -> None:
+        self._redis = redis_client
+
+    def _key(self, user_id: str) -> str:
+        today = datetime.now().date().isoformat()
+        return f"{self.REDIS_KEY_PREFIX}:{today}:{user_id}"
+
+    def _get_redis(self) -> Any:
+        if self._redis is not None:
+            return self._redis
+        try:
+            from app.core.redis_url import safe_redis_url
+
+            return redis.from_url(
+                safe_redis_url(),
+                decode_responses=True,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+            )
+        except Exception:
+            logger.warning("PerUserCostBudget: Redis unavailable")
+            return None
+
+    def get_budget(self, role: str) -> float:
+        return self.ROLE_BUDGETS.get(role, self.ROLE_BUDGETS["user"])
+
+    def check_and_consume(
+        self,
+        user_id: str,
+        role: str,
+        estimated_cost: float,
+    ) -> dict[str, Any]:
+        budget = self.get_budget(role)
+        if budget <= 0:
+            return {"allowed": True, "spent": 0.0, "limit": budget, "remaining": budget}
+
+        redis_client = self._get_redis()
+        if redis_client is None:
+            logger.warning("PerUserCostBudget: Redis unavailable; allowing request")
+            return {"allowed": True, "spent": 0.0, "limit": budget, "remaining": budget}
+
+        key = self._key(user_id)
+        pipe = redis_client.pipeline()
+        pipe.incrbyfloat(key, estimated_cost)
+        pipe.expire(key, 86_400)
+        results = pipe.execute()
+        spent = float(results[0])
+
+        remaining = budget - spent
+        if remaining < 0:
+            redis_client.incrbyfloat(key, -estimated_cost)
+            raise BudgetExceededError(user_id, role, spent, budget)
+
+        logger.info(
+            "PerUserCostBudget: user=%s role=%s spent=$%.4f limit=$%.4f remaining=$%.4f",
+            user_id,
+            role,
+            spent,
+            budget,
+            remaining,
+        )
+        return {
+            "allowed": True,
+            "spent": spent,
+            "limit": budget,
+            "remaining": remaining,
+        }
+
+    def get_usage(self, user_id: str) -> dict[str, Any]:
+        redis_client = self._get_redis()
+        key = self._key(user_id)
+        spent = 0.0
+        if redis_client is not None:
+            val = redis_client.get(key)
+            if val is not None:
+                spent = float(val)
+        return {"spent": spent}
 
 
 class CostCeiling:
@@ -371,7 +479,9 @@ class CostCeiling:
         max_calls_per_minute: int = 120,
         emergency_spike_multiplier: float = 3.0,
     ):
-        self._daily_budget = daily_budget_usd or float(os.getenv("OPENROUTER_DAILY_BUDGET_USD", "5.0"))
+        self._daily_budget = daily_budget_usd or float(
+            os.getenv("OPENROUTER_DAILY_BUDGET_USD", "5.0")
+        )
         self._tier_budget_pct = tier_budget_pct or self.DEFAULT_TIER_BUDGET_PCT
         self._max_calls_per_minute = max_calls_per_minute
         self._emergency_spike_multiplier = emergency_spike_multiplier
@@ -382,10 +492,16 @@ class CostCeiling:
         self._emergency_triggered_at: datetime | None = None
         self._lock = Lock()
 
-    def _estimate_cost(self, service: str, model: str, input_tokens: int, output_tokens: int) -> float:
+    def _estimate_cost(
+        self, service: str, model: str, input_tokens: int, output_tokens: int
+    ) -> float:
         """Estimate the cost of a prospective API call."""
-        pricing = CostTracker.OPENROUTER_PRICING.get(model, CostTracker.OPENROUTER_PRICING.get("deepseek/deepseek-v4-pro"))
-        return (input_tokens / 1000) * pricing.get("input", 0.001) + (output_tokens / 1000) * pricing.get("output", 0.003)
+        pricing = CostTracker.OPENROUTER_PRICING.get(
+            model, CostTracker.OPENROUTER_PRICING.get("deepseek/deepseek-v4-pro")
+        )
+        return (input_tokens / 1000) * pricing.get("input", 0.001) + (
+            output_tokens / 1000
+        ) * pricing.get("output", 0.003)
 
     def _is_rate_limited(self) -> bool:
         """Check if calls per minute exceed threshold."""
@@ -403,13 +519,15 @@ class CostCeiling:
 
         with self._lock:
             recent_cost = sum(
-                r.cost_usd for r in tracker._cost_records
-                if r.timestamp > hour_ago
+                r.cost_usd for r in tracker._cost_records if r.timestamp > hour_ago
             )
 
         # Trigger emergency if this single call costs more than N× the average hourly spend
         avg_hourly = today_cost / max(1, (datetime.now().hour + 1))
-        if estimated_cost > avg_hourly * self._emergency_spike_multiplier and avg_hourly > 0.01:
+        if (
+            estimated_cost > avg_hourly * self._emergency_spike_multiplier
+            and avg_hourly > 0.01
+        ):
             self._emergency_triggered = True
             self._emergency_triggered_at = datetime.now()
             logger.critical(
@@ -427,15 +545,35 @@ class CostCeiling:
         estimated_input_tokens: int,
         estimated_output_tokens: int,
         tier: str = "standard",
+        user_id: str | None = None,
+        user_role: str | None = None,
     ) -> bool:
         """Check if a prospective LLM call is within budget.
 
         Returns True if allowed, False if it would exceed any ceiling.
         """
+        # 0. Per-user cost budget (Redis-backed, role-aware)
+        if user_id and user_role:
+            try:
+                budget = get_per_user_cost_budget()
+                estimated_cost = self._estimate_cost(
+                    service, model, estimated_input_tokens, estimated_output_tokens
+                )
+                budget.check_and_consume(user_id, user_role, estimated_cost)
+            except BudgetExceededError as exc:
+                logger.warning(
+                    "CostCeiling: Per-user budget exceeded — call blocked: %s", exc
+                )
+                return False
+
         # 1. Emergency circuit breaker
         if self._emergency_triggered:
-            if self._emergency_triggered_at and (datetime.now() - self._emergency_triggered_at) < timedelta(minutes=5):
-                logger.warning("CostCeiling: Emergency circuit breaker active — call blocked")
+            if self._emergency_triggered_at and (
+                datetime.now() - self._emergency_triggered_at
+            ) < timedelta(minutes=5):
+                logger.warning(
+                    "CostCeiling: Emergency circuit breaker active — call blocked"
+                )
                 return False
             else:
                 self._emergency_triggered = False
@@ -458,14 +596,20 @@ class CostCeiling:
         tracker = get_cost_tracker()
         today_cost = tracker.get_daily_cost()
         if today_cost >= self._daily_budget:
-            logger.warning(f"CostCeiling: Daily budget exhausted (${today_cost:.4f} / ${self._daily_budget:.4f}) — call blocked")
+            logger.warning(
+                f"CostCeiling: Daily budget exhausted (${today_cost:.4f} / ${self._daily_budget:.4f}) — call blocked"
+            )
             return False
 
         # 5. Tier budget ceiling
         tier_pct = self._tier_budget_pct.get(tier, 0.35)
         tier_budget = self._daily_budget * tier_pct
-        tier_spent = tracker.get_daily_cost(service) + self._tier_spent_today.get(tier, 0.0)
-        estimated_cost = self._estimate_cost(service, model, estimated_input_tokens, estimated_output_tokens)
+        tier_spent = tracker.get_daily_cost(service) + self._tier_spent_today.get(
+            tier, 0.0
+        )
+        estimated_cost = self._estimate_cost(
+            service, model, estimated_input_tokens, estimated_output_tokens
+        )
 
         if tier_spent + estimated_cost > tier_budget:
             logger.warning(
@@ -497,11 +641,19 @@ class CostCeiling:
             "today_spent_usd": round(today_cost, 4),
             "remaining_usd": round(max(0, self._daily_budget - today_cost), 4),
             "emergency_triggered": self._emergency_triggered,
-            "emergency_triggered_at": self._emergency_triggered_at.isoformat() if self._emergency_triggered_at else None,
+            "emergency_triggered_at": (
+                self._emergency_triggered_at.isoformat()
+                if self._emergency_triggered_at
+                else None
+            ),
             "tier_budgets": {
                 tier: {
                     "budget_usd": round(self._daily_budget * pct, 4),
-                    "spent_usd": round(tracker.get_daily_cost("openrouter") * pct + self._tier_spent_today.get(tier, 0.0), 4),
+                    "spent_usd": round(
+                        tracker.get_daily_cost("openrouter") * pct
+                        + self._tier_spent_today.get(tier, 0.0),
+                        4,
+                    ),
                     "pct": pct,
                 }
                 for tier, pct in self._tier_budget_pct.items()
@@ -538,7 +690,12 @@ class QueueMonitor:
         if self._redis_client is None:
             with self._lock:
                 if self._redis_client is None:
-                    self._redis_client = redis.from_url(self._redis_url, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
+                    self._redis_client = redis.from_url(
+                        self._redis_url,
+                        decode_responses=True,
+                        socket_timeout=5,
+                        socket_connect_timeout=5,
+                    )
         return self._redis_client
 
     def get_queue_depth(self, queue_name: str = "celery") -> int:
@@ -793,7 +950,9 @@ class AlertManager:
 
         if triggered and state.triggered_at is None:
             state.triggered_at = datetime.now()
-            logger.warning(f"Alert triggered: {name} (value: {current_value}, threshold: {config.threshold})")
+            logger.warning(
+                f"Alert triggered: {name} (value: {current_value}, threshold: {config.threshold})"
+            )
             return True
         elif not triggered and state.triggered_at is not None:
             state.resolved_at = datetime.now()
@@ -825,6 +984,7 @@ _cost_tracker: CostTracker | None = None
 _queue_monitor: QueueMonitor | None = None
 _alert_manager = AlertManager()
 _cost_ceiling: CostCeiling | None = None
+_per_user_cost_budget: PerUserCostBudget | None = None
 
 
 def get_cost_tracker() -> CostTracker:
@@ -843,6 +1003,14 @@ def get_cost_ceiling() -> CostCeiling:
         daily_budget = float(os.getenv("OPENROUTER_DAILY_BUDGET_USD", "5.0"))
         _cost_ceiling = CostCeiling(daily_budget_usd=daily_budget)
     return _cost_ceiling
+
+
+def get_per_user_cost_budget() -> PerUserCostBudget:
+    """Get or create global per-user cost budget instance."""
+    global _per_user_cost_budget
+    if _per_user_cost_budget is None:
+        _per_user_cost_budget = PerUserCostBudget()
+    return _per_user_cost_budget
 
 
 def get_queue_monitor() -> QueueMonitor:
@@ -865,7 +1033,9 @@ def setup_default_alerts() -> None:
     manager = get_alert_manager()
 
     defaults = [
-        AlertConfig("sowknow_memory_gb", 6.0, "gt", 300),  # PRD: SOWKNOW containers >6GB
+        AlertConfig(
+            "sowknow_memory_gb", 6.0, "gt", 300
+        ),  # PRD: SOWKNOW containers >6GB
         AlertConfig("vps_memory_percent", 80.0, "gt", 300),  # PRD: VPS memory >80%
         AlertConfig("disk_high", 85.0, "gt", 300),
         AlertConfig("queue_congested", 100.0, "gt", 300),

@@ -123,6 +123,18 @@ class Settings(BaseSettings):
     CSRF_SECRET_KEY: str = ""
 
     # ------------------------------------------------------------------
+    # LLM Model Configuration
+    # ------------------------------------------------------------------
+
+    OPENROUTER_MODEL: str = Field(default="mistralai/mistral-small-2409")
+    OPENROUTER_TIER_SIMPLE: str = Field(default="google/gemini-2.0-flash-001")
+    OPENROUTER_TIER_STANDARD: str = Field(default="mistralai/mistral-small-2409")
+    OPENROUTER_TIER_COMPLEX: str = Field(default="anthropic/claude-3.5-sonnet")
+    OPENROUTER_BASE_URL: str = Field(default="https://openrouter.ai/api/v1")
+    OPENROUTER_SITE_URL: str = Field(default="https://sowknow.gollamtech.com")
+    OPENROUTER_SITE_NAME: str = Field(default="SOWKNOW")
+
+    # ------------------------------------------------------------------
     # Validators
     # ------------------------------------------------------------------
 
@@ -137,6 +149,32 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"Field '{info.field_name}' contains a placeholder value — "
                 "set a real secret before starting the application."
+            )
+        return v
+
+    @field_validator("OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX")
+    @classmethod
+    def validate_no_free_tier_in_production(cls, v: str, info) -> str:  # noqa: N805
+        """Reject free-tier models in production."""
+        if os.getenv("APP_ENV") == "production" and ":free" in v:
+            raise ValueError(
+                f"Field '{info.field_name}' uses a free-tier model ('{v}') — "
+                "free-tier models have no SLA and are not allowed in production."
+            )
+        return v
+
+    @field_validator("OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX")
+    @classmethod
+    def validate_not_deprecated_model(cls, v: str, info) -> str:  # noqa: N805
+        """Reject known deprecated model identifiers."""
+        deprecated = {
+            "gpt-4", "gpt-4o", "claude-3-opus", "minimax-01",
+            "llama-3.3-70b-instruct:free", "qwen3-235b-a22b:free",
+        }
+        if any(d in v for d in deprecated):
+            raise ValueError(
+                f"Field '{info.field_name}' uses a deprecated model ('{v}'). "
+                f"Deprecated models: {deprecated}"
             )
         return v
 

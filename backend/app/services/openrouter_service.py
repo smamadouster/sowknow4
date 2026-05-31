@@ -22,31 +22,38 @@ from datetime import datetime
 from typing import Any
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = logging.getLogger(__name__)
 
 # Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-pro")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-small-2409")
 
 # Tiered model configuration for cost/quality optimization
 OPENROUTER_TIER_MODELS = {
-    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "deepseek/deepseek-v4-pro"),
-    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "qwen/qwen3.5-plus-20260420"),
-    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "meta-llama/llama-3.3-70b-instruct:free"),
+    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "anthropic/claude-3.5-sonnet"),
+    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "mistralai/mistral-small-2409"),
+    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "google/gemini-2.0-flash-001"),
 }
 OPENROUTER_TIER_BUDGET_PCT = {
-    "complex": 0.5,    # 50% of daily budget reserved for complex tasks
+    "complex": 0.5,  # 50% of daily budget reserved for complex tasks
     "standard": 0.35,  # 35% for standard tasks
-    "simple": 0.15,    # 15% for simple tasks (free tier)
+    "simple": 0.15,  # 15% for simple tasks (free tier)
 }
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamtech.com")
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
 # OpenRouter native response caching (beta) — https://openrouter.ai/docs/features/cache
-OPENROUTER_RESPONSE_CACHE_ENABLED = os.getenv("OPENROUTER_RESPONSE_CACHE_ENABLED", "false").lower() in ("true", "1", "yes")
+OPENROUTER_RESPONSE_CACHE_ENABLED = os.getenv(
+    "OPENROUTER_RESPONSE_CACHE_ENABLED", "false"
+).lower() in ("true", "1", "yes")
 OPENROUTER_RESPONSE_CACHE_TTL = int(os.getenv("OPENROUTER_RESPONSE_CACHE_TTL", "300"))
 
 # Redis configuration for context caching
@@ -74,11 +81,18 @@ def _get_redis_client():
         try:
             import redis
 
-            _redis_client = redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=5, socket_connect_timeout=5)
+            _redis_client = redis.from_url(
+                REDIS_URL,
+                decode_responses=True,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+            )
             _redis_client.ping()
             logger.info("OpenRouter cache: Redis connection established")
         except Exception as e:
-            logger.warning(f"OpenRouter cache: Redis unavailable, caching disabled: {e}")
+            logger.warning(
+                f"OpenRouter cache: Redis unavailable, caching disabled: {e}"
+            )
             _redis_client = None
     return _redis_client
 
@@ -105,9 +119,13 @@ class OpenRouterService:
         self._or_cache_ttl = OPENROUTER_RESPONSE_CACHE_TTL
 
         if self.api_key:
-            logger.info(f"OpenRouter service initialized with primary model: {self.model}")
-            logger.info(f"OpenRouter tier config: complex={self._tier_models['complex']}, "
-                       f"standard={self._tier_models['standard']}, simple={self._tier_models['simple']}")
+            logger.info(
+                f"OpenRouter service initialized with primary model: {self.model}"
+            )
+            logger.info(
+                f"OpenRouter tier config: complex={self._tier_models['complex']}, "
+                f"standard={self._tier_models['standard']}, simple={self._tier_models['simple']}"
+            )
         else:
             logger.warning("OPENROUTER_API_KEY not configured")
 
@@ -134,7 +152,9 @@ class OpenRouterService:
         Returns:
             SHA256 hash string prefixed with cache namespace
         """
-        cache_content = f"{model}:{json.dumps(messages, separators=(',', ':'), ensure_ascii=False)}"
+        cache_content = (
+            f"{model}:{json.dumps(messages, separators=(',', ':'), ensure_ascii=False)}"
+        )
         cache_hash = hashlib.sha256(cache_content.encode("utf-8")).hexdigest()
         return f"{CACHE_KEY_PREFIX}{cache_hash}"
 
@@ -194,7 +214,9 @@ class OpenRouterService:
 
         return truncated_messages
 
-    def _get_headers(self, cache_enabled: bool | None = None, cache_ttl: int | None = None) -> dict[str, str]:
+    def _get_headers(
+        self, cache_enabled: bool | None = None, cache_ttl: int | None = None
+    ) -> dict[str, str]:
         """Get headers for OpenRouter API requests"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -205,7 +227,9 @@ class OpenRouterService:
         if self.site_name:
             headers["X-Title"] = self.site_name
 
-        use_cache = cache_enabled if cache_enabled is not None else self._or_cache_enabled
+        use_cache = (
+            cache_enabled if cache_enabled is not None else self._or_cache_enabled
+        )
         use_ttl = cache_ttl if cache_ttl is not None else self._or_cache_ttl
         if use_cache:
             headers["X-OpenRouter-Cache"] = "true"
@@ -228,13 +252,21 @@ class OpenRouterService:
         logger.debug(f"OpenRouter tier routing: {tier} -> {model}")
         return model
 
-    def _check_cost_ceiling(self, estimated_input_tokens: int, estimated_output_tokens: int, tier: str = "standard") -> bool:
+    def _check_cost_ceiling(
+        self,
+        estimated_input_tokens: int,
+        estimated_output_tokens: int,
+        tier: str = "standard",
+        user_id: str | None = None,
+        user_role: str | None = None,
+    ) -> bool:
         """Check if a call would exceed the cost ceiling.
 
         Returns True if the call is allowed, False if it would exceed budget.
         """
         try:
             from app.services.monitoring import get_cost_ceiling
+
             ceiling = get_cost_ceiling()
             return ceiling.check_call_allowed(
                 service="openrouter",
@@ -242,6 +274,8 @@ class OpenRouterService:
                 estimated_input_tokens=estimated_input_tokens,
                 estimated_output_tokens=estimated_output_tokens,
                 tier=tier,
+                user_id=user_id,
+                user_role=user_role,
             )
         except Exception as e:
             logger.warning(f"Cost ceiling check failed, allowing call: {e}")
@@ -250,7 +284,9 @@ class OpenRouterService:
     @retry(
         stop=stop_after_attempt(4),
         wait=wait_exponential(multiplier=1, min=2, max=60),
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
+        retry=retry_if_exception_type(
+            (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)
+        ),
         reraise=True,
     )
     async def chat_completion(
@@ -302,8 +338,12 @@ class OpenRouterService:
         truncated_messages = self._truncate_messages(messages)
 
         # Check if truncation occurred
-        original_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in messages)
-        truncated_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
+        original_tokens = sum(
+            self._estimate_tokens(m.get("content", "")) for m in messages
+        )
+        truncated_tokens = sum(
+            self._estimate_tokens(m.get("content", "")) for m in truncated_messages
+        )
 
         if original_tokens > truncated_tokens:
             logger.warning(
@@ -330,15 +370,21 @@ class OpenRouterService:
         effective_cache_key = None
         if self._cache_enabled and not stream and not is_confidential:
             model = self.select_model_for_tier(tier)
-            effective_cache_key = cache_key or self._generate_cache_key(model, truncated_messages)
+            effective_cache_key = cache_key or self._generate_cache_key(
+                model, truncated_messages
+            )
 
             # Check cache for non-streaming requests
             redis_client = _get_redis_client()
             if redis_client and effective_cache_key:
                 try:
-                    cached_response = await asyncio.to_thread(redis_client.get, effective_cache_key)
+                    cached_response = await asyncio.to_thread(
+                        redis_client.get, effective_cache_key
+                    )
                     if cached_response and isinstance(cached_response, str):
-                        logger.info(f"OpenRouter cache HIT: key={effective_cache_key[:50]}...")
+                        logger.info(
+                            f"OpenRouter cache HIT: key={effective_cache_key[:50]}..."
+                        )
                         # Record cache hit metrics
                         try:
                             tokens_saved = self._estimate_tokens(cached_response)
@@ -348,7 +394,9 @@ class OpenRouterService:
                                 user_id=user_id,
                             )
                         except Exception as metric_error:
-                            logger.warning(f"Failed to record cache hit metric: {metric_error}")
+                            logger.warning(
+                                f"Failed to record cache hit metric: {metric_error}"
+                            )
 
                         yield str(cached_response)
                         return
@@ -356,7 +404,9 @@ class OpenRouterService:
                     logger.warning(f"Cache read error, proceeding with API call: {e}")
 
             # Record cache miss (we're about to make an API call)
-            logger.debug(f"OpenRouter cache MISS: key={effective_cache_key[:50] if effective_cache_key else 'N/A'}...")
+            logger.debug(
+                f"OpenRouter cache MISS: key={effective_cache_key[:50] if effective_cache_key else 'N/A'}..."
+            )
             try:
                 cache_monitor.record_cache_miss(
                     cache_key=effective_cache_key or "no_key",
@@ -366,10 +416,14 @@ class OpenRouterService:
                 logger.warning(f"Failed to record cache miss metric: {metric_error}")
 
         # --- Cost ceiling pre-flight check ---
-        est_input = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
+        est_input = sum(
+            self._estimate_tokens(m.get("content", "")) for m in truncated_messages
+        )
         est_output = max_tokens
         if not self._check_cost_ceiling(est_input, est_output, tier=tier):
-            logger.error(f"OpenRouter call BLOCKED by cost ceiling (tier={tier}, est_input={est_input}, est_output={est_output})")
+            logger.error(
+                f"OpenRouter call BLOCKED by cost ceiling (tier={tier}, est_input={est_input}, est_output={est_output})"
+            )
             yield "Error: LLM cost ceiling reached. Please try again later or contact support."
             return
 
@@ -382,116 +436,143 @@ class OpenRouterService:
             "stream": stream,
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                if stream:
-                    async with client.stream(
-                        "POST",
-                        f"{self.base_url}/chat/completions",
-                        headers=self._get_headers(
-                            cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
-                        ),
-                        json=payload,
-                    ) as response:
-                        response.raise_for_status()
-                        # Log OpenRouter native cache status
-                        cache_status = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Status")
-                        if cache_status:
-                            logger.info(
-                                f"OpenRouter native cache {cache_status}: "
-                                f"tier={tier}, model={model}, stream=True"
-                            )
+        from app.services.llm_http_client import LLMHTTPClient
 
-                        async for line in response.aiter_lines():
-                            if line.strip():
-                                if line.startswith("data: "):
-                                    data_str = line[6:]  # Remove "data: " prefix
-                                    if data_str == "[DONE]":
-                                        break
-                                    try:
-                                        data = json.loads(data_str)
-                                        if "choices" in data and len(data["choices"]) > 0:
-                                            delta = data["choices"][0].get("delta", {})
-                                            content = delta.get("content", "")
-                                            if content:
-                                                yield content
-                                    except json.JSONDecodeError:
-                                        continue
-                else:
-                    response = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=self._get_headers(
-                            cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
-                        ),
-                        json=payload,
-                    )
+        try:
+            client = LLMHTTPClient.get_client()
+            if stream:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=self._get_headers(
+                        cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
+                    ),
+                    json=payload,
+                ) as response:
                     response.raise_for_status()
                     # Log OpenRouter native cache status
-                    cache_status = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Status")
+                    cache_status = getattr(response, "headers", {}).get(
+                        "X-OpenRouter-Cache-Status"
+                    )
                     if cache_status:
                         logger.info(
                             f"OpenRouter native cache {cache_status}: "
-                            f"tier={tier}, model={model}, stream=False"
+                            f"tier={tier}, model={model}, stream=True"
                         )
-                        if cache_status == "HIT":
-                            cache_age = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Age")
-                            cache_ttl_remaining = getattr(response, "headers", {}).get("X-OpenRouter-Cache-TTL")
-                            logger.debug(
-                                f"OpenRouter cache age={cache_age}s, "
-                                f"ttl_remaining={cache_ttl_remaining}s"
-                            )
-                    result = response.json()
 
-                    if "choices" in result and len(result["choices"]) > 0:
-                        content = result["choices"][0].get("message", {}).get("content", "")
-                        usage = result.get("usage", {})
-
-                        # Cache the response for future requests
-                        # PRIVACY: is_confidential check is already handled above —
-                        # effective_cache_key is None when is_confidential=True
-                        if self._cache_enabled and effective_cache_key and content:
-                            redis_client = _get_redis_client()
-                            if redis_client:
+                    async for line in response.aiter_lines():
+                        if line.strip():
+                            if line.startswith("data: "):
+                                data_str = line[6:]  # Remove "data: " prefix
+                                if data_str == "[DONE]":
+                                    break
                                 try:
+                                    data = json.loads(data_str)
+                                    if "choices" in data and len(data["choices"]) > 0:
+                                        delta = data["choices"][0].get("delta", {})
+                                        content = delta.get("content", "")
+                                        if content:
+                                            yield content
+                                except json.JSONDecodeError:
+                                    continue
+            else:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self._get_headers(
+                        cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
+                    ),
+                    json=payload,
+                )
+                response.raise_for_status()
+                # Log OpenRouter native cache status
+                cache_status = getattr(response, "headers", {}).get(
+                    "X-OpenRouter-Cache-Status"
+                )
+                if cache_status:
+                    logger.info(
+                        f"OpenRouter native cache {cache_status}: "
+                        f"tier={tier}, model={model}, stream=False"
+                    )
+                    if cache_status == "HIT":
+                        cache_age = getattr(response, "headers", {}).get(
+                            "X-OpenRouter-Cache-Age"
+                        )
+                        cache_ttl_remaining = getattr(response, "headers", {}).get(
+                            "X-OpenRouter-Cache-TTL"
+                        )
+                        logger.debug(
+                            f"OpenRouter cache age={cache_age}s, "
+                            f"ttl_remaining={cache_ttl_remaining}s"
+                        )
+                result = response.json()
+
+                if "choices" in result and len(result["choices"]) > 0:
+                    content = result["choices"][0].get("message", {}).get("content", "")
+                    usage = result.get("usage", {})
+
+                    # Cache the response for future requests
+                    # PRIVACY: is_confidential check is already handled above —
+                    # effective_cache_key is None when is_confidential=True
+                    if self._cache_enabled and effective_cache_key and content:
+                        redis_client = _get_redis_client()
+                        if redis_client:
+                            try:
+                                await asyncio.to_thread(
+                                    redis_client.setex,
+                                    effective_cache_key,
+                                    CACHE_TTL_SECONDS,
+                                    content,
+                                )
+                                logger.info(
+                                    f"OpenRouter cached response: key={effective_cache_key[:50]}..., ttl={CACHE_TTL_SECONDS}s"
+                                )
+                                # Track key under collection for bulk invalidation
+                                if collection_id:
+                                    tracking_key = (
+                                        f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
+                                    )
                                     await asyncio.to_thread(
-                                        redis_client.setex,
+                                        redis_client.sadd,
+                                        tracking_key,
                                         effective_cache_key,
+                                    )
+                                    await asyncio.to_thread(
+                                        redis_client.expire,
+                                        tracking_key,
                                         CACHE_TTL_SECONDS,
-                                        content,
                                     )
-                                    logger.info(
-                                        f"OpenRouter cached response: key={effective_cache_key[:50]}..., ttl={CACHE_TTL_SECONDS}s"
-                                    )
-                                    # Track key under collection for bulk invalidation
-                                    if collection_id:
-                                        tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
-                                        await asyncio.to_thread(redis_client.sadd, tracking_key, effective_cache_key)
-                                        await asyncio.to_thread(redis_client.expire, tracking_key, CACHE_TTL_SECONDS)
-                                except Exception as cache_error:
-                                    logger.warning(f"Failed to cache response: {cache_error}")
+                            except Exception as cache_error:
+                                logger.warning(
+                                    f"Failed to cache response: {cache_error}"
+                                )
 
-                        # Record actual cost for budget tracking
-                        try:
-                            from app.services.monitoring import get_cost_tracker
-                            tracker = get_cost_tracker()
-                            tracker.record_api_call(
-                                service="openrouter",
-                                operation="chat",
-                                model=model,
-                                input_tokens=usage.get("prompt_tokens", 0) if usage else est_input,
-                                output_tokens=usage.get("completion_tokens", 0) if usage else 0,
-                            )
-                        except Exception as cost_err:
-                            logger.debug(f"Cost tracking failed: {cost_err}")
+                    # Record actual cost for budget tracking
+                    try:
+                        from app.services.monitoring import get_cost_tracker
 
-                        yield content
+                        tracker = get_cost_tracker()
+                        tracker.record_api_call(
+                            service="openrouter",
+                            operation="chat",
+                            model=model,
+                            input_tokens=(
+                                usage.get("prompt_tokens", 0) if usage else est_input
+                            ),
+                            output_tokens=(
+                                usage.get("completion_tokens", 0) if usage else 0
+                            ),
+                        )
+                    except Exception as cost_err:
+                        logger.debug(f"Cost tracking failed: {cost_err}")
 
-                        # Return usage as last chunk
-                        if usage:
-                            yield f"\n__USAGE__: {json.dumps(usage)}"
-                    else:
-                        logger.error(f"Unexpected OpenRouter response: {result}")
-                        yield "Error: Unexpected response from OpenRouter API"
+                    yield content
+
+                    # Return usage as last chunk
+                    if usage:
+                        yield f"\n__USAGE__: {json.dumps(usage)}"
+                else:
+                    logger.error(f"Unexpected OpenRouter response: {result}")
+                    yield "Error: Unexpected response from OpenRouter API"
 
         except httpx.HTTPStatusError as e:
             error_body = ""
@@ -502,7 +583,9 @@ class OpenRouterService:
 
             # Handle rate limit (429) errors with specific retry trigger
             if e.response.status_code == 429:
-                logger.warning("OpenRouter rate limit hit (429), will retry with backoff")
+                logger.warning(
+                    "OpenRouter rate limit hit (429), will retry with backoff"
+                )
                 # Re-raise to trigger tenacity retry with exponential backoff
                 raise
 
@@ -538,16 +621,22 @@ class OpenRouterService:
         try:
             cache_keys = redis_client.smembers(tracking_key)
             if not cache_keys:
-                logger.debug(f"Cache invalidation: no keys tracked for collection {collection_id}")
+                logger.debug(
+                    f"Cache invalidation: no keys tracked for collection {collection_id}"
+                )
                 return 0
 
             keys_to_delete = list(cache_keys) + [tracking_key]
             redis_client.delete(*keys_to_delete)
             count = len(cache_keys)
-            logger.info(f"Cache invalidation: removed {count} entries for collection {collection_id}")
+            logger.info(
+                f"Cache invalidation: removed {count} entries for collection {collection_id}"
+            )
             return count
         except Exception as e:
-            logger.warning(f"Cache invalidation error for collection {collection_id}: {e}")
+            logger.warning(
+                f"Cache invalidation error for collection {collection_id}: {e}"
+            )
             return 0
 
     async def health_check(self) -> dict[str, Any]:
@@ -575,7 +664,9 @@ class OpenRouterService:
         try:
             test_messages = [{"role": "user", "content": "test"}]
             response_text = ""
-            async for chunk in self.chat_completion(test_messages, stream=False, max_tokens=10):
+            async for chunk in self.chat_completion(
+                test_messages, stream=False, max_tokens=10
+            ):
                 if not chunk.startswith("__USAGE__"):
                     response_text += chunk
 
@@ -620,11 +711,13 @@ class OpenRouterService:
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(f"{self.base_url}/models", headers=self._get_headers())
-                response.raise_for_status()
-                result = response.json()
-                return result.get("data", [])
+            client = LLMHTTPClient.get_client()
+            response = await client.get(
+                f"{self.base_url}/models", headers=self._get_headers()
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result.get("data", [])
         except Exception as e:
             logger.error(f"Error listing models: {str(e)}")
             return []

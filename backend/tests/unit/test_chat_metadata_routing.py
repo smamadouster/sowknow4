@@ -266,7 +266,7 @@ class TestGenerateChatResponseRouting:
         with patch.object(svc, "retrieve_relevant_chunks", new_callable=AsyncMock) as mock_retrieve, \
              patch.object(svc, "get_conversation_history", new_callable=AsyncMock) as mock_history, \
              patch("app.services.chat_service.get_cached_context_block", new_callable=AsyncMock) as mock_ctx, \
-             patch("app.services.chat_service.llm_router") as mock_router:
+             patch.object(svc, "llm") as mock_llm:
 
             mock_retrieve.return_value = (
                 [{"document_name": "secret.pdf", "chunk_text": "[Confidential document — content not sent to AI]",
@@ -276,19 +276,12 @@ class TestGenerateChatResponseRouting:
             mock_history.return_value = []
             mock_ctx.return_value = None
 
-            mock_llm_service = AsyncMock()
-
-            async def fake_chat_completion(messages, stream=False):
+            async def fake_chat_completion(*args, **kwargs):
+                assert kwargs.get("has_confidential") is False
                 yield "Here is your answer about the confidential document."
 
-            mock_llm_service.chat_completion = fake_chat_completion
-            mock_llm_service.model = "test-model"
-
-            mock_routing = MagicMock()
-            mock_routing.service = mock_llm_service
-            mock_routing.provider_name = "openrouter"
-            mock_routing.reason.value = "public_docs_rag"
-            mock_router.select_provider = AsyncMock(return_value=mock_routing)
+            mock_llm.chat_completion = fake_chat_completion
+            mock_llm.model = "test-model"
 
             result = await svc.generate_chat_response(
                 session_id=session_id,
@@ -296,10 +289,6 @@ class TestGenerateChatResponseRouting:
                 db=mock_db,
                 current_user=mock_user,
             )
-
-        mock_router.select_provider.assert_called_once()
-        call_kwargs = mock_router.select_provider.call_args
-        assert call_kwargs.kwargs.get("has_confidential") is False or call_kwargs[1].get("has_confidential") is False
 
         assert result["content"] == "Here is your answer about the confidential document."
         assert result["has_confidential"] is True  # Response still flags it for UI
@@ -327,7 +316,7 @@ class TestStreamingConfidentialRouting:
         with patch.object(svc, "retrieve_relevant_chunks", new_callable=AsyncMock) as mock_retrieve, \
              patch.object(svc, "get_conversation_history", new_callable=AsyncMock) as mock_history, \
              patch("app.services.chat_service.get_cached_context_block", new_callable=AsyncMock) as mock_ctx, \
-             patch("app.services.chat_service.llm_router") as mock_router, \
+             patch.object(svc, "llm") as mock_llm, \
              patch("app.database.AsyncSessionLocal", return_value=mock_async_session):
 
             mock_retrieve.return_value = (
@@ -339,19 +328,13 @@ class TestStreamingConfidentialRouting:
             mock_history.return_value = []
             mock_ctx.return_value = None
 
-            mock_llm_service = MagicMock()
-
-            async def fake_stream(messages, stream=True):
+            async def fake_stream(*args, **kwargs):
+                assert kwargs.get("has_confidential") is False
                 yield "Streamed answer"
 
-            mock_llm_service.chat_completion = fake_stream
-            mock_llm_service.model = "test-model"
-
-            mock_routing = MagicMock()
-            mock_routing.service = mock_llm_service
-            mock_routing.provider_name = "openrouter"
-            mock_routing.reason.value = "public_docs_rag"
-            mock_router.select_provider = AsyncMock(return_value=mock_routing)
+            mock_llm.chat_completion = fake_stream
+            mock_llm.model = "test-model"
+            mock_llm.check_cache.return_value = None
 
             chunks = []
             async for chunk in svc.generate_chat_response_stream(
@@ -362,6 +345,4 @@ class TestStreamingConfidentialRouting:
             ):
                 chunks.append(chunk)
 
-        mock_router.select_provider.assert_called_once()
-        call_kwargs = mock_router.select_provider.call_args
-        assert call_kwargs.kwargs.get("has_confidential") is False or call_kwargs[1].get("has_confidential") is False
+        assert any("Streamed answer" in c for c in chunks)

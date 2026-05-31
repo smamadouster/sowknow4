@@ -108,6 +108,7 @@ async def send_message(
     stream: bool = True,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """
     Send a message to the chat session
@@ -164,6 +165,10 @@ async def send_message(
                     db=stream_db,
                     current_user=current_user,
                 ):
+                    # Backpressure: abort if client disconnected (blueprint §7.1)
+                    if request is not None and await request.is_disconnected():
+                        logger.info("Client disconnected, aborting LLM stream for session=%s", session_id)
+                        break
                     yield chunk
                     # Parse SSE data lines to collect assistant response metadata
                     if chunk.startswith("data: "):

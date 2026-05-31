@@ -186,7 +186,7 @@ class TestCacheMissScenario:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = None
                 mock_redis_get.return_value = mock_redis
@@ -198,12 +198,9 @@ class TestCacheMissScenario:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_cm.__aenter__.return_value.__aexit__ = MagicMock()
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -224,7 +221,7 @@ class TestCacheMissScenario:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = None
                 mock_redis_get.return_value = mock_redis
@@ -235,11 +232,9 @@ class TestCacheMissScenario:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -261,7 +256,7 @@ class TestCacheMissScenario:
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
             with patch("app.services.cache_monitor.cache_monitor") as mock_monitor:
-                with patch("httpx.AsyncClient") as mock_client:
+                with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                     mock_redis = MagicMock()
                     mock_redis.get.return_value = None
                     mock_redis_get.return_value = mock_redis
@@ -276,7 +271,9 @@ class TestCacheMissScenario:
                     mock_cm.__aenter__.return_value.post = AsyncMock(
                         return_value=mock_response
                     )
-                    mock_client.return_value = mock_cm
+                    mock_client = AsyncMock()
+                    mock_client.post = AsyncMock(return_value=mock_response)
+                    mock_get_client.return_value = mock_client
 
                     service = OpenRouterService()
                     service._cache_enabled = True
@@ -331,9 +328,9 @@ class TestStreamingBypassCache:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis_get.return_value = mock_redis
-                mock_client.return_value = MockAsyncClientContext()
+                mock_get_client.return_value = MockAsyncClientContext()
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -376,9 +373,9 @@ class TestStreamingBypassCache:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis_get.return_value = mock_redis
-                mock_client.return_value = MockAsyncClientContext()
+                mock_get_client.return_value = MockAsyncClientContext()
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -406,18 +403,16 @@ class TestRedisFailureGracefulDegradation:
             service.api_key = "test-key"
             service._cache_enabled = False
 
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_response = MagicMock()
                 mock_response.json.return_value = {
                     "choices": [{"message": {"content": "Response"}}],
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 messages = [{"role": "user", "content": "Test"}]
                 result_chunks = []
@@ -434,7 +429,7 @@ class TestRedisFailureGracefulDegradation:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.side_effect = Exception("Redis connection error")
                 mock_redis_get.return_value = mock_redis
@@ -445,11 +440,9 @@ class TestRedisFailureGracefulDegradation:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -470,7 +463,7 @@ class TestRedisFailureGracefulDegradation:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = None
                 mock_redis.setex.side_effect = Exception("Redis write error")
@@ -482,11 +475,9 @@ class TestRedisFailureGracefulDegradation:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -537,7 +528,7 @@ class TestCustomCacheKey:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = None
                 mock_redis_get.return_value = mock_redis
@@ -548,11 +539,9 @@ class TestCustomCacheKey:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -594,7 +583,7 @@ class TestConfidentialBypass:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = "Should not be returned"
                 mock_redis_get.return_value = mock_redis
@@ -605,11 +594,9 @@ class TestConfidentialBypass:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -634,7 +621,7 @@ class TestConfidentialBypass:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = None
                 mock_redis_get.return_value = mock_redis
@@ -645,11 +632,9 @@ class TestConfidentialBypass:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -671,7 +656,7 @@ class TestConfidentialBypass:
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
             with patch("app.services.cache_monitor.cache_monitor") as mock_monitor:
-                with patch("httpx.AsyncClient") as mock_client:
+                with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                     mock_redis = MagicMock()
                     mock_redis_get.return_value = mock_redis
 
@@ -685,7 +670,9 @@ class TestConfidentialBypass:
                     mock_cm.__aenter__.return_value.post = AsyncMock(
                         return_value=mock_response
                     )
-                    mock_client.return_value = mock_cm
+                    mock_client = AsyncMock()
+                    mock_client.post = AsyncMock(return_value=mock_response)
+                    mock_get_client.return_value = mock_client
 
                     service = OpenRouterService()
                     service._cache_enabled = True
@@ -809,7 +796,7 @@ class TestCacheInvalidation:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = None
                 mock_redis_get.return_value = mock_redis
@@ -820,11 +807,9 @@ class TestCacheInvalidation:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True
@@ -852,7 +837,7 @@ class TestCacheInvalidation:
         with patch(
             "app.services.openrouter_service._get_redis_client"
         ) as mock_redis_get:
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch("app.services.llm_http_client.LLMHTTPClient.get_client") as mock_get_client:
                 mock_redis = MagicMock()
                 mock_redis.get.return_value = None
                 mock_redis_get.return_value = mock_redis
@@ -863,11 +848,9 @@ class TestCacheInvalidation:
                 }
                 mock_response.raise_for_status = MagicMock()
 
-                mock_cm = AsyncMock()
-                mock_cm.__aenter__.return_value.post = AsyncMock(
-                    return_value=mock_response
-                )
-                mock_client.return_value = mock_cm
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 service = OpenRouterService()
                 service._cache_enabled = True

@@ -28,13 +28,24 @@ Benefits:
   - Easier to add/remove providers without touching N files.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from app.core.context import current_user_id, current_user_role
 from app.services.llm_router import LLMRouter, TaskTier, _build_router
 
 logger = logging.getLogger(__name__)
+
+# Module-level concurrency caps per blueprint §2.3
+# Protects expensive report generation from starving latency-sensitive chat.
+_MODULE_SEMAPHORES: dict[str, asyncio.Semaphore] = {
+    "chat": asyncio.Semaphore(10),
+    "collections": asyncio.Semaphore(2),
+    "smart_folders": asyncio.Semaphore(3),
+    "knowledge_graph": asyncio.Semaphore(2),
+}
 
 
 class LLMGateway:
@@ -61,6 +72,9 @@ class LLMGateway:
         max_tokens: int = 4096,
         tier: str = "standard",
         has_confidential: bool | None = None,
+        user_id: str | None = None,
+        user_role: str | None = None,
+        module: str | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         """
@@ -75,6 +89,10 @@ class LLMGateway:
             max_tokens: Max generation length.
             tier: "simple" | "standard" | "complex" — auto-selects model quality.
             has_confidential: Override confidentiality flag (None = auto-detect).
+            user_id: Optional user identifier for quota tracking.
+            user_role: Optional user role (admin, superuser, user) for quota limits.
+            module: Optional module name for concurrency caps
+                (chat, collections, smart_folders, knowledge_graph).
             **kwargs: Provider-specific overrides (rarely needed).
 
         Yields:
@@ -82,24 +100,149 @@ class LLMGateway:
         """
         tier_enum = TaskTier(tier)
 
+        # ── Resolve user identity from explicit args or request context ──
+        resolved_user_id = user_id or current_user_id.get()
+        resolved_user_role = user_role or current_user_role.get()
+
+        # ── Module-level concurrency cap (blueprint §2.3) ──
+        sem = _MODULE_SEMAPHORES.get(module) if module else None
+
+        # ── Per-user quota + cost budget checks (blueprint §2.3) ──
+        if resolved_user_id and resolved_user_role:
+            from app.services.user_quota import user_quota_manager, QuotaExceededError
+            from app.services.monitoring import (
+                get_per_user_cost_budget,
+                BudgetExceededError,
+            )
+
+            # Rough token estimation for quota pre-check
+            estimated = sum(len(m.get("content", "")) for m in messages) // 3
+            estimated += max_tokens
+
+            # 1. Token quota
+            try:
+                user_quota_manager.check_and_consume(
+                    resolved_user_id, resolved_user_role, estimated
+                )
+            except QuotaExceededError as exc:
+                logger.warning("Quota exceeded for user=%s: %s", resolved_user_id, exc)
+                yield f"[QUOTA_EXCEEDED] {exc}"
+                return
+
+            # 2. Cost budget (dollar-based, Redis-backed)
+            try:
+                budget = get_per_user_cost_budget()
+                # Pessimistic cost estimate: assume all tokens are output-priced
+                svc = self._router._openrouter
+                tier_model = (
+                    svc.select_model_for_tier(tier)
+                    if svc
+                    else "mistralai/mistral-small-2409"
+                )
+                from app.services.monitoring import CostTracker
+
+                pricing = CostTracker.OPENROUTER_PRICING.get(
+                    tier_model,
+                    CostTracker.OPENROUTER_PRICING.get("mistralai/mistral-small-2409"),
+                )
+                estimated_cost = (estimated / 1000) * pricing.get("output", 0.003)
+                budget.check_and_consume(
+                    resolved_user_id, resolved_user_role, estimated_cost
+                )
+            except BudgetExceededError as exc:
+                logger.warning(
+                    "Cost budget exceeded for user=%s: %s", resolved_user_id, exc
+                )
+                yield f"[QUOTA_EXCEEDED] {exc}"
+                return
+
         logger.info(
-            "LLMGateway: tier=%s stream=%s confidential_override=%s",
+            "LLMGateway: tier=%s stream=%s module=%s user=%s confidential_override=%s",
             tier,
             stream,
+            module,
+            resolved_user_id,
             has_confidential,
         )
 
-        async for chunk in self._router.generate_completion(
-            messages=messages,
-            query=query,
-            context_chunks=context_chunks,
-            has_confidential=has_confidential,
-            stream=stream,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tier=tier_enum,
-        ):
-            yield chunk
+        # ── Semantic cache (non-streaming only) ──
+        if not stream and query:
+            from app.services.semantic_cache import semantic_cache
+
+            cached = await semantic_cache.get(query, model="openrouter", tier=tier)
+            if cached is not None:
+                logger.info("LLMGateway semantic cache hit for query=%s", query[:60])
+                yield cached
+                return
+
+        # ── Generate and optionally buffer for caching ──
+        if stream:
+            # Streaming: pass through directly (no semantic cache)
+            if sem is not None:
+                async with sem:
+                    async for chunk in self._router.generate_completion(
+                        messages=messages,
+                        query=query,
+                        context_chunks=context_chunks,
+                        has_confidential=has_confidential,
+                        stream=True,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tier=tier_enum,
+                    ):
+                        yield chunk
+            else:
+                async for chunk in self._router.generate_completion(
+                    messages=messages,
+                    query=query,
+                    context_chunks=context_chunks,
+                    has_confidential=has_confidential,
+                    stream=True,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tier=tier_enum,
+                ):
+                    yield chunk
+        else:
+            # Non-streaming: buffer response for semantic cache
+            parts: list[str] = []
+            if sem is not None:
+                async with sem:
+                    async for chunk in self._router.generate_completion(
+                        messages=messages,
+                        query=query,
+                        context_chunks=context_chunks,
+                        has_confidential=has_confidential,
+                        stream=False,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tier=tier_enum,
+                    ):
+                        parts.append(chunk)
+                        yield chunk
+            else:
+                async for chunk in self._router.generate_completion(
+                    messages=messages,
+                    query=query,
+                    context_chunks=context_chunks,
+                    has_confidential=has_confidential,
+                    stream=False,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tier=tier_enum,
+                ):
+                    parts.append(chunk)
+                    yield chunk
+
+            # Store in semantic cache after generation completes
+            if query and parts:
+                from app.services.semantic_cache import semantic_cache
+
+                full_response = "".join(parts)
+                if full_response:
+                    await semantic_cache.set(
+                        query, model="openrouter", tier=tier, response=full_response
+                    )
 
     # ── Provider-specific passthroughs ──
     #
@@ -158,7 +301,10 @@ class LLMGateway:
 
         if hasattr(svc, "chat_completion_non_stream"):
             return await svc.chat_completion_non_stream(
-                messages=messages, temperature=temperature, max_tokens=max_tokens, **kwargs
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
             )
 
         # Fallback: collect streamed chunks into a single string
@@ -170,7 +316,11 @@ class LLMGateway:
             max_tokens=max_tokens,
             **kwargs,
         ):
-            if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+            if (
+                chunk
+                and not chunk.startswith("Error:")
+                and not chunk.startswith("__USAGE__")
+            ):
                 parts.append(chunk)
         return "".join(parts)
 

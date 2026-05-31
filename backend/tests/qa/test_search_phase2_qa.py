@@ -29,9 +29,13 @@ class TestLanguageAwareSearch:
         assert _get_regconfig("xx") == "simple"
 
     @pytest.mark.asyncio
-    async def test_hybrid_search_uses_simple_regconfig_for_reliability(self):
-        """Phase 1 fix: keyword search uses language-agnostic 'simple' regconfig
-        to prevent French queries from missing English-indexed chunks."""
+    async def test_hybrid_search_passes_regconfig_for_dual_query_strategy(self):
+        """hybrid_search passes caller-supplied regconfig to keyword_search.
+
+        keyword_search uses a dual-query strategy (caller regconfig boosted
+        1.2x + simple fallback) so cross-language misses are prevented
+        without sacrificing stemming precision.
+        """
         svc = HybridSearchService()
         svc.semantic_search = AsyncMock(return_value=[])
         svc.keyword_search = AsyncMock(return_value=[])
@@ -47,9 +51,9 @@ class TestLanguageAwareSearch:
 
         svc.keyword_search.assert_awaited_once()
         call_kwargs = svc.keyword_search.call_args.kwargs
-        # Phase 1: hybrid_search now hardcodes "simple" for keyword search
-        # regardless of the regconfig parameter, fixing the language-mismatch bug.
-        assert call_kwargs.get("regconfig") == "simple"
+        # regconfig is passed through so keyword_search can apply its
+        # dual-query strategy (language-specific + simple fallback).
+        assert call_kwargs.get("regconfig") == "english"
 
 
 class TestTrigramFallback:

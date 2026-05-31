@@ -419,7 +419,7 @@ Extract all entities, relationships, and dated events now:"""
         try:
             response_parts = []
             async for chunk in self.llm.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=2048, tier="complex"
+                messages=messages, stream=False, temperature=0.3, max_tokens=2048, tier="simple"
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)

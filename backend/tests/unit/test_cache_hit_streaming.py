@@ -158,6 +158,7 @@ class TestStreamingCacheHit:
         svc = ChatService.__new__(ChatService)
         svc.llm = MagicMock()
         svc.llm.check_cache = MagicMock(return_value=None)
+        svc.llm.model = "test-model"
         return svc
 
     def _make_mock_service(self, stream_fn=None):
@@ -173,16 +174,14 @@ class TestStreamingCacheHit:
 
         svc = self._make_chat_service()
 
-        async def fake_stream(messages, stream=False):
+        async def fake_stream(*args, **kwargs):
             yield "Hello"
 
-        mock_svc = self._make_mock_service(fake_stream)
-        routing = _make_routing_decision(mock_svc, "ollama")
+        svc.llm.chat_completion = fake_stream
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "hi"}]), \
-             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "hi"}]):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="hi", db=MagicMock(), current_user=MagicMock()
@@ -198,18 +197,14 @@ class TestStreamingCacheHit:
 
         svc = self._make_chat_service()
 
-        async def fake_stream(messages, stream=False):
+        async def fake_stream(*args, **kwargs):
             yield "response"
 
-        mock_svc = self._make_mock_service(fake_stream)
-        routing = _make_routing_decision(mock_svc, "ollama")
+        svc.llm.chat_completion = fake_stream
 
-        # has_confidential=False so we skip the pre-stream health check;
-        # llm_router is patched to return ollama routing.
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
-             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -228,24 +223,21 @@ class TestStreamingCacheHit:
 
         llm_called = []
 
-        async def fake_llm_stream(messages, stream=False):
+        async def fake_llm_stream(*args, **kwargs):
             llm_called.append(True)
             yield "should not be called"
 
-        mock_svc = self._make_mock_service(fake_llm_stream)
+        svc.llm.chat_completion = fake_llm_stream
 
         # Simulate cache hit on the gateway
         svc.llm.check_cache = MagicMock(return_value="The cached answer")
-
-        routing = _make_routing_decision(mock_svc, "openrouter")
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=(
             [{"document_id": "d1", "document_name": "doc.pdf", "chunk_id": "c1",
               "chunk_text": "ctx", "relevance_score": 0.9, "document_bucket": "public"}], False
         ))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
-             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -273,24 +265,21 @@ class TestStreamingCacheHit:
 
         llm_called = []
 
-        async def fake_llm_stream(messages, stream=False):
+        async def fake_llm_stream(*args, **kwargs):
             llm_called.append(True)
             yield "live response"
 
-        mock_svc = self._make_mock_service(fake_llm_stream)
+        svc.llm.chat_completion = fake_llm_stream
 
         # Cache miss on the gateway
         svc.llm.check_cache = MagicMock(return_value=None)
-
-        routing = _make_routing_decision(mock_svc, "openrouter")
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=(
             [{"document_id": "d1", "document_name": "doc.pdf", "chunk_id": "c1",
               "chunk_text": "ctx", "relevance_score": 0.9, "document_bucket": "public"}], False
         ))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
-             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -308,17 +297,15 @@ class TestStreamingCacheHit:
 
         svc = self._make_chat_service()
 
-        async def fake_stream(messages, stream=False):
+        async def fake_stream(*args, **kwargs):
             yield "chunk1"
             yield "chunk2"
 
-        mock_svc = self._make_mock_service(fake_stream)
-        routing = _make_routing_decision(mock_svc, "ollama")
+        svc.llm.chat_completion = fake_stream
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
-             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()
@@ -348,21 +335,18 @@ class TestStreamingCacheHit:
 
         llm_called = []
 
-        async def fake_stream(messages, stream=False):
+        async def fake_stream(*args, **kwargs):
             llm_called.append(True)
             yield "openrouter response"
 
-        mock_svc = self._make_mock_service(fake_stream)
+        svc.llm.chat_completion = fake_stream
 
         # Gateway check_cache returns None (cache miss / no cache)
         svc.llm.check_cache = MagicMock(return_value=None)
 
-        routing = _make_routing_decision(mock_svc, "openrouter")
-
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
-             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]), \
-             patch("app.services.chat_service.llm_router.select_provider", new=AsyncMock(return_value=routing)):
+             patch.object(svc, "build_rag_context", return_value=[{"role": "user", "content": "q"}]):
             events = await _collect_sse_events(
                 svc.generate_chat_response_stream(
                     session_id="s1", user_message="q", db=MagicMock(), current_user=MagicMock()

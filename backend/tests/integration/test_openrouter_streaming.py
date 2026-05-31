@@ -61,7 +61,7 @@ class TestOpenRouterStreaming:
             messages = [{"role": "user", "content": "Test"}]
 
             with patch.object(service, '_get_headers', return_value={"Authorization": "Bearer test"}):
-                with patch('httpx.AsyncClient') as mock_client:
+                with patch('app.services.llm_http_client.LLMHTTPClient.get_client') as mock_get_client:
                     mock_response = AsyncMock()
                     mock_response.raise_for_status = MagicMock()
                     mock_response.aiter_lines = AsyncMock(return_value=iter([
@@ -190,7 +190,7 @@ class TestOpenRouterErrorHandling:
 
             messages = [{"role": "user", "content": "test"}]
 
-            with patch('httpx.AsyncClient') as mock_client:
+            with patch('app.services.llm_http_client.LLMHTTPClient.get_client') as mock_get_client:
                 mock_response = MagicMock()
                 mock_response.status_code = 500
                 mock_response.text = "Internal Server Error"
@@ -219,7 +219,7 @@ class TestOpenRouterErrorHandling:
 
             messages = [{"role": "user", "content": "test"}]
 
-            with patch('httpx.AsyncClient') as mock_client:
+            with patch('app.services.llm_http_client.LLMHTTPClient.get_client') as mock_get_client:
                 mock_client.return_value.__aenter__.return_value.post.side_effect = httpx.HTTPError("Connection failed")
 
                 response_chunks = []

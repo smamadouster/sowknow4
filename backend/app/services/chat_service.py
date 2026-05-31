@@ -22,7 +22,6 @@ from app.models.chat import ChatMessage, ChatSession, LLMProvider, MessageRole
 from app.models.user import User
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.llm_router import llm_router
 from app.services.pii_detection_service import pii_detection_service
 from app.services.prometheus_metrics import (
     llm_request_duration,
@@ -42,7 +41,9 @@ class ChatService:
         self.llm = llm_gateway
         self.max_context_messages = 20
 
-    async def get_conversation_history(self, session_id: UUID, db) -> list[dict[str, str]]:
+    async def get_conversation_history(
+        self, session_id: UUID, db
+    ) -> list[dict[str, str]]:
         """Get conversation history for context"""
         messages = (
             (
@@ -80,29 +81,42 @@ class ChatService:
         has_pii = pii_detection_service.detect_pii(query)
         if has_pii:
             pii_summary = pii_detection_service.get_pii_summary(query)
-            logger.warning(f"PII detected in chat query by user {current_user.email}: {pii_summary['detected_types']}")
+            logger.warning(
+                f"PII detected in chat query by user {current_user.email}: {pii_summary['detected_types']}"
+            )
 
         # Get session to check document scope
-        session = (await db.execute(select(ChatSession).where(ChatSession.id == session_id))).scalar_one_or_none()
+        session = (
+            await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+        ).scalar_one_or_none()
 
         # Detect query language so keyword search uses the same PostgreSQL
         # text-search config that was used to index the documents.
         detected_lang = (
-            "fr" if any(re.search(r'\b' + w + r'\b', query, re.IGNORECASE)
-                        for w in ["le", "la", "les", "des", "est", "sont"])
+            "fr"
+            if any(
+                re.search(r"\b" + w + r"\b", query, re.IGNORECASE)
+                for w in ["le", "la", "les", "des", "est", "sont"]
+            )
             else "en"
         )
 
         # Perform search
         search_result = await search_service.hybrid_search(
-            query=query, limit=30, offset=0, db=db, user=current_user,
+            query=query,
+            limit=30,
+            offset=0,
+            db=db,
+            user=current_user,
             regconfig=_get_regconfig(detected_lang),
         )
 
         # Filter by document scope if specified
         if session and session.document_scope:
             scope_set = {str(doc_id) for doc_id in session.document_scope}
-            search_result["results"] = [r for r in search_result["results"] if str(r.document_id) in scope_set]
+            search_result["results"] = [
+                r for r in search_result["results"] if str(r.document_id) in scope_set
+            ]
 
         top_results = search_result["results"][:10]
 
@@ -115,7 +129,11 @@ class ChatService:
         top_results = list(seen_docs.values())
 
         # Determine access explicitly. Missing/mock attributes must not become truthy by accident.
-        role_value = getattr(getattr(current_user, "role", None), "value", getattr(current_user, "role", None))
+        role_value = getattr(
+            getattr(current_user, "role", None),
+            "value",
+            getattr(current_user, "role", None),
+        )
         user_is_admin = (
             role_value in {"admin", "superuser"}
             or getattr(current_user, "is_superuser", False) is True
@@ -123,13 +141,24 @@ class ChatService:
         )
 
         # Check for confidential documents OR PII in query
-        has_confidential = any(r.document_bucket == "confidential" for r in top_results) or has_pii
+        has_confidential = (
+            any(r.document_bucket == "confidential" for r in top_results) or has_pii
+        )
 
-        logger.warning("retrieve_relevant_chunks: %d results, has_confidential=%s (admin=%s)", len(top_results), has_confidential, user_is_admin)
+        logger.warning(
+            "retrieve_relevant_chunks: %d results, has_confidential=%s (admin=%s)",
+            len(top_results),
+            has_confidential,
+            user_is_admin,
+        )
 
         # Batch-fetch metadata for confidential documents using a FRESH session
         # (only needed when showing metadata summaries to non-admin users)
-        confidential_doc_ids = [r.document_id for r in top_results if r.document_bucket == "confidential" and not user_is_admin]
+        confidential_doc_ids = [
+            r.document_id
+            for r in top_results
+            if r.document_bucket == "confidential" and not user_is_admin
+        ]
         doc_metadata: dict = {}
         if confidential_doc_ids:
             from sqlalchemy.orm import selectinload
@@ -139,7 +168,9 @@ class ChatService:
 
             async with AsyncSessionLocal() as meta_db:
                 result = await meta_db.execute(
-                    select(Document).options(selectinload(Document.tags)).where(Document.id.in_(confidential_doc_ids))
+                    select(Document)
+                    .options(selectinload(Document.tags))
+                    .where(Document.id.in_(confidential_doc_ids))
                 )
                 for doc in result.scalars().all():
                     doc_metadata[str(doc.id)] = doc
@@ -153,7 +184,11 @@ class ChatService:
                 tags = [t.tag_name for t in doc.tags] if doc and doc.tags else []
                 page_count = doc.page_count if doc else None
                 mime_type = doc.mime_type if doc else "unknown"
-                created_at = doc.created_at.strftime("%Y-%m-%d") if doc and doc.created_at else "unknown"
+                created_at = (
+                    doc.created_at.strftime("%Y-%m-%d")
+                    if doc and doc.created_at
+                    else "unknown"
+                )
 
                 metadata_summary = (
                     f"[Confidential document — content not sent to AI] "
@@ -219,7 +254,11 @@ class ChatService:
                 label = f"[Document {i + 1} \u2014 Public] {source['document_name']}"
             context_parts.append(f"{label}\n{source['chunk_text']}\n")
 
-        context_text = "\n".join(context_parts) if context_parts else "No relevant documents found."
+        context_text = (
+            "\n".join(context_parts)
+            if context_parts
+            else "No relevant documents found."
+        )
 
         task_prompt = """RULE 1 — ALWAYS ACKNOWLEDGE RETRIEVED DOCUMENTS:
 The documents listed in the context below ARE the search results for the user's query. Even if the exact keyword doesn't appear in every chunk, these are the most relevant documents the system found. You MUST acknowledge them and briefly say what they contain. NEVER say "I found nothing", "aucun document", or "no documents" when documents are listed below.
@@ -257,7 +296,9 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
             include_vault_protocol=False,
         )
 
-        messages = [{"role": "system", "content": system_prompt.format(context=context_text)}]
+        messages = [
+            {"role": "system", "content": system_prompt.format(context=context_text)}
+        ]
 
         for msg in conversation_history:
             messages.append({"role": msg["role"], "content": msg["content"]})
@@ -277,7 +318,10 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
 
         async with AsyncSessionLocal() as search_db:
             sources, has_confidential = await self.retrieve_relevant_chunks(
-                query=user_message, session_id=session_id, db=search_db, current_user=current_user
+                query=user_message,
+                session_id=session_id,
+                db=search_db,
+                current_user=current_user,
             )
 
         # Get conversation history (safe to use the original db session now)
@@ -296,64 +340,76 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
 
         raw_confidential_context = self._has_raw_confidential_context(sources)
 
-        try:
-            routing_decision = await llm_router.select_provider(
-                query=user_message,
-                context_chunks=sources,
-                has_confidential=raw_confidential_context,
-            )
-            llm_service = routing_decision.service
-            llm_provider = LLMProvider(routing_decision.provider_name)
-            routing_reason = routing_decision.reason.value
-        except RuntimeError as routing_err:
-            logger.error(f"llm_router.select_provider failed: {routing_err}")
-            if raw_confidential_context:
-                raise RuntimeError("Local LLM unavailable for confidential document context") from routing_err
-            llm_service = self.llm
-            llm_provider = LLMProvider.OPENROUTER
-            routing_reason = "emergency_fallback"
-
-        logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
-
-        # Generate response (with 60s timeout to prevent hanging on slow LLM)
-        response_text = ""
-        _provider_name = llm_provider.value
-        _model_name = getattr(llm_service, "model", self.llm.model)
+        # Generate response via LLM gateway (enforces per-user quotas & cost budgets)
+        _provider_name = "llm_gateway"
+        _model_name = self.llm.model
         _start = _time.monotonic()
         try:
 
             async def _collect_response():
                 text = ""
-                async for chunk in llm_service.chat_completion(messages, stream=False):
+                async for chunk in self.llm.chat_completion(
+                    messages,
+                    stream=False,
+                    user_id=str(current_user.id),
+                    user_role=current_user.role.value,
+                    module="chat",
+                    has_confidential=raw_confidential_context,
+                ):
                     if not isinstance(chunk, str) or not chunk:
                         continue
+                    if chunk.startswith("[QUOTA_EXCEEDED]"):
+                        return chunk
                     if "__USAGE__" in chunk:
                         continue
                     text += chunk
                 return text
 
             response_text = await asyncio.wait_for(_collect_response(), timeout=60.0)
+            if response_text and response_text.startswith("[QUOTA_EXCEEDED]"):
+                return {
+                    "content": response_text.replace("[QUOTA_EXCEEDED] ", ""),
+                    "llm_used": LLMProvider.OPENROUTER,
+                    "sources": [],
+                    "has_confidential": has_confidential,
+                }
             _elapsed = _time.monotonic() - _start
-            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
-            llm_request_total.inc(labels={"provider": _provider_name, "status": "success"})
+            llm_request_duration.observe(
+                _elapsed, labels={"provider": _provider_name, "model": _model_name}
+            )
+            llm_request_total.inc(
+                labels={"provider": _provider_name, "status": "success"}
+            )
         except TimeoutError:
             _elapsed = _time.monotonic() - _start
-            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
-            llm_request_total.inc(labels={"provider": _provider_name, "status": "error"})
-            logger.error("LLM call timed out after 60s (provider=%s, model=%s)", _provider_name, _model_name)
+            llm_request_duration.observe(
+                _elapsed, labels={"provider": _provider_name, "model": _model_name}
+            )
+            llm_request_total.inc(
+                labels={"provider": _provider_name, "status": "error"}
+            )
+            logger.error(
+                "LLM call timed out after 60s (provider=%s, model=%s)",
+                _provider_name,
+                _model_name,
+            )
             return {
                 "content": (
                     "Le service IA est temporairement lent. Veuillez réessayer dans quelques instants. / "
                     "The AI service is temporarily slow. Please try again in a moment."
                 ),
-                "llm_used": llm_provider,
+                "llm_used": LLMProvider.OPENROUTER,
                 "sources": [],
                 "has_confidential": has_confidential,
             }
         except Exception:
             _elapsed = _time.monotonic() - _start
-            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
-            llm_request_total.inc(labels={"provider": _provider_name, "status": "error"})
+            llm_request_duration.observe(
+                _elapsed, labels={"provider": _provider_name, "model": _model_name}
+            )
+            llm_request_total.inc(
+                labels={"provider": _provider_name, "status": "error"}
+            )
             raise
 
         # Format sources for response
@@ -372,7 +428,7 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
 
         return {
             "content": response_text,
-            "llm_used": llm_provider,
+            "llm_used": LLMProvider.OPENROUTER,
             "sources": formatted_sources,
             "has_confidential": has_confidential,
         }
@@ -388,7 +444,10 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
 
         async with AsyncSessionLocal() as search_db:
             sources, has_confidential = await self.retrieve_relevant_chunks(
-                query=user_message, session_id=session_id, db=search_db, current_user=current_user
+                query=user_message,
+                session_id=session_id,
+                db=search_db,
+                current_user=current_user,
             )
 
         # Get conversation history (safe to use the original db session now)
@@ -407,24 +466,8 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
 
         raw_confidential_context = self._has_raw_confidential_context(sources)
 
-        try:
-            routing_decision = await llm_router.select_provider(
-                query=user_message,
-                context_chunks=sources,
-                has_confidential=raw_confidential_context,
-            )
-            llm_service = routing_decision.service
-            llm_provider = LLMProvider(routing_decision.provider_name)
-            routing_reason = routing_decision.reason.value
-        except RuntimeError as routing_err:
-            logger.error(f"llm_router.select_provider failed (stream): {routing_err}")
-            if raw_confidential_context:
-                raise RuntimeError("Local LLM unavailable for confidential document context") from routing_err
-            llm_service = self.llm
-            llm_provider = LLMProvider.OPENROUTER
-            routing_reason = "emergency_fallback"
-
-        logger.warning(f"LLM routing: {llm_provider.value} (reason: {routing_reason})")
+        _stream_provider = "llm_gateway"
+        _stream_model = self.llm.model
 
         # --- Cache pre-check (OpenRouter path only) ---
         # For the OpenRouter/MiniMax service, check whether an identical
@@ -449,30 +492,44 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
         # Emit llm_info metadata including cache_hit flag.
         # Data payload uses `type` field so the frontend SSE reader can
         # dispatch on parsed.type without relying on the SSE `event:` name.
-        yield f"data: {json.dumps({'type': 'llm_info', 'llm_used': llm_provider.value, 'has_confidential': has_confidential, 'cache_hit': cache_hit})}\n\n"
+        yield f"data: {json.dumps({'type': 'llm_info', 'llm_used': _stream_provider, 'has_confidential': has_confidential, 'cache_hit': cache_hit})}\n\n"
 
         if cache_hit and cached_content is not None:
             # Serve cached response as a single message chunk
             yield f"data: {json.dumps({'type': 'message', 'content': cached_content})}\n\n"
         else:
-            # Stream live response from LLM
-            _stream_provider = llm_provider.value
-            _stream_model = getattr(llm_service, "model", self.llm.model)
+            # Stream live response from LLM with backpressure / disconnect detection
             _stream_start = _time.monotonic()
             try:
-                async for chunk in llm_service.chat_completion(messages, stream=True):
+                async for chunk in self.llm.chat_completion(
+                    messages,
+                    stream=True,
+                    user_id=str(current_user.id),
+                    user_role=current_user.role.value,
+                    module="chat",
+                    has_confidential=raw_confidential_context,
+                ):
+                    if chunk.startswith("[QUOTA_EXCEEDED]"):
+                        yield f"data: {json.dumps({'type': 'error', 'error': chunk.replace('[QUOTA_EXCEEDED] ', '')})}\n\n"
+                        return
                     yield f"data: {json.dumps({'type': 'message', 'content': chunk})}\n\n"
                 _stream_elapsed = _time.monotonic() - _stream_start
                 llm_request_duration.observe(
-                    _stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model}
+                    _stream_elapsed,
+                    labels={"provider": _stream_provider, "model": _stream_model},
                 )
-                llm_request_total.inc(labels={"provider": _stream_provider, "status": "success"})
+                llm_request_total.inc(
+                    labels={"provider": _stream_provider, "status": "success"}
+                )
             except Exception as exc:
                 _stream_elapsed = _time.monotonic() - _stream_start
                 llm_request_duration.observe(
-                    _stream_elapsed, labels={"provider": _stream_provider, "model": _stream_model}
+                    _stream_elapsed,
+                    labels={"provider": _stream_provider, "model": _stream_model},
                 )
-                llm_request_total.inc(labels={"provider": _stream_provider, "status": "error"})
+                llm_request_total.inc(
+                    labels={"provider": _stream_provider, "status": "error"}
+                )
                 logger.exception("Streaming LLM error: %s", exc)
                 yield f"data: {json.dumps({'type': 'error', 'error': 'Le service IA est temporairement indisponible. / The AI service is temporarily unavailable.'})}\n\n"
                 return

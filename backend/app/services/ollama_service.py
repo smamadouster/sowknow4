@@ -81,33 +81,35 @@ class OllamaService(BaseLLMService):
             "options": {"temperature": temperature, "num_predict": effective_num_predict},
         }
 
+        from app.services.llm_http_client import LLMHTTPClient
+
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                if stream:
-                    async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
-                        response.raise_for_status()
-
-                        async for line in response.aiter_lines():
-                            if line.strip():
-                                try:
-                                    import json
-
-                                    data = json.loads(line)
-                                    if "message" in data:
-                                        content = data["message"].get("content", "")
-                                        if content:
-                                            yield content
-                                    elif "done" in data and data["done"]:
-                                        break
-                                except json.JSONDecodeError:
-                                    continue
-                else:
-                    response = await client.post(f"{self.base_url}/api/chat", json=payload)
+            client = LLMHTTPClient.get_client()
+            if stream:
+                async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                     response.raise_for_status()
-                    result = response.json()
 
-                    content = result.get("message", {}).get("content", "")
-                    yield content
+                    async for line in response.aiter_lines():
+                        if line.strip():
+                            try:
+                                import json
+
+                                data = json.loads(line)
+                                if "message" in data:
+                                    content = data["message"].get("content", "")
+                                    if content:
+                                        yield content
+                                elif "done" in data and data["done"]:
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+            else:
+                response = await client.post(f"{self.base_url}/api/chat", json=payload)
+                response.raise_for_status()
+                result = response.json()
+
+                content = result.get("message", {}).get("content", "")
+                yield content
 
         except httpx.HTTPError as e:
             logger.error(f"Ollama error: {str(e)}")
@@ -141,13 +143,15 @@ class OllamaService(BaseLLMService):
             "options": {"temperature": temperature, "num_predict": num_predict},
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(f"{self.base_url}/api/generate", json=payload)
-                response.raise_for_status()
-                result = response.json()
+        from app.services.llm_http_client import LLMHTTPClient
 
-                return result.get("response", "")
+        try:
+            client = LLMHTTPClient.get_client()
+            response = await client.post(f"{self.base_url}/api/generate", json=payload)
+            response.raise_for_status()
+            result = response.json()
+
+            return result.get("response", "")
 
         except httpx.HTTPError as e:
             logger.error(f"Ollama generation error: {str(e)}")
@@ -165,22 +169,24 @@ class OllamaService(BaseLLMService):
         Returns:
             Health check result dict
         """
+        from app.services.llm_http_client import LLMHTTPClient
+
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{self.base_url}/api/tags")
-                response.raise_for_status()
-                result = response.json()
+            client = LLMHTTPClient.get_client()
+            response = await client.get(f"{self.base_url}/api/tags")
+            response.raise_for_status()
+            result = response.json()
 
-                available_models = [m.get("name") for m in result.get("models", [])]
-                model_loaded = any(self.model in (m or "") for m in available_models)
+            available_models = [m.get("name") for m in result.get("models", [])]
+            model_loaded = any(self.model in (m or "") for m in available_models)
 
-                return {
-                    "service": "ollama",
-                    "status": "healthy" if model_loaded else "degraded",
-                    "model": self.model,
-                    "model_loaded": model_loaded,
-                    "available_models": available_models,
-                }
+            return {
+                "service": "ollama",
+                "status": "healthy" if model_loaded else "degraded",
+                "model": self.model,
+                "model_loaded": model_loaded,
+                "available_models": available_models,
+            }
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             return {
                 "service": "ollama",

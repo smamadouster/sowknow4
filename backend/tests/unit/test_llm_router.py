@@ -60,45 +60,44 @@ def _make_router(
 # ---------------------------------------------------------------------------
 
 class TestConfidentialRouting:
-    """Any confidential chunk must route to Ollama — privacy guarantee."""
+    """Confidential chunks route to OpenRouter with metadata-only stripping (§5.2)."""
 
     @pytest.mark.asyncio
-    async def test_single_confidential_chunk_routes_to_ollama(self):
-        """One confidential chunk → Ollama, even with no other context."""
+    async def test_single_confidential_chunk_routes_to_openrouter(self):
+        """One confidential chunk → OpenRouter (metadata-only stripping)."""
         router = _make_router()
         chunks = [_make_chunk("confidential")]
         decision = await router.select_provider(query="test", context_chunks=chunks)
 
-        assert decision.provider_name == "ollama"
+        assert decision.provider_name == "openrouter"
         assert decision.reason == RoutingReason.CONFIDENTIAL_DOCS
+        assert decision.metadata.get("strip_metadata") is True
 
     @pytest.mark.asyncio
-    async def test_one_confidential_among_many_public_routes_to_ollama(self):
-        """99 public chunks + 1 confidential → Ollama (strict privacy rule)."""
+    async def test_one_confidential_among_many_public_routes_to_openrouter(self):
+        """99 public chunks + 1 confidential → OpenRouter (metadata-only stripping)."""
         router = _make_router()
         chunks = [_make_chunk("public")] * 99 + [_make_chunk("confidential")]
         decision = await router.select_provider(query="test", context_chunks=chunks)
 
-        assert decision.provider_name == "ollama", (
-            "PRIVACY BREACH: confidential chunk present but Ollama not selected"
-        )
+        assert decision.provider_name == "openrouter"
         assert decision.reason == RoutingReason.CONFIDENTIAL_DOCS
 
     @pytest.mark.asyncio
     async def test_has_confidential_flag_overrides_chunk_inspection(self):
-        """Caller-supplied has_confidential=True → Ollama without chunk scan."""
+        """Caller-supplied has_confidential=True → OpenRouter without chunk scan."""
         router = _make_router()
         decision = await router.select_provider(
             query="test", context_chunks=[], has_confidential=True
         )
 
-        assert decision.provider_name == "ollama"
+        assert decision.provider_name == "openrouter"
         assert decision.reason == RoutingReason.CONFIDENTIAL_DOCS
 
     @pytest.mark.asyncio
-    async def test_confidential_routing_falls_back_to_openrouter_when_ollama_down(self):
-        """If Ollama is down for a confidential query, fall back to OpenRouter."""
-        router = _make_router(ollama_healthy=False)
+    async def test_confidential_routing_always_openrouter_even_if_ollama_healthy(self):
+        """Ollama is removed from active chain — confidential always uses OpenRouter."""
+        router = _make_router(ollama_healthy=True)
         chunks = [_make_chunk("confidential")]
 
         decision = await router.select_provider(query="test", context_chunks=chunks)
@@ -159,18 +158,18 @@ class TestPublicRouting:
 # ---------------------------------------------------------------------------
 
 class TestPIIRouting:
-    """PII in the query text must force Ollama routing."""
+    """PII in the query text routes to OpenRouter with metadata-only stripping (§5.2)."""
 
     @pytest.mark.asyncio
-    async def test_pii_in_query_routes_to_ollama(self):
-        """Query with PII detected → Ollama (even with no document context)."""
+    async def test_pii_in_query_routes_to_openrouter(self):
+        """Query with PII detected → OpenRouter (metadata-only stripping)."""
         router = _make_router(has_pii_service=True)
         # Make PII service report PII present
         router._pii.detect_pii = MagicMock(return_value=True)
 
         decision = await router.select_provider(query="My SSN is 123-45-6789", context_chunks=[])
 
-        assert decision.provider_name == "ollama"
+        assert decision.provider_name == "openrouter"
         assert decision.reason == RoutingReason.PII_DETECTED
 
     @pytest.mark.asyncio
@@ -183,7 +182,7 @@ class TestPIIRouting:
             query="What is the architecture overview?", context_chunks=[]
         )
 
-        assert decision.provider_name != "ollama"
+        assert decision.provider_name == "openrouter"
 
 
 # ---------------------------------------------------------------------------

@@ -88,12 +88,14 @@ class LLMRouter:
     Services are injected at construction time so that tests can pass in mocks.
     """
 
-    # Fallback chains per routing scenario.
+    # Fallback chains per routing scenario (§5.2 updated).
+    # Ollama is removed from the active chain (CPU too slow, PRD §1.3).
+    # MiniMax is disabled — all traffic routes through OpenRouter with tier fallback.
     # Each chain is an ordered list of provider names tried left-to-right.
     fallback_chains: dict[str, list[str]] = {
-        "confidential": ["ollama", "openrouter", "minimax"],
-        "public_docs": ["openrouter", "minimax"],
-        "general_chat": ["openrouter", "minimax"],
+        "confidential": ["openrouter"],
+        "public_docs": ["openrouter"],
+        "general_chat": ["openrouter"],
     }
 
     def __init__(
@@ -150,24 +152,24 @@ class LLMRouter:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
-        if is_sensitive:
-            if await self._is_ollama_available():
-                providers_to_try.append(("ollama", self._ollama))
-            # Fallback to cloud even for sensitive data when local LLM is down
+        # §5.2: All traffic routes through OpenRouter.
+        # Ollama is intentionally removed from the active fallback chain
+        # (CPU response times of 30–60s are unacceptable for family chat).
+        # Confidential data relies on metadata-only stripping (PRD §1.3).
+        if self._openrouter is not None:
             providers_to_try.append(("openrouter", self._openrouter))
+        if self._minimax is not None and getattr(self._minimax, "api_key", None):
             providers_to_try.append(("minimax", self._minimax))
-        else:
-            providers_to_try.append(("openrouter", self._openrouter))
-            providers_to_try.append(("minimax", self._minimax))
-            providers_to_try.append(("ollama", self._ollama))
 
         last_error = ""
         for name, service in providers_to_try:
             if service is None:
                 continue
+            adapter = LLMServiceAdapter(service, name)
+            built_messages = adapter.build_messages(messages)
+
+            # Primary attempt with requested tier
             try:
-                adapter = LLMServiceAdapter(service, name)
-                built_messages = adapter.build_messages(messages)
                 async for chunk in adapter.call_service(
                     built_messages,
                     stream=stream,
@@ -177,9 +179,29 @@ class LLMRouter:
                 ):
                     yield chunk
                 return  # Success — stop trying other providers
-            except Exception as exc:
+            except (Exception) as exc:
                 last_error = str(exc)
-                logger.warning("LLM provider %s failed: %s", name, last_error)
+                logger.warning("LLM provider %s (tier=%s) failed: %s", name, tier.value, last_error)
+
+                # §5.2: Tier fallback within OpenRouter.
+                # If standard/complex fails with 429/timeout, try simple tier (Gemini Flash).
+                if name == "openrouter" and tier in (TaskTier.STANDARD, TaskTier.COMPLEX):
+                    try:
+                        async for chunk in adapter.call_service(
+                            built_messages,
+                            stream=stream,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            tier="simple",
+                        ):
+                            yield chunk
+                        logger.info("OpenRouter tier fallback succeeded: %s → simple", tier.value)
+                        return
+                    except Exception as exc2:
+                        last_error = str(exc2)
+                        logger.warning(
+                            "OpenRouter simple tier fallback also failed: %s", exc2
+                        )
                 continue
 
         logger.error("All LLM providers failed. Last error: %s", last_error)
@@ -237,52 +259,39 @@ class LLMRouter:
             is_sensitive = has_confidential
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
-        # --- Confidential path: prefer local Ollama, fallback to cloud ---
+        # §5.2: All traffic routes through OpenRouter.
+        # Ollama is removed from the active fallback chain (CPU too slow).
+        # Confidential data relies on metadata-only stripping (PRD §1.3).
         if is_sensitive:
             reason = (
                 RoutingReason.CONFIDENTIAL_DOCS if "confidential" in sensitivity_reason else RoutingReason.PII_DETECTED
             )
-            if await self._is_ollama_available():
-                logger.info("LLM routing → ollama (%s)", reason.value)
+            logger.info("LLM routing → openrouter (%s, metadata-only stripping)", reason.value)
+            if self._openrouter is not None:
                 return RoutingDecision(
-                    provider_name="ollama",
+                    provider_name="openrouter",
                     reason=reason,
-                    service=self._ollama,
-                    metadata={"chain": ["ollama"], "sensitive": True, "fail_closed": True},
+                    service=self._openrouter,
+                    metadata={"chain": ["openrouter"], "sensitive": True, "strip_metadata": True},
                 )
-            logger.warning(
-                "Ollama unavailable for sensitive query (%s) — falling back to OpenRouter with metadata-only stripping",
-                reason.value,
-            )
-            # Fall through to public path so search doesn't crash when local LLM is down.
+            raise RuntimeError("No LLM provider available for sensitive query.")
 
         # --- Public path ---
         has_context = bool(context_chunks)
 
         if has_context:
-            # RAG query: OpenRouter → MiniMax
-            chain = [
-                ("openrouter", self._openrouter, lambda s: s is not None),
-                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
-            ]
             reason = RoutingReason.PUBLIC_DOCS_RAG
         else:
-            # General chat: OpenRouter → MiniMax
-            chain = [
-                ("openrouter", self._openrouter, lambda s: s is not None),
-                ("minimax", self._minimax, lambda s: s is not None and getattr(s, "api_key", None)),
-            ]
             reason = RoutingReason.GENERAL_CHAT
 
-        for name, service, available in chain:
-            if available(service):
-                logger.info(f"LLM routing → {name} ({reason.value})")
-                return RoutingDecision(
-                    provider_name=name,
-                    reason=reason,
-                    service=service,
-                    metadata={"chain": [n for n, _, _ in chain]},
-                )
+        if self._openrouter is not None:
+            logger.info("LLM routing → openrouter (%s)", reason.value)
+            return RoutingDecision(
+                provider_name="openrouter",
+                reason=reason,
+                service=self._openrouter,
+                metadata={"chain": ["openrouter"]},
+            )
 
         raise RuntimeError("No LLM provider available.")
 

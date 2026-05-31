@@ -283,6 +283,46 @@ class OpenRouterService:
             logger.warning(f"Cost ceiling check failed, allowing call: {e}")
             return True
 
+    def _check_cost_anomaly(
+        self,
+        estimated_input_tokens: int,
+        estimated_output_tokens: int,
+        tier: str = "standard",
+    ) -> str:
+        """§5.2 Cost-anomaly fallback — downgrade tier if per-query cost spikes.
+
+        Returns the tier to use (may be downgraded to 'simple').
+        """
+        COST_ANOMALY_THRESHOLD_USD = float(
+            os.getenv("OPENROUTER_COST_ANOMALY_THRESHOLD", "0.05")
+        )
+        if tier not in ("standard", "complex"):
+            return tier
+
+        # Look up actual pricing from CostTracker for accurate estimation
+        try:
+            from app.services.monitoring import CostTracker
+
+            model = self.select_model_for_tier(tier)
+            rates = CostTracker.OPENROUTER_PRICING.get(
+                model, {"input": 0.0002, "output": 0.0006}
+            )
+            est_cost = (
+                (estimated_input_tokens / 1000) * rates["input"]
+                + (estimated_output_tokens / 1000) * rates["output"]
+            )
+            if est_cost > COST_ANOMALY_THRESHOLD_USD:
+                logger.warning(
+                    "Cost anomaly detected: $%.4f > $%.2f, downgrading tier %s → simple",
+                    est_cost,
+                    COST_ANOMALY_THRESHOLD_USD,
+                    tier,
+                )
+                return "simple"
+        except Exception as exc:
+            logger.debug("Cost anomaly check failed, keeping tier=%s: %s", tier, exc)
+        return tier
+
     def _before_sleep_on_retry(self, retry_state: RetryCallState) -> None:
         """Callback invoked before each tenacity retry.
 
@@ -440,6 +480,11 @@ class OpenRouterService:
             )
             yield "Error: LLM cost ceiling reached. Please try again later or contact support."
             return
+
+        # §5.2: Cost-anomaly fallback — downgrade tier if query cost spikes
+        effective_tier = self._check_cost_anomaly(est_input, est_output, tier)
+        if effective_tier != tier:
+            tier = effective_tier
 
         model = self.select_model_for_tier(tier)
 

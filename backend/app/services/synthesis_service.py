@@ -19,6 +19,7 @@ from app.models.knowledge_graph import Entity, TimelineEvent
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
 from app.services.llm_gateway import llm_gateway
+from app.services.rollback_monitor import rollback_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -302,8 +303,10 @@ Extract all relevant information about "{topic}" from this document:"""
 
             try:
                 extracted = json.loads(self._extract_json(response_text))
+                rollback_monitor.record_json_parse(tier="complex", success=True)
             except (json.JSONDecodeError, ValueError, TypeError):
                 # Fallback: treat as plain text
+                rollback_monitor.record_json_parse(tier="complex", success=False)
                 extracted = {"summary": response_text, "facts": []}
 
             return {

@@ -15,6 +15,7 @@ from typing import Any
 
 from app.services.agent_identity import build_service_prompt
 from app.services.llm_gateway import llm_gateway
+from app.services.rollback_monitor import rollback_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +412,12 @@ Now parse the user's query:"""
             json_text = self._extract_json(response_text)
 
             if json_text:
-                intent_data = json.loads(json_text)
+                try:
+                    intent_data = json.loads(json_text)
+                    rollback_monitor.record_json_parse(tier="simple", success=True)
+                except Exception:
+                    rollback_monitor.record_json_parse(tier="simple", success=False)
+                    raise
 
                 # Build ParsedIntent from LLM response
                 return ParsedIntent(
@@ -426,13 +432,16 @@ Now parse the user's query:"""
                 )
             else:
                 logger.warning(f"Failed to extract JSON from LLM response: {response_text}")
+                rollback_monitor.record_json_parse(tier="simple", success=False)
                 return self._fallback_parse(query)
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse intent JSON: {e}")
+            rollback_monitor.record_json_parse(tier="simple", success=False)
             return self._fallback_parse(query)
         except Exception as e:
             logger.error(f"Error parsing intent: {e}", exc_info=True)
+            rollback_monitor.record_json_parse(tier="simple", success=False)
             return self._fallback_parse(query)
 
     def _extract_json(self, text: str) -> str | None:

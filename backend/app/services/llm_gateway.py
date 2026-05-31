@@ -30,6 +30,7 @@ Benefits:
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -58,6 +59,42 @@ class LLMGateway:
 
     def __init__(self, router: LLMRouter | None = None) -> None:
         self._router = router or _build_router()
+
+    # ── Instrumentation helper ──
+
+    async def _timed_generate(
+        self,
+        gen: AsyncGenerator[str, None],
+        *,
+        tier: str,
+        stream: bool,
+    ) -> AsyncGenerator[str, None]:
+        """Wrap a generator to record latency/TTFT for rollback monitoring."""
+        start = time.perf_counter()
+        first_chunk_time: float | None = None
+        error_prefix = False
+        try:
+            async for chunk in gen:
+                if first_chunk_time is None:
+                    first_chunk_time = time.perf_counter()
+                if chunk and chunk.startswith("Error:"):
+                    error_prefix = True
+                yield chunk
+        finally:
+            end = time.perf_counter()
+            latency_ms = (end - start) * 1000
+            try:
+                from app.services.rollback_monitor import rollback_monitor
+
+                rollback_monitor.record_latency(tier, latency_ms)
+                if stream and first_chunk_time is not None:
+                    ttft_ms = (first_chunk_time - start) * 1000
+                    rollback_monitor.record_ttft(tier, ttft_ms)
+                if error_prefix:
+                    # Record as a pseudo-parse failure — caller services track real JSON failures
+                    rollback_monitor.record_json_parse(tier, success=False)
+            except Exception as exc:
+                logger.debug("RollbackMonitor recording failed: %s", exc)
 
     # ── Core chat completion ──
 
@@ -183,7 +220,24 @@ class LLMGateway:
             # Streaming: pass through directly (no semantic cache)
             if sem is not None:
                 async with sem:
-                    async for chunk in self._router.generate_completion(
+                    async for chunk in self._timed_generate(
+                        self._router.generate_completion(
+                            messages=messages,
+                            query=query,
+                            context_chunks=context_chunks,
+                            has_confidential=has_confidential,
+                            stream=True,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            tier=tier_enum,
+                        ),
+                        tier=tier,
+                        stream=True,
+                    ):
+                        yield chunk
+            else:
+                async for chunk in self._timed_generate(
+                    self._router.generate_completion(
                         messages=messages,
                         query=query,
                         context_chunks=context_chunks,
@@ -192,18 +246,9 @@ class LLMGateway:
                         temperature=temperature,
                         max_tokens=max_tokens,
                         tier=tier_enum,
-                    ):
-                        yield chunk
-            else:
-                async for chunk in self._router.generate_completion(
-                    messages=messages,
-                    query=query,
-                    context_chunks=context_chunks,
-                    has_confidential=has_confidential,
+                    ),
+                    tier=tier,
                     stream=True,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tier=tier_enum,
                 ):
                     yield chunk
         else:
@@ -211,7 +256,25 @@ class LLMGateway:
             parts: list[str] = []
             if sem is not None:
                 async with sem:
-                    async for chunk in self._router.generate_completion(
+                    async for chunk in self._timed_generate(
+                        self._router.generate_completion(
+                            messages=messages,
+                            query=query,
+                            context_chunks=context_chunks,
+                            has_confidential=has_confidential,
+                            stream=False,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            tier=tier_enum,
+                        ),
+                        tier=tier,
+                        stream=False,
+                    ):
+                        parts.append(chunk)
+                        yield chunk
+            else:
+                async for chunk in self._timed_generate(
+                    self._router.generate_completion(
                         messages=messages,
                         query=query,
                         context_chunks=context_chunks,
@@ -220,19 +283,9 @@ class LLMGateway:
                         temperature=temperature,
                         max_tokens=max_tokens,
                         tier=tier_enum,
-                    ):
-                        parts.append(chunk)
-                        yield chunk
-            else:
-                async for chunk in self._router.generate_completion(
-                    messages=messages,
-                    query=query,
-                    context_chunks=context_chunks,
-                    has_confidential=has_confidential,
+                    ),
+                    tier=tier,
                     stream=False,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tier=tier_enum,
                 ):
                     parts.append(chunk)
                     yield chunk

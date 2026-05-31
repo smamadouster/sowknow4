@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.llm_gateway import llm_gateway
+from app.services.rollback_monitor import rollback_monitor
 
 router = APIRouter(prefix="/status", tags=["status"])
 
@@ -122,3 +123,14 @@ async def api_status() -> dict[str, Any]:
             "User acceptance testing",
         ],
     }
+
+
+@router.get("/rollback")
+async def rollback_status(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """
+    §3.4 rollback plan status.
+
+    Returns current tier metrics, active triggers, and recommended rollback actions.
+    Requires authentication.
+    """
+    return rollback_monitor.get_status()

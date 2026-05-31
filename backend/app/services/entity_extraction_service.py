@@ -25,6 +25,7 @@ from app.models.knowledge_graph import (
 )
 from app.services.agent_identity import build_service_prompt
 from app.services.llm_gateway import llm_gateway
+from app.services.rollback_monitor import rollback_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -430,10 +431,19 @@ Extract all entities, relationships, and dated events now:"""
             # Extract JSON
             json_text = self._extract_json(response_text)
             if json_text:
-                return json.loads(json_text)
+                try:
+                    result = json.loads(json_text)
+                    rollback_monitor.record_json_parse(tier="simple", success=True)
+                    return result
+                except Exception:
+                    rollback_monitor.record_json_parse(tier="simple", success=False)
+                    raise
+            else:
+                rollback_monitor.record_json_parse(tier="simple", success=False)
 
         except Exception as e:
             logger.error(f"Entity extraction error: {e}")
+            rollback_monitor.record_json_parse(tier="simple", success=False)
 
         return None
 

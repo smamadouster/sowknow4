@@ -20,6 +20,7 @@ from app.models.user import User
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
 from app.services.llm_gateway import llm_gateway
+from app.services.rollback_monitor import rollback_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +296,24 @@ Generate the complete report now:"""
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
 
-        return "".join(response_parts).strip()
+        report_text = "".join(response_parts).strip()
+
+        # Rough cost estimate for rollback monitoring (§3.4)
+        try:
+            input_tokens = sum(len(m.get("content", "")) for m in messages) // 3
+            output_tokens = len(report_text) // 3
+            from app.services.monitoring import CostTracker
+
+            pricing = CostTracker.OPENROUTER_PRICING.get(
+                "anthropic/claude-3.5-sonnet",
+                {"input": 0.003, "output": 0.015},
+            )
+            cost_usd = (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
+            rollback_monitor.record_report_cost(cost_usd)
+        except Exception as exc:
+            logger.debug("Report cost recording failed: %s", exc)
+
+        return report_text
 
 
     async def _generate_pdf_report(self, content: str, metadata: dict[str, Any], collection: Collection) -> str | None:

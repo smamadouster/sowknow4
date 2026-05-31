@@ -732,8 +732,13 @@ Summarize what this collection contains and its key themes. Be specific about th
 
         entities_str = ", ".join([e["name"] for e in parsed_intent.entities]) if parsed_intent.entities else "None"
 
+        has_confidential = any(
+            getattr(doc, "bucket", None) == DocumentBucket.CONFIDENTIAL
+            for doc in documents
+        )
+
         try:
-            logger.info(f"Collection summary using OpenRouter for: {collection_name}")
+            logger.info(f"Collection summary using LLM gateway for: {collection_name}")
 
             prompt = f"""Generate a brief summary (2-3 sentences) for a document collection called "{collection_name}".
 
@@ -757,6 +762,7 @@ Generate a concise summary describing what this collection contains and its key 
             response_parts = []
             async for chunk in self.llm.chat_completion(
                 messages=messages, stream=False, temperature=0.5, max_tokens=500,
+                has_confidential=has_confidential,
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)

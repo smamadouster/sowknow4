@@ -30,6 +30,10 @@
 - [2026-05-01] Process-alive healthchecks (`grep -q celery`) hide zombie Celery workers that lost their Redis connection. Use broker-connectivity checks (`celery inspect ping`) so Docker restarts workers that are alive but useless.
 - [2026-05-01] Prefork Celery workers running OCR / whisper / LLM tasks accumulate memory fragmentation. `--max-tasks-per-child=20` forces process recycle before RSS hits the cgroup limit. This is cheaper than an OOM-kill restart loop.
 - [2026-05-01] Embed-server CPU >100% is usually a *symptom* of upstream queue flooding, not a root cause. Always check `pipeline.embed` queue depth and sweeper metrics before restarting embed-server. Restarting the victim without fixing the source just recreates the spike.
+- [2026-05-18] In React useCallback, NEVER use state variables (like `isSearching`) as guard conditions — they capture stale values. Use `useRef` for values that need to be read synchronously inside async callbacks.
+- [2026-05-18] Search query sanitization (_FILLER_WORDS) must be minimal — stripping common words like "is", "the", "how", "get" destroys semantic search quality for conversational queries. Only strip truly empty conversational words ("please", "show me", "find").
+- [2026-05-18] SSE event parsers must NOT use `continue` after handling one field — a single SSE data line can contain multiple logical fields (stage + intent, results + total_found). Always let all field checks run.
+- [2026-05-18] When two code paths serve the same feature (streaming vs non-streaming search), keep timeouts and behavior aligned. Use shared constants or at minimum document the expected values.
 
 ## Decision Log
 

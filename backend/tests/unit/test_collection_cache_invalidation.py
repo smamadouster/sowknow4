@@ -59,27 +59,27 @@ class TestCollectionServiceInvalidateCache:
         CollectionService = _import_collection_service()
         return CollectionService()
 
-    def test_invalidate_cache_calls_openrouter(self):
-        """_invalidate_cache delegates to openrouter_service.invalidate_collection_cache."""
+    def test_invalidate_cache_calls_llm_gateway(self):
+        """_invalidate_cache delegates to llm_gateway.invalidate_collection_cache."""
         _stub_heavy_modules()
         import app.services.collection_service as cs_mod
 
         service = self._make_service()
-        mock_or = MagicMock()
+        mock_gateway = MagicMock()
         cid = uuid.uuid4()
 
         original_enabled = cs_mod._cache_invalidation_enabled
-        original_svc = getattr(cs_mod, "_openrouter_svc", None)
+        original_gateway = getattr(cs_mod, "llm_gateway", None)
         try:
             cs_mod._cache_invalidation_enabled = True
-            cs_mod._openrouter_svc = mock_or
+            cs_mod.llm_gateway = mock_gateway
             service._invalidate_cache(cid)
         finally:
             cs_mod._cache_invalidation_enabled = original_enabled
-            if original_svc is not None:
-                cs_mod._openrouter_svc = original_svc
+            if original_gateway is not None:
+                cs_mod.llm_gateway = original_gateway
 
-        mock_or.invalidate_collection_cache.assert_called_once_with(str(cid))
+        mock_gateway.invalidate_collection_cache.assert_called_once_with(str(cid))
 
     def test_invalidate_cache_skipped_when_disabled(self):
         """_invalidate_cache is a no-op when _cache_invalidation_enabled is False."""
@@ -87,20 +87,20 @@ class TestCollectionServiceInvalidateCache:
         import app.services.collection_service as cs_mod
 
         service = self._make_service()
-        mock_or = MagicMock()
+        mock_gateway = MagicMock()
 
         original_enabled = cs_mod._cache_invalidation_enabled
-        original_svc = getattr(cs_mod, "_openrouter_svc", None)
+        original_gateway = getattr(cs_mod, "llm_gateway", None)
         try:
             cs_mod._cache_invalidation_enabled = False
-            cs_mod._openrouter_svc = mock_or
+            cs_mod.llm_gateway = mock_gateway
             service._invalidate_cache(uuid.uuid4())
         finally:
             cs_mod._cache_invalidation_enabled = original_enabled
-            if original_svc is not None:
-                cs_mod._openrouter_svc = original_svc
+            if original_gateway is not None:
+                cs_mod.llm_gateway = original_gateway
 
-        mock_or.invalidate_collection_cache.assert_not_called()
+        mock_gateway.invalidate_collection_cache.assert_not_called()
 
     def test_invalidate_cache_swallows_exceptions(self):
         """_invalidate_cache does not propagate exceptions (best-effort)."""
@@ -108,20 +108,20 @@ class TestCollectionServiceInvalidateCache:
         import app.services.collection_service as cs_mod
 
         service = self._make_service()
-        mock_or = MagicMock()
-        mock_or.invalidate_collection_cache.side_effect = RuntimeError("redis down")
+        mock_gateway = MagicMock()
+        mock_gateway.invalidate_collection_cache.side_effect = RuntimeError("redis down")
 
         original_enabled = cs_mod._cache_invalidation_enabled
-        original_svc = getattr(cs_mod, "_openrouter_svc", None)
+        original_gateway = getattr(cs_mod, "llm_gateway", None)
         try:
             cs_mod._cache_invalidation_enabled = True
-            cs_mod._openrouter_svc = mock_or
+            cs_mod.llm_gateway = mock_gateway
             # Must not raise
             service._invalidate_cache(uuid.uuid4())
         finally:
             cs_mod._cache_invalidation_enabled = original_enabled
-            if original_svc is not None:
-                cs_mod._openrouter_svc = original_svc
+            if original_gateway is not None:
+                cs_mod.llm_gateway = original_gateway
 
     def test_invalidate_cache_converts_uuid_to_str(self):
         """collection_id is coerced to str regardless of input type."""
@@ -129,21 +129,21 @@ class TestCollectionServiceInvalidateCache:
         import app.services.collection_service as cs_mod
 
         service = self._make_service()
-        mock_or = MagicMock()
+        mock_gateway = MagicMock()
         cid = uuid.uuid4()
 
         original_enabled = cs_mod._cache_invalidation_enabled
-        original_svc = getattr(cs_mod, "_openrouter_svc", None)
+        original_gateway = getattr(cs_mod, "llm_gateway", None)
         try:
             cs_mod._cache_invalidation_enabled = True
-            cs_mod._openrouter_svc = mock_or
+            cs_mod.llm_gateway = mock_gateway
             service._invalidate_cache(cid)
         finally:
             cs_mod._cache_invalidation_enabled = original_enabled
-            if original_svc is not None:
-                cs_mod._openrouter_svc = original_svc
+            if original_gateway is not None:
+                cs_mod.llm_gateway = original_gateway
 
-        called_with = mock_or.invalidate_collection_cache.call_args[0][0]
+        called_with = mock_gateway.invalidate_collection_cache.call_args[0][0]
         assert isinstance(called_with, str)
         assert called_with == str(cid)
 

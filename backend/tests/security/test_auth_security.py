@@ -175,15 +175,15 @@ class TestLoginSecurity:
         assert "inactive" in response.json()["detail"].lower()
 
     def test_login_missing_credentials(self, test_client: TestClient):
-        """Test login with missing credentials returns 422"""
+        """Test login with missing credentials returns 400 (custom validation)."""
         response = test_client.post(
             "/api/v1/auth/login",
             data={},
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         )
 
-        # FastAPI validation error
-        assert response.status_code == 422
+        # App returns 400 for missing credentials (custom validation overrides FastAPI 422)
+        assert response.status_code == 400
 
 
 class TestProtectedRouteAccess:

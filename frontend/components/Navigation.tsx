@@ -12,7 +12,7 @@ import MobileBottomSheet from '@/components/mobile/MobileBottomSheet';
 type NavLabelKey =
   | 'home' | 'search' | 'documents' | 'chat' | 'collections' | 'smart_folders'
   | 'knowledge_graph' | 'dashboard' | 'monitoring' | 'settings' | 'journal'
-  | 'bookmarks' | 'notes' | 'spaces' | 'subscriptions' | 'tasks';
+  | 'bookmarks' | 'notes' | 'spaces' | 'subscriptions' | 'tasks' | 'search_debug';
 
 interface NavItem {
   href: string;

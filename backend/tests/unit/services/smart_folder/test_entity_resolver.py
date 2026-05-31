@@ -32,8 +32,10 @@ class TestEntityResolverService:
     async def test_exact_match(self, resolver, mock_db):
         """Test exact case-insensitive match."""
         entity = self._make_entity("Bank A")
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [entity]
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = entity
+        mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
         result = await resolver.resolve(mock_db, "bank a")
@@ -46,13 +48,22 @@ class TestEntityResolverService:
     async def test_alias_match(self, resolver, mock_db):
         """Test alias match via JSONB."""
         entity = self._make_entity("Bank A Ltd", aliases=["Bank A"])
-        # First call (exact) returns None
+        # First call (exact) returns []
         # Second call (alias) returns entity
-        mock_results = [
-            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # exact
-            MagicMock(scalar_one_or_none=MagicMock(return_value=entity)),  # alias
+        # Third+ calls for fuzzy fetch rows, then entity fetch
+        def _make_result(entities):
+            mock_scalars = MagicMock()
+            mock_scalars.all.return_value = entities
+            mock_result = MagicMock()
+            mock_result.scalars.return_value = mock_scalars
+            mock_result.all.return_value = []
+            return mock_result
+
+        mock_db.execute.side_effect = [
+            _make_result([]),            # exact
+            _make_result([entity]),      # alias
+            _make_result([]),            # fuzzy all_stmt
         ]
-        mock_db.execute.side_effect = mock_results
 
         result = await resolver.resolve(mock_db, "Bank A")
 
@@ -63,8 +74,10 @@ class TestEntityResolverService:
     @pytest.mark.asyncio
     async def test_no_match(self, resolver, mock_db):
         """Test when no entity matches."""
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value = mock_scalars
         mock_result.all.return_value = []
         mock_db.execute.return_value = mock_result
 

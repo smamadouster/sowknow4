@@ -193,7 +193,7 @@ class TestLanguageMismatchFix:
     """Phase 1: Keyword search uses 'simple' regconfig regardless of query language."""
 
     @pytest.mark.asyncio
-    async def test_hybrid_search_uses_simple_regconfig_for_reliability(self):
+    async def test_hybrid_search_passes_detected_regconfig_to_keyword_search(self):
         svc = HybridSearchService()
         svc.semantic_search = AsyncMock(return_value=[])
         svc.keyword_search = AsyncMock(return_value=[])
@@ -209,6 +209,7 @@ class TestLanguageMismatchFix:
 
         svc.keyword_search.assert_awaited_once()
         call_kwargs = svc.keyword_search.call_args.kwargs
-        # Phase 1: hybrid_search now hardcodes "simple" for keyword search
-        # regardless of the regconfig parameter, fixing the language-mismatch bug.
-        assert call_kwargs.get("regconfig") == "simple"
+        # Phase 2: hybrid_search now passes the detected regconfig to keyword_search.
+        # keyword_search() uses a dual-query strategy (detected regconfig + simple)
+        # so language-specific stemming is preserved while simple catches cross-language matches.
+        assert call_kwargs.get("regconfig") == "english"

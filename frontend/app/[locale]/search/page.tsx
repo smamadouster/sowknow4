@@ -3,8 +3,9 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Link } from '@/i18n/routing';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import { api } from '@/lib/api';
 import { useAuthStore, useSearchCacheStore } from '@/lib/store';
 import VoiceRecorder from '@/components/VoiceRecorder';
@@ -445,9 +446,9 @@ function TypeFilterChips({ active, onChange, counts, labels }: { active: ResultT
   );
 }
 
-function GlobalResultCard({ result, locale, labels }: { result: GlobalSearchResult; locale: string; labels: Record<string, string> }) {
+function GlobalResultCard({ result, labels }: { result: GlobalSearchResult; labels: Record<string, string> }) {
   const style = TYPE_BADGE_STYLES[result.result_type] || TYPE_BADGE_STYLES.document;
-  const linkHref = result.result_type === 'document' ? `/${locale}/documents/${result.id}` : result.result_type === 'bookmark' && result.url ? result.url : result.result_type === 'note' ? `/${locale}/notes/${result.id}` : result.result_type === 'space' ? `/${locale}/spaces/${result.id}` : '#';
+  const linkHref = result.result_type === 'document' ? `/documents/${result.id}` : result.result_type === 'bookmark' && result.url ? result.url : result.result_type === 'note' ? `/notes/${result.id}` : result.result_type === 'space' ? `/spaces/${result.id}` : '#';
   const isExternal = result.result_type === 'bookmark' && result.url;
 
   return (
@@ -515,12 +516,14 @@ export default function SearchPage() {
 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isSearchingRef = useRef(false);
+  const initialSearchDone = useRef(false);
 
   const searchCache = useSearchCacheStore();
 
   const runSearchWithQuery = useCallback(async (searchQuery: string, updateUrl = true) => {
-    if (!searchQuery.trim() || isSearching) return;
-    if (updateUrl) { router.push(`/${locale}/search?q=${encodeURIComponent(searchQuery)}`); }
+    if (!searchQuery.trim() || isSearchingRef.current) return;
+    if (updateUrl) { router.push(`/search?q=${encodeURIComponent(searchQuery)}`); }
 
     // Check client-side cache for instant revisit
     const cached = searchCache.getCachedSearch(searchQuery);
@@ -538,12 +541,14 @@ export default function SearchPage() {
         modelUsed: null,
         globalResults: cached.globalResults as GlobalSearchResult[],
       });
+      isSearchingRef.current = false;
       setIsSearching(false);
       return;
     }
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
+    isSearchingRef.current = true;
     setIsSearching(true);
     setShowCitations(false);
     setStream({ stage: 'intent', stageMessage: t('stage.intent'), intent: null, results: [], synthesis: null, citations: [], suggestions: [], hasConfidential: false, totalFound: 0, modelUsed: null, globalResults: [] });
@@ -592,7 +597,7 @@ export default function SearchPage() {
                 else if (stage === 'synthesis') msg = t('stage.synthesis');
                 return { ...prev, stage, stageMessage: msg };
               });
-              continue;
+              // Don't continue — let other fields in the same event be processed
             }
 
             // --- Intent: backend sends flat {intent, confidence, keywords, ...} ---
@@ -660,16 +665,21 @@ export default function SearchPage() {
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') { setStream((prev) => ({ ...prev, stage: 'error', stageMessage: t('error') })); }
     } finally {
+      isSearchingRef.current = false;
       setIsSearching(false);
       setStream((prev) => prev.stage !== 'error' ? { ...prev, stage: 'done' } : prev);
     }
-  }, [isSearching, t, locale, router]);
+  }, [t, locale, router, searchCache]);
 
   useEffect(() => {
+    if (initialSearchDone.current) return;
     const q = searchParams.get('q');
-    if (q && q !== query) { setQuery(q); runSearchWithQuery(q, false); }
-    else if (q && q === query && stream.results.length === 0) { runSearchWithQuery(q, false); }
-  }, []);
+    if (q) {
+      initialSearchDone.current = true;
+      setQuery(q);
+      runSearchWithQuery(q, false);
+    }
+  }, [searchParams, runSearchWithQuery]);
 
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); runSearchWithQuery(query); };
   const handleSuggestion = (text: string) => { setQuery(text); runSearchWithQuery(text); };
@@ -768,10 +778,10 @@ export default function SearchPage() {
                   key={`${s.type}-${s.id}`}
                   type="button"
                   onClick={() => {
-                    if (s.type === 'document') router.push(`/${locale}/documents/${s.id}`);
-                    else if (s.type === 'bookmark') router.push(`/${locale}/bookmarks`);
-                    else if (s.type === 'note') router.push(`/${locale}/notes/${s.id}`);
-                    else if (s.type === 'tag') router.push(`/${locale}/documents?tag=${encodeURIComponent(s.title)}`);
+                    if (s.type === 'document') router.push(`/documents/${s.id}`);
+                    else if (s.type === 'bookmark') router.push('/bookmarks');
+                    else if (s.type === 'note') router.push(`/notes/${s.id}`);
+                    else if (s.type === 'tag') router.push(`/documents?tag=${encodeURIComponent(s.title)}`);
                     setShowInlineSuggestions(false);
                   }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-white/[0.04] hover:text-text-primary transition-colors text-left"
@@ -864,7 +874,7 @@ export default function SearchPage() {
                     </div>
                   )}
                   {filteredGlobalResults.map((result) => (
-                    <GlobalResultCard key={`${result.result_type}-${result.id}`} result={result} locale={locale} labels={typeLabels} />
+                    <GlobalResultCard key={`${result.result_type}-${result.id}`} result={result} labels={typeLabels} />
                   ))}
                 </div>
               )}

@@ -57,7 +57,7 @@ export default function SearchDebugPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post('/admin/search-debug', {
+      const res = await api.post<DebugResponse>('/admin/search-debug', {
         query,
         variant_a: variantA,
         variant_b: variantB,

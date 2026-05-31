@@ -28,7 +28,7 @@ BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 
 # Allowed file types and size limits
 ALLOWED_EXTENSIONS = {
-    ".pdf", ".docx", ".doc", ".pptx", ".ppsx", ".ppt", ".xlsx", ".xls", ".xlt", ".xltx",
+    ".pdf", ".docx", ".doc", ".pptx", ".ppsx", ".ppt", ".xlsx", ".xls", ".xlsm", ".xlt", ".xltx",
     ".txt", ".md", ".json", ".jpg", ".jpeg", ".png", ".gif", ".bmp",
     ".heic", ".mp4", ".avi", ".mov", ".mkv", ".mp3", ".wav", ".ogg",
     ".flac", ".aac", ".wma", ".m4a", ".webm", ".epub", ".csv", ".xml",
@@ -145,6 +145,7 @@ def get_mime_type(filename: str, content: bytes = b"") -> str:
         ".doc": "application/msword",
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ".xls": "application/vnd.ms-excel",
+        ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
         ".xlt": "application/vnd.ms-excel",
         ".xltx": "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
         ".txt": "text/plain",
@@ -200,6 +201,7 @@ def validate_magic_bytes(filename: str, content: bytes) -> bool:
         ".docx": (content[:4] == b"PK\x03\x04"),
         ".pptx": (content[:4] == b"PK\x03\x04"),
         ".xlsx": (content[:4] == b"PK\x03\x04"),
+        ".xlsm": (content[:4] == b"PK\x03\x04"),
         ".xltx": (content[:4] == b"PK\x03\x04"),
         ".epub": (content[:4] == b"PK\x03\x04"),
         ".xls": (content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),

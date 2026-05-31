@@ -1,0 +1,63 @@
+# Test environment for SOWKNOW backend.
+# Usage:
+#   docker-compose -f docker-compose.test.yml up -d
+#   export DATABASE_URL=postgresql+psycopg2://sowknow_test:testpass@localhost:5433/sowknow_test
+#   export REDIS_HOST=localhost
+#   export REDIS_PORT=6380
+#   export NATS_URL=nats://localhost:4223
+#   pytest backend/tests/
+#
+# Ports are offset from production to avoid conflicts with dev stack:
+#   postgres: 5433, redis: 6380, nats: 4223
+
+version: "3.9"
+
+services:
+  postgres-test:
+    image: pgvector/pgvector:pg16
+    container_name: sowknow4-postgres-test
+    restart: "no"
+    environment:
+      POSTGRES_DB: sowknow_test
+      POSTGRES_USER: sowknow_test
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - sowknow-postgres-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sowknow_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: sowknow4-redis-test
+    restart: "no"
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  nats-test:
+    image: nats:2-alpine
+    container_name: sowknow4-nats-test
+    restart: "no"
+    ports:
+      - "127.0.0.1:4223:4222"
+      - "127.0.0.1:8223:8222"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  sowknow-postgres-test-data:

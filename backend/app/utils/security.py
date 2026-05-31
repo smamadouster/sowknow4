@@ -20,12 +20,59 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Security configuration
-SECRET_KEY = os.getenv("JWT_SECRET")
-if not SECRET_KEY:
-    raise ValueError("JWT_SECRET environment variable is required")
+# Lazy validation: allow import without JWT_SECRET so tests can collect,
+# but fail fast when any token function is actually called.
+_secret_key_raw = os.getenv("JWT_SECRET")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+
+class _LazySecretKey:
+    """String-like object that validates JWT_SECRET only when its value is used."""
+
+    def __str__(self) -> str:
+        if not _secret_key_raw:
+            raise ValueError("JWT_SECRET environment variable is required")
+        return _secret_key_raw
+
+    def __eq__(self, other: object) -> bool:
+        return str(self) == other
+
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+    def __repr__(self) -> str:
+        return repr(str(self))
+
+    def encode(self, encoding: str = "utf-8") -> bytes:
+        return str(self).encode(encoding)
+
+
+# Patch python-jose so that `jwt.encode(payload, SECRET_KEY, ...)` works
+# when SECRET_KEY is a _LazySecretKey instance.  jose checks
+# isinstance(key, (str, bytes)) and raises JWKError for anything else.
+try:
+    from jose.backends.cryptography_backend import CryptographyHMACKey
+
+    _orig_hmac_init = CryptographyHMACKey.__init__
+
+    def _patched_hmac_init(self, key, algorithm):
+        if isinstance(key, _LazySecretKey):
+            key = str(key)
+        return _orig_hmac_init(self, key, algorithm)
+
+    CryptographyHMACKey.__init__ = _patched_hmac_init
+except Exception:
+    pass
+
+
+SECRET_KEY: str = _LazySecretKey()  # type: ignore[assignment]
+
+
+def _get_secret_key() -> str:
+    """Return JWT_SECRET, raising if not configured."""
+    return str(SECRET_KEY)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -92,7 +139,7 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "type": "access"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, _get_secret_key(), algorithm=ALGORITHM)
     return encoded_jwt
 
 
@@ -101,7 +148,7 @@ def create_refresh_token(data: dict[str, Any]) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, _get_secret_key(), algorithm=ALGORITHM)
     return encoded_jwt
 
 
@@ -122,7 +169,7 @@ def decode_token(token: str, expected_type: str | None = "access") -> dict[str, 
                            or has an incorrect 'type' claim
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, _get_secret_key(), algorithms=[ALGORITHM])
     except ExpiredSignatureError:
         raise TokenExpiredError()
     except JWTError:

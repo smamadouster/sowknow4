@@ -156,13 +156,16 @@ class TestStreamingCacheHit:
     def _make_chat_service(self):
         from app.services.chat_service import ChatService
         svc = ChatService.__new__(ChatService)
-        svc.kimi_service = None
-        svc.minimax_service = None
-        svc.openrouter_service = None
-        # Include health_check in spec since confidential path calls it
-        svc.ollama_service = MagicMock(spec=["chat_completion", "health_check"])
-        svc.ollama_service.health_check = AsyncMock(return_value={"status": "healthy"})
+        svc.llm = MagicMock()
+        svc.llm.check_cache = MagicMock(return_value=None)
         return svc
+
+    def _make_mock_service(self, stream_fn=None):
+        """Create a mock LLM service with chat_completion and optional check_cache."""
+        mock_svc = MagicMock()
+        mock_svc.chat_completion = stream_fn or (lambda messages, stream=False: (_ for _ in ()).__aiter__())
+        mock_svc.model = "test-model"
+        return mock_svc
 
     @pytest.mark.asyncio
     async def test_llm_info_event_has_type_field(self):
@@ -170,13 +173,11 @@ class TestStreamingCacheHit:
 
         svc = self._make_chat_service()
 
-        # Ollama path (no cache)
-        async def fake_ollama_stream(messages, stream=False):
+        async def fake_stream(messages, stream=False):
             yield "Hello"
 
-        svc.ollama_service.chat_completion = fake_ollama_stream
-
-        routing = _make_routing_decision(svc.ollama_service, "ollama")
+        mock_svc = self._make_mock_service(fake_stream)
+        routing = _make_routing_decision(mock_svc, "ollama")
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
@@ -200,9 +201,8 @@ class TestStreamingCacheHit:
         async def fake_stream(messages, stream=False):
             yield "response"
 
-        svc.ollama_service.chat_completion = fake_stream
-
-        routing = _make_routing_decision(svc.ollama_service, "ollama")
+        mock_svc = self._make_mock_service(fake_stream)
+        routing = _make_routing_decision(mock_svc, "ollama")
 
         # has_confidential=False so we skip the pre-stream health check;
         # llm_router is patched to return ollama routing.
@@ -226,20 +226,18 @@ class TestStreamingCacheHit:
 
         svc = self._make_chat_service()
 
-        # Wire up a mock OpenRouter service that says "cache hit"
-        mock_openrouter = MagicMock()
-        mock_openrouter.check_cache = MagicMock(return_value="The cached answer")
         llm_called = []
 
         async def fake_llm_stream(messages, stream=False):
             llm_called.append(True)
             yield "should not be called"
 
-        mock_openrouter.chat_completion = fake_llm_stream
-        svc.openrouter_service = mock_openrouter
+        mock_svc = self._make_mock_service(fake_llm_stream)
 
-        # Route to the mock openrouter service via llm_router patch
-        routing = _make_routing_decision(mock_openrouter, "openrouter")
+        # Simulate cache hit on the gateway
+        svc.llm.check_cache = MagicMock(return_value="The cached answer")
+
+        routing = _make_routing_decision(mock_svc, "openrouter")
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=(
             [{"document_id": "d1", "document_name": "doc.pdf", "chunk_id": "c1",
@@ -273,19 +271,18 @@ class TestStreamingCacheHit:
 
         svc = self._make_chat_service()
 
-        mock_openrouter = MagicMock()
-        mock_openrouter.check_cache = MagicMock(return_value=None)  # cache miss
         llm_called = []
 
         async def fake_llm_stream(messages, stream=False):
             llm_called.append(True)
             yield "live response"
 
-        mock_openrouter.chat_completion = fake_llm_stream
-        svc.openrouter_service = mock_openrouter
+        mock_svc = self._make_mock_service(fake_llm_stream)
 
-        # Route to mock openrouter service so check_cache is invoked
-        routing = _make_routing_decision(mock_openrouter, "openrouter")
+        # Cache miss on the gateway
+        svc.llm.check_cache = MagicMock(return_value=None)
+
+        routing = _make_routing_decision(mock_svc, "openrouter")
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=(
             [{"document_id": "d1", "document_name": "doc.pdf", "chunk_id": "c1",
@@ -315,9 +312,8 @@ class TestStreamingCacheHit:
             yield "chunk1"
             yield "chunk2"
 
-        svc.ollama_service.chat_completion = fake_stream
-
-        routing = _make_routing_decision(svc.ollama_service, "ollama")
+        mock_svc = self._make_mock_service(fake_stream)
+        routing = _make_routing_decision(mock_svc, "ollama")
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \
@@ -344,26 +340,24 @@ class TestStreamingCacheHit:
     async def test_kimi_path_has_no_check_cache(self):
         """Service without check_cache must default to cache_hit=False.
 
-        We wire a mock service whose spec omits check_cache and verify
-        cache_hit=False is emitted and the LLM is still called.
+        We wire a mock service and a gateway that returns None from check_cache,
+        then verify cache_hit=False is emitted and the LLM is still called.
         """
 
         svc = self._make_chat_service()
 
-        # Service without check_cache attribute
-        mock_openrouter = MagicMock(spec=["chat_completion"])  # no check_cache
-        svc.minimax_service = None
-        svc.openrouter_service = mock_openrouter
         llm_called = []
 
-        async def fake_openrouter_stream(messages, stream=False):
+        async def fake_stream(messages, stream=False):
             llm_called.append(True)
             yield "openrouter response"
 
-        mock_openrouter.chat_completion = fake_openrouter_stream
+        mock_svc = self._make_mock_service(fake_stream)
 
-        # Route to the no-check_cache service
-        routing = _make_routing_decision(mock_openrouter, "openrouter")
+        # Gateway check_cache returns None (cache miss / no cache)
+        svc.llm.check_cache = MagicMock(return_value=None)
+
+        routing = _make_routing_decision(mock_svc, "openrouter")
 
         with patch.object(svc, "retrieve_relevant_chunks", new=AsyncMock(return_value=([], False))), \
              patch.object(svc, "get_conversation_history", new=AsyncMock(return_value=[])), \

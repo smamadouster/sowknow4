@@ -43,7 +43,7 @@ class GuardResult:
 
 _MAX_TOKEN_BUDGET = 4096
 _TOKEN_RATIO = 1.3          # words -> approximate token count
-_DEDUP_TTL_SECONDS = 5
+_DEDUP_TTL_SECONDS = 2
 _DEDUP_KEY_PREFIX = "sowknow:dedup:"
 
 # French indicator words — common enough to distinguish FR from EN reliably.

@@ -69,7 +69,8 @@ class TestReprocessFailedDocuments:
         mock_pd.apply_async = Mock(return_value=mock_task)
 
         with patch("app.database.SessionLocal", return_value=db), \
-             patch("app.tasks.document_tasks.process_document", mock_pd):
+             patch("app.tasks.document_tasks.process_document", mock_pd), \
+             patch("app.tasks.pipeline_orchestrator.dispatch_batch", return_value={"dispatched": 1, "backpressured": 0}):
             original_close = db.close
             db.close = Mock()
             try:

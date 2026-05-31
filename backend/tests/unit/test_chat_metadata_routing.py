@@ -328,7 +328,6 @@ class TestStreamingConfidentialRouting:
              patch.object(svc, "get_conversation_history", new_callable=AsyncMock) as mock_history, \
              patch("app.services.chat_service.get_cached_context_block", new_callable=AsyncMock) as mock_ctx, \
              patch("app.services.chat_service.llm_router") as mock_router, \
-             patch.object(svc, "ollama_service") as mock_ollama, \
              patch("app.database.AsyncSessionLocal", return_value=mock_async_session):
 
             mock_retrieve.return_value = (
@@ -363,7 +362,6 @@ class TestStreamingConfidentialRouting:
             ):
                 chunks.append(chunk)
 
-        mock_ollama.health_check.assert_not_called()
         mock_router.select_provider.assert_called_once()
         call_kwargs = mock_router.select_provider.call_args
         assert call_kwargs.kwargs.get("has_confidential") is False or call_kwargs[1].get("has_confidential") is False

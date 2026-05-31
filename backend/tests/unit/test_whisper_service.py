@@ -30,7 +30,9 @@ class TestWhisperService:
             language="fr",
             condition_on_previous_text=False,
             vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 300},
+            vad_parameters={"min_silence_duration_ms": 150},
+            beam_size=1,
+            best_of=1,
         )
 
     def test_transcribe_sync_auto_language_passes_none(self):

@@ -47,60 +47,41 @@ def encrypt_bytes(data: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 
 class TestGetMimeTypeOggNormalization:
-    """python-magic must never store 'application/ogg' in the database."""
+    """MIME type detection must return correct audio types for voice uploads."""
 
-    def test_application_ogg_normalized_to_audio_ogg(self):
-        """Magic returns application/ogg → must be stored as audio/ogg."""
-        import app.api.documents as _docs
-        with patch.object(_docs, "_magic_available", True), \
-             patch.object(_docs, "_magic") as mock_magic:
-            mock_magic.from_buffer.return_value = "application/ogg"
-
-            result = _docs.get_mime_type("voice_123_abc.ogg", FAKE_OGG_BYTES)
-
+    def test_ogg_extension_returns_audio_ogg(self):
+        """.ogg files must be detected as audio/ogg."""
+        from app.api.documents_common import get_mime_type
+        result = get_mime_type("voice_123_abc.ogg", FAKE_OGG_BYTES)
         assert result == "audio/ogg", (
             f"Expected 'audio/ogg' but got '{result}'. "
             "This means future Telegram voice uploads will store the wrong MIME type "
             "and the frontend will not render an <audio> element."
         )
 
-    def test_audio_ogg_passed_through_unchanged(self):
-        """audio/ogg must not be mangled."""
-        import app.api.documents as _docs
-        with patch.object(_docs, "_magic_available", True), \
-             patch.object(_docs, "_magic") as mock_magic:
-            mock_magic.from_buffer.return_value = "audio/ogg"
-
-            result = _docs.get_mime_type("voice.ogg", FAKE_OGG_BYTES)
-
-        assert result == "audio/ogg"
-
-    def test_audio_webm_not_affected(self):
-        """Other audio MIME types must not be touched."""
-        import app.api.documents as _docs
-        with patch.object(_docs, "_magic_available", True), \
-             patch.object(_docs, "_magic") as mock_magic:
-            mock_magic.from_buffer.return_value = "audio/webm"
-
-            result = _docs.get_mime_type("voice.webm", b"webm bytes")
-
+    def test_webm_extension_returns_audio_webm(self):
+        """.webm files must be detected as audio/webm."""
+        from app.api.documents_common import get_mime_type
+        result = get_mime_type("voice.webm", b"webm bytes")
         assert result == "audio/webm"
 
-    def test_magic_unavailable_falls_back_to_mimetypes(self):
-        """When magic is not installed, mimetypes.guess_type must return audio/ogg for .ogg."""
-        import app.api.documents as _docs
-        with patch.object(_docs, "_magic_available", False):
-            result = _docs.get_mime_type("voice.ogg", b"")
+    def test_m4a_extension_returns_audio_mp4(self):
+        """.m4a files must be detected as audio/mp4."""
+        from app.api.documents_common import get_mime_type
+        result = get_mime_type("voice.m4a", b"")
+        assert result == "audio/mp4"
 
-        assert result == "audio/ogg"
+    def test_mp3_extension_returns_audio_mpeg(self):
+        """.mp3 files must be detected as audio/mpeg."""
+        from app.api.documents_common import get_mime_type
+        result = get_mime_type("voice.mp3", b"")
+        assert result == "audio/mpeg"
 
-    def test_magic_returns_application_ogg_no_content(self):
-        """Even without content, filename-based detection returns audio/ogg for .ogg files."""
-        import app.api.documents as _docs
-        with patch.object(_docs, "_magic_available", False):
-            result = _docs.get_mime_type("voice_216601573_AgADliIAAjk96VI.ogg", b"")
-
-        assert result == "audio/ogg"
+    def test_unknown_extension_returns_octet_stream(self):
+        """Unknown extensions must fall back to application/octet-stream."""
+        from app.api.documents_common import get_mime_type
+        result = get_mime_type("voice.unknownext", b"")
+        assert result == "application/octet-stream"
 
 
 # ---------------------------------------------------------------------------

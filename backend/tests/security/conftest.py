@@ -280,7 +280,7 @@ def tampered_token(regular_user: User) -> str:
 def test_client(db: Session):
     """
     Create a test client for security tests using the main app
-    with SQLite database override for isolated testing.
+    with database override for isolated testing.
     """
     from fastapi.testclient import TestClient
 
@@ -288,11 +288,49 @@ def test_client(db: Session):
     from app.database import get_db
     from app.main import app
 
-    def override_get_db():
-        try:
-            yield db
-        finally:
-            pass
+    import os
+    _use_postgres = "postgresql" in os.environ.get("DATABASE_URL", "")
+
+    if _use_postgres:
+        # Mirror tests/conftest.py: wrap sync session for async endpoints
+        class _AsyncSessionWrapper:
+            def __init__(self, sync_session):
+                self._sync = sync_session
+            async def execute(self, *args, **kwargs):
+                return self._sync.execute(*args, **kwargs)
+            async def commit(self):
+                self._sync.commit()
+            async def refresh(self, obj, **kwargs):
+                self._sync.refresh(obj, **kwargs)
+            def add(self, obj):
+                self._sync.add(obj)
+            def delete(self, obj):
+                self._sync.delete(obj)
+            async def flush(self):
+                self._sync.flush()
+            async def close(self):
+                self._sync.close()
+            def begin(self, **kwargs):
+                return self._sync.begin(**kwargs)
+            def get(self, *args, **kwargs):
+                return self._sync.get(*args, **kwargs)
+            @property
+            def bind(self):
+                return self._sync.bind
+
+        async_db = _AsyncSessionWrapper(db)
+
+        async def override_get_db():
+            try:
+                yield async_db
+            finally:
+                pass
+    else:
+        def override_get_db():
+            try:
+                yield db
+            finally:
+                pass
 
     app.dependency_overrides[get_db] = override_get_db
 

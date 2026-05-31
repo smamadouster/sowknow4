@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.utils.security import ALGORITHM, SECRET_KEY
+from app.utils.security import ALGORITHM, SECRET_KEY, _get_secret_key
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def extract_rls_context(request: Request) -> RLSContext:
 
     if token:
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, _get_secret_key(), algorithms=[ALGORITHM])
             user_id = str(payload.get("user_id") or "")
             user_role = payload.get("role", "")
         except JWTError:

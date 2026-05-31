@@ -61,8 +61,8 @@ class TestCacheKeyGeneration:
 
         assert key1 != key2
 
-    def test_generate_cache_key_order_independent(self):
-        """Cache key should be same regardless of message order."""
+    def test_generate_cache_key_order_preserved(self):
+        """Cache key should differ when message order changes (order is semantically significant)."""
         service = OpenRouterService()
 
         messages_a = [
@@ -77,7 +77,7 @@ class TestCacheKeyGeneration:
         key1 = service._generate_cache_key("test-model", messages_a)
         key2 = service._generate_cache_key("test-model", messages_b)
 
-        assert key1 == key2, "Cache key should be order-independent"
+        assert key1 != key2, "Cache key should preserve message order"
 
     def test_generate_cache_key_sha256_format(self):
         """Cache key should use SHA256 hash format (64 hex chars)."""

@@ -1557,3 +1557,19 @@
 | 12:27 | fix ghostshell telegram_liveness probe | ghostshell/backend/app/infrastructure/probes.py | probe now PASS, no more false alerts | ~2k |
 | 12:27 | cache-bust PWA SW to evict stale client caches | frontend public/sw.js | md5 changed, clients get new SW on next fetch | ~1k |
 | 12:27 | Session end: 2 writes across 2 files (mkuser.py, probes.py) | 6 reads | ~1161 tok |
+| 02:47 | Edited frontend/app/[locale]/search/page.tsx | 7→9 lines | ~112 |
+| 02:47 | Edited frontend/app/[locale]/search/page.tsx | 3→4 lines | ~40 |
+| 02:47 | Edited frontend/app/[locale]/search/page.tsx | 5→6 lines | ~62 |
+| 02:48 | Edited frontend/app/[locale]/search/page.tsx | 15→16 lines | ~152 |
+| 02:48 | Edited frontend/app/[locale]/search/page.tsx | modified if() | ~73 |
+| 02:48 | Edited frontend/app/[locale]/search/page.tsx | modified if() | ~219 |
+| 02:48 | Edited backend/app/services/input_guard.py | 5 → 2 | ~7 |
+| 02:48 | Edited backend/app/services/search_agent.py | 8→12 lines | ~168 |
+| 02:48 | Edited backend/app/api/search_agent_router.py | modified event_generator() | ~97 |
+| 02:49 | Edited backend/app/api/search_agent_router.py | 7→7 lines | ~103 |
+| 02:49 | Edited backend/app/api/search_agent_router.py | 2→2 lines | ~35 |
+| 02:49 | Edited backend/app/services/search_agent.py | 14→14 lines | ~176 |
+| 02:50 | Deep audit of search module — 8 bugs found, 7 repaired | frontend/search/page.tsx, backend search_agent.py, search_agent_router.py, input_guard.py | Bug 4: stale closure fixed with useRef. Bug 5: dedup TTL 5→2s. Bug 3: filler words trimmed EN+FR. Bug 6: useEffect ref guard. Bug 8: SSE continue removed. Bug 7: synthesis timeout aligned 30s. Bug 2: session doc added. | ~3000 |
+| 03:35 | Session end: 12 writes across 4 files (page.tsx, input_guard.py, search_agent.py, search_agent_router.py) | 0 reads | ~1244 tok |
+| 05:00 | Session end: 12 writes across 4 files (page.tsx, input_guard.py, search_agent.py, search_agent_router.py) | 0 reads | ~1244 tok |
+| 06:07 | Edited backend/app/services/search_service.py | modified _safe_call() | ~183 |

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-27T17:16:57.542221+00:00",
+  "generated_at": "2026-05-17T23:19:26.488014+00:00",
   "targets": {
     "intent_parsing_s": 3,
     "document_gathering_s": 5,
@@ -7,19 +7,6 @@
     "e2e_collection_creation_s": 30
   },
   "results": [
-    {
-      "name": "intent_parsing",
-      "elapsed_s": 0.0,
-      "target_s": 3.0,
-      "passed": true,
-      "keywords_extracted": [
-        "solar",
-        "energy",
-        "projects",
-        "2024"
-      ],
-      "confidence": 0.9
-    },
     {
       "name": "ai_summary_generation",
       "elapsed_s": 0.0,

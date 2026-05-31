@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import TagSelector from '@/components/TagSelector';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -227,7 +227,7 @@ export default function NotesPage() {
         const card = (
           <div
             className="p-4 bg-vault-900/60 rounded-lg border border-white/[0.06] cursor-pointer hover:border-white/[0.12] hover:bg-vault-900/80 transition-all"
-            onClick={() => router.push(`/${locale}/notes/${note.id}`)}
+            onClick={() => router.push(`/notes/${note.id}`)}
           >
             <div className="flex items-start justify-between">
               <h3 className="font-medium text-text-primary truncate flex-1">{note.title}</h3>

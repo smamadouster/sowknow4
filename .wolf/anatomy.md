@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-14T18:42:51.382Z
-> Files: 927 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-18T06:07:24.729Z
+> Files: 932 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../../tmp/
 
@@ -1090,6 +1090,7 @@
 - `admin.py` — API: 7 endpoints (~10421 tok)
 - `auth.py` — API: 2 endpoints (~9599 tok)
 - `documents.py` — API: 1 endpoints (~13769 tok)
+- `search_agent_router.py` — SOWKNOW Agentic Search — FastAPI Router (~4824 tok)
 - `voice.py` — API: 2 endpoints (~1926 tok)
 
 ## backend/app/models/
@@ -1102,6 +1103,9 @@
 
 ## backend/app/services/
 
+- `input_guard.py` — import: process (~2757 tok)
+- `search_agent.py` — build_search_queries, rerank_and_build_results, build_citations (~9168 tok)
+- `search_service.py` — SearchResult: semantic_search, keyword_search (~17148 tok)
 - `whisper_service.py` — WhisperService: transcribe (~738 tok)
 
 ## backend/app/services/agents/
@@ -1174,6 +1178,10 @@
 ## frontend/app/[locale]/notes/
 
 - `page.tsx` — dynamic — renders form (~5457 tok)
+
+## frontend/app/[locale]/search/
+
+- `page.tsx` — RELEVANCE_TIERS (~13175 tok)
 
 ## frontend/hooks/
 

@@ -62,7 +62,8 @@ def transcribe_voice_note(self, audio_file_path: str, document_id: str) -> dict:
             os.unlink(tmp_decrypted)
             logger.debug(f"Cleaned up tmp decrypted file: {tmp_decrypted}")
 
-    # Update document with transcript using the shared sync SessionLocal
+    # Update document with transcript using the shared sync SessionLocal.
+    # Audio uploads are handled outside the normal OCR/indexing pipeline.
     from sqlalchemy import text
 
     from app.database import SessionLocal
@@ -72,7 +73,13 @@ def transcribe_voice_note(self, audio_file_path: str, document_id: str) -> dict:
             text("""
                 UPDATE sowknow.documents
                 SET metadata = jsonb_set(COALESCE(metadata, '{}'), '{extracted_text}', to_jsonb(CAST(:transcript AS text))),
-                    detected_language = :lang
+                    detected_language = :lang,
+                    status = 'indexed',
+                    pipeline_stage = 'transcribed',
+                    pipeline_error = NULL,
+                    ocr_processed = TRUE,
+                    embedding_generated = FALSE,
+                    chunk_count = 0
                 WHERE id = CAST(:doc_id AS uuid)
             """),
             {"transcript": result["transcript"], "lang": "auto", "doc_id": document_id},

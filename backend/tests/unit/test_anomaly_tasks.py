@@ -41,7 +41,8 @@ def _run_pending_recovery(db: Session, threshold: int = 5) -> dict:
     mock_pd.delay = Mock(return_value=mock_task)
 
     with patch("app.database.SessionLocal", return_value=db), \
-         patch("app.tasks.document_tasks.process_document", mock_pd):
+         patch("app.tasks.document_tasks.process_document", mock_pd), \
+         patch("app.tasks.pipeline_orchestrator.dispatch_document", return_value="dispatched"):
         original_close = db.close
         db.close = Mock()
         try:
@@ -103,27 +104,40 @@ def _run_stuck_recovery(db: Session, max_minutes: int = 5) -> dict:
     """Run recover_stuck_documents with the test db session.
 
     SQLite returns timezone-naive datetimes, but the production code uses
-    ``datetime.now(timezone.utc)`` which is timezone-aware.  We patch the
-    ``datetime`` class inside anomaly_tasks so that ``.now()`` always returns
-    a naive UTC datetime, avoiding the "can't subtract offset-naive and
-    offset-aware datetimes" error that only appears in the SQLite test env.
+    ``datetime.now(timezone.utc)`` which is timezone-aware.  When running on
+    SQLite we patch the ``datetime`` class inside anomaly_tasks so that
+    ``.now()`` always returns a naive UTC datetime, avoiding the
+    "can't subtract offset-naive and offset-aware datetimes" error.
+    PostgreSQL stores timezone-aware datetimes natively, so the patch is
+    not needed and would actually break comparisons.
     """
     mock_pd = Mock()
     mock_pd.delay = Mock(return_value=None)
 
-    # Build a thin datetime wrapper that forces .now() to return naive UTC
     import app.tasks.anomaly_tasks as _mod
 
-    _real_datetime = datetime
+    _bind = getattr(db.bind, "engine", db.bind)
+    _is_sqlite = "sqlite" in str(getattr(_bind, "url", ""))
 
-    class _NaiveDatetime(_real_datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return _real_datetime.utcnow()
+    cm_stack = [
+        patch("app.database.SessionLocal", return_value=db),
+        patch("app.tasks.document_tasks.process_document", mock_pd),
+    ]
 
-    with patch("app.database.SessionLocal", return_value=db), \
-         patch("app.tasks.document_tasks.process_document", mock_pd), \
-         patch.object(_mod, "datetime", _NaiveDatetime):
+    if _is_sqlite:
+        _real_datetime = datetime
+
+        class _NaiveDatetime(_real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return _real_datetime.utcnow()
+
+        cm_stack.append(patch.object(_mod, "datetime", _NaiveDatetime))
+
+    from contextlib import ExitStack
+    with ExitStack() as stack:
+        for cm in cm_stack:
+            stack.enter_context(cm)
         original_close = db.close
         db.close = Mock()
         try:

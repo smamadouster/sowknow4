@@ -418,10 +418,10 @@ class TestChatServiceIntegration:
         assert hasattr(ks_module, "kimi_service")
         assert hasattr(ks_module, "KimiService")
 
-    def test_chat_service_kimi_attribute(self):
-        """ChatService should expose .kimi_service (may be None if no key)."""
+    def test_chat_service_llm_attribute(self):
+        """ChatService should expose .llm (unified LLM gateway)."""
         from app.services.chat_service import chat_service
-        assert hasattr(chat_service, "kimi_service")
+        assert hasattr(chat_service, "llm")
 
     def test_llm_provider_kimi_enum(self):
         """LLMProvider.KIMI must resolve to 'kimi'."""

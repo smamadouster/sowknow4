@@ -23,6 +23,7 @@ class TextExtractor:
             ".ppt": self._extract_from_ppt,
             ".xlsx": self._extract_from_xlsx,
             ".xls": self._extract_from_xls,
+            ".xlsm": self._extract_from_xlsx,
             ".xlt": self._extract_from_xls,
             ".xltx": self._extract_from_xlsx,
             ".txt": self._extract_from_txt,

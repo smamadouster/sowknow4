@@ -275,22 +275,23 @@ def _make_parsed_intent(query: str = "test query") -> ParsedIntent:
 
 @pytest.mark.sqlite_safe
 class TestLLMRoutingAccuracy:
-    """Verify privacy-preserving LLM routing: confidential -> Ollama, public -> OpenRouter."""
+    """Verify privacy-preserving LLM routing via unified gateway."""
 
     @pytest.mark.asyncio
-    async def test_confidential_docs_use_ollama_for_summary(self):
-        """Confidential documents must route to Ollama (local), never to cloud APIs."""
+    async def test_confidential_docs_pass_has_confidential_true(self):
+        """Confidential documents must pass has_confidential=True to the LLM gateway."""
         docs = [
             _make_mock_doc(DocumentBucket.CONFIDENTIAL, "secret_contract.pdf"),
             _make_mock_doc(DocumentBucket.CONFIDENTIAL, "tax_return_2024.pdf"),
         ]
         intent = _make_parsed_intent("Find confidential contracts")
+        captured = []
 
-        with patch.object(
-            collection_service.ollama_service, "generate", new_callable=AsyncMock
-        ) as mock_ollama:
-            mock_ollama.return_value = "Summary of confidential documents."
+        async def fake_chat_completion(*args, **kwargs):
+            captured.append(kwargs.get("has_confidential"))
+            yield "Summary of confidential documents."
 
+        with patch.object(collection_service.llm, "chat_completion", fake_chat_completion):
             result = await collection_service._generate_collection_summary(
                 collection_name="Confidential Contracts",
                 query="Find confidential contracts",
@@ -298,33 +299,24 @@ class TestLLMRoutingAccuracy:
                 parsed_intent=intent,
             )
 
-            mock_ollama.assert_called_once()
-            assert "confidential" in result.lower() or len(result) > 0
-            # Verify Ollama was called with expected keyword args
-            call_kwargs = mock_ollama.call_args
-            assert "prompt" in call_kwargs.kwargs or len(call_kwargs.args) > 0
+            assert captured == [True]
+            assert len(result) > 0
 
     @pytest.mark.asyncio
-    async def test_public_docs_use_openrouter_for_summary(self):
-        """Public-only documents must route to OpenRouter, not Ollama."""
+    async def test_public_docs_pass_has_confidential_false(self):
+        """Public-only documents must pass has_confidential=False to the LLM gateway."""
         docs = [
             _make_mock_doc(DocumentBucket.PUBLIC, "meeting_notes.pdf"),
             _make_mock_doc(DocumentBucket.PUBLIC, "recipe_collection.pdf"),
         ]
         intent = _make_parsed_intent("Find meeting notes")
+        captured = []
 
-        mock_openrouter = MagicMock()
-
-        # chat_completion is an async generator
-        async def fake_chat_completion(**kwargs):
+        async def fake_chat_completion(*args, **kwargs):
+            captured.append(kwargs.get("has_confidential"))
             yield "Summary of public documents."
 
-        mock_openrouter.chat_completion = fake_chat_completion
-
-        with patch(
-            "app.services.openrouter_service.openrouter_service", mock_openrouter
-        ):
-
+        with patch.object(collection_service.llm, "chat_completion", fake_chat_completion):
             result = await collection_service._generate_collection_summary(
                 collection_name="Meeting Notes",
                 query="Find meeting notes",
@@ -332,23 +324,24 @@ class TestLLMRoutingAccuracy:
                 parsed_intent=intent,
             )
 
+            assert captured == [False]
             assert len(result) > 0
-            assert "public" in result.lower() or "Summary" in result
 
     @pytest.mark.asyncio
-    async def test_mixed_docs_route_to_ollama(self):
-        """If ANY document is confidential, the entire summary must use Ollama."""
+    async def test_mixed_docs_pass_has_confidential_true(self):
+        """If ANY document is confidential, has_confidential=True must be passed."""
         docs = [
             _make_mock_doc(DocumentBucket.PUBLIC, "public_report.pdf"),
             _make_mock_doc(DocumentBucket.CONFIDENTIAL, "private_letter.pdf"),
         ]
         intent = _make_parsed_intent("Find all reports")
+        captured = []
 
-        with patch.object(
-            collection_service.ollama_service, "generate", new_callable=AsyncMock
-        ) as mock_ollama:
-            mock_ollama.return_value = "Mixed collection summary."
+        async def fake_chat_completion(*args, **kwargs):
+            captured.append(kwargs.get("has_confidential"))
+            yield "Mixed collection summary."
 
+        with patch.object(collection_service.llm, "chat_completion", fake_chat_completion):
             result = await collection_service._generate_collection_summary(
                 collection_name="All Reports",
                 query="Find all reports",
@@ -356,7 +349,7 @@ class TestLLMRoutingAccuracy:
                 parsed_intent=intent,
             )
 
-            mock_ollama.assert_called_once()
+            assert captured == [True]
             assert len(result) > 0
 
 

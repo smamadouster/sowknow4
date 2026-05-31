@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import { useTranslations, useLocale } from 'next-intl';
 import { api } from '@/lib/api';
 import TagSelector from '@/components/TagSelector';
@@ -102,7 +103,7 @@ export default function NoteDetailPage() {
     if (!confirm(t('delete_confirm'))) return;
     try {
       await api.deleteNote(note.id);
-      router.push(`/${locale}/notes`);
+      router.push('/notes');
     } catch (error) {
       console.error('Error deleting note:', error);
     }
@@ -131,7 +132,7 @@ export default function NoteDetailPage() {
         <div className="text-center">
           <p className="text-red-400 mb-4">{error || 'Note not found'}</p>
           <button
-            onClick={() => router.push(`/${locale}/notes`)}
+            onClick={() => router.push('/notes')}
             className="px-4 py-2 bg-amber-500 text-vault-1000 rounded-lg hover:bg-amber-400 transition-colors font-medium"
           >
             {tCommon('back')}
@@ -147,7 +148,7 @@ export default function NoteDetailPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <button
-            onClick={() => router.push(`/${locale}/notes`)}
+            onClick={() => router.push('/notes')}
             className="flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors self-start"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

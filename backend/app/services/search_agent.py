@@ -65,14 +65,18 @@ def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]
     return result
 
 
-# Conversational filler words that harm embedding quality
-_FILLER_WORDS = frozenset([
-    "tell", "me", "about", "what", "is", "are", "the", "how", "do", "i",
-    "can", "you", "explain", "describe", "give", "information", "details",
-    "please", "show", "find", "look", "search", "for", "some", "any",
-    "need", "want", "would", "like", "could", "should", "will", "did",
-    "was", "were", "has", "have", "had", "been", "being", "be", "get",
+# Conversational filler words that harm embedding quality.
+# Keep this list MINIMAL — only truly empty words. Stripping too aggressively
+# degrades semantic search for conversational queries (e.g. "How do I get started").
+_FILLER_WORDS_EN = frozenset([
+    "tell", "me", "please", "show", "explain", "describe", "give",
+    "information", "details", "find", "look", "search", "some", "any",
 ])
+_FILLER_WORDS_FR = frozenset([
+    "montre", "cherche", "trouve", "donne", "explique", "decris",
+    "recherche", "quelques", "certains",
+])
+_FILLER_WORDS = _FILLER_WORDS_EN | _FILLER_WORDS_FR
 
 
 def _sanitize_search_query(query: str) -> str:
@@ -798,10 +802,10 @@ async def run_agentic_search(
                     language=intent.detected_language,
                     context_block=_context_block,
                 ),
-                timeout=8.0,
+                timeout=30.0,
             )
         except asyncio.TimeoutError:
-            logger.warning("Synthesis timed out after 8s for query='%s'", request.query)
+            logger.warning("Synthesis timed out after 30s for query='%s'", request.query)
             answer_synthesis = None
             model_used = "timeout"
 

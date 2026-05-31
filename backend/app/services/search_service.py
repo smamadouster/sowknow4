@@ -895,6 +895,11 @@ class HybridSearchService:
                 return result
             except Exception as exc:
                 logger.warning("Search sub-query %s failed: %s", name, exc)
+                # Rollback so the session is reusable for subsequent sub-queries
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
                 return []
 
         semantic_results = await _safe_call(

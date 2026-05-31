@@ -96,13 +96,13 @@ class TestConfidentialRouting:
         assert decision.reason == RoutingReason.CONFIDENTIAL_DOCS
 
     @pytest.mark.asyncio
-    async def test_confidential_routing_raises_when_ollama_down(self):
-        """If Ollama is down for a confidential query, raise RuntimeError (never fall back to cloud)."""
+    async def test_confidential_routing_falls_back_to_openrouter_when_ollama_down(self):
+        """If Ollama is down for a confidential query, fall back to OpenRouter."""
         router = _make_router(ollama_healthy=False)
         chunks = [_make_chunk("confidential")]
 
-        with pytest.raises(RuntimeError, match="Ollama unavailable"):
-            await router.select_provider(query="test", context_chunks=chunks)
+        decision = await router.select_provider(query="test", context_chunks=chunks)
+        assert decision.provider_name == "openrouter"
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ class TestPublicRouting:
 
     @pytest.mark.asyncio
     async def test_all_public_chunks_uses_cloud_provider(self):
-        """All-public context → MiniMax (first in RAG chain)."""
+        """All-public context → OpenRouter (first in RAG chain)."""
         router = _make_router()
         chunks = [_make_chunk("public"), _make_chunk("public")]
         decision = await router.select_provider(query="test", context_chunks=chunks)
@@ -122,17 +122,17 @@ class TestPublicRouting:
         assert decision.provider_name != "ollama", (
             "Public documents should not route to Ollama when cloud providers are available"
         )
-        assert decision.provider_name == "minimax"
+        assert decision.provider_name == "openrouter"
         assert decision.reason == RoutingReason.PUBLIC_DOCS_RAG
 
     @pytest.mark.asyncio
     async def test_empty_chunk_list_uses_chat_chain(self):
-        """No context chunks → general chat chain (MiniMax first)."""
+        """No context chunks → general chat chain (OpenRouter first)."""
         router = _make_router()
         decision = await router.select_provider(query="Hello!", context_chunks=[])
 
         assert decision.provider_name != "ollama"
-        assert decision.provider_name == "minimax"
+        assert decision.provider_name == "openrouter"
         assert decision.reason == RoutingReason.GENERAL_CHAT
 
     @pytest.mark.asyncio

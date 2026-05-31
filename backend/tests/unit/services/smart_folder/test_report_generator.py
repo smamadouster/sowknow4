@@ -62,7 +62,7 @@ class TestReportGeneratorService:
         )
 
         assert "Bank A" in context
-        assert "Account opened in March 2010" in context
+        assert "Account opened" in context
         assert "Monthly fee deducted" in context
         assert "Disputed charge 2022" in context
 

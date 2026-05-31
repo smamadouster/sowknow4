@@ -23,6 +23,9 @@ if "postgresql" not in _provided_url and "postgres" not in _provided_url:
     os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ.setdefault("APP_ENV", "development")
 
+# Provide a test-only JWT secret so security module imports work during test collection
+os.environ.setdefault("JWT_SECRET", "test-secret-key-not-for-production")
+
 
 def pytest_configure(config):
     """Register custom markers."""
@@ -139,12 +142,12 @@ else:
 
 
 if _FULL_STACK_AVAILABLE and _USE_POSTGRES:
-    # PostgreSQL test DB: remove custom schema (models use 'sowknow' schema
-    # but test DB uses default 'public' schema)
-    @event.listens_for(Base.metadata, "before_create")
-    def _remove_schema_for_test_pg(metadata, connection, **kw):
-        for table in metadata.tables.values():
-            table.schema = None
+    # PostgreSQL test DB: models use 'sowknow' schema. Ensure it exists
+    # before create_all so tables are created in the right place.
+    from sqlalchemy import text
+    with test_engine.begin() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS sowknow"))
+        conn.execute(text("GRANT ALL ON SCHEMA sowknow TO PUBLIC"))
 
 if _FULL_STACK_AVAILABLE and not _USE_POSTGRES:
     # SQLite compatibility patches (not needed for PostgreSQL)
@@ -220,17 +223,74 @@ def db() -> Generator[Session, None, None]:
             Base.metadata.drop_all(bind=test_engine)
 
 
+class _AsyncSessionWrapper:
+    """Wrap a sync SQLAlchemy Session so `await db.execute()` works.
+
+    FastAPI endpoints expect AsyncSession (await db.execute, await db.commit).
+    Tests use a sync Session bound to a connection with explicit transaction
+    rollback for isolation.  This thin wrapper delegates async calls to the
+    underlying sync session so tests don't need to rewrite every fixture.
+
+    Mirrors SQLAlchemy AsyncSession API:
+      sync: add, delete, get, begin
+      async: execute, commit, refresh, flush, close
+    """
+
+    def __init__(self, sync_session: Session):
+        self._sync = sync_session
+
+    async def execute(self, *args, **kwargs):
+        return self._sync.execute(*args, **kwargs)
+
+    async def commit(self):
+        self._sync.commit()
+
+    async def refresh(self, obj, **kwargs):
+        self._sync.refresh(obj, **kwargs)
+
+    def add(self, obj):
+        self._sync.add(obj)
+
+    def delete(self, obj):
+        self._sync.delete(obj)
+
+    async def flush(self):
+        self._sync.flush()
+
+    async def close(self):
+        self._sync.close()
+
+    def begin(self, **kwargs):
+        return self._sync.begin(**kwargs)
+
+    def get(self, *args, **kwargs):
+        return self._sync.get(*args, **kwargs)
+
+    @property
+    def bind(self):
+        return self._sync.bind
+
+
 @pytest.fixture
 def client(db: Session) -> Generator:
     """Create a test client with database override"""
     if not _FULL_STACK_AVAILABLE:
         pytest.skip("Full-stack dependencies not available (requires Docker environment)")
 
-    def override_get_db():
-        try:
-            yield db
-        finally:
-            pass
+    if _USE_POSTGRES:
+        async_db = _AsyncSessionWrapper(db)
+
+        async def override_get_db():
+            try:
+                yield async_db
+            finally:
+                pass
+    else:
+        def override_get_db():
+            try:
+                yield db
+            finally:
+                pass
 
     app.dependency_overrides[get_db] = override_get_db
 

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # File upload constraints
 ALLOWED_EXTENSIONS = {
-    ".pdf", ".docx", ".doc", ".pptx", ".ppsx", ".ppt", ".xlsx", ".xls", ".xlt", ".xltx",
+    ".pdf", ".docx", ".doc", ".pptx", ".ppsx", ".ppt", ".xlsx", ".xls", ".xlsm", ".xlt", ".xltx",
     ".txt", ".md", ".json", ".csv", ".xml", ".html", ".htm", ".epub",
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif", ".heic",
     ".mp3", ".wav", ".ogg", ".webm", ".m4a", ".flac", ".aac", ".wma",
@@ -41,6 +41,7 @@ ALLOWED_EXTENSIONS = {
     ".rtf", ".zip", ".xmind", ".msg", ".oft",
 }
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
+AUDIO_EXTENSIONS = {".ogg", ".webm", ".wav", ".mp3", ".m4a", ".flac", ".aac"}
 
 
 def get_file_extension(filename: str) -> str:
@@ -60,6 +61,7 @@ def get_mime_type(filename: str, content: bytes = b"") -> str:
         ".ppt": "application/vnd.ms-powerpoint",
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ".xls": "application/vnd.ms-excel",
+        ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
         ".xlt": "application/vnd.ms-excel",
         ".xltx": "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
         ".txt": "text/plain",
@@ -113,6 +115,7 @@ def validate_magic_bytes(filename: str, content: bytes) -> bool:
         ".zip": (content[:4] == b"PK\x03\x04"),  # docx, epub, xlsx
         ".docx": (content[:4] == b"PK\x03\x04"),
         ".xlsx": (content[:4] == b"PK\x03\x04"),
+        ".xlsm": (content[:4] == b"PK\x03\x04"),
         ".xltx": (content[:4] == b"PK\x03\x04"),
         ".epub": (content[:4] == b"PK\x03\x04"),
         ".xls": (content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
@@ -201,6 +204,16 @@ class DocumentOrchestrator:
 
         # ── Voice transcription dispatch (async, non-blocking) ──
         await self._maybe_dispatch_voice_transcription(document, transcript)
+        if get_file_extension(document.original_filename or document.filename) in AUDIO_EXTENSIONS:
+            document.status = DocumentStatus.PROCESSING
+            document.pipeline_stage = "transcription"
+            await db.commit()
+            return DocumentUploadResponse(
+                document_id=document.id,
+                filename=document.filename,
+                status=document.status,
+                message="Audio uploaded successfully and queued for transcription",
+            )
 
         # ── Queue for pipeline processing ──
         return await self._queue_for_processing(document, db)
@@ -344,9 +357,8 @@ class DocumentOrchestrator:
     async def _maybe_dispatch_voice_transcription(
         self, document: Document, transcript: str | None
     ) -> None:
-        audio_extensions = {".ogg", ".webm", ".wav", ".mp3", ".m4a", ".flac", ".aac"}
         ext = get_file_extension(document.original_filename or document.filename)
-        if ext in audio_extensions and not transcript:
+        if ext in AUDIO_EXTENSIONS and not transcript:
             try:
                 from app.tasks.voice_tasks import transcribe_voice_note
 

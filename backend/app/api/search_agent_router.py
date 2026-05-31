@@ -184,6 +184,9 @@ async def search_stream(
         logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
 
     async def event_generator():
+        # NOTE: We create our own session here because StreamingResponse runs
+        # the generator AFTER FastAPI's dependency scope closes, so the
+        # Depends(get_db) session would already be invalid.
         from app.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             start = time.monotonic()
@@ -251,13 +254,13 @@ async def search_stream(
                             synthesize_answer(
                                 request.query, results, all_chunks, intent, has_confidential, intent.detected_language,
                             ),
-                            timeout=45.0,
+                            timeout=30.0,
                         )
                         yield _sse_event("synthesis", {
                             "answer": answer, "model": model_used, "language": intent.detected_language,
                         })
                     except asyncio.TimeoutError:
-                        logger.warning("Synthesis timed out after 45s")
+                        logger.warning("Synthesis timed out after 30s")
                         yield _sse_event("synthesis", {
                             "answer": "", "model": None, "language": intent.detected_language,
                         })

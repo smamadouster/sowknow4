@@ -68,7 +68,7 @@
 
 ---
 ### FILE: frontend/components/SearchModal.tsx
-[ext_deps]: react, next/navigation, next-intl, @/lib/api
+[ext_deps]: react, @/i18n/routing, next-intl, @/lib/api
 [fn]: default({ isOpen, onClose })
 
 ---
@@ -339,7 +339,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/notes/page.tsx
-[ext_deps]: react, next-intl, next/navigation, @/components/TagSelector, @/components/VoiceRecorder, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/components/mobile/SwipeableRow, @/components/mobile/PullToRefresh
+[ext_deps]: react, next-intl, @/i18n/routing, @/components/TagSelector, @/components/VoiceRecorder, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/components/mobile/SwipeableRow, @/components/mobile/PullToRefresh
 [fn]: default()
 [export]: dynamic
 
@@ -355,7 +355,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/search/page.tsx
-[ext_deps]: react, react, next-intl, next/link, next/navigation, @/lib/api, @/lib/store, @/components/VoiceRecorder, @/hooks/useIsMobile
+[ext_deps]: react, react, next-intl, @/i18n/routing, next/navigation, @/i18n/routing, @/lib/api, @/lib/store, @/components/VoiceRecorder, @/hooks/useIsMobile
 [fn]: default()
 
 ---
@@ -409,7 +409,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/notes/[id]/page.tsx
-[ext_deps]: react, next/navigation, next-intl, @/lib/api, @/components/TagSelector, @/components/VoiceRecorder
+[ext_deps]: react, next/navigation, @/i18n/routing, next-intl, @/lib/api, @/components/TagSelector, @/components/VoiceRecorder
 [fn]: default()
 
 ---

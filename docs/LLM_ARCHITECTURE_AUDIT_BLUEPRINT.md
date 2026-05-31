@@ -2,7 +2,7 @@
 
 > **Engagement**: Pre-launch readiness audit — SOWKNOW Multi-Generational Legacy Knowledge System  
 > **Domain**: https://sowknow.gollamtech.com  
-> **Market**: French/English-speaking knowledge curators and heirs (hosted in West Africa)  
+> **Market**: English/French-speaking knowledge curators and heirs (hosted in West Africa)  
 > **Date**: 2026-05-31  
 > **Classification**: Actionable — implementation-ready steps provided
 
@@ -37,17 +37,17 @@
 
 | Module | Reasoning Depth | Instruction-Following | French/English Bilingual | Token Budget | Latency Tolerance | Rating | Verdict |
 |--------|-----------------|----------------------|-------------------------|--------------|-------------------|--------|---------|
-| **AI Chat / RAG Assistant** | Medium (RAG grounding) | High (citation format) | **Critical** — family queries mix French colloquial and formal register | Medium (RAG chunks ~2–4K) | Low (<3s TTFT for streaming) | ⚠️ **B-** | Free-tier simple model causes intent-parsing failures and clarification loops. Qwen3.5 Plus is adequate for chat, but DeepSeek V4 Pro is overkill for most RAG answers. |
-| **Smart Collections & Reports** | Medium-High (synthesis across 100 docs) | **Very High** (structured JSON with citations) | **Critical** — reports must read naturally to family heirs | High (up to 7K chars × 25 docs ≈ 50K tokens) | Medium (<60s for comprehensive) | ⚠️ **B+** | DeepSeek V4 Pro has capacity but poor French nuance for family narrative. Report generator uses `[:7000]` char slices per document with no token-aware truncation — risk of overflow. |
-| **Smart Folders / Content Gen** | Medium (article from chunks) | Medium (anti-hallucination constraints) | **High** — must preserve French register of source docs | Medium (~3K input, ~1–2K output) | Medium (<20s) | ❌ **C** | **MiniMax is disabled**; fallback is free-tier Qwen. Free-tier reliability is unacceptable for content generation. No JSON validation on article extraction output. |
-| **Agentic Search & Knowledge Graph** | High (multi-hop entity reasoning, contradiction detection) | High (structured entity JSON, timeline extraction) | **High** — entity names must not be mangled (family names, place names) | Medium-High (~3K per doc × 10 docs for extraction, ~8K for synthesis) | High (<60s acceptable) | ⚠️ **B** | DeepSeek V4 Pro is adequate but expensive for entity extraction (a task that could use a cheaper model). Map-reduce synthesis makes 1+N LLM calls per document set with no batching optimization. |
+| **AI Chat / RAG Assistant** | Medium (RAG grounding) | High (citation format) | **Critical** — English-primary family queries with French colloquial and formal register | Medium (RAG chunks ~2–4K) | Low (<3s TTFT for streaming) | ⚠️ **B-** | Free-tier simple model causes intent-parsing failures and clarification loops. Qwen3.5 Plus is adequate for chat, but DeepSeek V4 Pro is overkill for most RAG answers. |
+| **Smart Collections & Reports** | Medium-High (synthesis across 100 docs) | **Very High** (structured JSON with citations) | **Critical** — reports must read naturally to English and French family heirs | High (up to 7K chars × 25 docs ≈ 50K tokens) | Medium (<60s for comprehensive) | ⚠️ **B+** | DeepSeek V4 Pro has capacity but can miss French nuance in mixed-language narratives. Report generator uses `[:7000]` char slices per document with no token-aware truncation — risk of overflow. |
+| **Smart Folders / Content Gen** | Medium (article from chunks) | Medium (anti-hallucination constraints) | **High** — must preserve English register and French register of source docs | Medium (~3K input, ~1–2K output) | Medium (<20s) | ❌ **C** | **MiniMax is disabled**; fallback is free-tier Qwen. Free-tier reliability is unacceptable for content generation. No JSON validation on article extraction output. |
+| **Agentic Search & Knowledge Graph** | High (multi-hop entity reasoning, contradiction detection) | High (structured entity JSON, timeline extraction) | **High** — English and French entity names must not be mangled (family names, place names) | Medium-High (~3K per doc × 10 docs for extraction, ~8K for synthesis) | High (<60s acceptable) | ⚠️ **B** | DeepSeek V4 Pro is adequate but expensive for entity extraction (a task that could use a cheaper model). Map-reduce synthesis makes 1+N LLM calls per document set with no batching optimization. |
 
 ### 1.3 Over/Under-Powered Diagnosis
 
 | Location | Issue | Cost Impact | Quality Impact |
 |----------|-------|-------------|----------------|
-| **DeepSeek V4 Pro** used for *all* complex-tier calls (reports, entity extraction, synthesis, verification) | Over-powered for 70% of complex tasks. At $1.74/$3.48 per 1M tokens, a 50K-input report costs ~$0.26. With 20 reports/day = $5.20/day. | **High waste** | Marginal gain vs. cheaper models for structured JSON output |
-| **Free Llama 3.3 70B** used for simple tier (intent parsing, query classification, auto-tagging, gather-intent summaries) | Under-powered + unreliable. OpenRouter free tier has cold-start latency of 5–15s and no SLA. | Zero direct cost, **high indirect cost** from retries and user churn | Intent misclassification sends users down wrong search paths |
+| **DeepSeek V4 Pro** used for *all* complex-tier calls (reports, entity extraction, synthesis, verification) | Over-powered for 70% of complex tasks. At $1.74/$3.48 per 1M tokens, a 50K-input report costs ~$0.26. With 20 reports/day = $5.20/day. | **High waste** | Marginal gain vs. cheaper models for structured JSON output; English-primary usage means lower token counts per char, slightly reducing waste. |
+| **Free Llama 3.3 70B** used for simple tier (intent parsing, query classification, auto-tagging, gather-intent summaries) | Under-powered + unreliable. OpenRouter free tier has cold-start latency of 5–15s and no SLA. | Zero direct cost, **high indirect cost** from retries and user churn | Intent misclassification sends English and French users down wrong search paths |
 | **Free Qwen 3 235B** used as Smart Folder fallback (`FALLBACK_MODEL`) | Under-powered for content generation. Free-tier rate limits cause generation failures. | Zero direct cost, **complete quality failure** | Articles fail to generate or return truncated nonsense |
 | **No model diversity by task** | Entity extraction (cheap structured task) and report synthesis (expensive creative task) both use `tier="complex"` → DeepSeek V4 Pro | **Wasted spend** | Entity extraction doesn't need 1M context or reasoning depth |
 
@@ -69,7 +69,7 @@
 - **User mix**: 1 Admin (curator), 2–5 Super Users (heirs), occasional General Users
 - **Peak hours**: Evening family time (19:00–22:00 GMT) and Sunday afternoons
 - **Device mix**: 60%+ mobile (iPhone Safari PWA), intermittent connectivity
-- **Language mix**: 70% French queries, 25% English, 5% mixed
+- **Language mix**: 70% English queries, 25% French, 5% mixed
 - **Query types**: "What was I learning about X in 2020?", "Show all documents about family vacation", "Explain solar energy insights across my notes"
 - **Expensive operations**: Comprehensive Reports (25 docs, 50K tokens), batch Smart Folder generation, full-vault entity extraction
 
@@ -171,7 +171,7 @@ wait=wait_random_exponential(multiplier=1, min=1, max=15)
 
 *Prices per 1M tokens, latency from Hostinger VPS (West Africa) to EU endpoints.*
 
-| Model | Provider | Input $/1M | Output $/1M | TTFT | French Family Context | Reliability | Best For |
+| Model | Provider | Input $/1M | Output $/1M | TTFT | English/French Family Context | Reliability | Best For |
 |-------|----------|-----------|-------------|------|----------------------|-------------|----------|
 | **deepseek/deepseek-v4-pro** | OpenRouter | $1.74 | $3.48 | 2–4s | ⭐⭐⭐ Good | ⭐⭐⭐ High | Complex reasoning, coding |
 | **qwen/qwen3.5-plus-20260420** | OpenRouter | $0.26 | $2.00 | 1–2s | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐ High | General chat, synthesis |
@@ -185,7 +185,7 @@ wait=wait_random_exponential(multiplier=1, min=1, max=15)
 
 ### 3.2 Recommended Tier Reconfiguration
 
-The PRD v1.2 specifies **Mistral Small 2603** as primary. The code has drifted to DeepSeek/Qwen. Re-align to a cost-effective, French-optimized stack:
+The PRD v1.2 specifies **Mistral Small 2603** as primary. The code has drifted to DeepSeek/Qwen. Re-align to a cost-effective, bilingual-optimized stack (English-primary, French-strong):
 
 ```bash
 # .env — updated model assignments
@@ -210,9 +210,9 @@ FALLBACK_MODEL = os.getenv("OPENROUTER_TIER_STANDARD", "mistralai/mistral-small-
 ```
 
 **Why Mistral Small for SOWKNOW?**
-- Mistral is a French company; models excel at French colloquial and formal register.
-- "Small" is fast (low TTFT) and cheap — ideal for a family vault where queries are conversational, not frontier-research.
-- Outperforms DeepSeek on French narrative coherence and entity name preservation (critical for family trees).
+- Excellent English performance with strong French support; ideal for a 70% English / 25% French family vault.
+- "Small" is fast (low TTFT) and cheap — ideal for conversational queries, not frontier-research.
+- Outperforms DeepSeek on French narrative coherence and entity name preservation (critical for the 25% French queries and mixed-language documents).
 
 **Why Claude 3.5 Sonnet for complex tier?**
 - Best-in-class instruction following for structured JSON output (reports with citations).
@@ -231,11 +231,11 @@ Currently, all tasks use `tier="complex"` or `tier="standard"` with no granulari
 | Task | Current Tier | Recommended Model | Why |
 |------|-------------|-------------------|-----|
 | Entity extraction | `complex` → DeepSeek V4 Pro | `google/gemini-2.0-flash-001` | Structured JSON from 3K tokens doesn't need 1M context or reasoning. Flash is 20× cheaper and faster. |
-| Chat RAG answers | `standard` → Qwen3.5 Plus | `mistralai/mistral-small-2409` | Better French family narrative, lower latency. |
+| Chat RAG answers | `standard` → Qwen3.5 Plus | `mistralai/mistral-small-2409` | Better English family narrative with strong French support, lower latency. |
 | Comprehensive Report | `complex` → DeepSeek V4 Pro | `anthropic/claude-3.5-sonnet` | Best JSON adherence for cited reports. |
-| Smart Folder article | `complex` → DeepSeek V4 Pro | `mistralai/mistral-small-2409` | Sufficient for 2–6 paragraph articles from chunks. |
+| Smart Folder article | `complex` → DeepSeek V4 Pro | `mistralai/mistral-small-2409` | Sufficient for 2–6 paragraph English or French articles from chunks. |
 | Query intent parsing | `simple` → free Llama | `google/gemini-2.0-flash-001` | Reliable, fast, no cold-start. |
-| Graph-RAG answer | `standard` → Qwen3.5 Plus | `mistralai/mistral-small-2409` | French entity name preservation is critical. |
+| Graph-RAG answer | `standard` → Qwen3.5 Plus | `mistralai/mistral-small-2409` | English and French entity name preservation is critical. |
 
 ### 3.4 Priority & Rollback Plan
 
@@ -433,7 +433,7 @@ Implement a **two-tier cache** for LLM responses:
 - Storage: Redis
 
 #### Tier 2: Semantic Similarity Cache (new)
-- **Purpose**: Intercept near-duplicate family queries (e.g., "documents sur mon grand-père" vs "montre-moi les papiers de grand-père")
+- **Purpose**: Intercept near-duplicate family queries (e.g., "documents about my grandfather" vs "show me grandfather's papers", or "documents sur mon grand-père" vs "montre-moi les papiers de grand-père")
 - **Key**: Embedding of the last user message (using the existing `multilingual-e5-large` embed server)
 - **Storage**: Redis + pgvector (or in-memory FAISS)
 - **Similarity threshold**: cosine ≥ 0.90 for family queries (high precision, but allow phrasing variations)
@@ -562,7 +562,7 @@ clarification, research = await asyncio.gather(
 lines.append(doc.get("full_text", "[No text available]")[:7000])
 ```
 
-With 25 direct-evidence documents, this is **175K characters ≈ 50K tokens** — still within 128K, but leaves no room for response. For French text (3.5 chars/token), this is dangerously close to the limit.
+With 25 direct-evidence documents, this is **175K characters ≈ 46K tokens** (English-primary, 3.8 chars/token) to **55K tokens** (French, 3.2 chars/token) — still within 128K, but leaves no room for response. For mixed English/French text, this is dangerously close to the limit.
 
 **Mitigation**: Implement **dynamic context budgeting**:
 
@@ -581,7 +581,7 @@ def allocate_context_budget(docs: list[dict], budget_tokens: int) -> list[dict]:
     allocated = []
     for doc in docs:
         share = (doc.get("relevance", 1.0) / total_score) * available
-        char_limit = int(share * 3.5)  # French chars per token
+        char_limit = int(share * 3.5)  # Mixed EN/FR chars per token; use 3.8 for English, 3.2 for French
         allocated.append({**doc, "text": doc["full_text"][:char_limit]})
     return allocated
 ```
@@ -730,8 +730,9 @@ app = FastAPI(lifespan=lifespan)
 ### 7.4 Prompt-Size Ceiling
 
 Current truncation uses a naive `len(text) // 4` heuristic. This fails for:
-- French text (3.2–3.8 chars/token)
-- Mixed French/English code-switching
+- English text (~3.8 chars/token) — primary language, most token-efficient
+- French text (~3.2 chars/token) — denser tokens, needs tighter truncation
+- Mixed English/French code-switching
 - Documents with many numbers or dates (low chars/token)
 
 **Fix**: Use a lightweight tokenizer or conservative multiplier:
@@ -740,7 +741,7 @@ Current truncation uses a naive `len(text) // 4` heuristic. This fails for:
 # backend/app/services/token_utils.py
 import tiktoken
 
-def estimate_tokens(text: str, language: str = "fr") -> int:
+def estimate_tokens(text: str, language: str = "en") -> int:
     """Conservative token estimation."""
     if not text:
         return 0
@@ -748,8 +749,8 @@ def estimate_tokens(text: str, language: str = "fr") -> int:
         enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(text))
     except Exception:
-        chars_per_token = {"fr": 3.2, "en": 3.8, "default": 3.5}
-        return int(len(text) / chars_per_token.get(language, 3.5))
+        chars_per_token = {"fr": 3.2, "en": 3.8, "default": 3.8}
+        return int(len(text) / chars_per_token.get(language, 3.8))
 ```
 
 Add a **hard prompt ceiling** enforced before any LLM call:
@@ -799,7 +800,7 @@ def enforce_prompt_ceiling(messages: list[dict], tier: str) -> list[dict]:
 |---------|--------|
 | **High latency to EU** | Prefer EU-based endpoints (Azure West Europe, Mistral EU) over US-West. Consider Cloudflare PoPs in Lagos/Joburg for edge caching. |
 | **Intermittent connectivity** | Reduce `max_attempts` from 4→3, cap backoff at 15s, add jitter. Mobile PWA users drop connections frequently. |
-| **Family narrative register** | Add system prompt instruction: *"Rédigez en français familial naturel. Préservez les noms propres (personnes, lieux) exactement comme ils apparaissent dans les documents."* |
+| **Family narrative register** | Add system prompt instruction: *"Write in natural, warm English suitable for family members. When source documents are in French, preserve the original French register and wording. Always preserve proper names (people, places) exactly as they appear in the documents."* |
 | **Privacy-first positioning** | Never log full prompts to external monitoring. The metadata-only stripping is SOWKNOW's core privacy guarantee — audit this path quarterly. |
 | **Cost sensitivity (family users)** | Offer "Eco mode" toggle: uses Gemini Flash + shorter context + no verification agent. Reduces cost 80% with modest quality loss. Ideal for heirs doing casual exploration. |
 | **Mobile data (PWA)** | Cap SSE stream chunks at 256 bytes; compress JSON payloads; avoid large base64 inlining. iPhone Safari has aggressive background tab killing. |

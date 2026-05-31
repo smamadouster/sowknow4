@@ -71,6 +71,10 @@ class UserQuotaManager:
         """
         Check if the user has enough quota remaining and atomically consume it.
 
+        Admin has total priority — quota limits are enforced for superuser and
+        general user roles only. Admin usage is still tracked in Redis for
+        observability.
+
         Args:
             user_id: Unique user identifier.
             role: User role (admin, superuser, user).
@@ -82,6 +86,21 @@ class UserQuotaManager:
         Raises:
             QuotaExceededError: If the user has exceeded their daily budget.
         """
+        # ── Admin total priority: bypass quota limits ──
+        if role == "admin":
+            redis = self._get_redis()
+            if redis is not None:
+                key = self._key(user_id)
+                pipe = redis.pipeline()
+                pipe.incrby(key, estimated_tokens)
+                pipe.expire(key, 86_400)  # 24 hours
+                pipe.execute()
+                logger.info(
+                    "Admin quota tracked (unlimited) user=%s estimated=%d",
+                    user_id, estimated_tokens,
+                )
+            return {"allowed": True, "used": 0, "limit": -1, "remaining": -1}
+
         quota = self.get_quota(role)
         limit = quota["tokens_per_day"]
         max_input = quota["max_input_tokens"]

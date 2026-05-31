@@ -401,6 +401,21 @@ class PerUserCostBudget:
         role: str,
         estimated_cost: float,
     ) -> dict[str, Any]:
+        # ── Admin total priority: bypass cost budget limits ──
+        if role == "admin":
+            redis_client = self._get_redis()
+            if redis_client is not None:
+                key = self._key(user_id)
+                pipe = redis_client.pipeline()
+                pipe.incrbyfloat(key, estimated_cost)
+                pipe.expire(key, 86_400)
+                pipe.execute()
+                logger.info(
+                    "Admin cost budget tracked (unlimited) user=%s estimated=$%.4f",
+                    user_id, estimated_cost,
+                )
+            return {"allowed": True, "spent": 0.0, "limit": -1.0, "remaining": -1.0}
+
         budget = self.get_budget(role)
         if budget <= 0:
             return {"allowed": True, "spent": 0.0, "limit": budget, "remaining": budget}

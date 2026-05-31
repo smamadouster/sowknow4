@@ -106,6 +106,9 @@ class LLMGateway:
 
         # ── Module-level concurrency cap (blueprint §2.3) ──
         sem = _MODULE_SEMAPHORES.get(module) if module else None
+        # Admin has total priority — bypass concurrency caps
+        if resolved_user_role == "admin":
+            sem = None
 
         # ── Per-user quota + cost budget checks (blueprint §2.3) ──
         if resolved_user_id and resolved_user_role:

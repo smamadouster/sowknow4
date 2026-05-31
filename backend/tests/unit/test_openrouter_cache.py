@@ -340,7 +340,12 @@ class TestStreamingBypassCache:
                 async for _ in service.chat_completion(messages, stream=True):
                     pass
 
-                mock_redis.get.assert_not_called()
+                # Streaming must not check the exact-match cache (throttle counters are OK)
+                cache_get_calls = [
+                    c for c in mock_redis.get.call_args_list
+                    if c[0][0].startswith("sowknow:openrouter:cache:")
+                ]
+                assert cache_get_calls == []
 
     @pytest.mark.asyncio
     async def test_streaming_does_not_set_cache(self):
@@ -610,8 +615,12 @@ class TestConfidentialBypass:
                     if not chunk.startswith("__USAGE__"):
                         result_chunks.append(chunk)
 
-                # Cache must never be read for confidential queries
-                mock_redis.get.assert_not_called()
+                # Cache must never be read for confidential queries (throttle counters are OK)
+                cache_get_calls = [
+                    c for c in mock_redis.get.call_args_list
+                    if c[0][0].startswith("sowknow:openrouter:cache:")
+                ]
+                assert cache_get_calls == []
                 # Must still return the live API response
                 assert "".join(result_chunks) == "Live response"
 

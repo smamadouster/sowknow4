@@ -26,7 +26,8 @@ from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
-    wait_exponential,
+    wait_random_exponential,
+    RetryCallState,
 )
 
 logger = logging.getLogger(__name__)
@@ -281,13 +282,25 @@ class OpenRouterService:
             logger.warning(f"Cost ceiling check failed, allowing call: {e}")
             return True
 
+    def _before_sleep_on_retry(self, retry_state: RetryCallState) -> None:
+        """Callback invoked before each tenacity retry.
+
+        Records 429s for adaptive backoff and warns on free-tier fallbacks.
+        """
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
+            from app.services.openrouter_throttle import openrouter_throttle
+
+            openrouter_throttle.record_429(self.model)
+
     @retry(
-        stop=stop_after_attempt(4),
-        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(3),
+        wait=wait_random_exponential(multiplier=1, min=1, max=15),
         retry=retry_if_exception_type(
             (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)
         ),
         reraise=True,
+        before_sleep=_before_sleep_on_retry,
     )
     async def chat_completion(
         self,
@@ -428,6 +441,19 @@ class OpenRouterService:
             return
 
         model = self.select_model_for_tier(tier)
+
+        # --- Provider-aware dynamic throttling (blueprint §2.3 Tier C) ---
+        from app.services.openrouter_throttle import openrouter_throttle
+
+        if not openrouter_throttle.check_allowed(model):
+            logger.warning(
+                "OpenRouter call BLOCKED by throttle (tier=%s, model=%s)",
+                tier,
+                model,
+            )
+            yield "Error: Rate limit reached. Please try again in a moment."
+            return
+
         payload = {
             "model": model,
             "messages": truncated_messages,
@@ -475,6 +501,8 @@ class OpenRouterService:
                                             yield content
                                 except json.JSONDecodeError:
                                     continue
+                    # Record successful streaming request for throttle accounting
+                    openrouter_throttle.record_request(model)
             else:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
@@ -545,6 +573,9 @@ class OpenRouterService:
                                 logger.warning(
                                     f"Failed to cache response: {cache_error}"
                                 )
+
+                    # Record successful non-streaming request for throttle accounting
+                    openrouter_throttle.record_request(model)
 
                     # Record actual cost for budget tracking
                     try:

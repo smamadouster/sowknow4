@@ -28,6 +28,7 @@ def _make_router(
     has_minimax: bool = True,
     has_kimi: bool = True,
     has_openrouter: bool = True,
+    has_together: bool = False,
     has_pii_service: bool = False,
 ) -> LLMRouter:
     """Build an LLMRouter with injectable mock services."""
@@ -35,6 +36,7 @@ def _make_router(
     minimax_svc = MagicMock(api_key="mk-test") if has_minimax else None
     kimi_svc = MagicMock(api_key="kimi-test") if has_kimi else None
     openrouter_svc = MagicMock() if has_openrouter else None
+    together_svc = MagicMock(api_key="together-test") if has_together else None
 
     ollama_svc = AsyncMock()
     ollama_svc.health_check = AsyncMock(
@@ -51,6 +53,7 @@ def _make_router(
         kimi_service=kimi_svc,
         openrouter_service=openrouter_svc,
         ollama_service=ollama_svc,
+        together_service=together_svc,
         pii_detection_service=pii_svc,
     )
 
@@ -218,3 +221,184 @@ class TestDetectContextSensitivity:
         chunks = [_make_chunk("public")] * 5 + [_make_chunk("confidential")]
         is_sensitive, reason = router.detect_context_sensitivity("test", chunks)
         assert is_sensitive is True
+
+
+# ---------------------------------------------------------------------------
+# Smart Collections & Reports routing (§5.2 quality-critical fallback)
+# ---------------------------------------------------------------------------
+
+class TestSmartCollectionsRouting:
+    """Report / smart-collection tasks get Together.ai in their fallback chain."""
+
+    @pytest.mark.asyncio
+    async def test_report_task_routes_to_openrouter_with_together_in_chain(self):
+        router = _make_router(has_together=True)
+        decision = await router.select_provider(
+            query="Generate report", context_chunks=[], task_type="report"
+        )
+        assert decision.provider_name == "openrouter"
+        assert "together" in decision.metadata.get("chain", [])
+        assert decision.metadata.get("task_type") == "report"
+
+    @pytest.mark.asyncio
+    async def test_smart_collection_task_routes_to_openrouter_with_together_in_chain(self):
+        router = _make_router(has_together=True)
+        decision = await router.select_provider(
+            query="Smart folder", context_chunks=[], task_type="smart_collection"
+        )
+        assert decision.provider_name == "openrouter"
+        assert "together" in decision.metadata.get("chain", [])
+        assert decision.metadata.get("task_type") == "smart_collection"
+
+    @pytest.mark.asyncio
+    async def test_report_task_falls_back_together_when_openrouter_missing(self):
+        router = _make_router(has_openrouter=False, has_together=True)
+        decision = await router.select_provider(
+            query="Generate report", context_chunks=[], task_type="report"
+        )
+        assert decision.provider_name == "together"
+
+    @pytest.mark.asyncio
+    async def test_chat_task_does_not_include_together_in_chain(self):
+        router = _make_router(has_together=True)
+        decision = await router.select_provider(
+            query="Hello", context_chunks=[], task_type="chat"
+        )
+        assert decision.provider_name == "openrouter"
+        assert "together" not in decision.metadata.get("chain", [])
+
+
+class TestGenerateReportCompletion:
+    """§5.2 Report generation fallback chain: complex → standard → together → bullets."""
+
+    @pytest.mark.asyncio
+    async def test_primary_openrouter_complex_succeeds(self):
+        router = _make_router(has_openrouter=True)
+
+        async def _mock_chat(*args, **kwargs):
+            yield "report text"
+
+        router._openrouter.chat_completion = _mock_chat
+
+        chunks = []
+        async for chunk in router.generate_report_completion(
+            messages=[{"role": "user", "content": "test"}]
+        ):
+            chunks.append(chunk)
+        assert "".join(chunks) == "report text"
+
+    @pytest.mark.asyncio
+    async def test_secondary_openrouter_standard_on_complex_failure(self):
+        router = _make_router(has_openrouter=True)
+        call_count = 0
+
+        async def _mock_chat(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            tier = kwargs.get("tier", "complex")
+            if tier == "complex":
+                raise RuntimeError("complex failed")
+            yield "standard report"
+
+        router._openrouter.chat_completion = _mock_chat
+
+        chunks = []
+        async for chunk in router.generate_report_completion(
+            messages=[{"role": "user", "content": "test"}]
+        ):
+            chunks.append(chunk)
+        assert "".join(chunks) == "standard report"
+        assert call_count == 2  # complex attempted, then standard
+
+    @pytest.mark.asyncio
+    async def test_tertiary_together_on_openrouter_failure(self):
+        router = _make_router(has_openrouter=True, has_together=True)
+
+        async def _mock_or(*args, **kwargs):
+            raise RuntimeError("openrouter failed")
+
+        async def _mock_together(*args, **kwargs):
+            yield "together report"
+
+        router._openrouter.chat_completion = _mock_or
+        router._together.chat_completion = _mock_together
+
+        chunks = []
+        async for chunk in router.generate_report_completion(
+            messages=[{"role": "user", "content": "test"}]
+        ):
+            chunks.append(chunk)
+        assert "".join(chunks) == "together report"
+
+    @pytest.mark.asyncio
+    async def test_ultimate_bullet_summary_when_all_providers_fail(self):
+        router = _make_router(has_openrouter=True, has_together=True)
+
+        async def _mock_fail(*args, **kwargs):
+            raise RuntimeError("always fails")
+
+        router._openrouter.chat_completion = _mock_fail
+        router._together.chat_completion = _mock_fail
+
+        context_chunks = [
+            {"document_name": "Doc A", "chunk_text": "First sentence. More text."},
+            {"document_name": "Doc B", "chunk_text": "Another sentence here."},
+        ]
+        chunks = []
+        async for chunk in router.generate_report_completion(
+            messages=[{"role": "user", "content": "test"}],
+            context_chunks=context_chunks,
+        ):
+            chunks.append(chunk)
+        result = "".join(chunks)
+        assert "Doc A" in result
+        assert "Doc B" in result
+        assert "First sentence" in result
+
+
+class TestBulletSummaryFallback:
+    """Graceful degradation to bullet-point summary without LLM synthesis."""
+
+    def test_generate_bullet_summary_with_context_chunks(self):
+        router = _make_router()
+        context = [
+            {"document_name": "Doc A", "chunk_text": "First sentence. More text."},
+            {"document_name": "Doc B", "chunk_text": "Another sentence here."},
+        ]
+        summary = router._generate_bullet_summary(context)
+        assert summary is not None
+        assert "Doc A" in summary
+        assert "Doc B" in summary
+        assert "First sentence" in summary
+
+    def test_generate_bullet_summary_deduplicates_similar_chunks(self):
+        router = _make_router()
+        context = [
+            {"document_name": "Doc A", "chunk_text": "Same text."},
+            {"document_name": "Doc A", "chunk_text": "Same text."},
+        ]
+        summary = router._generate_bullet_summary(context)
+        # Should only appear once due to deduplication
+        assert summary is not None
+        assert summary.count("Doc A") == 1
+
+    def test_generate_bullet_summary_empty_context_returns_none(self):
+        router = _make_router()
+        assert router._generate_bullet_summary([]) is None
+        assert router._generate_bullet_summary(None) is None
+
+
+# ---------------------------------------------------------------------------
+# Async helpers
+# ---------------------------------------------------------------------------
+
+async def async_gen(items):
+    """Helper: async generator yielding items."""
+    for item in items:
+        yield item
+
+
+async def async_gen_raise(exc):
+    """Helper: async generator that immediately raises."""
+    raise exc
+    yield ""  # pragma: no cover

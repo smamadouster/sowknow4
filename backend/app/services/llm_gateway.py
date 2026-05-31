@@ -380,6 +380,43 @@ class LLMGateway:
                 parts.append(chunk)
         return "".join(parts)
 
+    # ── Report generation (quality-critical multi-tier fallback) ──
+
+    async def generate_report_completion(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        query: str = "",
+        context_chunks: list[dict[str, Any]] | None = None,
+        stream: bool = False,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+        tier: str = "complex",
+    ) -> AsyncGenerator[str, None]:
+        """
+        §5.2 Smart Collections & Reports: quality-critical multi-tier fallback.
+
+        Delegates to LLMRouter.generate_report_completion which implements:
+            1. OpenRouter complex (Claude 3.5 Sonnet)
+            2. OpenRouter standard (Mistral Small)
+            3. Together.ai Llama 3.1 70B
+            4. Graceful degradation to bullet-point summary
+        """
+        from app.services.llm_router import TaskTier
+
+        tier_enum = TaskTier(tier)
+
+        async for chunk in self._router.generate_report_completion(
+            messages=messages,
+            query=query,
+            context_chunks=context_chunks,
+            stream=stream,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tier=tier_enum,
+        ):
+            yield chunk
+
     # ── Health ──
 
     async def health_check(self) -> dict[str, Any]:

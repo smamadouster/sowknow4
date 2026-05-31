@@ -113,8 +113,8 @@ class ReportService:
         # leaves the connection in an invalid state (SQLAlchemy error 8s2b).
         await db.commit()
 
-        # Generate report content
-        report_content = await self._generate_report_with_openrouter(
+        # Generate report content via quality-critical fallback chain
+        report_content = await self._generate_report_with_fallback(
             collection=collection,
             document_context=document_context,
             format=format,
@@ -122,7 +122,7 @@ class ReportService:
             language=language,
             context_block=_context_block,
         )
-        llm_used = "openrouter"
+        llm_used = "openrouter"  # Primary; fallback tier/provider tracked in logs
 
         # Generate report metadata
         report_metadata = {
@@ -182,7 +182,7 @@ class ReportService:
 
         return context
 
-    async def _generate_report_with_openrouter(
+    async def _generate_report_with_fallback(
         self,
         collection: Collection,
         document_context: list[dict[str, Any]],
@@ -191,7 +191,17 @@ class ReportService:
         language: str,
         context_block: str | None = None,
     ) -> str:
-        """Generate report using OpenRouter (deepseek-v4-pro)"""
+        """
+        §5.2 Generate report using quality-critical multi-tier fallback chain.
+
+        Chain:
+            1. OpenRouter complex (Claude 3.5 Sonnet)
+            2. OpenRouter standard (Mistral Small) — on failure
+            3. Together.ai Llama 3.1 70B — on OpenRouter failure
+            4. Graceful degradation — bullet-point summary
+
+        Trigger for tier downgrade: cost estimate > $0.30/report.
+        """
 
         # Build format guidelines
         format_guides = {
@@ -287,11 +297,46 @@ Generate the complete report now:"""
         if context_block and messages and messages[0]["role"] == "system":
             messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
 
+        # §5.2: Cost-guard pre-check — if estimated cost > $0.30, start with standard tier
+        tier = "complex"
+        try:
+            input_tokens = sum(len(m.get("content", "")) for m in messages) // 3
+            est_output = 8192
+            from app.services.monitoring import CostTracker
+
+            pricing = CostTracker.OPENROUTER_PRICING.get(
+                "anthropic/claude-3.5-sonnet",
+                {"input": 0.003, "output": 0.015},
+            )
+            est_cost = (input_tokens / 1000) * pricing["input"] + (est_output / 1000) * pricing["output"]
+            if est_cost > 0.30:
+                logger.warning(
+                    "Report cost estimate $%.2f > $0.30, downgrading tier complex → standard",
+                    est_cost,
+                )
+                tier = "standard"
+        except Exception as exc:
+            logger.debug("Report cost pre-check failed: %s", exc)
+
+        # Build context chunks for graceful degradation fallback
+        context_chunks = [
+            {
+                "document_name": doc.get("filename", "Document"),
+                "chunk_text": " ".join(c.get("text", "") for c in doc.get("chunks", [])),
+            }
+            for doc in document_context[:15]
+        ]
+
         response_parts = []
-        # Route through LLM gateway (auto-selects best provider for complex tasks)
-        async for chunk in self.llm.chat_completion(
-            # §3.3: complex tier (Claude Sonnet) — best JSON adherence for cited reports
-            messages=messages, stream=False, temperature=0.5, max_tokens=8192, tier="complex"
+        # §5.2: Route through quality-critical fallback chain
+        async for chunk in self.llm.generate_report_completion(
+            messages=messages,
+            query=collection.query or "",
+            context_chunks=context_chunks,
+            stream=False,
+            temperature=0.5,
+            max_tokens=8192,
+            tier=tier,
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)

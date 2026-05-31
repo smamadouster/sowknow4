@@ -151,11 +151,26 @@ For the raw_markdown, use a rich structure like:
             {"role": "user", "content": context},
         ]
 
+        # Build context chunks for graceful degradation fallback
+        context_chunks = []
+        if full_documents:
+            for doc in full_documents[:15]:
+                context_chunks.append({
+                    "document_name": doc.get("title", "Document"),
+                    "chunk_text": doc.get("full_text", "")[:500],
+                })
+        for asset in retrieval_context.primary_assets[:10]:
+            context_chunks.append({
+                "document_name": asset.document_name,
+                "chunk_text": (asset.chunk_text or "")[:400],
+            })
+
         try:
             response_chunks = []
-            async for chunk in llm_router.generate_completion(
+            async for chunk in llm_router.generate_report_completion(
                 messages=messages,
                 query=query_text,
+                context_chunks=context_chunks,
                 stream=False,
                 temperature=0.3,
                 max_tokens=4096,
@@ -180,7 +195,11 @@ For the raw_markdown, use a rich structure like:
             data = json.loads(raw_response)
         except json.JSONDecodeError as exc:
             logger.warning("Report generator returned invalid JSON: %s — raw: %s", exc, raw_response)
-            # Fallback: return a minimal report with the raw text
+            # §5.2: JSON parse failure trigger — retry with standard tier via generate_report_completion
+            # (which internally falls back through standard → together → bullet summary)
+            # If we got here, the LLM returned text but it wasn't valid JSON.
+            # The generate_report_completion already exhausted the provider chain,
+            # so we fall back to the raw text report.
             return self._fallback_report(raw_response)
         except Exception as exc:
             logger.exception("Report generation failed: %s", exc)

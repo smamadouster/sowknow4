@@ -48,6 +48,7 @@ class LLMProvider(StrEnum):
     KIMI = "kimi"
     OPENROUTER = "openrouter"
     OLLAMA = "ollama"
+    TOGETHER = "together"
 
 
 class TaskTier(StrEnum):
@@ -96,6 +97,13 @@ class LLMRouter:
         "confidential": ["openrouter"],
         "public_docs": ["openrouter"],
         "general_chat": ["openrouter"],
+        # §5.2 Smart Collections & Reports: quality-critical multi-tier fallback
+        # Primary: OpenRouter complex (Claude Sonnet)
+        # Secondary: OpenRouter standard (Mistral Small) — tier fallback
+        # Tertiary: Together.ai (Llama 3.1 70B)
+        # Ultimate: Graceful degradation to bullet-point summary
+        "smart_collections": ["openrouter", "together"],
+        "reports": ["openrouter", "together"],
     }
 
     def __init__(
@@ -105,12 +113,14 @@ class LLMRouter:
         kimi_service: Any = None,
         openrouter_service: Any = None,
         ollama_service: Any = None,
+        together_service: Any = None,
         pii_detection_service: Any = None,
     ) -> None:
         self._minimax = minimax_service
         self._kimi = kimi_service
         self._openrouter = openrouter_service
         self._ollama = ollama_service
+        self._together = together_service
         self._pii = pii_detection_service
 
     # ------------------------------------------------------------------
@@ -158,6 +168,8 @@ class LLMRouter:
         # Confidential data relies on metadata-only stripping (PRD §1.3).
         if self._openrouter is not None:
             providers_to_try.append(("openrouter", self._openrouter))
+        if self._together is not None and getattr(self._together, "api_key", None):
+            providers_to_try.append(("together", self._together))
         if self._minimax is not None and getattr(self._minimax, "api_key", None):
             providers_to_try.append(("minimax", self._minimax))
 
@@ -205,7 +217,12 @@ class LLMRouter:
                 continue
 
         logger.error("All LLM providers failed. Last error: %s", last_error)
-        yield "[LLM indisponible — la réponse synthétique n'a pas pu être générée. Veuillez consulter les documents listés ci-dessus.]"
+        # Graceful degradation: if we have context chunks, generate a bullet summary
+        bullet_summary = self._generate_bullet_summary(context_chunks)
+        if bullet_summary:
+            yield bullet_summary
+        else:
+            yield "[LLM indisponible — la réponse synthétique n'a pas pu être générée. Veuillez consulter les documents listés ci-dessus.]"
 
     def detect_context_sensitivity(
         self,
@@ -233,12 +250,130 @@ class LLMRouter:
 
         return False, "public_content"
 
+    def _generate_bullet_summary(
+        self, context_chunks: list[dict[str, Any]] | None
+    ) -> str | None:
+        """
+        §5.2 Ultimate fallback: generate a bullet-point summary from retrieved
+        documents without any LLM synthesis.
+
+        Used when all LLM providers fail for Smart Collections & Reports.
+        """
+        if not context_chunks:
+            return None
+
+        lines: list[str] = [
+            "**Résumé automatique des documents (synthèse non générée par IA)**\n",
+        ]
+        seen: set[str] = set()
+        for chunk in context_chunks[:15]:
+            doc_name = chunk.get("document_name") or chunk.get("filename") or chunk.get("title", "Document")
+            text = chunk.get("chunk_text") or chunk.get("text", "")
+            if not text:
+                continue
+            key = f"{doc_name}:{text[:80]}"
+            if key in seen:
+                continue
+            seen.add(key)
+            # Truncate to first sentence or 200 chars
+            snippet = text[:200].split(".")[0] + "." if "." in text[:200] else text[:200]
+            lines.append(f"- **{doc_name}** : {snippet}")
+
+        if len(lines) == 1:
+            return None
+        lines.append(
+            "\n_La synthèse détaillée n'a pas pu être générée. "
+            "Veuillez consulter les documents ci-dessus pour plus de détails._"
+        )
+        return "\n".join(lines)
+
+    async def generate_report_completion(
+        self,
+        messages: list[dict[str, Any]],
+        query: str = "",
+        context_chunks: list[dict[str, Any]] | None = None,
+        *,
+        stream: bool = False,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+        tier: TaskTier = TaskTier.COMPLEX,
+    ) -> AsyncGenerator[str, None]:
+        """
+        §5.2 Smart Collections & Reports: quality-critical multi-tier fallback.
+
+        Chain:
+            1. OpenRouter complex (Claude 3.5 Sonnet)
+            2. OpenRouter standard (Mistral Small) — on 429/timeout/JSON failure
+            3. Together.ai Llama 3.1 70B — on OpenRouter failure
+            4. Graceful degradation — bullet-point summary of retrieved documents
+
+        Yields:
+            Text chunks from the provider, or bullet summary if all fail.
+        """
+        built_messages = [{"role": str(m.get("role", "user")), "content": str(m.get("content", ""))} for m in messages]
+
+        # 1. Primary: OpenRouter complex
+        if self._openrouter is not None:
+            adapter = LLMServiceAdapter(self._openrouter, "openrouter")
+            try:
+                async for chunk in adapter.call_service(
+                    built_messages,
+                    stream=stream,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tier="complex",
+                ):
+                    yield chunk
+                return
+            except Exception as exc:
+                logger.warning("Report primary failed (OpenRouter complex): %s", exc)
+
+                # 2. Secondary: OpenRouter standard (tier fallback)
+                try:
+                    async for chunk in adapter.call_service(
+                        built_messages,
+                        stream=stream,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tier="standard",
+                    ):
+                        yield chunk
+                    logger.info("Report secondary succeeded: OpenRouter complex → standard")
+                    return
+                except Exception as exc2:
+                    logger.warning("Report secondary failed (OpenRouter standard): %s", exc2)
+
+        # 3. Tertiary: Together.ai Llama 3.1 70B
+        if self._together is not None and getattr(self._together, "api_key", None):
+            adapter = LLMServiceAdapter(self._together, "together")
+            try:
+                async for chunk in adapter.call_service(
+                    built_messages,
+                    stream=stream,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                ):
+                    yield chunk
+                logger.info("Report tertiary succeeded: Together.ai")
+                return
+            except Exception as exc:
+                logger.warning("Report tertiary failed (Together.ai): %s", exc)
+
+        # 4. Ultimate: Graceful degradation to bullet-point summary
+        logger.error("All report LLM providers failed. Emitting bullet summary.")
+        bullet_summary = self._generate_bullet_summary(context_chunks)
+        if bullet_summary:
+            yield bullet_summary
+        else:
+            yield "[LLM indisponible — le rapport n'a pas pu être généré. Veuillez consulter les documents listés ci-dessus.]"
+
     async def select_provider(
         self,
         query: str,
         context_chunks: list[dict[str, Any]] | None = None,
         *,
         has_confidential: bool | None = None,
+        task_type: str = "chat",
     ) -> RoutingDecision:
         """
         Choose the appropriate LLM provider.
@@ -246,6 +381,9 @@ class LLMRouter:
         ``has_confidential`` may be supplied directly (already computed by the
         caller) to skip the PII / bucket scan.  If omitted, sensitivity is
         detected from *query* and *context_chunks*.
+
+        ``task_type`` hints at the consumer: "chat", "report", "smart_collection".
+        For quality-critical tasks, the chain includes Together.ai as tertiary.
 
         Confidential queries prefer Ollama (local), falling back to OpenRouter
         with metadata-only stripping, then MiniMax.
@@ -283,6 +421,29 @@ class LLMRouter:
             reason = RoutingReason.PUBLIC_DOCS_RAG
         else:
             reason = RoutingReason.GENERAL_CHAT
+
+        # §5.2: Quality-critical tasks get Together.ai in their fallback chain
+        if task_type in ("report", "smart_collection"):
+            chain = ["openrouter"]
+            if self._together is not None and getattr(self._together, "api_key", None):
+                chain.append("together")
+            logger.info("LLM routing → openrouter (%s, quality-critical chain=%s)", reason.value, chain)
+            if self._openrouter is not None:
+                return RoutingDecision(
+                    provider_name="openrouter",
+                    reason=reason,
+                    service=self._openrouter,
+                    metadata={"chain": chain, "task_type": task_type, "tier": TaskTier.COMPLEX},
+                    tier=TaskTier.COMPLEX,
+                )
+            if self._together is not None and getattr(self._together, "api_key", None):
+                return RoutingDecision(
+                    provider_name="together",
+                    reason=reason,
+                    service=self._together,
+                    metadata={"chain": chain, "task_type": task_type},
+                )
+            raise RuntimeError("No LLM provider available for quality-critical task.")
 
         if self._openrouter is not None:
             logger.info("LLM routing → openrouter (%s)", reason.value)
@@ -328,12 +489,19 @@ class LLMRouter:
         """
         if preferred == LLMProvider.OPENROUTER and self._openrouter is not None:
             return self._openrouter, "openrouter"
+        if preferred == LLMProvider.TOGETHER and self._together is not None:
+            return self._together, "together"
         if preferred == LLMProvider.MINIMAX and self._minimax is not None:
             return self._minimax, "minimax"
         if preferred == LLMProvider.OLLAMA and self._ollama is not None:
             return self._ollama, "ollama"
         # Fallback to any available
-        for svc, name in [(self._openrouter, "openrouter"), (self._minimax, "minimax"), (self._ollama, "ollama")]:
+        for svc, name in [
+            (self._openrouter, "openrouter"),
+            (self._together, "together"),
+            (self._minimax, "minimax"),
+            (self._ollama, "ollama"),
+        ]:
             if svc is not None:
                 return svc, name
         raise RuntimeError("No LLM provider available for direct call.")
@@ -430,6 +598,13 @@ def _build_router() -> LLMRouter:
         logger.warning("LLMRouter: ollama_service not available: %s", exc, exc_info=True)
 
     try:
+        from app.services.together_service import together_service as _t
+
+        together_svc = _t
+    except Exception as exc:
+        logger.warning("LLMRouter: together_service not available: %s", exc, exc_info=True)
+
+    try:
         from app.services.pii_detection_service import pii_detection_service as _pii
 
         pii_svc = _pii
@@ -441,6 +616,7 @@ def _build_router() -> LLMRouter:
         kimi_service=kimi_svc,
         openrouter_service=openrouter_svc,
         ollama_service=ollama_svc,
+        together_service=together_svc,
         pii_detection_service=pii_svc,
     )
 

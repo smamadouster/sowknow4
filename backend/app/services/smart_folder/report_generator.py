@@ -17,6 +17,51 @@ from app.services.smart_folder.retrieval import RetrievedAsset, RetrievalContext
 
 logger = logging.getLogger(__name__)
 
+# ── Dynamic context budgeting (blueprint §7.1-B) ──
+# Claude 3.5 Sonnet context window ≈ 200K tokens; we budget 100K for the
+# report input so ~100K remains for system prompt + response.
+REPORT_CONTEXT_BUDGET_TOKENS = 100_000
+# Conservative chars-per-token for mixed English/French family documents.
+# French is denser (~3.2 chars/token) than English (~3.8). 3.5 is a safe
+# middle ground that prevents overflow on West-African hosted queries.
+CHARS_PER_TOKEN = 3.5
+
+
+def _estimate_tokens(text: str) -> int:
+    """Conservative token estimate for mixed EN/FR text."""
+    if not text:
+        return 0
+    return int(len(text) / CHARS_PER_TOKEN)
+
+
+def _allocate_doc_text(
+    docs: list[dict[str, Any]],
+    budget_tokens: int,
+    max_chars_per_doc: int | None = None,
+) -> dict[str, str]:
+    """Distribute a token budget evenly across documents.
+
+    Returns a mapping ``document_id → truncated full_text`` so that the
+    total token count of all allocated texts stays within *budget_tokens*.
+    An optional *max_chars_per_doc* caps any single document so that
+    small doc counts do not monopolise the entire budget.
+    """
+    if not docs:
+        return {}
+
+    share_tokens = budget_tokens // len(docs)
+    share_chars = int(share_tokens * CHARS_PER_TOKEN)
+
+    if max_chars_per_doc is not None:
+        share_chars = min(share_chars, max_chars_per_doc)
+
+    result: dict[str, str] = {}
+    for doc in docs:
+        doc_id = doc.get("document_id", "unknown")
+        text = doc.get("full_text", "")
+        result[doc_id] = text[:share_chars] if len(text) > share_chars else text
+    return result
+
 
 @dataclass
 class GeneratedReport:
@@ -239,6 +284,11 @@ For the raw_markdown, use a rich structure like:
 
         Phase 2: Distinguishes direct evidence from multi-hop contextual evidence
         so the LLM can appropriately weight and describe each type.
+
+        Uses dynamic context budgeting (blueprint §7.1-B) to prevent token
+        overflow when many documents are provided.  The old hard-coded
+        ``[:7000]`` / ``[:5000]`` slices are replaced by a token-aware
+        allocation that scales down gracefully as document count grows.
         """
         lines = [
             f"QUERY: {query_text}",
@@ -264,6 +314,15 @@ For the raw_markdown, use a rich structure like:
                 else:
                     contextual_docs.append(doc)
 
+            # Dynamic budget: reserve 20 % for system prompt / analysis tables,
+            # then split the remainder 70 % direct / 30 % contextual.
+            total_doc_budget = int(REPORT_CONTEXT_BUDGET_TOKENS * 0.8)
+            direct_budget = int(total_doc_budget * 0.7)
+            contextual_budget = int(total_doc_budget * 0.3)
+
+            direct_texts = _allocate_doc_text(direct_docs, direct_budget)
+            contextual_texts = _allocate_doc_text(contextual_docs, contextual_budget)
+
             if direct_docs:
                 lines.append(f"=== DIRECT EVIDENCE ({len(direct_docs)} documents, Grade A) ===")
                 lines.append("Grade A = Direct mention or explicit search match. Highest confidence.")
@@ -277,7 +336,7 @@ For the raw_markdown, use a rich structure like:
                     lines.append(f"Type: {doc_type}")
                     lines.append(f"Date: {created}")
                     lines.append("Content:")
-                    lines.append(doc.get("full_text", "[No text available]")[:7000])
+                    lines.append(direct_texts.get(doc_id, "[No text available]"))
                     lines.append("---")
 
             if contextual_docs:
@@ -305,7 +364,7 @@ For the raw_markdown, use a rich structure like:
                     lines.append(f"Type: {doc_type}")
                     lines.append(f"Date: {created}")
                     lines.append("Content:")
-                    lines.append(doc.get("full_text", "[No text available]")[:5000])
+                    lines.append(contextual_texts.get(doc_id, "[No text available]"))
                     lines.append("---")
 
         # ── Chunk snippets (supplementary context) ──

@@ -191,6 +191,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         print(f"Error closing Redis pool: {exc}")
     try:
+        from app.services.openrouter_service import close_redis_client as _close_or_redis
+
+        _close_or_redis()
+        print("OpenRouter Redis client closed")
+    except Exception as exc:
+        print(f"Error closing OpenRouter Redis client: {exc}")
+    try:
+        from app.services.search_cache import close_redis_client as _close_sc_redis
+
+        _close_sc_redis()
+        print("Search cache Redis client closed")
+    except Exception as exc:
+        print(f"Error closing search cache Redis client: {exc}")
+    try:
         from app.services.llm_http_client import LLMHTTPClient
 
         await LLMHTTPClient.close()

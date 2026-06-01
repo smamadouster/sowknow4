@@ -348,21 +348,25 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
 
             async def _collect_response():
                 text = ""
-                async for chunk in self.llm.chat_completion(
+                gen = self.llm.chat_completion(
                     messages,
                     stream=False,
                     user_id=str(current_user.id),
                     user_role=current_user.role.value,
                     module="chat",
                     has_confidential=raw_confidential_context,
-                ):
-                    if not isinstance(chunk, str) or not chunk:
-                        continue
-                    if chunk.startswith("[QUOTA_EXCEEDED]"):
-                        return chunk
-                    if "__USAGE__" in chunk:
-                        continue
-                    text += chunk
+                )
+                try:
+                    async for chunk in gen:
+                        if not isinstance(chunk, str) or not chunk:
+                            continue
+                        if chunk.startswith("[QUOTA_EXCEEDED]"):
+                            return chunk
+                        if "__USAGE__" in chunk:
+                            continue
+                        text += chunk
+                finally:
+                    await gen.aclose()
                 return text
 
             response_text = await asyncio.wait_for(_collect_response(), timeout=60.0)
@@ -500,15 +504,16 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
         else:
             # Stream live response from LLM with backpressure / disconnect detection
             _stream_start = _time.monotonic()
+            stream_gen = self.llm.chat_completion(
+                messages,
+                stream=True,
+                user_id=str(current_user.id),
+                user_role=current_user.role.value,
+                module="chat",
+                has_confidential=raw_confidential_context,
+            )
             try:
-                async for chunk in self.llm.chat_completion(
-                    messages,
-                    stream=True,
-                    user_id=str(current_user.id),
-                    user_role=current_user.role.value,
-                    module="chat",
-                    has_confidential=raw_confidential_context,
-                ):
+                async for chunk in stream_gen:
                     if chunk.startswith("[QUOTA_EXCEEDED]"):
                         yield f"data: {json.dumps({'type': 'error', 'error': chunk.replace('[QUOTA_EXCEEDED] ', '')})}\n\n"
                         return
@@ -533,6 +538,8 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
                 logger.exception("Streaming LLM error: %s", exc)
                 yield f"data: {json.dumps({'type': 'error', 'error': 'Le service IA est temporairement indisponible. / The AI service is temporarily unavailable.'})}\n\n"
                 return
+            finally:
+                await stream_gen.aclose()
 
         # Send sources
         formatted_sources = []

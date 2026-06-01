@@ -23,6 +23,17 @@ RESULT_TTL = 60       # 1 minute
 _redis_client: _redis.Redis | None = None
 
 
+def close_redis_client() -> None:
+    """Close the module-level Redis client singleton (lifespan shutdown)."""
+    global _redis_client
+    if _redis_client is not None:
+        try:
+            _redis_client.close()
+        except Exception:
+            pass
+        _redis_client = None
+
+
 def _get_redis() -> _redis.Redis | None:
     """Lazy-initialise and return a Redis client. Returns None on failure."""
     global _redis_client

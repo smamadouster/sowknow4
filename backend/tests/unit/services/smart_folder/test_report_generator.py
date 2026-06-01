@@ -114,22 +114,22 @@ class TestReportGeneratorService:
 
 
 class TestTokenEstimation:
-    """Tests for _estimate_tokens heuristic."""
+    """Tests for _estimate_tokens heuristic (now delegates to token_utils)."""
 
     def test_empty_text(self):
         assert _estimate_tokens("") == 0
 
-    def test_english_text(self):
-        # 38 chars / 3.5 ≈ 10 tokens
+    def test_default_fallback(self):
+        # Default language is "fr" → 3.2 chars/token
         text = "a" * 38
-        assert _estimate_tokens(text) == 10
+        assert _estimate_tokens(text) == int(38 / 3.2)
 
     def test_french_text(self):
-        # French is denser; 3.5 chars/token is conservative
+        # French fallback ≈ 3.2 chars/token (default language)
         text = "Le rapide renard brun saute par-dessus le chien paresseux."
         tokens = _estimate_tokens(text)
         assert tokens > 0
-        assert tokens == int(len(text) / CHARS_PER_TOKEN)
+        assert tokens == int(len(text) / 3.2)
 
 
 class TestAllocateDocText:

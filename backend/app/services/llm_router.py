@@ -193,14 +193,15 @@ class LLMRouter:
             built_messages = adapter.build_messages(messages)
 
             # Primary attempt with requested tier
+            gen = adapter.call_service(
+                built_messages,
+                stream=stream,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tier=tier.value,
+            )
             try:
-                async for chunk in adapter.call_service(
-                    built_messages,
-                    stream=stream,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tier=tier.value,
-                ):
+                async for chunk in gen:
                     yield chunk
                 return  # Success — stop trying other providers
             except (Exception) as exc:
@@ -210,14 +211,15 @@ class LLMRouter:
                 # §5.2: Tier fallback within OpenRouter.
                 # If standard/complex fails with 429/timeout, try simple tier (Gemini Flash).
                 if name == "openrouter" and tier in (TaskTier.STANDARD, TaskTier.COMPLEX):
+                    fallback_gen = adapter.call_service(
+                        built_messages,
+                        stream=stream,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tier="simple",
+                    )
                     try:
-                        async for chunk in adapter.call_service(
-                            built_messages,
-                            stream=stream,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            tier="simple",
-                        ):
+                        async for chunk in fallback_gen:
                             yield chunk
                         logger.info("OpenRouter tier fallback succeeded: %s → simple", tier.value)
                         return
@@ -327,28 +329,31 @@ class LLMRouter:
         # 1. Primary: OpenRouter complex
         if self._openrouter is not None:
             adapter = LLMServiceAdapter(self._openrouter, "openrouter")
+            primary_gen = adapter.call_service(
+                built_messages,
+                stream=stream,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tier="complex",
+            )
             try:
-                async for chunk in adapter.call_service(
-                    built_messages,
-                    stream=stream,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tier="complex",
-                ):
+                async for chunk in primary_gen:
                     yield chunk
                 return
             except Exception as exc:
                 logger.warning("Report primary failed (OpenRouter complex): %s", exc)
+                await primary_gen.aclose()
 
                 # 2. Secondary: OpenRouter standard (tier fallback)
+                secondary_gen = adapter.call_service(
+                    built_messages,
+                    stream=stream,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tier="standard",
+                )
                 try:
-                    async for chunk in adapter.call_service(
-                        built_messages,
-                        stream=stream,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        tier="standard",
-                    ):
+                    async for chunk in secondary_gen:
                         yield chunk
                     logger.info("Report secondary succeeded: OpenRouter complex → standard")
                     return
@@ -358,13 +363,14 @@ class LLMRouter:
         # 3. Tertiary: Together.ai Llama 3.1 70B
         if self._together is not None and getattr(self._together, "api_key", None):
             adapter = LLMServiceAdapter(self._together, "together")
+            tertiary_gen = adapter.call_service(
+                built_messages,
+                stream=stream,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
             try:
-                async for chunk in adapter.call_service(
-                    built_messages,
-                    stream=stream,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                ):
+                async for chunk in tertiary_gen:
                     yield chunk
                 logger.info("Report tertiary succeeded: Together.ai")
                 return
@@ -563,8 +569,12 @@ class LLMServiceAdapter:
         # Pass tier to OpenRouter for model selection; other providers ignore it
         if self._provider == "openrouter":
             kwargs["tier"] = tier
-        async for chunk in self._service.chat_completion(messages, **kwargs):
-            yield chunk
+        gen = self._service.chat_completion(messages, **kwargs)
+        try:
+            async for chunk in gen:
+                yield chunk
+        finally:
+            await gen.aclose()
 
 
 # ---------------------------------------------------------------------------

@@ -49,10 +49,10 @@ class TogetherService(BaseLLMService):
             logger.warning("TOGETHER_API_KEY not configured")
 
     def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count using simple character-based approximation."""
-        if not text:
-            return 0
-        return len(text) // 4
+        """Estimate token count via shared utility (§7.4)."""
+        from app.services.token_utils import estimate_tokens
+
+        return estimate_tokens(text)
 
     def _truncate_messages(
         self, messages: list[dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS

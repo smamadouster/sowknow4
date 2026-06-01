@@ -76,6 +76,17 @@ COLLECTION_CACHE_KEYS_PREFIX = "sowknow:openrouter:collection_keys:"
 _redis_client = None
 
 
+def close_redis_client() -> None:
+    """Close the module-level Redis client singleton (lifespan shutdown)."""
+    global _redis_client
+    if _redis_client is not None:
+        try:
+            _redis_client.close()
+        except Exception:
+            pass
+        _redis_client = None
+
+
 def _get_redis_client():
     """Get or create Redis client for caching."""
     global _redis_client
@@ -183,10 +194,10 @@ class OpenRouterService:
             return None
 
     def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count using simple character-based approximation"""
-        if not text:
-            return 0
-        return len(text) // 4
+        """Estimate token count via shared utility (§7.4)."""
+        from app.services.token_utils import estimate_tokens
+
+        return estimate_tokens(text)
 
     def _truncate_messages(
         self, messages: list[dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS

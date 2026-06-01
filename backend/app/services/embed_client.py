@@ -13,6 +13,7 @@ When the embed server is unreachable the client raises RuntimeError so callers
 can retry or fail fast rather than silently poisoning the index with zero vectors.
 """
 
+import atexit
 import logging
 import os
 import random
@@ -306,6 +307,18 @@ class EmbedClient:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.encode, texts, batch_size)
 
+    def close(self) -> None:
+        """Close persistent HTTP clients to free connections (§7.2)."""
+        try:
+            self._client.close()
+        except Exception:
+            pass
+        try:
+            self._health_client.close()
+        except Exception:
+            pass
+
 
 # Module-level singleton — same name as the original so callers change only the import path
 embedding_service = EmbedClient()
+atexit.register(embedding_service.close)

@@ -38,9 +38,9 @@ class MiniMaxService(BaseLLMService):
             logger.warning("MINIMAX_API_KEY not configured")
 
     def _estimate_tokens(self, text: str) -> int:
-        if not text:
-            return 0
-        return len(text) // 4
+        from app.services.token_utils import estimate_tokens
+
+        return estimate_tokens(text)
 
     def _truncate_messages(
         self, messages: list[dict[str, str]], max_tokens: int = MAX_INPUT_TOKENS

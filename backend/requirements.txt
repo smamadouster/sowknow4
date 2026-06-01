@@ -39,6 +39,7 @@ faster-whisper  # CPU-optimized speech-to-text (no torch dep, uses CTranslate2)
 
 # AI API Clients
 google-generativeai>=0.8.0
+tiktoken>=0.7.0  # accurate token estimation for prompt-size ceilings (§7.4)
 
 # Telegram Bot
 python-telegram-bot>=20.7,<21.0

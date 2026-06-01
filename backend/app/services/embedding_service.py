@@ -330,17 +330,10 @@ class ChunkingService:
         self.separators = separators or ["\n\n", "\n", ". ", " ", ""]
 
     def count_tokens(self, text: str) -> int:
-        """
-        Estimate token count (rough approximation)
+        """Estimate token count via shared utility (§7.4)."""
+        from app.services.token_utils import estimate_tokens
 
-        Args:
-            text: Text to count tokens for
-
-        Returns:
-            Estimated token count
-        """
-        # Rough approximation: ~4 characters per token for English/French
-        return len(text) // 4
+        return estimate_tokens(text)
 
     def chunk_text(self, text: str, metadata: dict | None = None) -> list[dict]:
         """

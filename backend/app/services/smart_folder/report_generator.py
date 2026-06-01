@@ -29,9 +29,9 @@ CHARS_PER_TOKEN = 3.5
 
 def _estimate_tokens(text: str) -> int:
     """Conservative token estimate for mixed EN/FR text."""
-    if not text:
-        return 0
-    return int(len(text) / CHARS_PER_TOKEN)
+    from app.services.token_utils import estimate_tokens
+
+    return estimate_tokens(text)
 
 
 def _allocate_doc_text(

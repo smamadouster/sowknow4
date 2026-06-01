@@ -59,10 +59,10 @@ class KimiService(BaseLLMService):
     # ------------------------------------------------------------------
 
     def _estimate_tokens(self, text: str) -> int:
-        """Rough token estimate: 4 chars ≈ 1 token."""
-        if not text:
-            return 0
-        return len(text) // 4
+        """Estimate token count via shared utility (§7.4)."""
+        from app.services.token_utils import estimate_tokens
+
+        return estimate_tokens(text)
 
     def _truncate_messages(
         self,

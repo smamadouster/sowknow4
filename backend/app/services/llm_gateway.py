@@ -125,6 +125,7 @@ class LLMGateway:
                     error_prefix = True
                 yield chunk
         finally:
+            await gen.aclose()
             end = time.perf_counter()
             latency_ms = (end - start) * 1000
             try:
@@ -268,6 +269,18 @@ class LLMGateway:
                 )
                 return
 
+        # ── Hard prompt ceiling (blueprint §7.4) ──
+        from app.services.token_utils import enforce_prompt_ceiling
+
+        capped_messages = enforce_prompt_ceiling(messages, tier=effective_tier)
+        if len(capped_messages) < len(messages):
+            dropped = len(messages) - len(capped_messages)
+            logger.warning(
+                "LLMGateway: prompt ceiling dropped %d messages (tier=%s)",
+                dropped,
+                effective_tier,
+            )
+
         async def _do_generate() -> AsyncGenerator[str, None]:
             """Inner generator — actual LLM call + semantic cache."""
             # ── Semantic cache (non-streaming only) ──
@@ -283,77 +296,53 @@ class LLMGateway:
             # ── Generate and optionally buffer for caching ──
             if stream:
                 # Streaming: pass through directly (no semantic cache)
-                if sem is not None:
-                    async with sem:
-                        async for chunk in self._timed_generate(
-                            self._router.generate_completion(
-                                messages=messages,
-                                query=query,
-                                context_chunks=context_chunks,
-                                has_confidential=has_confidential,
-                                stream=True,
-                                temperature=temperature,
-                                max_tokens=max_tokens,
-                                tier=tier_enum,
-                            ),
-                            tier=tier,
-                            stream=True,
-                        ):
+                router_gen = self._router.generate_completion(
+                    messages=capped_messages,
+                    query=query,
+                    context_chunks=context_chunks,
+                    has_confidential=has_confidential,
+                    stream=True,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tier=tier_enum,
+                )
+                timed_gen = self._timed_generate(router_gen, tier=tier, stream=True)
+                try:
+                    if sem is not None:
+                        async with sem:
+                            async for chunk in timed_gen:
+                                yield chunk
+                    else:
+                        async for chunk in timed_gen:
                             yield chunk
-                else:
-                    async for chunk in self._timed_generate(
-                        self._router.generate_completion(
-                            messages=messages,
-                            query=query,
-                            context_chunks=context_chunks,
-                            has_confidential=has_confidential,
-                            stream=True,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            tier=tier_enum,
-                        ),
-                        tier=tier,
-                        stream=True,
-                    ):
-                        yield chunk
+                finally:
+                    await timed_gen.aclose()
             else:
                 # Non-streaming: buffer response for semantic cache
                 parts: list[str] = []
-                if sem is not None:
-                    async with sem:
-                        async for chunk in self._timed_generate(
-                            self._router.generate_completion(
-                                messages=messages,
-                                query=query,
-                                context_chunks=context_chunks,
-                                has_confidential=has_confidential,
-                                stream=False,
-                                temperature=temperature,
-                                max_tokens=max_tokens,
-                                tier=tier_enum,
-                            ),
-                            tier=tier,
-                            stream=False,
-                        ):
+                router_gen = self._router.generate_completion(
+                    messages=capped_messages,
+                    query=query,
+                    context_chunks=context_chunks,
+                    has_confidential=has_confidential,
+                    stream=False,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tier=tier_enum,
+                )
+                timed_gen = self._timed_generate(router_gen, tier=tier, stream=False)
+                try:
+                    if sem is not None:
+                        async with sem:
+                            async for chunk in timed_gen:
+                                parts.append(chunk)
+                                yield chunk
+                    else:
+                        async for chunk in timed_gen:
                             parts.append(chunk)
                             yield chunk
-                else:
-                    async for chunk in self._timed_generate(
-                        self._router.generate_completion(
-                            messages=messages,
-                            query=query,
-                            context_chunks=context_chunks,
-                            has_confidential=has_confidential,
-                            stream=False,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            tier=tier_enum,
-                        ),
-                        tier=tier,
-                        stream=False,
-                    ):
-                        parts.append(chunk)
-                        yield chunk
+                finally:
+                    await timed_gen.aclose()
 
                 # Store in semantic cache after generation completes
                 if query and parts:
@@ -365,10 +354,12 @@ class LLMGateway:
                             query, model="openrouter", tier=tier, response=full_response
                         )
 
+        do_gen = _do_generate()
         try:
-            async for chunk in _do_generate():
+            async for chunk in do_gen:
                 yield chunk
         finally:
+            await do_gen.aclose()
             if resolved_user_id:
                 await _release_user_concurrency_slot(resolved_user_id)
 

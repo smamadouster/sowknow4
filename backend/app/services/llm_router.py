@@ -59,6 +59,18 @@ class TaskTier(StrEnum):
     COMPLEX = "complex"     # Reasoning, coding, verification, reports
 
 
+class FallbackTrigger(StrEnum):
+    """Reasons that trigger a fallback to the next provider or tier."""
+
+    HTTP_429 = "rate_limit"
+    HTTP_5XX = "server_error"
+    TTFT_EXCEEDED = "ttft_exceeded"
+    COST_ANOMALY = "cost_anomaly"
+    CIRCUIT_OPEN = "circuit_open"
+    JSON_PARSE_FAIL = "json_parse_fail"
+    EMPTY_RESPONSE = "empty_response"
+
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------

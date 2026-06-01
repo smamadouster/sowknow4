@@ -11,7 +11,35 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.llm_router import LLMRouter, RoutingReason
+from app.services.llm_router import FallbackTrigger, LLMRouter, RoutingReason
+
+# ---------------------------------------------------------------------------
+# FallbackTrigger enum
+# ---------------------------------------------------------------------------
+
+class TestFallbackTrigger:
+    """§5.3 Cut-Over Triggers: validate the FallbackTrigger enum members."""
+
+    def test_all_triggers_present(self):
+        expected = {
+            "HTTP_429": "rate_limit",
+            "HTTP_5XX": "server_error",
+            "TTFT_EXCEEDED": "ttft_exceeded",
+            "COST_ANOMALY": "cost_anomaly",
+            "CIRCUIT_OPEN": "circuit_open",
+            "JSON_PARSE_FAIL": "json_parse_fail",
+            "EMPTY_RESPONSE": "empty_response",
+        }
+        for name, value in expected.items():
+            assert getattr(FallbackTrigger, name).value == value
+
+    def test_fallback_trigger_is_strenum(self):
+        assert issubclass(FallbackTrigger, str)
+
+    def test_membership_check(self):
+        assert "rate_limit" in [t.value for t in FallbackTrigger]
+        assert "server_error" in FallbackTrigger
+
 
 # ---------------------------------------------------------------------------
 # Helpers

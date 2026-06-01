@@ -275,7 +275,7 @@ class SmartFolderService:
                 for doc in documents[:10]
             ],
             "word_count": len(summary.split()),
-            "llm_used": "minimax",
+            "llm_used": "openrouter",
         }
 
     # ------------------------------------------------------------------
@@ -312,25 +312,16 @@ class SmartFolderService:
         document_context = await self._build_document_context(documents, db)
         await db.commit()
 
-        generated = await self._generate_with_minimax(
+        generated = await self._generate_with_llm_fallback(
             topic=topic,
             document_context=document_context,
             style=style,
             length=length,
         )
-        llm_used = "minimax"
+        llm_used = "openrouter"
 
-        if not generated:
-            logger.warning(
-                "MiniMax generation returned empty, falling back to OpenRouter"
-            )
-            generated = await self._generate_with_openrouter_fallback(
-                topic=topic,
-                document_context=document_context,
-                style=style,
-                length=length,
-            )
-            llm_used = "openrouter"
+        if not generated or generated == "Insufficient documents to generate article":
+            llm_used = "none"
 
         collection = Collection(
             user_id=user.id,
@@ -477,6 +468,7 @@ class SmartFolderService:
                 temperature=0.3,
                 max_tokens=300,
                 tier="simple",
+                module="smart_folders",
             ):
                 if chunk and not chunk.startswith("Error:"):
                     return chunk.strip()
@@ -484,89 +476,14 @@ class SmartFolderService:
             logger.warning(f"Constrained summary failed: {e}")
         return "Documents trouvés. Aucun résumé généré."
 
-    async def _generate_with_minimax(
+    async def _generate_with_llm_fallback(
         self,
         topic: str,
         document_context: list[dict[str, Any]],
         style: str,
         length: str,
     ) -> str:
-        """Generate content using MiniMax with tight anti-hallucination constraints."""
-
-        context_text = "\n\n".join(
-            [
-                f"Document: {doc['filename']}\n"
-                + "\n".join(
-                    [f"[Page {c['page']}]: {c['text'][:300]}..." for c in doc["chunks"]]
-                )
-                for doc in document_context
-            ]
-        )
-
-        length_guide = {
-            "short": "2-3 paragraphs",
-            "medium": "4-6 paragraphs",
-            "long": "7-10 paragraphs",
-        }.get(length, "4-6 paragraphs")
-
-        style_guide = {
-            "informative": "Educational, informative tone. Explain concepts clearly.",
-            "creative": "Creative and engaging. Use vivid language.",
-            "professional": "Formal, professional business tone.",
-            "casual": "Friendly, conversational tone.",
-        }.get(style, "Informative, clear tone.")
-
-        # TIGHT system prompt — ~60 tokens, no verbose identity block
-        system_prompt = (
-            "You are a document-based content writer. "
-            "You ONLY use the provided Document Context. "
-            "If the context is insufficient, you MUST say: "
-            "'The available documents do not contain enough information about this topic.' "
-            "You MUST NOT use your training data to fill gaps. "
-            "You MUST NOT hallucinate facts, quotes, or citations."
-        )
-
-        user_prompt = f"""Write a {length_guide} article about: "{topic}"
-
-Style: {style_guide}
-
-Rules:
-1. ONLY use information from the Document Context below.
-2. Cite specific documents by filename when referencing information.
-3. If the documents lack sufficient information, state that explicitly.
-4. Do NOT invent facts, quotes, or statistics.
-
-Document Context:
-{context_text}
-
-Write the article now:"""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-
-        response_parts = []
-        async for chunk in self.llm.chat_completion(
-            messages=messages,
-            stream=False,
-            temperature=0.5,
-            max_tokens=4096,
-            tier="standard",  # §3.3: Mistral Small sufficient for 2–6 paragraph articles
-        ):
-            if chunk and not chunk.startswith("Error:"):
-                response_parts.append(chunk)
-
-        return "".join(response_parts).strip()
-
-    async def _generate_with_openrouter_fallback(
-        self,
-        topic: str,
-        document_context: list[dict[str, Any]],
-        style: str,
-        length: str,
-    ) -> str:
-        """Fallback: generate content via the LLM gateway with tiered model selection."""
+        """Generate content via the LLM gateway with tiered model selection."""
 
         context_text = "\n\n".join(
             [
@@ -627,14 +544,18 @@ Write the article now:"""
                 stream=False,
                 temperature=0.5,
                 max_tokens=4096,
-                tier="standard",  # §3.3: Mistral Small sufficient for 2–6 paragraph articles
+                tier="standard",
+                module="smart_folders",
             ):
-                if chunk and not chunk.startswith("Error:"):
+                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
                     response_parts.append(chunk)
-            return "".join(response_parts).strip()
+            result = "".join(response_parts).strip()
+            if not result or result.startswith("[LLM indisponible"):
+                return "Insufficient documents to generate article"
+            return result
         except Exception as e:
-            logger.error(f"LLM fallback generation error: {e}")
-            return "Unable to generate content. LLM fallback failed."
+            logger.error(f"LLM generation error: {e}")
+            return "Insufficient documents to generate article"
 
 
 # Global smart folder service instance

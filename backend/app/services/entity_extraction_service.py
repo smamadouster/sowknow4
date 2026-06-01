@@ -335,7 +335,14 @@ class EntityExtractionService:
         metadata: dict[str, Any],
         use_ollama: bool = False,
     ) -> dict[str, Any] | None:
-        """Extract entities using cloud LLM (MiniMax/Kimi) via OpenRouter"""
+        """Extract entities using cloud LLM with tiered fallback cascade.
+
+        Cascade (§3.3 structured output):
+          1. simple  → Gemini Flash  (cheap, fast structured JSON)
+          2. standard→ Mistral Small (better entity name preservation)
+          3. complex → Claude 3.5 Sonnet (best JSON adherence)
+          4. rule-based fallback (regex dates, capitalized names)
+        """
 
         entity_task_prompt = """Extract structured information from documents.
 
@@ -417,35 +424,48 @@ Extract all entities, relationships, and dated events now:"""
             {"role": "user", "content": user_prompt},
         ]
 
-        try:
-            response_parts = []
-            async for chunk in self.llm.chat_completion(
-                # §3.3: simple tier (Gemini Flash) — structured JSON from 3K tokens, 20× cheaper/faster
-                messages=messages, stream=False, temperature=0.3, max_tokens=2048, tier="simple"
-            ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
-                    response_parts.append(chunk)
+        # Tier cascade: simple → standard → complex
+        for tier in ("simple", "standard", "complex"):
+            try:
+                response_parts = []
+                async for chunk in self.llm.chat_completion(
+                    messages=messages,
+                    stream=False,
+                    temperature=0.3,
+                    max_tokens=2048,
+                    tier=tier,
+                    module="knowledge_graph",
+                ):
+                    if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                        response_parts.append(chunk)
 
-            response_text = "".join(response_parts).strip()
+                response_text = "".join(response_parts).strip()
 
-            # Extract JSON
-            json_text = self._extract_json(response_text)
-            if json_text:
-                try:
-                    result = json.loads(json_text)
-                    rollback_monitor.record_json_parse(tier="simple", success=True)
-                    return result
-                except Exception:
-                    rollback_monitor.record_json_parse(tier="simple", success=False)
-                    raise
-            else:
-                rollback_monitor.record_json_parse(tier="simple", success=False)
+                # Extract JSON
+                json_text = self._extract_json(response_text)
+                if json_text:
+                    try:
+                        result = json.loads(json_text)
+                        rollback_monitor.record_json_parse(tier=tier, success=True)
+                        logger.info(f"Entity extraction succeeded with tier={tier}")
+                        return result
+                    except Exception:
+                        rollback_monitor.record_json_parse(tier=tier, success=False)
+                        logger.warning(f"JSON parse failed for tier={tier}, trying next tier")
+                        continue
+                else:
+                    rollback_monitor.record_json_parse(tier=tier, success=False)
+                    logger.warning(f"No JSON found in tier={tier} response, trying next tier")
+                    continue
 
-        except Exception as e:
-            logger.error(f"Entity extraction error: {e}")
-            rollback_monitor.record_json_parse(tier="simple", success=False)
+            except Exception as e:
+                logger.error(f"Entity extraction error with tier={tier}: {e}")
+                rollback_monitor.record_json_parse(tier=tier, success=False)
+                continue
 
-        return None
+        # Ultimate fallback: rule-based extraction
+        logger.warning("All LLM tiers failed for entity extraction, using rule-based fallback")
+        return self._extract_entities_rule_based(text)
 
     def _extract_json(self, text: str) -> str | None:
         """Extract JSON from LLM response"""
@@ -478,6 +498,92 @@ Extract all entities, relationships, and dated events now:"""
                 return text[:end_pos]
 
         return None
+
+    def _extract_entities_rule_based(self, text: str) -> dict[str, Any]:
+        """Rule-based entity extraction fallback when all LLM tiers fail.
+
+        Extracts dates, capitalized names, and locations using regex heuristics.
+        This is the ultimate fallback — cheap, fast, and deterministic.
+        """
+        entities: list[dict[str, Any]] = []
+        relationships: list[dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
+
+        # ── Dates ──
+        date_patterns = [
+            (r"\b(\d{4}-\d{2}-\d{2})\b", "exact"),
+            (r"\b(\d{2}/\d{2}/\d{4})\b", "exact"),
+            (r"\b(\d{1,2}\s+(?:janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+\d{4})\b", "exact"),
+            (r"\b(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b", "exact"),
+        ]
+        seen_dates: set[str] = set()
+        for pattern, precision in date_patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                date_str = match.group(1)
+                if date_str not in seen_dates:
+                    seen_dates.add(date_str)
+                    events.append({
+                        "title": f"Event on {date_str}",
+                        "date": date_str,
+                        "precision": precision,
+                        "type": "milestone",
+                        "description": "",
+                        "importance": 50,
+                    })
+
+        # ── Capitalized names (people / organizations) ──
+        # Look for 2-4 consecutive capitalized words
+        name_pattern = r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,3})\b"
+        seen_names: set[str] = set()
+        org_keywords = {
+            "Inc", "Corp", "Ltd", "LLC", "Company", "Group", "Association",
+            "Institute", "University", "Bank", "Agency", "SAS", "SA", "SARL",
+        }
+        for match in re.finditer(name_pattern, text):
+            name = match.group(1).strip()
+            if name not in seen_names and len(name) > 3:
+                seen_names.add(name)
+                entity_type = (
+                    "organization"
+                    if any(kw in name for kw in org_keywords)
+                    else "person"
+                )
+                start = max(0, match.start() - 50)
+                end = min(len(text), match.end() + 50)
+                entities.append({
+                    "name": name,
+                    "type": entity_type,
+                    "confidence": 50,
+                    "context": text[start:end],
+                    "attributes": {},
+                })
+
+        # ── Locations (preceded by prepositions) ──
+        loc_indicators = ["in", "at", "from", "to", "near", "dans", "à", "de", "près de", "sur"]
+        loc_pattern = re.compile(
+            r"(?:" + "|".join(re.compile(ind).pattern for ind in loc_indicators) + r")\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)",
+            re.IGNORECASE,
+        )
+        seen_locations: set[str] = set()
+        for match in loc_pattern.finditer(text):
+            loc = match.group(1).strip()
+            if loc not in seen_locations and len(loc) > 2:
+                seen_locations.add(loc)
+                start = max(0, match.start() - 30)
+                end = min(len(text), match.end() + 30)
+                entities.append({
+                    "name": loc,
+                    "type": "location",
+                    "confidence": 45,
+                    "context": text[start:end],
+                    "attributes": {},
+                })
+
+        return {
+            "entities": entities,
+            "relationships": relationships,
+            "events": events,
+        }
 
     async def _get_or_create_entity(self, entity_data: dict[str, Any], db: Session) -> Entity | None:
         """Get existing entity or create new one"""

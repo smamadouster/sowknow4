@@ -6,7 +6,7 @@ import logging
 import time
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,6 +151,7 @@ async def search(
 @router.post("/stream")
 async def search_stream(
     request: AgenticSearchRequest,
+    http_request: Request,
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     user_role = _role_from_user(current_user)
@@ -191,6 +192,11 @@ async def search_stream(
         async with AsyncSessionLocal() as db:
             start = time.monotonic()
             try:
+                # Backpressure: abort if client disconnected (blueprint §7.1-C)
+                if http_request is not None and await http_request.is_disconnected():
+                    logger.info("Client disconnected before search stream start")
+                    return
+
                 yield _sse_event("stage", {"stage": "intent", "message": "Analyse de votre requete..."})
                 intent = await parse_intent(request.query)
                 yield _sse_event("intent", {
@@ -243,6 +249,11 @@ async def search_stream(
                     mode = SearchMode.FAST if len(request.query.split()) <= 5 else SearchMode.DEEP
 
                 model_used = None
+                # Backpressure: abort before expensive synthesis (blueprint §7.1-C)
+                if http_request is not None and await http_request.is_disconnected():
+                    logger.info("Client disconnected before synthesis")
+                    return
+
                 if results and (
                     mode == SearchMode.DEEP
                     or intent.requires_synthesis
@@ -270,6 +281,11 @@ async def search_stream(
                             "answer": "[Synthèse indisponible — veuillez consulter les documents ci-dessus]",
                             "model": None, "language": intent.detected_language,
                         })
+
+                # Backpressure: abort before expensive suggestion generation
+                if http_request is not None and await http_request.is_disconnected():
+                    logger.info("Client disconnected before suggestion generation")
+                    return
 
                 if request.include_suggestions and results:
                     try:

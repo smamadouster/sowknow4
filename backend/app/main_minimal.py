@@ -36,9 +36,71 @@ async def lifespan(app: FastAPI):
     print("Starting up...")
     setup_default_alerts()
     logger.info("Monitoring alerts configured")
+
+    # Startup: Validate LLM model configuration (block deprecated/free-tier models in production)
+    _is_production = os.getenv("APP_ENV", "development").lower() == "production"
+    if _is_production:
+        from app.core.config import settings
+
+        deprecated_models = {
+            d.strip()
+            for d in settings.LLM_DEPRECATED_MODELS.split(",")
+            if d.strip()
+        }
+        models_to_check = [
+            settings.OPENROUTER_MODEL,
+            settings.OPENROUTER_TIER_SIMPLE,
+            settings.OPENROUTER_TIER_STANDARD,
+            settings.OPENROUTER_TIER_COMPLEX,
+        ]
+        for model in models_to_check:
+            if any(d in model for d in deprecated_models):
+                raise RuntimeError(
+                    f"CRITICAL: Deprecated/free-tier model '{model}' configured. "
+                    f"Aborting startup. Update .env to use production-grade models."
+                )
+        print("LLM model configuration validated (no deprecated models)")
+
+    # Startup: Confirm shared LLM HTTP client / connection pool is healthy
+    try:
+        from app.services.llm_http_client import LLMHTTPClient
+
+        client = LLMHTTPClient.get_client()
+        print(
+            f"LLM HTTP client ready (keepalive={client._limits.max_keepalive_connections}, "
+            f"max_connections={client._limits.max_connections})"
+        )
+    except Exception as exc:
+        print(f"LLM HTTP client initialization warning: {exc}")
+
     yield
+
     # Shutdown
     print("Shutting down...")
+    try:
+        from app.database import engine
+
+        await engine.dispose()
+        print("Database connection pool disposed")
+    except Exception as exc:
+        print(f"Error disposing DB pool: {exc}")
+    try:
+        import redis as _redis
+
+        from app.core.redis_url import safe_redis_url
+
+        _redis.from_url(safe_redis_url()).connection_pool.disconnect()
+        print("Redis connection pool closed")
+    except Exception as exc:
+        print(f"Error closing Redis pool: {exc}")
+    try:
+        from app.services.llm_http_client import LLMHTTPClient
+
+        await LLMHTTPClient.close()
+        print("LLM HTTP client closed")
+    except Exception as exc:
+        print(f"Error closing LLM HTTP client: {exc}")
+    print("Shutdown complete")
 
 
 app = FastAPI(

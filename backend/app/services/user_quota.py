@@ -110,7 +110,12 @@ class UserQuotaManager:
                 "User %s (%s) request exceeds max_input_tokens: %d > %d",
                 user_id, role, estimated_tokens, max_input,
             )
-            # We warn but don't block — the caller can decide to truncate
+            # Blueprint §2.3: hard block on max_input_tokens to prevent
+            # runaway prompts from exhausting the daily budget.
+            raise QuotaExceededError(
+                user_id, role,
+                used=estimated_tokens, limit=max_input,
+            )
 
         redis = self._get_redis()
         if redis is None:

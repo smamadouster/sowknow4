@@ -53,6 +53,10 @@ class APICostRecord:
     cost_usd: float = 0.0
 
 
+# Prevent unbounded memory growth in cost-records lists (blueprint §7.2)
+MAX_COST_RECORDS = 10_000
+
+
 @dataclass
 class AlertConfig:
     """Configuration for monitoring alerts."""
@@ -210,9 +214,9 @@ class CostTracker:
 
         with self._lock:
             self._cost_records.append(record)
-            # Prevent unbounded memory growth
-            if len(self._cost_records) > 10_000:
-                self._cost_records = self._cost_records[-5_000:]
+            # Prevent unbounded memory growth (blueprint §7.2)
+            if len(self._cost_records) > MAX_COST_RECORDS:
+                self._cost_records = self._cost_records[-(MAX_COST_RECORDS // 2):]
             today = datetime.now().date()
             key = f"{today.isoformat()}_{service}"
             self._daily_totals[key] += cost
@@ -339,6 +343,9 @@ class CostTracker:
         )
         with self._lock:
             self._cost_records.append(record)
+            # Prevent unbounded memory growth (blueprint §7.2)
+            if len(self._cost_records) > MAX_COST_RECORDS:
+                self._cost_records = self._cost_records[-(MAX_COST_RECORDS // 2):]
         return total
 
 
@@ -532,7 +539,9 @@ class CostCeiling:
         today_cost = tracker.get_daily_cost()
         hour_ago = datetime.now() - timedelta(hours=1)
 
-        with self._lock:
+        # Use the CostTracker's own lock to avoid race conditions while
+        # reading _cost_records (blueprint §7.2)
+        with tracker._lock:
             recent_cost = sum(
                 r.cost_usd for r in tracker._cost_records if r.timestamp > hour_ago
             )

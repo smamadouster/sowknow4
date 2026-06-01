@@ -48,6 +48,50 @@ _MODULE_SEMAPHORES: dict[str, asyncio.Semaphore] = {
     "knowledge_graph": asyncio.Semaphore(2),
 }
 
+# Task-aware default tier mapping (blueprint §3.3)
+# When a consumer omits the *tier* arg (defaults to "standard"), we can
+# infer a more appropriate tier from the *module* name.
+_TASK_TIER_MAP: dict[str, str] = {
+    "knowledge_graph": "simple",   # entity extraction → Gemini Flash (cheap, fast JSON)
+    "chat": "standard",            # conversational RAG → Mistral Small
+    "collections": "complex",      # comprehensive reports → Claude 3.5 Sonnet
+    "smart_folders": "standard",   # articles / summaries → Mistral Small
+}
+
+# Per-user concurrent request tracking (blueprint §2.3 Tier A)
+_USER_ACTIVE_REQUESTS: dict[str, int] = {}
+_user_concurrent_lock = asyncio.Lock()
+
+
+async def _acquire_user_concurrency_slot(user_id: str, role: str) -> bool:
+    """Try to acquire a per-user concurrency slot. Returns True if allowed."""
+    from app.services.user_quota import user_quota_manager
+
+    quota = user_quota_manager.get_quota(role)
+    max_concurrent = quota.get("concurrent", 1)
+
+    async with _user_concurrent_lock:
+        current = _USER_ACTIVE_REQUESTS.get(user_id, 0)
+        if current >= max_concurrent:
+            logger.warning(
+                "Concurrent request limit exceeded for user=%s role=%s "
+                "(%d / %d active)",
+                user_id, role, current, max_concurrent,
+            )
+            return False
+        _USER_ACTIVE_REQUESTS[user_id] = current + 1
+        return True
+
+
+async def _release_user_concurrency_slot(user_id: str) -> None:
+    """Release a per-user concurrency slot."""
+    async with _user_concurrent_lock:
+        current = _USER_ACTIVE_REQUESTS.get(user_id, 0)
+        if current > 0:
+            _USER_ACTIVE_REQUESTS[user_id] = current - 1
+        if _USER_ACTIVE_REQUESTS[user_id] == 0:
+            del _USER_ACTIVE_REQUESTS[user_id]
+
 
 class LLMGateway:
     """
@@ -135,7 +179,15 @@ class LLMGateway:
         Yields:
             Text chunks (streaming) or single chunk (non-streaming).
         """
-        tier_enum = TaskTier(tier)
+        # ── Task-aware tier selection (blueprint §3.3) ──
+        # If the caller left tier at the default "standard" and provided a
+        # module name, pick a more appropriate default.
+        effective_tier = tier
+        if tier == "standard" and module and module in _TASK_TIER_MAP:
+            effective_tier = _TASK_TIER_MAP[module]
+            logger.debug("Task-aware tier override: module=%s → tier=%s", module, effective_tier)
+
+        tier_enum = TaskTier(effective_tier)
 
         # ── Resolve user identity from explicit args or request context ──
         resolved_user_id = user_id or current_user_id.get()
@@ -205,21 +257,50 @@ class LLMGateway:
             has_confidential,
         )
 
-        # ── Semantic cache (non-streaming only) ──
-        if not stream and query:
-            from app.services.semantic_cache import semantic_cache
-
-            cached = await semantic_cache.get(query, model="openrouter", tier=tier)
-            if cached is not None:
-                logger.info("LLMGateway semantic cache hit for query=%s", query[:60])
-                yield cached
+        # ── Per-user concurrency cap (blueprint §2.3 Tier A) ──
+        if resolved_user_id and resolved_user_role:
+            if not await _acquire_user_concurrency_slot(
+                resolved_user_id, resolved_user_role
+            ):
+                yield (
+                    "[QUOTA_EXCEEDED] Too many concurrent requests. "
+                    "Please wait for existing requests to complete."
+                )
                 return
 
-        # ── Generate and optionally buffer for caching ──
-        if stream:
-            # Streaming: pass through directly (no semantic cache)
-            if sem is not None:
-                async with sem:
+        async def _do_generate() -> AsyncGenerator[str, None]:
+            """Inner generator — actual LLM call + semantic cache."""
+            # ── Semantic cache (non-streaming only) ──
+            if not stream and query:
+                from app.services.semantic_cache import semantic_cache
+
+                cached = await semantic_cache.get(query, model="openrouter", tier=tier)
+                if cached is not None:
+                    logger.info("LLMGateway semantic cache hit for query=%s", query[:60])
+                    yield cached
+                    return
+
+            # ── Generate and optionally buffer for caching ──
+            if stream:
+                # Streaming: pass through directly (no semantic cache)
+                if sem is not None:
+                    async with sem:
+                        async for chunk in self._timed_generate(
+                            self._router.generate_completion(
+                                messages=messages,
+                                query=query,
+                                context_chunks=context_chunks,
+                                has_confidential=has_confidential,
+                                stream=True,
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                tier=tier_enum,
+                            ),
+                            tier=tier,
+                            stream=True,
+                        ):
+                            yield chunk
+                else:
                     async for chunk in self._timed_generate(
                         self._router.generate_completion(
                             messages=messages,
@@ -236,26 +317,27 @@ class LLMGateway:
                     ):
                         yield chunk
             else:
-                async for chunk in self._timed_generate(
-                    self._router.generate_completion(
-                        messages=messages,
-                        query=query,
-                        context_chunks=context_chunks,
-                        has_confidential=has_confidential,
-                        stream=True,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        tier=tier_enum,
-                    ),
-                    tier=tier,
-                    stream=True,
-                ):
-                    yield chunk
-        else:
-            # Non-streaming: buffer response for semantic cache
-            parts: list[str] = []
-            if sem is not None:
-                async with sem:
+                # Non-streaming: buffer response for semantic cache
+                parts: list[str] = []
+                if sem is not None:
+                    async with sem:
+                        async for chunk in self._timed_generate(
+                            self._router.generate_completion(
+                                messages=messages,
+                                query=query,
+                                context_chunks=context_chunks,
+                                has_confidential=has_confidential,
+                                stream=False,
+                                temperature=temperature,
+                                max_tokens=max_tokens,
+                                tier=tier_enum,
+                            ),
+                            tier=tier,
+                            stream=False,
+                        ):
+                            parts.append(chunk)
+                            yield chunk
+                else:
                     async for chunk in self._timed_generate(
                         self._router.generate_completion(
                             messages=messages,
@@ -272,33 +354,23 @@ class LLMGateway:
                     ):
                         parts.append(chunk)
                         yield chunk
-            else:
-                async for chunk in self._timed_generate(
-                    self._router.generate_completion(
-                        messages=messages,
-                        query=query,
-                        context_chunks=context_chunks,
-                        has_confidential=has_confidential,
-                        stream=False,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        tier=tier_enum,
-                    ),
-                    tier=tier,
-                    stream=False,
-                ):
-                    parts.append(chunk)
-                    yield chunk
 
-            # Store in semantic cache after generation completes
-            if query and parts:
-                from app.services.semantic_cache import semantic_cache
+                # Store in semantic cache after generation completes
+                if query and parts:
+                    from app.services.semantic_cache import semantic_cache
 
-                full_response = "".join(parts)
-                if full_response:
-                    await semantic_cache.set(
-                        query, model="openrouter", tier=tier, response=full_response
-                    )
+                    full_response = "".join(parts)
+                    if full_response:
+                        await semantic_cache.set(
+                            query, model="openrouter", tier=tier, response=full_response
+                        )
+
+        try:
+            async for chunk in _do_generate():
+                yield chunk
+        finally:
+            if resolved_user_id:
+                await _release_user_concurrency_slot(resolved_user_id)
 
     # ── Provider-specific passthroughs ──
     #

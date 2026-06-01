@@ -157,12 +157,13 @@ class TestSuperUserAndUserEnforcement:
         assert "user" in str(exc_info.value)
 
     def test_superuser_within_budget_allowed(self, manager_with_redis):
+        # Must stay under max_input_tokens (20_000) AND tokens_per_day (40_000)
         result = manager_with_redis.check_and_consume(
-            user_id="su-1", role="superuser", estimated_tokens=30_000
+            user_id="su-1", role="superuser", estimated_tokens=15_000
         )
         assert result["allowed"] is True
         assert result["limit"] == 40_000
-        assert result["remaining"] == 10_000
+        assert result["remaining"] == 25_000
 
     def test_superuser_exceeds_budget_blocked(self, manager_with_redis):
         with pytest.raises(QuotaExceededError) as exc_info:
@@ -194,30 +195,49 @@ class TestSuperUserAndUserEnforcement:
         assert usage["used"] == 10_000
 
     def test_different_users_isolated(self, manager_with_redis):
+        # Must stay under user max_input_tokens (5_000)
         manager_with_redis.check_and_consume(
-            user_id="user-a", role="user", estimated_tokens=10_000
+            user_id="user-a", role="user", estimated_tokens=3_000
         )
         manager_with_redis.check_and_consume(
-            user_id="user-b", role="user", estimated_tokens=10_000
+            user_id="user-b", role="user", estimated_tokens=3_000
         )
-        assert manager_with_redis.get_usage("user-a")["used"] == 10_000
-        assert manager_with_redis.get_usage("user-b")["used"] == 10_000
+        assert manager_with_redis.get_usage("user-a")["used"] == 3_000
+        assert manager_with_redis.get_usage("user-b")["used"] == 3_000
 
     def test_redis_unavailable_fail_open(self, manager):
-        """Without Redis, quotas cannot be enforced; allow through."""
+        """Without Redis, quotas cannot be enforced; allow through.
+
+        Note: max_input_tokens is still enforced locally even without Redis.
+        """
         result = manager.check_and_consume(
-            user_id="user-1", role="user", estimated_tokens=999_999
+            user_id="user-1", role="user", estimated_tokens=3_000
         )
         assert result["allowed"] is True
 
 
-class TestMaxInputTokensWarning:
-    """Requests that exceed per-role max_input_tokens should log a warning."""
+class TestMaxInputTokensHardBlock:
+    """Requests that exceed per-role max_input_tokens are hard-blocked (blueprint §2.3)."""
 
-    def test_user_exceeds_max_input_logs_warning(self, manager_with_redis, caplog):
-        import logging
-        with caplog.at_level(logging.WARNING):
+    def test_user_exceeds_max_input_is_blocked(self, manager_with_redis):
+        with pytest.raises(QuotaExceededError) as exc_info:
             manager_with_redis.check_and_consume(
                 user_id="user-1", role="user", estimated_tokens=10_000
             )
-        assert "exceeds max_input_tokens" in caplog.text
+        assert "user-1" in str(exc_info.value)
+        # The error should reflect the max_input limit, not the daily budget
+        assert "10,000" in str(exc_info.value)
+
+    def test_superuser_exceeds_max_input_is_blocked(self, manager_with_redis):
+        with pytest.raises(QuotaExceededError) as exc_info:
+            manager_with_redis.check_and_consume(
+                user_id="su-1", role="superuser", estimated_tokens=25_000
+            )
+        assert "su-1" in str(exc_info.value)
+
+    def test_request_within_max_input_is_allowed(self, manager_with_redis):
+        """A request exactly at max_input_tokens should pass."""
+        result = manager_with_redis.check_and_consume(
+            user_id="user-1", role="user", estimated_tokens=5_000
+        )
+        assert result["allowed"] is True

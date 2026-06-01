@@ -175,3 +175,41 @@ class SemanticCache:
 
 # Singleton instance
 semantic_cache = SemanticCache()
+
+
+async def invalidate_document_caches(collection_id: str | None = None) -> dict[str, Any]:
+    """Invalidate all LLM and search caches after document mutation.
+
+    Implements blueprint §6.3 cache invalidation policy:
+      - Document uploaded  → invalidate search result cache + semantic cache
+      - Document deleted   → invalidate exact + semantic cache
+
+    Args:
+        collection_id: Optional collection scope. If None, invalidates globally.
+
+    Returns:
+        Dict with operation outcomes (for observability / logging).
+    """
+    results: dict[str, Any] = {}
+
+    # Tier 2: Semantic cache (coarse — all entries share one index)
+    try:
+        deleted = await semantic_cache.invalidate_for_collection(
+            collection_id or "all"
+        )
+        results["semantic_deleted"] = deleted
+    except Exception as exc:
+        logger.warning("Semantic cache invalidation failed: %s", exc)
+        results["semantic_error"] = str(exc)
+
+    # Search result cache (exact-match on query hashes)
+    try:
+        from app.services.search_cache import SearchCache
+
+        SearchCache.invalidate_results()
+        results["search"] = "invalidated"
+    except Exception as exc:
+        logger.warning("Search cache invalidation failed: %s", exc)
+        results["search_error"] = str(exc)
+
+    return results

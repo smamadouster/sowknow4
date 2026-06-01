@@ -32,6 +32,7 @@ from app.models.user import User
 from app.schemas.document import BatchUploadResponse, DocumentUploadResponse
 from app.services.deduplication_service import deduplication_service
 from app.services.document_orchestrator import document_orchestrator
+from app.services.semantic_cache import invalidate_document_caches
 from app.services.storage_service import storage_service
 
 logger = logging.getLogger(__name__)
@@ -63,11 +64,17 @@ async def upload_document(
             detail="Too many uploads in progress. Please retry shortly.",
         )
     async with _upload_semaphore:
-        return await _do_upload_document(
+        result = await _do_upload_document(
             file=file, bucket=bucket, title=title, tags=tags,
             document_type=document_type, transcript=transcript,
             x_bot_api_key=x_bot_api_key, current_user=current_user, db=db,
         )
+        # Blueprint §6.3: invalidate search + semantic cache on document upload
+        try:
+            await invalidate_document_caches()
+        except Exception as exc:
+            logger.warning("Cache invalidation after upload failed: %s", exc)
+        return result
 
 
 async def _do_upload_document(
@@ -311,6 +318,12 @@ async def upload_batch_documents(
         else:
             errors.append(error)
             failed_count += 1
+
+    # Blueprint §6.3: invalidate caches once after batch completes
+    try:
+        await invalidate_document_caches()
+    except Exception as exc:
+        logger.warning("Cache invalidation after batch upload failed: %s", exc)
 
     return BatchUploadResponse(
         batch_id=batch_id,

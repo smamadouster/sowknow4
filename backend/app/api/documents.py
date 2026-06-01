@@ -37,6 +37,7 @@ from app.schemas.document import (
     DocumentUpdate,
 )
 from app.services.search_service import HybridSearchService
+from app.services.semantic_cache import invalidate_document_caches
 from app.services.storage_service import storage_service
 
 logger = logging.getLogger(__name__)
@@ -352,6 +353,12 @@ async def delete_document(
     storage_service.delete_file(filename=document.filename, bucket=document.bucket.value)
     await db.delete(document)
     await db.commit()
+
+    # Blueprint §6.3: invalidate exact + semantic cache on document delete
+    try:
+        await invalidate_document_caches()
+    except Exception as exc:
+        logger.warning("Cache invalidation after delete failed: %s", exc)
 
     return {"message": "Document deleted successfully"}
 

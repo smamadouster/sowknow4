@@ -1,0 +1,11 @@
+# SOWKNOW macOS Upload Tools Requirements
+# Python 3.9+
+
+# API requests
+requests>=2.31.0
+
+# File system watching
+watchdog>=3.0.0
+
+# Secure token storage (optional, macOS Keychain)
+keyring>=24.0.0

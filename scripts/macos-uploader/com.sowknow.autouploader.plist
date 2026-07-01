@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sowknow.autouploader</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>python3</string>
+        <string>{{SCRIPT_PATH}}</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SOWKNOW_URL</key>
+        <string>{{SOWKNOW_URL}}</string>
+        <key>SOWKNOW_EMAIL</key>
+        <string>{{SOWKNOW_EMAIL}}</string>
+        <key>SOWKNOW_PASSWORD</key>
+        <string>{{SOWKNOW_PASSWORD}}</string>
+        <key>SOWKNOW_BOT_API_KEY</key>
+        <string>{{SOWKNOW_BOT_API_KEY}}</string>
+        <key>SMTP_EMAIL</key>
+        <string>{{SMTP_EMAIL}}</string>
+        <key>SMTP_PASSWORD</key>
+        <string>{{SMTP_PASSWORD}}</string>
+        <key>REPORT_RECIPIENT</key>
+        <string>{{REPORT_RECIPIENT}}</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/sowknow-auto-uploader.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/sowknow-auto-uploader-error.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>{{HOME}}</string>
+</dict>
+</plist>

@@ -9,8 +9,8 @@
 # Memory Allocation:
 #   celery-light:    4096MB  (CPU/IO tasks, concurrency=4, max-tasks-per-child=20)
 #   celery-entities:  4096MB  (pipeline.entities queue — spaCy NER + LLM, concurrency=4)
-#   celery-heavy:     3072MB  (pipeline.embed queue — I/O-bound HTTP to embed-server; concurrency=2)
-#   embed-server:    10240MB  (embedding model — 1.3GB model needs headroom during load)
+#   celery-heavy:     3072MB  (pipeline.embed queue — I/O-bound HTTP to embed-server; concurrency=4)
+#   embed-server:    12288MB  (embedding model — ~3GB per worker, 2 workers per server)
 #   postgres:        3072MB  (pgvector, 5 concurrent users)
 #   backend:          1536MB  (FastAPI)
 #   frontend:         512MB  (Next.js)
@@ -249,17 +249,17 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - VECLIB_MAXIMUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
-      - EMBED_MAX_BATCH_SIZE=32
-      - EMBED_BATCH_WINDOW_MS=50
+      - EMBED_MAX_BATCH_SIZE=64
+      - EMBED_BATCH_WINDOW_MS=100
     volumes:
       - sowknow-model-cache:/models
       - ./backend:/app
-    # Single worker to stay within memory limits (model ~3GB + activations ~2-4GB).
-    # Periodic restart prevents PyTorch memory pool fragmentation.
-    # 10000 requests ≈ 2-4h of embedding work; restart window is ~5s.
+    # Two workers keep both CPU cores busy while staying within the 12GB limit
+    # (model ~3GB per worker + activations ~2-4GB). Periodic restart prevents
+    # PyTorch memory pool fragmentation. 10000 requests ≈ 2-4h of embedding work.
     command: >
       uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
-      --workers 1 --limit-max-requests 10000
+      --workers 2 --limit-max-requests 10000
     # NO ports — internal only. Access: http://embed-server:8000
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
@@ -295,16 +295,16 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - VECLIB_MAXIMUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
-      - EMBED_MAX_BATCH_SIZE=32
-      - EMBED_BATCH_WINDOW_MS=50
+      - EMBED_MAX_BATCH_SIZE=64
+      - EMBED_BATCH_WINDOW_MS=100
     volumes:
       - sowknow-model-cache:/models
       - ./backend:/app
-    # Single worker to stay within memory limits (model ~3GB + activations ~2-4GB).
-    # Staggered restart limit (12k vs 10k) so both servers never restart simultaneously
+    # Two workers keep both CPU cores busy while staying within the 12GB limit.
+    # Staggered restart limit (12k vs 10k) so both servers never restart simultaneously.
     command: >
       uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
-      --workers 1 --limit-max-requests 12000
+      --workers 2 --limit-max-requests 12000
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
       interval: 30s
@@ -561,7 +561,7 @@ services:
           memory: 3072M
           cpus: '2.0'
     command: >-
-      celery -A app.celery_app worker --loglevel=info --concurrency=2
+      celery -A app.celery_app worker --loglevel=info --concurrency=4
       --pool=prefork
       --max-tasks-per-child=10
       -Q pipeline.embed

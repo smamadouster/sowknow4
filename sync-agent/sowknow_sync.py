@@ -503,7 +503,7 @@ def main():
         return
 
     # Watch mode (default)
-    if args.watch or True:
+    if args.watch or not args.sync:
         print("Starting SOWKNOW Sync Agent...")
         print("Press Ctrl+C to stop.")
         agent.run()

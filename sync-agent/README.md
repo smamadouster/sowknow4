@@ -69,8 +69,8 @@ python sowknow_sync.py --watch
 
 Configuration is stored in:
 - `~/.sowknow/sync_config.json` - Folders and settings
-- `~/.sownow/sync_state.json` - Upload tracking (deduplication)
-- `~/.sownow/sync_agent.log` - Activity logs
+- `~/.sowknow/sync_state.json` - Upload tracking (deduplication)
+- `~/.sowknow/sync_agent.log` - Activity logs
 
 ## Supported File Types
 
@@ -86,8 +86,8 @@ Configuration is stored in:
 - Check API token has upload permissions
 
 **Files not uploading:**
-- Check `~/.sownow/sync_agent.log` for errors
-- Verify API connection: `curl http://localhost:8000/health`
+- Check `~/.sowknow/sync_agent.log` for errors
+- Verify API connection: `curl https://sowknow.gollamtech.com/health`
 
 **Keyring errors:**
 - Some systems may not support keyring

@@ -45,6 +45,7 @@ export default function NoteDetailPage() {
   const [saving, setSaving] = useState(false);
   const [activeField, setActiveField] = useState<'title' | 'content'>('content');
   const [pendingAudio, setPendingAudio] = useState<{ blob: Blob; transcript: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const fetchNote = async () => {
     setLoading(true);
@@ -96,6 +97,14 @@ export default function NoteDetailPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCopy = async () => {
+    if (!note) return;
+    const text = note.title + (note.content ? '\n\n' + note.content : '');
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDelete = async () => {
@@ -157,6 +166,26 @@ export default function NoteDetailPage() {
             <span>{tCommon('back')}</span>
           </button>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              className="px-4 py-2 bg-vault-800/60 text-text-secondary border border-white/[0.08] rounded-lg hover:bg-vault-800 transition-colors text-sm font-medium flex items-center gap-1.5"
+            >
+              {copied ? (
+                <>
+                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-green-400">Copied</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
             <button
               onClick={openEditor}
               className="px-4 py-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-medium"

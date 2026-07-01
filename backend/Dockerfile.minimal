@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
 RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
 
 # CPU-only PyTorch (prevents sentence-transformers from pulling 2GB CUDA build)
-RUN pip install --no-cache-dir torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu
 
 # Copy requirements (minimal version first)
 COPY requirements-minimal.txt requirements.txt

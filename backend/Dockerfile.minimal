@@ -14,8 +14,11 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-fra \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
+# Create non-root user with a writable home directory (PaddleOCR downloads models here)
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 --create-home appuser \
+    && mkdir -p /home/appuser/.paddleocr \
+    && chown -R appuser:appuser /home/appuser
+ENV HOME=/home/appuser
 
 # CPU-only PyTorch (prevents sentence-transformers from pulling 2GB CUDA build)
 RUN pip install --no-cache-dir torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu

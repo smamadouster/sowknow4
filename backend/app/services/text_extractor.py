@@ -265,8 +265,23 @@ class TextExtractor:
         openpyxl can hang on malformed or pathologically large spreadsheets.
         Running extraction in a subprocess prevents a stuck parser from blocking
         the Celery worker indefinitely.
+
+        If openpyxl fails because the file is not actually OOXML (some legacy
+        .xls files are misnamed as .xlsx), fall back to the xlrd parser.
         """
-        return await self._extract_spreadsheet(file_path, "xlsx")
+        result = await self._extract_spreadsheet(file_path, "xlsx")
+        if result.get("error"):
+            err = result["error"].lower()
+            if "zip" in err or "openpyxl" in err or "not a zip" in err:
+                logger.warning(
+                    "openpyxl failed for %s: %s — trying xlrd fallback",
+                    file_path, result["error"],
+                )
+                fallback = await self._extract_spreadsheet(file_path, "xls")
+                if fallback.get("text") or not fallback.get("error"):
+                    fallback["source"] = "xlrd-fallback"
+                    return fallback
+        return result
 
     async def _extract_from_xls(self, file_path: str) -> dict[str, Any]:
         """Extract text from legacy XLS file via subprocess with a 120-second timeout.
@@ -283,11 +298,6 @@ class TextExtractor:
             fallback = await self._extract_spreadsheet(file_path, "xlsx")
             if fallback.get("text") or not fallback.get("error"):
                 fallback["source"] = "openpyxl-fallback"
-                return fallback
-            # xlrd 1.2.0 uses getiterator() which was removed in Python 3.9+.
-            # If xlrd failed for that reason, return the (more accurate) fallback
-            # error instead of the cryptic internal AttributeError.
-            if "getiterator" in result.get("error", ""):
                 return fallback
         return result
 

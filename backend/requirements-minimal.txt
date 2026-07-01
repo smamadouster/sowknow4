@@ -35,6 +35,7 @@ redis==4.6.0
 google-generativeai>=0.8.0
 
 # AI/ML - Required for semantic search embeddings
+numpy<2  # PaddleOCR / paddlepaddle are built against NumPy 1.x ABI
 sentence-transformers==2.2.2
 
 # Voice transcription (CPU-optimized, no torch needed)
@@ -49,7 +50,7 @@ python-docx==1.1.0
 pillow==10.1.0
 python-pptx==0.6.23
 openpyxl==3.1.2
-xlrd==1.2.0
+xlrd==2.0.1  # Python 3.11+ compatible, .xls only (xlsx handled by openpyxl)
 langdetect==1.0.9
 
 # OCR

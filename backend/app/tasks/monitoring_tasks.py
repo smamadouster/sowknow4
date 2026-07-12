@@ -14,6 +14,7 @@ so it is picked up by the Celery beat scheduler automatically.
 
 import asyncio
 import logging
+import os
 
 import psutil
 
@@ -22,9 +23,11 @@ from app.services.alert_service import alert_service
 
 logger = logging.getLogger(__name__)
 
-# Memory thresholds in MB
-_WARN_THRESHOLD_MB: int = 1024  # 80% of 1280m container limit
-_CRIT_THRESHOLD_MB: int = 1152  # 90% of 1280m container limit
+# Memory thresholds in MB.  Defaults assume a 1280m container limit, but each
+# worker should set CELERY_MEMORY_WARN_MB / CELERY_MEMORY_CRIT_MB to match its
+# real compose memory limit.
+_WARN_THRESHOLD_MB: int = int(os.getenv("CELERY_MEMORY_WARN_MB", "1024"))
+_CRIT_THRESHOLD_MB: int = int(os.getenv("CELERY_MEMORY_CRIT_MB", "1152"))
 
 
 @celery_app.task(

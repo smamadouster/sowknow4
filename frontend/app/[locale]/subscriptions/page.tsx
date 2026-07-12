@@ -32,218 +32,6 @@ const PRESET_COLORS = [
   'from-fuchsia-500 to-purple-600',
 ];
 
-const DEFAULT_SUBSCRIPTIONS: Subscription[] = [
-  {
-    id: '1',
-    name: 'Canva',
-    domain: 'canva.com',
-    price: 4000,
-    billingCycle: 'yearly',
-    description: 'To create social media content and blog images',
-    lastPayment: '2025-11-22',
-    status: 'active',
-    color: PRESET_COLORS[0],
-  },
-  {
-    id: '2',
-    name: 'Grammarly',
-    domain: 'grammarly.com',
-    price: 3000,
-    billingCycle: 'yearly',
-    description: 'To help me with editing my blog posts.',
-    lastPayment: '2025-07-23',
-    status: 'active',
-    color: PRESET_COLORS[1],
-  },
-  {
-    id: '3',
-    name: 'Amazon Prime',
-    domain: 'amazon.in',
-    price: 999,
-    billingCycle: 'yearly',
-    description: 'For Amazon Orders and Prime',
-    lastPayment: '2025-06-19',
-    status: 'active',
-    color: PRESET_COLORS[2],
-  },
-  {
-    id: '4',
-    name: 'Netflix',
-    domain: 'netflix.com',
-    price: 649,
-    billingCycle: 'monthly',
-    description: 'Entertainment',
-    lastPayment: '2025-11-03',
-    status: 'active',
-    color: PRESET_COLORS[3],
-  },
-  {
-    id: '5',
-    name: 'Jio Hotstar',
-    domain: 'hotstar.com',
-    price: 1499,
-    billingCycle: 'yearly',
-    description: 'Streaming sports and movies',
-    lastPayment: '2025-03-15',
-    status: 'active',
-    color: PRESET_COLORS[4],
-  },
-  {
-    id: '6',
-    name: 'Sun NXT',
-    domain: 'sunnxt.com',
-    price: 599,
-    billingCycle: 'yearly',
-    description: 'Regional content streaming',
-    lastPayment: '2025-01-10',
-    status: 'unused',
-    color: PRESET_COLORS[5],
-  },
-  {
-    id: '7',
-    name: 'Discovery+',
-    domain: 'discoveryplus.com',
-    price: 399,
-    billingCycle: 'yearly',
-    description: 'Documentaries and reality shows',
-    lastPayment: '2024-12-05',
-    status: 'unused',
-    color: PRESET_COLORS[6],
-  },
-  {
-    id: '8',
-    name: 'Setapp',
-    domain: 'setapp.com',
-    price: 1080,
-    billingCycle: 'yearly',
-    description: 'Mac app subscription bundle',
-    lastPayment: '2025-08-12',
-    status: 'active',
-    color: PRESET_COLORS[7],
-  },
-  {
-    id: '9',
-    name: 'Apple One',
-    domain: 'apple.com',
-    price: 195,
-    billingCycle: 'monthly',
-    description: 'iCloud, Music, TV+, Arcade bundle',
-    lastPayment: '2025-11-01',
-    status: 'active',
-    color: PRESET_COLORS[0],
-  },
-  {
-    id: '10',
-    name: 'Google Photos',
-    domain: 'google.com',
-    price: 650,
-    billingCycle: 'yearly',
-    description: 'Cloud photo storage',
-    lastPayment: '2025-05-20',
-    status: 'active',
-    color: PRESET_COLORS[1],
-  },
-  {
-    id: '11',
-    name: 'Medium',
-    domain: 'medium.com',
-    price: 500,
-    billingCycle: 'yearly',
-    description: 'Reading articles and publications',
-    lastPayment: '2025-02-14',
-    status: 'unused',
-    color: PRESET_COLORS[2],
-  },
-  {
-    id: '12',
-    name: 'InShot',
-    domain: 'inshot.com',
-    price: 299,
-    billingCycle: 'yearly',
-    description: 'Mobile video editing',
-    lastPayment: '2024-11-30',
-    status: 'unused',
-    color: PRESET_COLORS[3],
-  },
-  {
-    id: '13',
-    name: 'NYTimes',
-    domain: 'nytimes.com',
-    price: 1200,
-    billingCycle: 'yearly',
-    description: 'News and journalism',
-    lastPayment: '2025-09-10',
-    status: 'active',
-    color: PRESET_COLORS[4],
-  },
-  {
-    id: '14',
-    name: 'YouTube Premium',
-    domain: 'youtube.com',
-    price: 129,
-    billingCycle: 'monthly',
-    description: 'Ad-free videos and music',
-    lastPayment: '2025-11-05',
-    status: 'active',
-    color: PRESET_COLORS[5],
-  },
-  {
-    id: '15',
-    name: 'Waterllama',
-    domain: 'waterllama.com',
-    price: 199,
-    billingCycle: 'yearly',
-    description: 'Water intake tracker',
-    lastPayment: '2025-04-18',
-    status: 'unused',
-    color: PRESET_COLORS[6],
-  },
-  {
-    id: '16',
-    name: 'StressWatch',
-    domain: 'stresswatch.com',
-    price: 349,
-    billingCycle: 'yearly',
-    description: 'Stress monitoring app',
-    lastPayment: '2025-06-22',
-    status: 'active',
-    color: PRESET_COLORS[7],
-  },
-  {
-    id: '17',
-    name: 'Backdrops',
-    domain: 'backdrops.io',
-    price: 149,
-    billingCycle: 'yearly',
-    description: 'Wallpaper collection app',
-    lastPayment: '2024-10-10',
-    status: 'unused',
-    color: PRESET_COLORS[0],
-  },
-  {
-    id: '18',
-    name: 'iCloud+',
-    domain: 'icloud.com',
-    price: 75,
-    billingCycle: 'monthly',
-    description: 'Extended cloud storage',
-    lastPayment: '2025-11-01',
-    status: 'active',
-    color: PRESET_COLORS[1],
-  },
-  {
-    id: '19',
-    name: 'Gentler Streak',
-    domain: 'gentlerstreak.com',
-    price: 899,
-    billingCycle: 'yearly',
-    description: 'Fitness and wellness tracker',
-    lastPayment: '2025-07-07',
-    status: 'active',
-    color: PRESET_COLORS[2],
-  },
-];
-
 const CURRENCIES = [
   { code: 'INR', symbol: '₹', label: 'INR (₹)' },
   { code: 'USD', symbol: '$', label: 'USD ($)' },
@@ -267,7 +55,7 @@ async function syncToBackend(items: Subscription[]) {
       }))
     );
   } catch {
-    // Backend sync is best-effort; localStorage is the source of truth
+    // Backend is the source of truth; localStorage is only a local cache.
   }
 }
 
@@ -340,7 +128,9 @@ export default function SubscriptionsPage() {
   const [formStatus, setFormStatus] = useState<'active' | 'unused'>('active');
   const [testLoading, setTestLoading] = useState(false);
 
-  // Load subscriptions: backend first, fallback to localStorage
+  // Load subscriptions: backend is the source of truth.
+  // If the backend has no records but localStorage has cached data (e.g. first
+  // login after this feature was added), push the cache to the backend once.
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -367,7 +157,7 @@ export default function SubscriptionsPage() {
           setSubs(mapped);
           localStorage.setItem('sowknow_subscriptions', JSON.stringify(mapped));
         } else if (localSubs.length > 0) {
-          // Push localStorage data to backend if user is authenticated
+          // One-time migration: push cached localStorage data to backend
           setSubs(localSubs);
           syncToBackend(localSubs);
         } else {

@@ -19,6 +19,7 @@ import uuid
 from datetime import UTC, datetime
 
 from celery.exceptions import Reject
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.celery_app import celery_app
 from app.models.pipeline import STAGE_RETRY_CONFIG, PipelineStage, StageEnum, StageStatus
@@ -215,7 +216,8 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
                 meta = doc.document_metadata or {}
                 meta["processing_error"] = error_text[:500]
                 meta["last_error_at"] = datetime.now(UTC).isoformat()
-                doc.document_metadata = meta
+                doc.document_metadata = dict(meta)
+                flag_modified(doc, "document_metadata")
                 db_err.commit()
         finally:
             db_err.close()
@@ -286,7 +288,8 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
                     meta = doc.document_metadata or {}
                     meta["processing_error"] = error_text[:500]
                     meta["last_error_at"] = datetime.now(UTC).isoformat()
-                    doc.document_metadata = meta
+                    doc.document_metadata = dict(meta)
+                    flag_modified(doc, "document_metadata")
                     db.commit()
             finally:
                 db.close()
@@ -386,9 +389,20 @@ def _run_ocr(document_id: str) -> None:
                 raise _PermanentPipelineError(extraction_error)
 
             # For office documents (xls, xlt, xlsx, doc, docx, ppt, etc.) OCR is
-            # never attempted — a native extraction error is therefore permanent.
+            # never attempted.  Instead of permanently erroring the document,
+            # record the failure and let the chunk stage create a placeholder
+            # chunk so the document doesn't stay stuck in the pipeline.
             if extraction_error and doc.mime_type and not doc.mime_type.startswith(("image/", "application/pdf")):
-                raise _PermanentPipelineError(f"Text extraction failed: {extraction_error}")
+                logger.warning(
+                    "Native extraction failed for office doc %s (%s): %s — proceeding with empty text",
+                    document_id, doc.mime_type, extraction_error,
+                )
+                meta = doc.document_metadata or {}
+                meta["extraction_empty"] = True
+                meta["extraction_error"] = extraction_error
+                doc.document_metadata = dict(meta)
+                flag_modified(doc, "document_metadata")
+                extraction_error = ""
 
         # If OCR is needed (image files, PDFs without text layer, etc.)
         should_ocr, reason = ocr_service.should_use_ocr(
@@ -453,7 +467,8 @@ def _run_ocr(document_id: str) -> None:
             )
             meta = doc.document_metadata or {}
             meta["extraction_empty"] = True
-            doc.document_metadata = meta
+            doc.document_metadata = dict(meta)
+            flag_modified(doc, "document_metadata")
 
         doc.page_count = page_count or 1
         db.commit()
@@ -483,16 +498,34 @@ def _run_chunk(document_id: str) -> None:
         with open(txt_path, encoding="utf-8") as fh:
             text = fh.read()
 
+        placeholder_mode = False
         if not text.strip():
-            logger.warning("Document %s has no text content — failing pipeline", document_id)
-            raise _PermanentPipelineError(
-                "No text content extracted — document has no extractable text"
-            )
+            meta = doc.document_metadata or {}
+            if meta.get("extraction_empty") or meta.get("extraction_error"):
+                # Unrecoverable extraction failure: index a placeholder chunk so
+                # the document is not stuck forever in ERROR status.
+                placeholder = f"[No extractable text] {doc.original_filename or doc.filename}"
+                if doc.mime_type:
+                    placeholder += f" ({doc.mime_type})"
+                logger.info(
+                    "Document %s has no text content — using placeholder chunk", document_id
+                )
+                text = placeholder
+                placeholder_mode = True
+            else:
+                logger.warning("Document %s has no text content — failing pipeline", document_id)
+                raise _PermanentPipelineError(
+                    "No text content extracted — document has no extractable text"
+                )
 
         # Detect language for full-text search configuration
         search_lang = detect_text_language(text)
 
-        chunks = chunking_service.chunk_document(text, document_id=document_id)
+        if placeholder_mode:
+            # A single placeholder chunk is enough; don't run the splitter.
+            chunks = [{"text": text, "index": 0, "token_count": 0, "metadata": {}}]
+        else:
+            chunks = chunking_service.chunk_document(text, document_id=document_id)
 
         if len(chunks) == 0:
             raise _PermanentPipelineError(
@@ -509,7 +542,8 @@ def _run_chunk(document_id: str) -> None:
             meta = doc.document_metadata or {}
             meta["processing_error"] = error_msg
             meta["last_error_at"] = datetime.now(UTC).isoformat()
-            doc.document_metadata = meta
+            doc.document_metadata = dict(meta)
+            flag_modified(doc, "document_metadata")
             db.commit()
             raise _PermanentPipelineError(error_msg)
 
@@ -595,11 +629,15 @@ def _run_embed(document_id: str) -> None:
     total_embedded = 0
 
     while True:
-        # --- Per-window session: fetch, embed, write, commit ---
+        # --- Per-window session: fetch IDs/texts, embed, update by ID ---
+        # We deliberately do NOT hold ORM objects across the HTTP call.
+        # If a chunk task re-run deletes/recreates chunks while we are embedding,
+        # updating by primary key avoids the StaleDataError that would otherwise
+        # abort the whole document.
         db = SessionLocal()
         try:
-            chunks = (
-                db.query(DocumentChunk)
+            rows = (
+                db.query(DocumentChunk.id, DocumentChunk.chunk_index, DocumentChunk.chunk_text)
                 .filter(
                     DocumentChunk.document_id == doc_uuid,
                     DocumentChunk.embedding_vector.is_(None),
@@ -609,32 +647,44 @@ def _run_embed(document_id: str) -> None:
                 .all()
             )
 
-            if not chunks:
+            if not rows:
                 break  # All chunks embedded
 
             # Sort by ascending text length so short chunks are batched together.
-            # Prevents a single long chunk from padding an entire batch to max
-            # sequence length, which multiplies CPU time by 10-50x on the embed
-            # server (sentence-transformers pads every text in a batch to the
-            # longest token count).
-            chunks_sorted = sorted(chunks, key=lambda c: len(c.chunk_text or ""))
+            rows_sorted = sorted(rows, key=lambda r: len(r.chunk_text or ""))
+            embedded_this_window = 0
+            stale_count = 0
 
-            for i in range(0, len(chunks_sorted), batch_size):
-                batch = chunks_sorted[i : i + batch_size]
-                texts = [c.chunk_text for c in batch]
-                # HTTP call happens HERE — DB connection is NOT held
+            for i in range(0, len(rows_sorted), batch_size):
+                batch = rows_sorted[i : i + batch_size]
+                texts = [r.chunk_text for r in batch]
+                # HTTP call happens HERE — DB session/connection is NOT held
                 vectors = embedding_service.encode(texts=texts, batch_size=batch_size)
-                for chunk, vec in zip(batch, vectors, strict=False):
-                    chunk.embedding_vector = vec
+
+                for r, vec in zip(batch, vectors, strict=False):
+                    updated = (
+                        db.query(DocumentChunk)
+                        .filter(DocumentChunk.id == r.id)
+                        .update({"embedding_vector": vec}, synchronize_session=False)
+                    )
+                    if updated:
+                        embedded_this_window += 1
+                    else:
+                        stale_count += 1
+                        logger.warning(
+                            "Chunk %s for doc %s disappeared during embedding",
+                            r.id, document_id,
+                        )
 
             db.commit()
-            total_embedded += len(chunks)
+            total_embedded += embedded_this_window
             logger.info(
-                "Embedded %d/%d chunks for doc %s (window=%d)",
+                "Embedded %d/%d chunks for doc %s (window=%d, stale=%d)",
                 total_embedded,
                 total_chunks,
                 document_id,
-                len(chunks),
+                embedded_this_window,
+                stale_count,
             )
         finally:
             db.close()

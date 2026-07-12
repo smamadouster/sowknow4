@@ -14,7 +14,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import DocumentChunk
-from app.services.cache_monitor import cache_monitor_service
+from app.services.cache_monitor import cache_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -99,12 +99,12 @@ class PerformanceTuningService:
 
     async def _get_cache_stats(self) -> dict[str, Any]:
         """Get cache performance statistics"""
-        stats = cache_monitor_service.get_daily_stats()
+        stats = cache_monitor.get_today_stats()
         return {
             "hit_rate": stats.get("hit_rate", 0.0),
-            "total_hits": stats.get("total_hits", 0),
-            "total_misses": stats.get("total_misses", 0),
-            "total_cached_tokens": stats.get("total_cached_tokens", 0),
+            "total_hits": stats.get("hits", 0),
+            "total_misses": stats.get("misses", 0),
+            "total_cached_tokens": stats.get("tokens_saved", 0),
         }
 
     async def _get_minimax_stats(self) -> dict[str, Any]:
@@ -275,15 +275,15 @@ class PerformanceTuningService:
             Dictionary with cost analysis
         """
         # Get stats from cache monitor
-        stats = cache_monitor_service.get_stats_days(days)
+        stats = cache_monitor.get_stats_summary(days=days)
 
         # Estimate costs (Gemini Flash pricing)
         # Input: $0.075 / 1M tokens
         # Output: $0.15 / 1M tokens
         # Cached content: $0.375 / 1M tokens
 
-        total_tokens = stats.get("total_tokens", 0)
-        cached_tokens = stats.get("total_cached_tokens", 0)
+        cached_tokens = stats.get("total_tokens_saved", 0)
+        total_tokens = cached_tokens
 
         input_cost = (total_tokens - cached_tokens) * 0.075 / 1_000_000
         cached_cost = cached_tokens * 0.375 / 1_000_000

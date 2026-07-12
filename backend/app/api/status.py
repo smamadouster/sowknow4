@@ -114,7 +114,7 @@ async def api_status() -> dict[str, Any]:
             {"name": "Temporal Reasoning", "status": "✅", "description": "Time-based relationship analysis"},
             {"name": "Progressive Revelation", "status": "✅", "description": "Role-based information disclosure"},
             {"name": "Family Context", "status": "✅", "description": "Family narrative generation"},
-            {"name": "Multi-Agent Search", "status": "⏳", "description": "Agentic search architecture"},
+            {"name": "Multi-Agent Search", "status": "✅", "description": "Agentic search architecture via /api/v1/search/orchestrate"},
         ],
         "next_steps": [
             "Final system QA and end-to-end testing",

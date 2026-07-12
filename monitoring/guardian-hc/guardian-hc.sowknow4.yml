@@ -1,20 +1,19 @@
-# Guardian HC v2.0 -- SOWKNOW4 Configuration
+# Guardian HC v2.0 -- SOWKNOW4 Production Configuration
 # Autonomous observability & self-healing agent
 #
-# Production: /var/docker/sowknow4
-# Dev:        /home/development/src/active/sowknow4
+# Matches docker-compose.production.yml container names (sowknow-* prefix).
 
 version: "2.0"
 
 app:
   name: "SOWKNOW4 Legacy Knowledge Vault"
-  compose_file: "/var/docker/sowknow4/docker-compose.yml"
+  compose_file: "/var/docker/sowknow4/docker-compose.production.yml"
 
 services:
   # --- Infrastructure ---
 
   - name: "postgres"
-    container: "sowknow4-postgres"
+    container: "sowknow-postgres"
     health_check:
       type: tcp
       host: postgres
@@ -23,7 +22,7 @@ services:
       restart: true
 
   - name: "redis"
-    container: "sowknow4-redis"
+    container: "sowknow-redis"
     health_check:
       type: tcp
       host: redis
@@ -31,25 +30,10 @@ services:
     auto_heal:
       restart: true
 
-  # vault removed 2026-04-11: profile-gated since 2026-04-10 unseal-key mismatch.
-  # Container doesn't run, so container_vault check failed every patrol and
-  # Guardian spammed heal-suppressed Telegram alerts 24/7. Re-add only after
-  # vault is re-initialized and `profiles: ["vault-broken"]` is lifted in
-  # docker-compose.yml.
-
-  - name: "nats"
-    container: "sowknow4-nats"
-    health_check:
-      type: tcp
-      host: nats
-      port: 4222
-    auto_heal:
-      restart: true
-
   # --- Application ---
 
   - name: "backend"
-    container: "sowknow4-backend"
+    container: "sowknow-backend"
     health_check:
       type: http
       url: "http://backend:8000/api/v1/health"
@@ -58,37 +42,71 @@ services:
       restart: true
       rebuild_on_failure: true
 
+  - name: "embed-server"
+    container: "sowknow-embed-server"
+    health_check:
+      type: http
+      url: "http://embed-server:8000/health"
+      timeout: 15
+    auto_heal:
+      restart: true
+      rebuild_on_failure: true
+
+  - name: "rerank-server"
+    container: "sowknow-rerank-server"
+    health_check:
+      type: http
+      url: "http://rerank-server:8000/health"
+      timeout: 15
+    auto_heal:
+      restart: true
+      rebuild_on_failure: true
+
   - name: "celery-light"
-    container: "sowknow4-celery-light"
+    container: "sowknow-celery-light"
     health_check:
       type: container
     auto_heal:
       restart: true
 
   - name: "celery-heavy"
-    container: "sowknow4-celery-heavy"
+    container: "sowknow-celery-heavy"
     health_check:
       type: container
     auto_heal:
       restart: true
       rebuild_on_failure: true
 
+  - name: "celery-entities"
+    container: "sowknow-celery-entities"
+    health_check:
+      type: container
+    auto_heal:
+      restart: true
+
+  - name: "celery-articles"
+    container: "sowknow-celery-articles"
+    health_check:
+      type: container
+    auto_heal:
+      restart: true
+
   - name: "celery-collections"
-    container: "sowknow4-celery-collections"
+    container: "sowknow-celery-collections"
     health_check:
       type: container
     auto_heal:
       restart: true
 
   - name: "celery-beat"
-    container: "sowknow4-celery-beat"
+    container: "sowknow-celery-beat"
     health_check:
       type: container
     auto_heal:
       restart: true
 
   - name: "frontend"
-    container: "sowknow4-frontend"
+    container: "sowknow-frontend"
     health_check:
       type: http
       url: "http://frontend:3000/"
@@ -98,7 +116,7 @@ services:
       rebuild_on_failure: true
 
   - name: "telegram-bot"
-    container: "sowknow4-telegram-bot"
+    container: "sowknow-telegram-bot"
     health_check:
       type: container
     auto_heal:
@@ -147,8 +165,8 @@ celery:
   redis_port: 6379
   redis_password: "${REDIS_PASSWORD}"
   max_queue_depth: 200
-  worker_container: "sowknow4-celery-light"
-  beat_container: "sowknow4-celery-beat"
+  worker_container: "sowknow-celery-light"
+  beat_container: "sowknow-celery-beat"
 
 ollama:
   enabled: false  # Ollama removed from project -- confidential routing uses metadata-only approach
@@ -159,13 +177,12 @@ vps_load:
   steal_threshold: 20.0
 
 # Docker network health -- detects stale nftables rules from dead bridges
-# (Docker 29.x bug: raw PREROUTING rules not cleaned up on network destroy)
 network:
   probe_pairs:
-    - from: "sowknow4-backend"
+    - from: "sowknow-backend"
       to_host: "redis"
       to_port: 6379
-    - from: "sowknow4-backend"
+    - from: "sowknow-backend"
       to_host: "postgres"
       to_port: 5432
 
@@ -197,10 +214,10 @@ modules:
     services: [backend]
     probes: [jwt_validity, auth_flow]
   - name: "Document Pipeline"
-    services: [celery-heavy, celery-light, backend]
+    services: [celery-heavy, celery-light, embed-server, backend]
     probes: [embedding_pipeline, celery_completion]
   - name: "Search & Retrieval"
-    services: [backend, postgres]
+    services: [backend, rerank-server, postgres]
     probes: [query_latency]
   - name: "Collections Engine"
     services: [celery-collections, backend]
@@ -216,8 +233,6 @@ modules:
     probes: [redis_deep, postgres_deep]
   - name: "Infrastructure"
     services: [frontend, backend]
-    # nginx_upstream removed 2026-04-11: sowknow4 uses host nginx, not a container.
-    # The old probe hard-coded `restart:sowknow4-nginx` which never exists.
     probes: [disk, memory, network, ssl, resource_hogs]
 
 database:

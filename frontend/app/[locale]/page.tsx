@@ -69,7 +69,7 @@ export default function Home() {
       color: 'from-violet-500/20 to-violet-600/5',
       glowColor: 'group-hover:shadow-violet-500/20',
     },
-    {
+    ...(hasExtendedAccess ? [{
       href: '/collections',
       titleKey: 'collections',
       descKey: 'collections_desc',
@@ -80,7 +80,7 @@ export default function Home() {
       ),
       color: 'from-sky-500/20 to-sky-600/5',
       glowColor: 'group-hover:shadow-sky-500/20',
-    },
+    }] : []),
     {
       href: '/smart-folders',
       titleKey: 'smart_folders',

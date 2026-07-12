@@ -16,7 +16,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,11 @@ from app.api import (
     graph_rag,
     internal,
     knowledge_graph,
+    monitoring,
     notes,
+    pipeline_admin,
     push,
+    reports,
     search_agent_router,
     search_feedback,
     search_suggest,
@@ -120,6 +123,33 @@ class ErrorRateMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class PrometheusHttpMetricsMiddleware(BaseHTTPMiddleware):
+    """Middleware to record HTTP request counts and durations in Prometheus."""
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        start_time = time.perf_counter()
+        response = await call_next(request)
+        duration = time.perf_counter() - start_time
+
+        method = request.method
+        # Use the route path when available to avoid label cardinality blow-up.
+        route = request.scope.get("route")
+        endpoint = getattr(route, "path", request.url.path) if route is not None else request.url.path
+        status = str(response.status_code)
+
+        metrics = get_metrics()
+        metrics.counter("sowknow_http_requests_total").inc(
+            1, {"method": method, "endpoint": endpoint, "status": status}
+        )
+        metrics.histogram("sowknow_http_request_duration_seconds").observe(
+            duration, {"method": method, "endpoint": endpoint}
+        )
+
+        return response
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup: Initialize database
@@ -163,14 +193,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         print(f"LLM HTTP client initialization warning: {exc}")
 
-    # Startup: Initialize NATS messaging (optional — app runs without it)
+    # Startup: Register default monitoring alerts (PRD)
     try:
-        from app.services.messaging import get_messaging_client
+        from app.services.monitoring import setup_default_alerts
 
-        await get_messaging_client()
-        print("NATS messaging connected")
+        setup_default_alerts()
+        print("Default monitoring alerts registered")
     except Exception as exc:
-        print(f"NATS messaging unavailable: {exc}")
+        print(f"Default alert registration warning: {exc}")
 
     yield
 
@@ -211,13 +241,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         print("LLM HTTP client closed")
     except Exception as exc:
         print(f"Error closing LLM HTTP client: {exc}")
-    try:
-        from app.services.messaging import close_messaging_client
-
-        await close_messaging_client()
-        print("NATS messaging disconnected")
-    except Exception as exc:
-        print(f"Error closing NATS: {exc}")
     print("Shutdown complete")
 
 
@@ -413,6 +436,9 @@ app.add_middleware(BaseHTTPMiddleware, dispatch=set_rls_context)
 # Error Rate Tracking Middleware - Tracks 5xx errors per PRD
 app.add_middleware(ErrorRateMiddleware)
 
+# Prometheus HTTP metrics middleware - records request counts and durations
+app.add_middleware(PrometheusHttpMetricsMiddleware)
+
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
@@ -437,6 +463,15 @@ app.include_router(status_router.router, prefix="/api/v1")
 app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(push.router, prefix="/api/v1")
+app.include_router(pipeline_admin.router, prefix="/api/v1")
+app.include_router(reports.router, prefix="/api/v1")
+app.include_router(monitoring.router, prefix="/api/v1")
+
+
+@app.get("/health", include_in_schema=False)
+async def root_health() -> RedirectResponse:
+    """Redirect root /health to the canonical /api/v1/health endpoint."""
+    return RedirectResponse(url="/api/v1/health", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @app.get("/")
@@ -446,7 +481,7 @@ async def root() -> dict[str, Any]:
         "status": "ok",
         "version": "1.0.0",
         "endpoints": {
-            "health": "/health",
+            "health": "/api/v1/health",
             "api_status": "/api/v1/status",
             "docs": "/api/docs",
             "openapi": "/api/openapi.json",

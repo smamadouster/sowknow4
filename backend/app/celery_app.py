@@ -47,6 +47,10 @@ celery_app = Celery(
         "app.tasks.smart_folder_tasks",
         "app.tasks.collection_report_tasks",
         "app.tasks.task_alarm_tasks",
+        "app.tasks.subscription_tasks",
+        "app.tasks.health_report_tasks",
+        "app.tasks.space_tasks",
+        "app.tasks.backfill_tasks",
     ],
 )
 

@@ -5,6 +5,7 @@
 
 set -euo pipefail
 
+API_URL="${API_URL:-http://localhost:8000}"
 ALERT_EMAIL="${ALERT_EMAIL:-admin@sowknow.local}"
 WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
 ALERT_LOG="/var/log/sowknow-monitor.log"
@@ -82,26 +83,10 @@ get_vps_memory_percent() {
 }
 
 get_5xx_error_rate() {
-    local nginx_container="sowknow4-nginx"
-    
-    if ! docker ps --format "{{.Names}}" | grep -q "^${nginx_container}$"; then
-        echo "0"
-        return
-    fi
-    
-    local total_requests
-    local error_requests
-    
-    total_requests=$(docker logs "$nginx_container" --since 5m 2>&1 | grep -c 'HTTP/1.1"' || echo "0")
-    error_requests=$(docker logs "$nginx_container" --since 5m 2>&1 | grep -cE 'HTTP/1.1" 5[0-9]{2}' || echo "0")
-    
-    if [ "$total_requests" -eq 0 ]; then
-        echo "0"
-        return
-    fi
-    
+    # Read the error rate from the backend monitoring endpoint instead of a
+    # non-existent nginx container. Falls back to 0 if the API is unreachable.
     local error_rate
-    error_rate=$(echo "scale=2; $error_requests * 100 / $total_requests" | bc -l)
+    error_rate=$(curl -sf "${API_URL}/api/v1/monitoring/system" 2>/dev/null | jq -r '.error_rate // 0' 2>/dev/null || echo "0")
     printf "%.2f" "$error_rate"
 }
 

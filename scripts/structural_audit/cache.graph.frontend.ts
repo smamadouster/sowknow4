@@ -21,15 +21,6 @@
 [fn]: default()
 
 ---
-### FILE: frontend/components/BatchUploader.tsx
-[ext_deps]: react, next-intl
-[fn]: default({
-  onComplete,
-  onError,
-  maxFiles = 20,
-})
-
----
 ### FILE: frontend/components/CommandPalette.tsx
 [local_deps]: ./SearchModal
 [ext_deps]: react, next-intl
@@ -334,7 +325,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/monitoring/page.tsx
-[ext_deps]: react, next-intl
+[ext_deps]: react, next-intl, next/navigation, @/lib/store
 [fn]: default()
 
 ---
@@ -360,7 +351,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/settings/page.tsx
-[ext_deps]: react, next-intl, @/lib/api, @/lib/formatDate
+[ext_deps]: react, next-intl, next/navigation, @/lib/api, @/lib/formatDate, @/lib/store
 [fn]: default()
 
 ---
@@ -394,7 +385,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/admin/search-debug/page.tsx
-[ext_deps]: react, next-intl, @/lib/api
+[ext_deps]: react, next-intl, next/navigation, @/lib/api, @/lib/store
 [fn]: default()
 
 ---

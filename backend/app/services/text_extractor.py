@@ -281,6 +281,11 @@ class TextExtractor:
                 if fallback.get("text") or not fallback.get("error"):
                     fallback["source"] = "xlrd-fallback"
                     return fallback
+            # Some exported spreadsheets are HTML tables with a spreadsheet extension.
+            html_fallback = await self._extract_from_html(file_path)
+            if html_fallback.get("text"):
+                html_fallback["source"] = "html-fallback"
+                return html_fallback
         return result
 
     async def _extract_from_xls(self, file_path: str) -> dict[str, Any]:
@@ -299,6 +304,11 @@ class TextExtractor:
             if fallback.get("text") or not fallback.get("error"):
                 fallback["source"] = "openpyxl-fallback"
                 return fallback
+            # Some exported spreadsheets are HTML tables with a spreadsheet extension.
+            html_fallback = await self._extract_from_html(file_path)
+            if html_fallback.get("text"):
+                html_fallback["source"] = "html-fallback"
+                return html_fallback
         return result
 
     async def _extract_spreadsheet(self, file_path: str, fmt: str) -> dict[str, Any]:

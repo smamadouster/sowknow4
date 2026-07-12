@@ -23,6 +23,21 @@ class SystemStats(BaseModel):
     active_sessions: int
 
 
+class SystemConfigResponse(BaseModel):
+    """Read-only system configuration for the admin Settings System tab."""
+
+    app_env: str
+    app_version: str
+    llm_provider: str
+    llm_tiers: dict[str, str]
+    ocr_engine: str
+    ocr_fallback_enabled: bool
+    auto_tagging_enabled: bool
+    embed_server_url: str | None = None
+    reports_dir: str | None = None
+    allowed_hosts: str | None = None
+
+
 class QueueStats(BaseModel):
     """Processing queue statistics"""
 

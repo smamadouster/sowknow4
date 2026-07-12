@@ -102,20 +102,19 @@ class LLMRouter:
     """
 
     # Fallback chains per routing scenario (§5.2 updated).
-    # Ollama is removed from the active chain (CPU too slow, PRD §1.3).
-    # MiniMax is disabled — all traffic routes through OpenRouter with tier fallback.
+    # Ollama and Together.ai are removed from the active chain.
+    # MiniMax is optional; all traffic routes through OpenRouter with tier fallback.
     # Each chain is an ordered list of provider names tried left-to-right.
     fallback_chains: dict[str, list[str]] = {
         "confidential": ["openrouter"],
         "public_docs": ["openrouter"],
         "general_chat": ["openrouter"],
-        # §5.2 Smart Collections & Reports: quality-critical multi-tier fallback
+        # §5.2 Smart Collections & Reports: quality-critical tier fallback
         # Primary: OpenRouter complex (Claude Sonnet)
         # Secondary: OpenRouter standard (Mistral Small) — tier fallback
-        # Tertiary: Together.ai (Llama 3.1 70B)
         # Ultimate: Graceful degradation to bullet-point summary
-        "smart_collections": ["openrouter", "together"],
-        "reports": ["openrouter", "together"],
+        "smart_collections": ["openrouter"],
+        "reports": ["openrouter"],
     }
 
     def __init__(
@@ -175,13 +174,10 @@ class LLMRouter:
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
         # §5.2: All traffic routes through OpenRouter.
-        # Ollama is intentionally removed from the active fallback chain
-        # (CPU response times of 30–60s are unacceptable for family chat).
+        # Ollama and Together.ai are intentionally removed from the active fallback chain.
         # Confidential data relies on metadata-only stripping (PRD §1.3).
         if self._openrouter is not None:
             providers_to_try.append(("openrouter", self._openrouter))
-        if self._together is not None and getattr(self._together, "api_key", None):
-            providers_to_try.append(("together", self._together))
         if self._minimax is not None and getattr(self._minimax, "api_key", None):
             providers_to_try.append(("minimax", self._minimax))
 
@@ -313,13 +309,12 @@ class LLMRouter:
         tier: TaskTier = TaskTier.COMPLEX,
     ) -> AsyncGenerator[str, None]:
         """
-        §5.2 Smart Collections & Reports: quality-critical multi-tier fallback.
+        §5.2 Smart Collections & Reports: quality-critical tier fallback.
 
         Chain:
             1. OpenRouter complex (Claude 3.5 Sonnet)
             2. OpenRouter standard (Mistral Small) — on 429/timeout/JSON failure
-            3. Together.ai Llama 3.1 70B — on OpenRouter failure
-            4. Graceful degradation — bullet-point summary of retrieved documents
+            3. Graceful degradation — bullet-point summary of retrieved documents
 
         Yields:
             Text chunks from the provider, or bullet summary if all fail.
@@ -360,24 +355,7 @@ class LLMRouter:
                 except Exception as exc2:
                     logger.warning("Report secondary failed (OpenRouter standard): %s", exc2)
 
-        # 3. Tertiary: Together.ai Llama 3.1 70B
-        if self._together is not None and getattr(self._together, "api_key", None):
-            adapter = LLMServiceAdapter(self._together, "together")
-            tertiary_gen = adapter.call_service(
-                built_messages,
-                stream=stream,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            try:
-                async for chunk in tertiary_gen:
-                    yield chunk
-                logger.info("Report tertiary succeeded: Together.ai")
-                return
-            except Exception as exc:
-                logger.warning("Report tertiary failed (Together.ai): %s", exc)
-
-        # 4. Ultimate: Graceful degradation to bullet-point summary
+        # 3. Ultimate: Graceful degradation to bullet-point summary
         logger.error("All report LLM providers failed. Emitting bullet summary.")
         bullet_summary = self._generate_bullet_summary(context_chunks)
         if bullet_summary:
@@ -401,10 +379,9 @@ class LLMRouter:
         detected from *query* and *context_chunks*.
 
         ``task_type`` hints at the consumer: "chat", "report", "smart_collection".
-        For quality-critical tasks, the chain includes Together.ai as tertiary.
+        For quality-critical tasks, OpenRouter tier fallback is used.
 
-        Confidential queries prefer Ollama (local), falling back to OpenRouter
-        with metadata-only stripping, then MiniMax.
+        Confidential queries route to OpenRouter with metadata-only stripping.
         """
         context_chunks = context_chunks or []
 
@@ -440,11 +417,9 @@ class LLMRouter:
         else:
             reason = RoutingReason.GENERAL_CHAT
 
-        # §5.2: Quality-critical tasks get Together.ai in their fallback chain
+        # §5.2: Quality-critical tasks use OpenRouter tier fallback only.
         if task_type in ("report", "smart_collection"):
             chain = ["openrouter"]
-            if self._together is not None and getattr(self._together, "api_key", None):
-                chain.append("together")
             logger.info("LLM routing → openrouter (%s, quality-critical chain=%s)", reason.value, chain)
             if self._openrouter is not None:
                 return RoutingDecision(
@@ -453,13 +428,6 @@ class LLMRouter:
                     service=self._openrouter,
                     metadata={"chain": chain, "task_type": task_type, "tier": TaskTier.COMPLEX},
                     tier=TaskTier.COMPLEX,
-                )
-            if self._together is not None and getattr(self._together, "api_key", None):
-                return RoutingDecision(
-                    provider_name="together",
-                    reason=reason,
-                    service=self._together,
-                    metadata={"chain": chain, "task_type": task_type},
                 )
             raise RuntimeError("No LLM provider available for quality-critical task.")
 
@@ -473,25 +441,6 @@ class LLMRouter:
             )
 
         raise RuntimeError("No LLM provider available.")
-
-    async def _is_ollama_available(self) -> bool:
-        """Return True only when the local Ollama service is configured and healthy enough for sensitive data."""
-        if self._ollama is None:
-            return False
-        if not getattr(self._ollama, "available", True):
-            return False
-
-        health_check = getattr(self._ollama, "health_check", None)
-        if health_check is None:
-            return True
-
-        try:
-            health = await health_check()
-        except Exception as exc:
-            logger.warning("Ollama health check failed for sensitive routing: %s", exc)
-            return False
-
-        return health.get("status") in {"healthy", "degraded"}
 
     def get_provider_for_direct_call(
         self,
@@ -507,18 +456,12 @@ class LLMRouter:
         """
         if preferred == LLMProvider.OPENROUTER and self._openrouter is not None:
             return self._openrouter, "openrouter"
-        if preferred == LLMProvider.TOGETHER and self._together is not None:
-            return self._together, "together"
         if preferred == LLMProvider.MINIMAX and self._minimax is not None:
             return self._minimax, "minimax"
-        if preferred == LLMProvider.OLLAMA and self._ollama is not None:
-            return self._ollama, "ollama"
         # Fallback to any available
         for svc, name in [
             (self._openrouter, "openrouter"),
-            (self._together, "together"),
             (self._minimax, "minimax"),
-            (self._ollama, "ollama"),
         ]:
             if svc is not None:
                 return svc, name
@@ -585,10 +528,11 @@ class LLMServiceAdapter:
 def _build_router() -> LLMRouter:
     """Instantiate the router with the project's singleton services."""
     # All imports intentionally lazy to avoid circular imports at module load.
+    # Ollama and Together.ai are intentionally not imported: they are removed
+    # from the active fallback chain and must not be instantiated in production.
     minimax_svc = None
     kimi_svc = None
     openrouter_svc = None
-    ollama_svc = None
     pii_svc = None
 
     try:
@@ -613,20 +557,6 @@ def _build_router() -> LLMRouter:
         logger.warning("LLMRouter: openrouter_service not available: %s", exc, exc_info=True)
 
     try:
-        from app.services.ollama_service import ollama_service as _o
-
-        ollama_svc = _o
-    except Exception as exc:
-        logger.warning("LLMRouter: ollama_service not available: %s", exc, exc_info=True)
-
-    try:
-        from app.services.together_service import together_service as _t
-
-        together_svc = _t
-    except Exception as exc:
-        logger.warning("LLMRouter: together_service not available: %s", exc, exc_info=True)
-
-    try:
         from app.services.pii_detection_service import pii_detection_service as _pii
 
         pii_svc = _pii
@@ -637,8 +567,6 @@ def _build_router() -> LLMRouter:
         minimax_service=minimax_svc,
         kimi_service=kimi_svc,
         openrouter_service=openrouter_svc,
-        ollama_service=ollama_svc,
-        together_service=together_svc,
         pii_detection_service=pii_svc,
     )
 

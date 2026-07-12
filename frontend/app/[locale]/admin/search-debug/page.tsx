@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useState, useEffect } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/store';
 
 interface DebugResult {
   document_id: string;
@@ -45,6 +47,18 @@ const DEFAULT_VARIANT_B = {
 
 export default function SearchDebugPage() {
   const t = useTranslations('admin');
+  const router = useRouter();
+  const locale = useLocale();
+  const { user, _hasHydrated } = useAuthStore();
+
+  // Role guard: redirect non-admins
+  useEffect(() => {
+    if (!_hasHydrated) return;
+    if (!user || (user.role !== 'admin' && user.role !== 'superuser')) {
+      router.replace(`/${locale}`);
+    }
+  }, [_hasHydrated, user, locale, router]);
+
   const [query, setQuery] = useState('');
   const [variantA, setVariantA] = useState(DEFAULT_VARIANT_A);
   const [variantB, setVariantB] = useState(DEFAULT_VARIANT_B);

@@ -36,6 +36,7 @@ from app.schemas.admin import (
     PipelineStageStats,
     PipelineStatsResponse,
     QueueStats,
+    SystemConfigResponse,
     SystemStats,
     UploadsHistoryPoint,
     UploadsHistoryResponse,
@@ -931,6 +932,45 @@ async def get_dashboard(
         queue_stats=queue_stats,
         system_health=health_status,
         last_updated=datetime.utcnow(),
+    )
+
+
+@router.get("/system-config", response_model=SystemConfigResponse)
+async def get_system_config(
+    current_user: User = Depends(require_superuser_or_admin),
+) -> SystemConfigResponse:
+    """Return safe, read-only system configuration for the admin Settings tab."""
+    def _safe_url(url: str | None) -> str | None:
+        if not url:
+            return None
+        # Strip credentials from URLs like redis://:pass@host/db
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(url)
+        if parsed.username is not None or parsed.password is not None:
+            netloc = parsed.hostname or ""
+            if parsed.port:
+                netloc = f"{netloc}:{parsed.port}"
+            parsed = parsed._replace(netloc=netloc)
+            return urlunparse(parsed)
+        return url
+
+    embed_url = _safe_url(os.getenv("EMBED_SERVER_URL"))
+
+    return SystemConfigResponse(
+        app_env=os.getenv("APP_ENV", "development"),
+        app_version=os.getenv("APP_VERSION", "1.0.0"),
+        llm_provider=os.getenv("OPENROUTER_MODEL", "openrouter"),
+        llm_tiers={
+            "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "google/gemini-2.0-flash-001"),
+            "standard": os.getenv("OPENROUTER_TIER_STANDARD", "mistralai/mistral-small-2409"),
+            "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "anthropic/claude-3.5-sonnet"),
+        },
+        ocr_engine=os.getenv("OCR_ENGINE", "paddle"),
+        ocr_fallback_enabled=os.getenv("OCR_FALLBACK_ENABLED", "true").lower() == "true",
+        auto_tagging_enabled=os.getenv("AUTO_TAGGING_ENABLED", "false").lower() == "true",
+        embed_server_url=embed_url,
+        reports_dir=os.getenv("REPORTS_DIR", "/tmp/sowknow_reports"),
+        allowed_hosts=os.getenv("ALLOWED_HOSTS", "*"),
     )
 
 

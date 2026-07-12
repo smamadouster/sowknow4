@@ -78,15 +78,32 @@ export default function SmartFoldersPage() {
     cancelStream,
   } = useSmartFolderStream();
 
-  // Handle SSE completion
+  // Handle SSE completion / failure
   useEffect(() => {
     if (streamResult?.smart_folder_id) {
       loadSmartFolder(streamResult.smart_folder_id);
     }
     if (streamError) {
       setError(streamError);
+      // If SSE fails, fall back to polling for the same query (one retry).
+      if (!useFallbackPolling && query) {
+        setUseFallbackPolling(true);
+        setPollingLoading(true);
+        setTaskId(null);
+        api.generateSmartFolder(query).then((res) => {
+          if (res.error) {
+            setError(res.error);
+            setPollingLoading(false);
+          } else if (res.data) {
+            setTaskId(res.data.task_id);
+          }
+        }).catch(() => {
+          setError(t("generation_failed"));
+          setPollingLoading(false);
+        });
+      }
     }
-  }, [streamResult, streamError]);
+  }, [streamResult, streamError, useFallbackPolling, query, t]);
 
   // Fallback polling state
   const [pollingLoading, setPollingLoading] = useState(false);

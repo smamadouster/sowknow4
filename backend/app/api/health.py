@@ -85,24 +85,6 @@ async def _check_nats() -> str:
         return "unavailable"
 
 
-async def _check_ollama() -> str:
-    ollama_url = os.getenv("OLLAMA_BASE_URL")
-    if not ollama_url:
-        return "disabled"
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{ollama_url}/api/tags",
-                timeout=_CHECK_TIMEOUT,
-            )
-            if resp.status_code == 200:
-                return "ok"
-            return "error"
-    except Exception as exc:
-        logger.warning("Health check: ollama failed: %s", exc)
-        return "unavailable"
-
-
 @router.get("", include_in_schema=False)
 async def comprehensive_health() -> JSONResponse:
     """
@@ -117,7 +99,6 @@ async def comprehensive_health() -> JSONResponse:
         _check_redis(),
         _check_vault(),
         _check_nats(),
-        _check_ollama(),
         return_exceptions=True,
     )
 
@@ -125,10 +106,9 @@ async def comprehensive_health() -> JSONResponse:
     redis_s = results[1] if isinstance(results[1], str) else "error"
     vault_s = results[2] if isinstance(results[2], str) else "unavailable"
     nats_s = results[3] if isinstance(results[3], str) else "unavailable"
-    ollama_s = results[4] if isinstance(results[4], str) else "unavailable"
 
     critical_ok = db == "ok" and redis_s == "ok"
-    all_ok = all(s == "ok" for s in [db, redis_s, vault_s, nats_s, ollama_s])
+    all_ok = all(s == "ok" for s in [db, redis_s, vault_s, nats_s])
 
     if all_ok:
         overall = "ok"
@@ -143,7 +123,6 @@ async def comprehensive_health() -> JSONResponse:
         "redis": redis_s,
         "vault": vault_s,
         "nats": nats_s,
-        "ollama": ollama_s,
         "checked_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 

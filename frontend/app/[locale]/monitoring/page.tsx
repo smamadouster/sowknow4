@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/lib/store';
 
 interface HealthData {
   status: string;
@@ -47,6 +49,18 @@ const STATUS_TEXT_COLORS: Record<string, string> = {
 
 export default function MonitoringPage() {
   const t = useTranslations('monitoring');
+  const router = useRouter();
+  const locale = useLocale();
+  const { user, _hasHydrated } = useAuthStore();
+
+  // Role guard: redirect non-admins
+  useEffect(() => {
+    if (!_hasHydrated) return;
+    if (!user || (user.role !== 'admin' && user.role !== 'superuser')) {
+      router.replace(`/${locale}`);
+    }
+  }, [_hasHydrated, user, locale, router]);
+
   const [health, setHealth] = useState<HealthData | null>(null);
   const [celery, setCelery] = useState<CeleryData | null>(null);
   const [celeryError, setCeleryError] = useState<string | null>(null);

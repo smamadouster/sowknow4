@@ -4,7 +4,7 @@ LLM Gateway — Unified facade for all LLM providers.
 This module is the SINGLE entry point for LLM consumption across Sowknow.
 It wraps the existing LLMRouter with a simplified, consumer-friendly interface,
 eliminating the need for direct imports of individual services
-(openrouter_service, minimax_service, kimi_service, ollama_service).
+(openrouter_service, minimax_service, kimi_service).
 
 Migration example (consumer code):
     OLD:
@@ -23,7 +23,6 @@ Migration example (consumer code):
 Benefits:
   - No provider-specific logic in consumers.
   - Centralized fallback chains.
-  - Automatic PII/confidential-data routing to local Ollama.
   - Tiered model selection (simple/standard/complex).
   - Easier to add/remove providers without touching N files.
 """

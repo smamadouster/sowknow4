@@ -19,7 +19,5 @@ scrape_configs:
       - targets: ['backend:8000']
     metrics_path: '/metrics'
 
-  - job_name: 'sowknow-nginx'
-    static_configs:
-      - targets: ['nginx:80']
-    metrics_path: '/metrics'
+  # NOTE: nginx is not started in this production topology (Caddy is the
+  # external proxy), so the nginx job has been removed.

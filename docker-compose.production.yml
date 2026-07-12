@@ -1,6 +1,11 @@
 # SOWKNOW Production Docker Compose
 # Domain: sowknow.gollamtech.com
-# Total Memory Budget: 6.4GB on shared 16GB VPS
+#
+# NOTE ON MEMORY: The original 6.4GB budget did not include the embed-server,
+# rerank-server, or per-stage Celery workers required by the document pipeline.
+# This file now includes those services.  The minimum realistic footprint is
+# ~13GB; deploy on a host with at least 16GB (ideally 32GB) and tune limits
+# based on observed load.
 #
 # CRITICAL - API Keys Configuration:
 # Before deployment, ensure these environment variables are set in .secrets or backend/.env.production:
@@ -11,19 +16,26 @@
 #   - SECRET_KEY: JWT secret for authentication
 #   - JWT_SECRET_KEY: JWT signing key
 #
-# Memory & CPU Allocation Summary (PRD-compliant):
+# Memory & CPU Allocation Summary (revised):
 #   postgres:        1920MB cpus: 1.5  (Database with pgvector)
 #   redis:           512MB  cpus: 0.5  (Cache & message queue)
 #   backend:         1GB    cpus: 1.0  (FastAPI application)
-#   celery-worker:   1280MB cpus: 1.5  (Background tasks, embeddings model)
-#   celery-beat:     512MB  cpus: 0.25 (Scheduled tasks, anomaly reports)
+#   embed-server:    4096MB cpus: 1.5  (Embedding model)
+#   rerank-server:   1024MB cpus: 0.5  (Reranking model)
+#   celery-light:    1024MB cpus: 1.0  (OCR/chunk/index + general tasks)
+#   celery-heavy:    1536MB cpus: 1.0  (pipeline.embed -> embed-server)
+#   celery-entities: 1536MB cpus: 1.0  (pipeline.entities NER/LLM)
+#   celery-articles: 1024MB cpus: 0.5  (pipeline.articles)
+#   celery-collections: 512MB cpus: 0.5 (collections queue)
+#   celery-beat:     512MB  cpus: 0.25 (Scheduled tasks)
 #   telegram-bot:    256MB  cpus: 0.5  (Mobile interface)
 #   frontend:        512MB  cpus: 1.0  (Next.js application)
-#   nginx:           256MB  cpus: 0.5  (Reverse proxy)
+#   nginx:           256MB  cpus: 0.5  (Reverse proxy, profile-gated)
 #   certbot:         128MB  cpus: 0.25 (SSL certificate management)
+#   prometheus:      256MB  cpus: 0.25 (Metrics scraper)
 #   ollama:          SHARED (Uses ghostshell-api on host, no container memory)
-#   TOTAL MEMORY:   6400MB (Within 6.4GB budget — exact fit)
-#   TOTAL CPU:       6.75  (CFS scheduler time-sliced on shared VPS)
+#   TOTAL MEMORY:   ~15300MB
+#   TOTAL CPU:       ~11.0 (CFS scheduler time-sliced on shared VPS)
 #
 # Backup Strategy:
 #   - Daily PostgreSQL dumps: docker exec sowknow-postgres pg_dump -U sowknow sowknow > backup_$(date +%Y%m%d).sql
@@ -83,11 +95,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # Ollama - REMOVED: Using shared Ollama instance (ghostshell-api)
-  # The shared Ollama is already running on the VPS at host's port 11434
-  # Backend connects via: OLLAMA_BASE_URL=http://host.docker.internal:11434
-  # This saves 2GB memory and avoids port conflicts
-
   # Backend API
   backend:
     build:
@@ -105,9 +112,12 @@ services:
     environment:
       # DATABASE_URL and REDIS_URL are loaded from .env
       # to avoid URL parsing issues with special characters in passwords
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - EMBED_SERVER_URL=http://embed-server:8000,http://embed-server-2:8000
+      - RERANK_SERVER_URL=http://rerank-server:8000
+      - CELERY_MEMORY_WARN_MB=2048
+      - CELERY_MEMORY_CRIT_MB=2560
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -132,26 +142,144 @@ services:
       retries: 3
       start_period: 60s
 
-  # Celery Worker
-  celery-worker:
+
+  # Embedding microservice
+  embed-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.embed
+    container_name: sowknow-embed-server
+    restart: unless-stopped
+    environment:
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - VECLIB_MAXIMUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - EMBED_MAX_BATCH_SIZE=64
+      - EMBED_BATCH_WINDOW_MS=100
+    volumes:
+      - sowknow-model-cache:/models
+    command: >
+      uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
+      --workers 1 --limit-max-requests 10000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          memory: 4096m
+          cpus: '1.5'
+    networks:
+      - sowknow-net
+
+  # Reranking microservice
+  rerank-server:
+    build:
+      context: ./backend/rerank_server
+      dockerfile: Dockerfile
+    container_name: sowknow-rerank-server
+    restart: unless-stopped
+    environment:
+      - RERANK_PORT=8000
+      - RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
+    volumes:
+      - sowknow-model-cache:/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+          cpus: '0.5'
+    networks:
+      - sowknow-net
+
+  # Celery workers — one per pipeline stage so a single slow stage cannot starve the others.
+  # Memory/CPU allocations are reduced vs docker-compose.yml to fit a smaller VPS; tune upward
+  # if embedding throughput or entity extraction becomes a bottleneck.
+  celery-light:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: sowknow-celery-worker
+    container_name: sowknow-celery-light
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 1280m
-          cpus: '1.5'
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q celery,document_processing,scheduled,collections
+          memory: 1024m
+          cpus: '1.0'
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
+      --max-tasks-per-child=20
+      -Q celery,document_processing,scheduled,pipeline.ocr,pipeline.chunk,pipeline.index
+      -n light@%h
     env_file:
       - .env
     environment:
-      # DATABASE_URL, REDIS_URL are loaded from .env
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - EMBED_SERVER_URL=http://embed-server:8000
+      - RERANK_SERVER_URL=http://rerank-server:8000
+      - CELERY_MEMORY_WARN_MB=768
+      - CELERY_MEMORY_CRIT_MB=896
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+    depends_on:
+      - postgres
+      - redis
+      - backend
+      - embed-server
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout 10 -d light@$$HOSTNAME 2>/dev/null | grep -q OK || cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+
+  celery-entities:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-celery-entities
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+          cpus: '1.0'
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
+      --pool=prefork
+      -Q pipeline.entities
+      --prefetch-multiplier=1
+      -n entities@%h
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - CELERY_MEMORY_WARN_MB=1152
+      - CELERY_MEMORY_CRIT_MB=1382
     volumes:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
@@ -164,11 +292,136 @@ services:
       - redis
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$HOSTNAME"]
+      test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
       interval: 60s
-      timeout: 30s
+      timeout: 10s
       retries: 3
-      start_period: 180s
+      start_period: 120s
+
+  celery-articles:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-celery-articles
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+          cpus: '0.5'
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
+      --max-tasks-per-child=10
+      -Q pipeline.articles
+      --prefetch-multiplier=1
+      -n articles@%h
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - CELERY_MEMORY_WARN_MB=768
+      - CELERY_MEMORY_CRIT_MB=896
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout 10 -d articles@$$HOSTNAME 2>/dev/null | grep -q OK || cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+
+  celery-heavy:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-celery-heavy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+          cpus: '1.0'
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=4
+      --pool=prefork
+      --max-tasks-per-child=10
+      -Q pipeline.embed
+      --prefetch-multiplier=1
+      -n heavy@%h
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - EMBED_SERVER_URL=http://embed-server:8000
+      - EMBED_CHUNK_CAP=512
+      - CELERY_MEMORY_WARN_MB=1152
+      - CELERY_MEMORY_CRIT_MB=1382
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+    depends_on:
+      - postgres
+      - redis
+      - backend
+      - embed-server
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout 10 -d heavy@$$HOSTNAME 2>/dev/null | grep -q OK || cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  celery-collections:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sowknow-celery-collections
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.5'
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2 -Q collections --without-heartbeat
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - CELERY_MEMORY_WARN_MB=384
+      - CELERY_MEMORY_CRIT_MB=448
+    volumes:
+      - sowknow-public-data:/data/public
+      - sowknow-confidential-data:/data/confidential
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sowknow-net
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q celery || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Celery Beat - Scheduled Tasks
   celery-beat:
@@ -186,7 +439,6 @@ services:
     env_file:
       - .env
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
     extra_hosts:
@@ -289,8 +541,8 @@ services:
 
   # Telegram Bot - Mobile Interface
   telegram-bot:
-    image: sowknow4-telegram-bot:latest
-    container_name: sowknow4-telegram-bot
+    image: sowknow-telegram-bot:latest
+    container_name: sowknow-telegram-bot
     restart: unless-stopped
     deploy:
       resources:
@@ -314,7 +566,66 @@ services:
       retries: 3
       start_period: 30s
 
+  # Prometheus - scrapes backend /metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sowknow-prometheus
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.25'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - sowknow-prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - sowknow-net
+    depends_on:
+      - backend
+
+  # Guardian HC - autonomous observability & self-healing
+  guardian-hc:
+    build:
+      context: ./monitoring/guardian-hc
+      dockerfile: Dockerfile
+    container_name: sowknow-guardian-hc
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.25'
+    pid: "host"
+    privileged: true
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - GMAIL_SMTP_USER=${GMAIL_SMTP_USER}
+      - GMAIL_SMTP_PASSWORD=${GMAIL_SMTP_PASSWORD}
+      - GUARDIAN_LOG_DIR=/tmp
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./monitoring/guardian-hc/guardian-hc.sowknow4.yml:/config/guardian-hc.yml:ro
+      - ./monitoring/guardian-hc/runbooks:/app/runbooks:ro
+      - /proc:/host/proc:ro
+    networks:
+      - sowknow-net
+    depends_on:
+      - backend
+      - postgres
+      - redis
+
 volumes:
+  sowknow-prometheus-data:
+    driver: local
   sowknow-postgres-data:
     driver: local
   sowknow-redis-data:
@@ -324,6 +635,8 @@ volumes:
   sowknow-confidential-data:
     driver: local
   sowknow-backups:
+    driver: local
+  sowknow-model-cache:
     driver: local
   certbot-www:
     driver: local

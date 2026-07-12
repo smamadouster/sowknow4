@@ -256,48 +256,48 @@ class TestDetectContextSensitivity:
 # ---------------------------------------------------------------------------
 
 class TestSmartCollectionsRouting:
-    """Report / smart-collection tasks get Together.ai in their fallback chain."""
+    """Report / smart-collection tasks use OpenRouter tier fallback only."""
 
     @pytest.mark.asyncio
-    async def test_report_task_routes_to_openrouter_with_together_in_chain(self):
-        router = _make_router(has_together=True)
+    async def test_report_task_routes_to_openrouter_only(self):
+        router = _make_router()
         decision = await router.select_provider(
             query="Generate report", context_chunks=[], task_type="report"
         )
         assert decision.provider_name == "openrouter"
-        assert "together" in decision.metadata.get("chain", [])
+        assert decision.metadata.get("chain") == ["openrouter"]
         assert decision.metadata.get("task_type") == "report"
 
     @pytest.mark.asyncio
-    async def test_smart_collection_task_routes_to_openrouter_with_together_in_chain(self):
-        router = _make_router(has_together=True)
+    async def test_smart_collection_task_routes_to_openrouter_only(self):
+        router = _make_router()
         decision = await router.select_provider(
             query="Smart folder", context_chunks=[], task_type="smart_collection"
         )
         assert decision.provider_name == "openrouter"
-        assert "together" in decision.metadata.get("chain", [])
+        assert decision.metadata.get("chain") == ["openrouter"]
         assert decision.metadata.get("task_type") == "smart_collection"
 
     @pytest.mark.asyncio
-    async def test_report_task_falls_back_together_when_openrouter_missing(self):
-        router = _make_router(has_openrouter=False, has_together=True)
-        decision = await router.select_provider(
-            query="Generate report", context_chunks=[], task_type="report"
-        )
-        assert decision.provider_name == "together"
+    async def test_quality_critical_task_fails_when_openrouter_missing(self):
+        router = _make_router(has_openrouter=False)
+        with pytest.raises(RuntimeError):
+            await router.select_provider(
+                query="Generate report", context_chunks=[], task_type="report"
+            )
 
     @pytest.mark.asyncio
-    async def test_chat_task_does_not_include_together_in_chain(self):
-        router = _make_router(has_together=True)
+    async def test_chat_task_uses_openrouter_only(self):
+        router = _make_router()
         decision = await router.select_provider(
             query="Hello", context_chunks=[], task_type="chat"
         )
         assert decision.provider_name == "openrouter"
-        assert "together" not in decision.metadata.get("chain", [])
+        assert decision.metadata.get("chain") == ["openrouter"]
 
 
 class TestGenerateReportCompletion:
-    """§5.2 Report generation fallback chain: complex → standard → together → bullets."""
+    """§5.2 Report generation fallback chain: complex → standard → bullets."""
 
     @pytest.mark.asyncio
     async def test_primary_openrouter_complex_succeeds(self):
@@ -339,34 +339,29 @@ class TestGenerateReportCompletion:
         assert call_count == 2  # complex attempted, then standard
 
     @pytest.mark.asyncio
-    async def test_tertiary_together_on_openrouter_failure(self):
-        router = _make_router(has_openrouter=True, has_together=True)
+    async def test_no_together_fallback_on_openrouter_failure(self):
+        router = _make_router(has_openrouter=True)
 
         async def _mock_or(*args, **kwargs):
             raise RuntimeError("openrouter failed")
 
-        async def _mock_together(*args, **kwargs):
-            yield "together report"
-
         router._openrouter.chat_completion = _mock_or
-        router._together.chat_completion = _mock_together
 
         chunks = []
         async for chunk in router.generate_report_completion(
             messages=[{"role": "user", "content": "test"}]
         ):
             chunks.append(chunk)
-        assert "".join(chunks) == "together report"
+        assert "indisponible" in "".join(chunks).lower()
 
     @pytest.mark.asyncio
     async def test_ultimate_bullet_summary_when_all_providers_fail(self):
-        router = _make_router(has_openrouter=True, has_together=True)
+        router = _make_router(has_openrouter=True)
 
         async def _mock_fail(*args, **kwargs):
             raise RuntimeError("always fails")
 
         router._openrouter.chat_completion = _mock_fail
-        router._together.chat_completion = _mock_fail
 
         context_chunks = [
             {"document_name": "Doc A", "chunk_text": "First sentence. More text."},

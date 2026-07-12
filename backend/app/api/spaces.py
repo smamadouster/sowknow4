@@ -237,12 +237,9 @@ async def sync_space(
     if not space:
         raise HTTPException(status_code=404, detail="Space not found")
 
-    try:
-        from app.tasks.space_tasks import sync_space_rules_task
-        sync_space_rules_task.delay(str(space_id))
-    except ImportError:
-        logger.warning("space_tasks not yet available; sync will be available after Task 5")
-        raise HTTPException(status_code=501, detail="Sync task not yet implemented")
+    from app.tasks.space_tasks import sync_space_rules_task
+
+    sync_space_rules_task.delay(str(space_id))
     return {"status": "syncing", "space_id": str(space_id)}
 
 

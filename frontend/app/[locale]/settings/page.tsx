@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { getCsrfToken } from '@/lib/api';
 import { formatDateShort } from '@/lib/formatDate';
+import { useAuthStore } from '@/lib/store';
 
 interface User {
   id: string;
@@ -16,11 +18,121 @@ interface User {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+interface SystemConfig {
+  app_env: string;
+  app_version: string;
+  llm_provider: string;
+  llm_tiers: Record<string, string>;
+  ocr_engine: string;
+  ocr_fallback_enabled: boolean;
+  auto_tagging_enabled: boolean;
+  embed_server_url: string | null;
+  reports_dir: string | null;
+  allowed_hosts: string | null;
+}
+
+function SystemConfigTab() {
+  const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/v1/admin/system-config`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setConfig(data);
+        } else {
+          setError('Failed to load system configuration');
+        }
+      } catch (e) {
+        console.error('Error loading system config:', e);
+        setError('Failed to load system configuration');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadConfig();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !config) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg">{error || 'Configuration unavailable'}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">System Configuration</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-medium text-gray-700 mb-2">API Configuration</h3>
+          <div className="text-sm text-gray-600 space-y-1">
+            <p><span className="font-medium">Provider:</span> {config.llm_provider}</p>
+            <p><span className="font-medium">Simple tier:</span> {config.llm_tiers.simple}</p>
+            <p><span className="font-medium">Standard tier:</span> {config.llm_tiers.standard}</p>
+            <p><span className="font-medium">Complex tier:</span> {config.llm_tiers.complex}</p>
+          </div>
+        </div>
+        <div className="p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-medium text-gray-700 mb-2">Storage</h3>
+          <div className="text-sm text-gray-600 space-y-1">
+            <p><span className="font-medium">Reports:</span> {config.reports_dir || '—'}</p>
+            <p><span className="font-medium">Embed server:</span> {config.embed_server_url || '—'}</p>
+          </div>
+        </div>
+        <div className="p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-medium text-gray-700 mb-2">Security</h3>
+          <div className="text-sm text-gray-600 space-y-1">
+            <p><span className="font-medium">Environment:</span> {config.app_env}</p>
+            <p><span className="font-medium">Version:</span> {config.app_version}</p>
+            <p><span className="font-medium">Allowed hosts:</span> {config.allowed_hosts || '—'}</p>
+          </div>
+        </div>
+        <div className="p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-medium text-gray-700 mb-2">Processing</h3>
+          <div className="text-sm text-gray-600 space-y-1">
+            <p><span className="font-medium">OCR engine:</span> {config.ocr_engine}</p>
+            <p><span className="font-medium">OCR fallback:</span> {config.ocr_fallback_enabled ? 'Enabled' : 'Disabled'}</p>
+            <p><span className="font-medium">Auto-tagging:</span> {config.auto_tagging_enabled ? 'Enabled' : 'Disabled'}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const t = useTranslations('admin');
   const tNav = useTranslations('nav');
   const tRoles = useTranslations('roles');
-  
+  const router = useRouter();
+  const locale = useLocale();
+  const { user, _hasHydrated } = useAuthStore();
+
+  // Role guard: redirect non-admins
+  useEffect(() => {
+    if (!_hasHydrated) return;
+    if (!user || (user.role !== 'admin' && user.role !== 'superuser')) {
+      router.replace(`/${locale}`);
+    }
+  }, [_hasHydrated, user, locale, router]);
+
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -238,27 +350,7 @@ export default function SettingsPage() {
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">System Configuration</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium text-gray-700 mb-2">API Configuration</h3>
-              <p className="text-sm text-gray-500">Gemini Flash / Ollama settings</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium text-gray-700 mb-2">Storage</h3>
-              <p className="text-sm text-gray-500">Document storage configuration</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium text-gray-700 mb-2">Security</h3>
-              <p className="text-sm text-gray-500">Authentication and access control</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium text-gray-700 mb-2">Processing</h3>
-              <p className="text-sm text-gray-500">OCR and embedding settings</p>
-            </div>
-          </div>
-        </div>
+        <SystemConfigTab />
       )}
     </div>
   );

@@ -35,6 +35,7 @@ from app.services.search_models import (
     SearchMode,
 )
 from app.services.search_service import HybridSearchService
+from app.services.agents.agent_orchestrator import AgentOrchestrator, OrchestratorRequest
 from app.services.embed_client import embedding_service
 
 logger = logging.getLogger(__name__)
@@ -412,6 +413,51 @@ async def search_health():
             if embed_healthy
             else "Recherche par mots-cles uniquement — serveur d'embeddings indisponible"
         ),
+    }
+
+
+@router.post("/orchestrate")
+async def search_orchestrate(
+    request: AgenticSearchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Multi-agent v2 search using the AgentOrchestrator.
+
+    Runs clarification → research → verification → answer agents and returns
+    the synthesized result. This is exposed alongside the existing /stream
+    agentic search so product can compare and migrate gradually.
+    """
+    from app.database import AsyncSessionLocal
+
+    orchestrator = AgentOrchestrator()
+
+    async with AsyncSessionLocal() as agent_db:
+        orchestrator_request = OrchestratorRequest(
+            query=request.query,
+            user=current_user,
+            db=agent_db,
+            require_clarification=True,
+            require_verification=True,
+        )
+        result = await orchestrator.orchestrate(orchestrator_request)
+
+    return {
+        "query": result.query,
+        "answer": result.answer,
+        "state": result.state.value,
+        "agent_results": [
+            {
+                "agent": ar.agent_name,
+                "state": ar.state,
+                "duration_ms": ar.duration_ms,
+                "error": ar.error,
+            }
+            for ar in result.agent_results
+        ],
+        "metadata": result.metadata,
+        "llm_used": result.llm_used,
     }
 
 

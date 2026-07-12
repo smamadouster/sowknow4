@@ -97,9 +97,6 @@ class DeferredQueryService:
         Returns the deferred query ID so the caller can inform the user.
         The query expires after 24 hours if not processed.
         """
-        if not os.getenv("OLLAMA_BASE_URL"):
-            raise ValueError("OLLAMA_BASE_URL is not set; deferred queries are disabled")
-
         now = datetime.utcnow()
         query_id = str(uuid4())
 
@@ -133,10 +130,6 @@ class DeferredQueryService:
         Called by a Celery periodic task.
         Returns counts of processed / failed / skipped queries.
         """
-        if not os.getenv("OLLAMA_BASE_URL"):
-            logger.warning("OLLAMA_BASE_URL is not set; skipping deferred query processing")
-            return {"processed": 0, "failed": 0, "expired": 0}
-
         # Expire stale queries first
         expired = self._store.expire_old()
         if expired:

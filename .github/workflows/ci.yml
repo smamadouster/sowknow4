@@ -44,6 +44,18 @@ jobs:
       - name: Code style — flake8
         run: python3 -m flake8 backend/app/tasks/ backend/app/services/ --max-line-length=120 --ignore=E501,W503
 
+  wiring-check:
+    name: Wiring Completeness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run wiring check
+        run: PYTHONPATH=backend python scripts/wiring_check.py
+
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest

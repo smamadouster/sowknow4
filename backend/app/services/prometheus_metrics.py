@@ -175,7 +175,7 @@ class PrometheusMetrics:
             cls._instance = cls()
         return cls._instance
 
-    def counter(self, name: str, help_text: str, labels: list = None) -> Counter:
+    def counter(self, name: str, help_text: str | None = None, labels: list = None) -> Counter:
         """
         Get or create a counter metric.
 
@@ -188,10 +188,10 @@ class PrometheusMetrics:
             Counter metric
         """
         if name not in self._metrics:
-            self._metrics[name] = Counter(name, help_text, labels)
+            self._metrics[name] = Counter(name, help_text or name, labels)
         return self._metrics[name]
 
-    def gauge(self, name: str, help_text: str, labels: list = None) -> Metric:
+    def gauge(self, name: str, help_text: str | None = None, labels: list = None) -> Metric:
         """
         Get or create a gauge metric.
 
@@ -204,10 +204,10 @@ class PrometheusMetrics:
             Gauge metric
         """
         if name not in self._metrics:
-            self._metrics[name] = Metric(name, help_text, labels)
+            self._metrics[name] = Metric(name, help_text or name, labels)
         return self._metrics[name]
 
-    def histogram(self, name: str, help_text: str, labels: list = None, buckets: list = None) -> Histogram:
+    def histogram(self, name: str, help_text: str | None = None, labels: list = None, buckets: list = None) -> Histogram:
         """
         Get or create a histogram metric.
 
@@ -221,7 +221,7 @@ class PrometheusMetrics:
             Histogram metric
         """
         if name not in self._metrics:
-            self._metrics[name] = Histogram(name, help_text, labels, buckets)
+            self._metrics[name] = Histogram(name, help_text or name, labels, buckets)
         return self._metrics[name]
 
     def export(self) -> str:

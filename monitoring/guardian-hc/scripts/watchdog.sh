@@ -14,7 +14,7 @@ set -uo pipefail
 
 # -- Config --
 PROJECT_DIR="${SOWKNOW4_DIR:-/var/docker/sowknow4}"
-COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
+COMPOSE_FILE="$PROJECT_DIR/docker-compose.production.yml"
 LOG_FILE="/var/log/sowknow4-watchdog.log"
 MAX_LOG_SIZE=5242880  # 5MB
 
@@ -28,9 +28,10 @@ if [ -z "$TELEGRAM_CHAT_ID" ] && [ -f "$PROJECT_DIR/.env" ]; then
     TELEGRAM_CHAT_ID=$(grep '^TELEGRAM_ADMIN_CHAT_ID=' "$PROJECT_DIR/.env" 2>/dev/null | cut -d'=' -f2 | tr -d '\n"' )
 fi
 
-# All SOWKNOW4 containers (sowknow4- prefix per naming convention)
+# All SOWKNOW containers (sowknow- prefix per docker-compose.production.yml naming)
 # vault excluded 2026-04-10: unseal key mismatch, intentionally stopped, backend decoupled
-EXPECTED_CONTAINERS="sowknow4-backend sowknow4-postgres sowknow4-redis sowknow4-nats sowknow4-celery-light sowknow4-celery-heavy sowknow4-celery-collections sowknow4-celery-beat sowknow4-frontend sowknow4-telegram-bot"
+# nats removed 2026-07-12: no production code publishes/subscribes to NATS
+EXPECTED_CONTAINERS="sowknow-backend sowknow-postgres sowknow-redis sowknow-embed-server sowknow-rerank-server sowknow-celery-light sowknow-celery-heavy sowknow-celery-entities sowknow-celery-articles sowknow-celery-collections sowknow-celery-beat sowknow-frontend sowknow-telegram-bot"
 
 # -- Helpers --
 timestamp() { date '+%Y-%m-%d %H:%M:%S'; }

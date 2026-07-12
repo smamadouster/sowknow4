@@ -34,6 +34,9 @@ def extract_xlsx(file_path: str) -> dict:
                 break
 
             sheet = wb[sheet_name]
+            # Skip chart sheets — they have no cell grid to iterate over.
+            if not hasattr(sheet, "iter_rows"):
+                continue
             # Skip hidden/very-hidden sheets (defensive: getattr for read-only quirks)
             if getattr(sheet, "sheet_state", "visible") != "visible":
                 continue

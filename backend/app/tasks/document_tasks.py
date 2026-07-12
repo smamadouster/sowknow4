@@ -234,6 +234,27 @@ def process_document(self, document_id: str, task_type: str = "full_pipeline") -
             logger.info(f"OCR/Text extraction completed for {document_id}")
             log_task_memory("process_document", "after_ocr")
 
+        # Optional: Auto-tagging
+        if os.getenv("AUTO_TAGGING_ENABLED", "false").lower() == "true":
+            try:
+                from app.services.auto_tagging_service import AutoTaggingService
+
+                auto_tagger = AutoTaggingService()
+                tags = asyncio.run(
+                    auto_tagger.tag_document(
+                        document=document,
+                        extracted_text=extracted_text,
+                        db_session=None,
+                    )
+                )
+                for tag in tags:
+                    db.add(tag)
+                db.commit()
+                logger.info(f"Auto-tagged document {document_id} with {len(tags)} tags")
+            except Exception as tag_error:
+                logger.warning(f"Auto-tagging failed for {document_id}: {tag_error}")
+                db.rollback()
+
         # Step 2: Chunking
         chunks = []
         if task_type in ["chunking", "full_pipeline"]:
@@ -647,11 +668,15 @@ def on_process_document_failure(self, exc, task_id, args, kwargs, einfo) -> None
         logger.warning(f"Could not update doc metadata on failure: {meta_err}")
     # Increment prometheus metrics — task_failures counter
     try:
-        from app.services.prometheus_metrics import metrics
+        from app.services.prometheus_metrics import get_metrics
 
-        metrics.task_failures.labels(task_name="process_document").inc()
-    except Exception:
-        pass
+        get_metrics().counter(
+            "sowknow_task_failures_total",
+            "Document task failures",
+            ["task_name"],
+        ).labels(task_name="process_document").inc()
+    except Exception as metrics_err:
+        logger.warning(f"Could not increment task failure metric: {metrics_err}")
     base_task_failure_handler(
         task_self=self,
         exception=exc,

@@ -20,7 +20,8 @@ RUN pip install --no-cache-dir -r /tmp/embed_requirements.txt
 # Model cache dir — volume-mounted at runtime, NOT baked in
 RUN mkdir -p /models && chown appuser:appuser /models
 
-# Source code arrives via bind mount ./backend:/app
+# Embed server source code
+COPY embed_server/ /app/embed_server/
 RUN chown -R appuser:appuser /app
 
 ENV PYTHONPATH=/app

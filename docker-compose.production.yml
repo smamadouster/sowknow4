@@ -162,6 +162,7 @@ services:
       - EMBED_MAX_BATCH_SIZE=64
       - EMBED_BATCH_WINDOW_MS=100
     volumes:
+      - ./backend:/app
       - sowknow-model-cache:/models
     command: >
       uvicorn embed_server.main:app --host 0.0.0.0 --port 8000

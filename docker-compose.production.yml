@@ -541,6 +541,9 @@ services:
 
   # Telegram Bot - Mobile Interface
   telegram-bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: sowknow-telegram-bot:latest
     container_name: sowknow-telegram-bot
     restart: unless-stopped
@@ -554,6 +557,7 @@ services:
       - .secrets
     environment:
       - BACKEND_URL=http://backend:8000
+    command: ["python", "-m", "telegram_bot.bot"]
     networks:
       - sowknow-net
     depends_on:

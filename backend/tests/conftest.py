@@ -309,6 +309,7 @@ def test_user(db: Session) -> "User":
         full_name="Test User",
         role=UserRole.USER,
         is_active=True,
+        email_verified=True,
     )
     db.add(user)
     db.commit()
@@ -327,6 +328,7 @@ def admin_user(db: Session) -> "User":
         is_superuser=True,
         can_access_confidential=True,
         is_active=True,
+        email_verified=True,
     )
     db.add(user)
     db.commit()

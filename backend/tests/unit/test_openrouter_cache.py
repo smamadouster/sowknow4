@@ -100,6 +100,30 @@ class TestCacheKeyGeneration:
         assert key.startswith(CACHE_KEY_PREFIX)
         assert len(key) > len(CACHE_KEY_PREFIX)
 
+    def test_generate_cache_key_includes_tier(self):
+        """Cache key should differ for different tiers."""
+        service = OpenRouterService()
+        messages = [{"role": "user", "content": "Hello"}]
+
+        key1 = service._generate_cache_key("test-model", messages, tier="standard")
+        key2 = service._generate_cache_key("test-model", messages, tier="simple")
+
+        assert key1 != key2
+
+    def test_generate_cache_key_includes_collection(self):
+        """Cache key should differ for different collection scopes."""
+        service = OpenRouterService()
+        messages = [{"role": "user", "content": "Hello"}]
+
+        key1 = service._generate_cache_key(
+            "test-model", messages, tier="standard", collection_id="col-a"
+        )
+        key2 = service._generate_cache_key(
+            "test-model", messages, tier="standard", collection_id="col-b"
+        )
+
+        assert key1 != key2
+
 
 class TestCacheHitScenario:
     """Tests for cache hit behavior."""

@@ -149,6 +149,7 @@ class LLMRouter:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         tier: TaskTier = TaskTier.STANDARD,
+        collection_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         High-level entry point: route the query and call the selected provider.
@@ -195,6 +196,7 @@ class LLMRouter:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 tier=tier.value,
+                collection_id=collection_id,
             )
             try:
                 async for chunk in gen:
@@ -213,6 +215,7 @@ class LLMRouter:
                         temperature=temperature,
                         max_tokens=max_tokens,
                         tier="simple",
+                        collection_id=collection_id,
                     )
                     try:
                         async for chunk in fallback_gen:
@@ -503,15 +506,19 @@ class LLMServiceAdapter:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         tier: str = "standard",
+        collection_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Dispatch to the underlying service's ``chat_completion``, translating
         parameter names as needed.
         """
         kwargs = {"stream": stream, "temperature": temperature, "max_tokens": max_tokens}
-        # Pass tier to OpenRouter for model selection; other providers ignore it
+        # Pass tier/collection to OpenRouter for model selection and cache scoping;
+        # other providers ignore them.
         if self._provider == "openrouter":
             kwargs["tier"] = tier
+            if collection_id:
+                kwargs["collection_id"] = collection_id
         gen = self._service.chat_completion(messages, **kwargs)
         try:
             async for chunk in gen:

@@ -151,27 +151,44 @@ class OpenRouterService:
         except Exception:
             logger.info("OpenRouter context caching disabled (Redis unavailable)")
 
-    def _generate_cache_key(self, model: str, messages: list[dict[str, str]]) -> str:
-        """Generate a deterministic cache key from model and messages.
+    def _generate_cache_key(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        *,
+        tier: str = "standard",
+        collection_id: str | None = None,
+    ) -> str:
+        """Generate a deterministic cache key scoped by model, tier, collection and messages.
 
-        Cache key = SHA256(model + ordered messages content)
-        Message order is preserved so conversations with identical words in
-        different orders do not collide.
+        Including ``collection_id`` prevents identical messages in different
+        collections from colliding; including ``tier`` prevents different model
+        quality tiers from sharing a cached response.
 
         Args:
-            model: The model identifier
-            messages: List of message dicts with role and content
+            model: The model identifier.
+            messages: List of message dicts with role and content.
+            tier: Task tier used for model selection.
+            collection_id: Optional collection/workspace scope.
 
         Returns:
-            SHA256 hash string prefixed with cache namespace
+            SHA256 hash string prefixed with cache namespace.
         """
+        scope = collection_id or "global"
         cache_content = (
-            f"{model}:{json.dumps(messages, separators=(',', ':'), ensure_ascii=False)}"
+            f"{model}:{tier}:{scope}:"
+            f"{json.dumps(messages, separators=(',', ':'), ensure_ascii=False)}"
         )
         cache_hash = hashlib.sha256(cache_content.encode("utf-8")).hexdigest()
         return f"{CACHE_KEY_PREFIX}{cache_hash}"
 
-    def check_cache(self, messages: list[dict[str, str]]) -> str | None:
+    def check_cache(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tier: str = "standard",
+        collection_id: str | None = None,
+    ) -> str | None:
         """Check Redis cache for a previously computed non-streaming response.
 
         Used by the streaming pipeline to detect cache hits before issuing an
@@ -182,7 +199,9 @@ class OpenRouterService:
         """
         if not self._cache_enabled:
             return None
-        cache_key = self._generate_cache_key(self.model, messages)
+        cache_key = self._generate_cache_key(
+            self.model, messages, tier=tier, collection_id=collection_id
+        )
         redis_client = _get_redis_client()
         if not redis_client:
             return None
@@ -436,7 +455,7 @@ class OpenRouterService:
         if self._cache_enabled and not stream and not is_confidential:
             model = self.select_model_for_tier(tier)
             effective_cache_key = cache_key or self._generate_cache_key(
-                model, truncated_messages
+                model, truncated_messages, tier=tier, collection_id=collection_id
             )
 
             # Check cache for non-streaming requests
@@ -458,6 +477,11 @@ class OpenRouterService:
                                 tokens_saved=tokens_saved,
                                 user_id=user_id,
                             )
+                            from app.services.prometheus_metrics import get_metrics
+
+                            get_metrics().counter("sowknow_cache_hits_total").inc(
+                                labels={"cache_type": "openrouter_exact"}
+                            )
                         except Exception as metric_error:
                             logger.warning(
                                 f"Failed to record cache hit metric: {metric_error}"
@@ -476,6 +500,11 @@ class OpenRouterService:
                 cache_monitor.record_cache_miss(
                     cache_key=effective_cache_key or "no_key",
                     user_id=user_id,
+                )
+                from app.services.prometheus_metrics import get_metrics
+
+                get_metrics().counter("sowknow_cache_misses_total").inc(
+                    labels={"cache_type": "openrouter_exact"}
                 )
             except Exception as metric_error:
                 logger.warning(f"Failed to record cache miss metric: {metric_error}")

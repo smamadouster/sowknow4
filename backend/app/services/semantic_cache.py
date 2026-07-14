@@ -5,6 +5,10 @@ vs "montre-moi les papiers de grand-père") using cosine similarity over query
 embeddings. Complements the existing exact-match Redis cache in
 openrouter_service.py.
 
+Entries are scoped by collection/workspace so that invalidation only removes
+entries affected by a document or collection mutation, rather than flushing the
+entire semantic cache.
+
 Blueprint reference: §6.2 Semantic Caching Layer
 """
 
@@ -13,19 +17,34 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from typing import Any, Optional
 
 import numpy as np
 
 from app.services.embed_client import embedding_service
+from app.utils.query_normalizer import normalise_query
 
 logger = logging.getLogger(__name__)
 
-SEMANTIC_CACHE_TTL = 1800  # 30 minutes
+SEMANTIC_CACHE_TTL = int(os.getenv("SEMANTIC_CACHE_TTL_SECONDS", "1800"))  # 30 minutes default
 SIMILARITY_THRESHOLD = 0.90
 REDIS_KEY_PREFIX = "sowknow:semantic_cache"
-INDEX_KEY = f"{REDIS_KEY_PREFIX}:index"
+GLOBAL_INDEX_KEY = f"{REDIS_KEY_PREFIX}:index"
+
+
+def _index_key(collection_id: str | None) -> str:
+    """Return the Redis sorted-set index key for a given collection scope."""
+    if collection_id:
+        return f"{REDIS_KEY_PREFIX}:index:{collection_id}"
+    return GLOBAL_INDEX_KEY
+
+
+def _entry_key(model: str, tier: str, emb_hash: str, collection_id: str | None) -> str:
+    """Build a scoped Redis hash key for a cached response."""
+    scope = collection_id or "global"
+    return f"{REDIS_KEY_PREFIX}:{scope}:{model}:{tier}:{emb_hash}"
 
 
 class SemanticCache:
@@ -61,9 +80,10 @@ class SemanticCache:
         query: str,
         model: str,
         tier: str,
+        collection_id: str | None = None,
     ) -> Optional[str]:
         """
-        Look up a semantically similar cached response.
+        Look up a semantically similar cached response within a collection scope.
 
         Returns the cached response string if cosine similarity >= threshold,
         otherwise None.
@@ -75,16 +95,29 @@ class SemanticCache:
         if redis is None:
             return None
 
+        normalised_query = normalise_query(query)
+        if not normalised_query:
+            return None
+
         try:
-            emb = embedding_service.encode_query(query)
+            emb = embedding_service.encode_query(normalised_query)
         except Exception as exc:
             logger.warning("Semantic cache embedding failed: %s", exc)
             return None
 
         query_vec = np.array(emb, dtype=np.float32)
+        index = _index_key(collection_id)
 
-        # Scan candidate keys from the sorted index
-        candidates = redis.zrevrange(INDEX_KEY, 0, 1000, withscores=False)
+        # Scan candidate keys from the scoped sorted index.  In the common case
+        # this index is much smaller than the former global index, so the linear
+        # scan stays fast.  For very large collections consider Redis vector
+        # search (RediSearch) as a future upgrade.
+        try:
+            candidates = redis.zrevrange(index, 0, 1000, withscores=False)
+        except Exception as exc:
+            logger.warning("Semantic cache index read failed: %s", exc)
+            return None
+
         best_score = 0.0
         best_key = None
 
@@ -105,13 +138,31 @@ class SemanticCache:
             cached = redis.hget(best_key, "response")
             if cached:
                 logger.info(
-                    "Semantic cache HIT (sim=%.3f) query=%s model=%s tier=%s",
+                    "Semantic cache HIT (sim=%.3f) query=%s model=%s tier=%s collection=%s",
                     best_score,
                     query[:60],
                     model,
                     tier,
+                    collection_id or "global",
                 )
+                try:
+                    from app.services.prometheus_metrics import get_metrics
+
+                    get_metrics().counter("sowknow_cache_hits_total").inc(
+                        labels={"cache_type": "semantic"}
+                    )
+                except Exception as exc:
+                    logger.debug("Failed to record semantic cache hit metric: %s", exc)
                 return cached.decode("utf-8") if isinstance(cached, bytes) else cached
+
+        try:
+            from app.services.prometheus_metrics import get_metrics
+
+            get_metrics().counter("sowknow_cache_misses_total").inc(
+                labels={"cache_type": "semantic"}
+            )
+        except Exception as exc:
+            logger.debug("Failed to record semantic cache miss metric: %s", exc)
 
         return None
 
@@ -121,8 +172,9 @@ class SemanticCache:
         model: str,
         tier: str,
         response: str,
+        collection_id: str | None = None,
     ) -> None:
-        """Store a response in the semantic cache."""
+        """Store a response in the scoped semantic cache."""
         if not embedding_service.can_embed:
             return
 
@@ -130,47 +182,83 @@ class SemanticCache:
         if redis is None:
             return
 
+        normalised_query = normalise_query(query)
+        if not normalised_query:
+            return
+
         try:
-            emb = embedding_service.encode_query(query)
+            emb = embedding_service.encode_query(normalised_query)
         except Exception as exc:
             logger.warning("Semantic cache set embedding failed: %s", exc)
             return
 
-        key = f"{REDIS_KEY_PREFIX}:{model}:{tier}:{self._embedding_key(emb)}"
+        key = _entry_key(model, tier, self._embedding_key(emb), collection_id)
+        index = _index_key(collection_id)
         pipe = redis.pipeline()
         pipe.hset(
             key,
             mapping={
                 "embedding": json.dumps(emb),
                 "response": response,
-                "query": query,
+                "query": normalised_query,
             },
         )
         pipe.expire(key, SEMANTIC_CACHE_TTL)
-        pipe.zadd(INDEX_KEY, {key: time.time()})
-        pipe.execute()
+        pipe.zadd(index, {key: time.time()})
+        # Keep the index from growing unbounded if a collection receives many
+        # distinct queries.
+        pipe.expire(index, SEMANTIC_CACHE_TTL)
+        try:
+            pipe.execute()
+        except Exception as exc:
+            logger.warning("Semantic cache SET failed: %s", exc)
+            return
+
         logger.debug(
-            "Semantic cache SET query=%s model=%s tier=%s",
+            "Semantic cache SET query=%s model=%s tier=%s collection=%s",
             query[:60],
             model,
             tier,
+            collection_id or "global",
         )
 
-    async def invalidate_for_collection(self, collection_id: str) -> int:
-        """Invalidate all semantic cache entries linked to a collection."""
+    async def invalidate_for_collection(self, collection_id: str | None = None) -> int:
+        """Invalidate semantic cache entries linked to a collection.
+
+        If ``collection_id`` is None, only the global (non-collection) entries
+        are cleared.  This replaces the previous behaviour of scanning and
+        deleting every semantic-cache key in Redis.
+        """
         redis = self._get_redis()
         if redis is None:
             return 0
 
-        # Scan and delete keys matching the prefix
-        pattern = f"{REDIS_KEY_PREFIX}:*"
-        deleted = 0
-        for key in redis.scan_iter(match=pattern, count=100):
-            redis.delete(key)
-            redis.zrem(INDEX_KEY, key)
-            deleted += 1
-        logger.info("Semantic cache invalidated %d entries for collection=%s", deleted, collection_id)
-        return deleted
+        index = _index_key(collection_id)
+        try:
+            keys = redis.zrange(index, 0, -1)
+        except Exception as exc:
+            logger.warning("Semantic cache invalidation index read failed: %s", exc)
+            return 0
+
+        deleted_count = len(keys) if keys else 0
+        if keys:
+            try:
+                redis.delete(*keys)
+            except Exception as exc:
+                logger.warning("Semantic cache invalidation delete failed: %s", exc)
+                return 0
+
+        try:
+            redis.delete(index)
+        except Exception as exc:
+            logger.warning("Semantic cache invalidation index delete failed: %s", exc)
+
+        logger.info(
+            "Semantic cache invalidated %d entries for collection=%s",
+            deleted_count,
+            collection_id or "global",
+        )
+        return deleted_count
 
 
 # Singleton instance
@@ -185,18 +273,17 @@ async def invalidate_document_caches(collection_id: str | None = None) -> dict[s
       - Document deleted   → invalidate exact + semantic cache
 
     Args:
-        collection_id: Optional collection scope. If None, invalidates globally.
+        collection_id: Optional collection scope. If None, invalidates global
+            semantic cache and all search result caches.
 
     Returns:
         Dict with operation outcomes (for observability / logging).
     """
     results: dict[str, Any] = {}
 
-    # Tier 2: Semantic cache (coarse — all entries share one index)
+    # Tier 2: Semantic cache (now scoped by collection)
     try:
-        deleted = await semantic_cache.invalidate_for_collection(
-            collection_id or "all"
-        )
+        deleted = await semantic_cache.invalidate_for_collection(collection_id)
         results["semantic_deleted"] = deleted
     except Exception as exc:
         logger.warning("Semantic cache invalidation failed: %s", exc)

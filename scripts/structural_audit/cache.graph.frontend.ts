@@ -83,6 +83,12 @@
 [fn]: default({ mode, onAudioReady, onCancel, className = '', lang })
 
 ---
+### FILE: frontend/hooks/useDebounce.ts
+[ext_deps]: react
+[fn]: useDebounce(value, delay)
+[fn]: default(value, delay)
+
+---
 ### FILE: frontend/hooks/useIsMobile.ts
 [ext_deps]: react
 [fn]: useIsMobile()
@@ -186,7 +192,7 @@
 
 ---
 ### FILE: frontend/components/knowledge-graph/EntityList.tsx
-[ext_deps]: react, @/lib/api
+[ext_deps]: react, @/lib/api, @/hooks/useDebounce
 [fn]: EntityList({ entityType, onSelectEntity, selectedEntityId })
 [interface]: Entity { props: [id, name, type, canonical_id, document_count, relationship_count, first_seen, last_seen] }
 [fn]: default({ entityType, onSelectEntity, selectedEntityId })
@@ -330,7 +336,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/notes/page.tsx
-[ext_deps]: react, next-intl, @/i18n/routing, @/components/TagSelector, @/components/VoiceRecorder, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/components/mobile/SwipeableRow, @/components/mobile/PullToRefresh
+[ext_deps]: react, next-intl, @/i18n/routing, @/components/TagSelector, @/components/VoiceRecorder, @/hooks/useIsMobile, @/hooks/useDebounce, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/components/mobile/SwipeableRow, @/components/mobile/PullToRefresh
 [fn]: default()
 [export]: dynamic
 
@@ -374,7 +380,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/tasks/page.tsx
-[ext_deps]: react, next-intl, next/navigation, @/components/TagSelector, @/components/DateTimePicker, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/components/mobile/SwipeableRow, @/components/mobile/PullToRefresh
+[ext_deps]: react, next-intl, next/navigation, @/components/TagSelector, @/components/DateTimePicker, @/hooks/useIsMobile, @/hooks/useDebounce, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/components/mobile/SwipeableRow, @/components/mobile/PullToRefresh
 [fn]: default()
 [export]: dynamic
 

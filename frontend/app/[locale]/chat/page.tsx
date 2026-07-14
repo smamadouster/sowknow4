@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { Link } from '@/i18n/routing';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize from 'rehype-sanitize';
 import { getCsrfToken } from '@/lib/api';
@@ -292,6 +292,43 @@ export default function ChatPage() {
     }
   };
 
+  const markdownComponents: Components = useMemo(() => ({
+    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+    h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-3 font-display">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-lg font-semibold mb-2 mt-3 font-display">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-base font-semibold mb-1 mt-2 font-display">{children}</h3>,
+    ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+    li: ({ children }) => <li className="text-sm">{children}</li>,
+    code: ({ children, className }) => {
+      const isBlock = className?.startsWith('language-');
+      return isBlock ? (
+        <code className={`${className} text-sm`}>{children}</code>
+      ) : (
+        <code className="bg-vault-900/80 text-amber-300 px-1.5 py-0.5 rounded-md text-sm font-mono">{children}</code>
+      );
+    },
+    pre: ({ children }) => (
+      <pre className="bg-vault-900/80 border border-white/[0.06] rounded-xl p-3 mb-2 overflow-x-auto text-sm">{children}</pre>
+    ),
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-2 border-amber-500/30 pl-3 italic text-text-secondary mb-2">{children}</blockquote>
+    ),
+    a: ({ href, children }) => (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-amber-400 underline hover:text-amber-300">{children}</a>
+    ),
+    table: ({ children }) => (
+      <div className="overflow-x-auto mb-2">
+        <table className="min-w-full border border-white/[0.06] rounded-lg text-sm">{children}</table>
+      </div>
+    ),
+    th: ({ children }) => <th className="border border-white/[0.06] px-3 py-1.5 bg-vault-900/50 font-semibold text-left">{children}</th>,
+    td: ({ children }) => <td className="border border-white/[0.06] px-3 py-1.5">{children}</td>,
+    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+    em: ({ children }) => <em className="italic">{children}</em>,
+    hr: () => <hr className="border-white/[0.06] my-2" />,
+  }), []);
+
   return (
     <div className="flex bg-vault-1000" style={{ height: 'calc(100dvh - 3.5rem)', minHeight: 'calc(100vh - 8rem)' }}>
       {/* Sidebar toggle button (mobile) */}
@@ -423,42 +460,7 @@ export default function ChatPage() {
                   {message.role === 'assistant' ? (
                     <ReactMarkdown
                       rehypePlugins={[rehypeSanitize, rehypeHighlight]}
-                      components={{
-                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                        h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-3 font-display">{children}</h1>,
-                        h2: ({ children }) => <h2 className="text-lg font-semibold mb-2 mt-3 font-display">{children}</h2>,
-                        h3: ({ children }) => <h3 className="text-base font-semibold mb-1 mt-2 font-display">{children}</h3>,
-                        ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-                        li: ({ children }) => <li className="text-sm">{children}</li>,
-                        code: ({ children, className }) => {
-                          const isBlock = className?.startsWith('language-');
-                          return isBlock ? (
-                            <code className={`${className} text-sm`}>{children}</code>
-                          ) : (
-                            <code className="bg-vault-900/80 text-amber-300 px-1.5 py-0.5 rounded-md text-sm font-mono">{children}</code>
-                          );
-                        },
-                        pre: ({ children }) => (
-                          <pre className="bg-vault-900/80 border border-white/[0.06] rounded-xl p-3 mb-2 overflow-x-auto text-sm">{children}</pre>
-                        ),
-                        blockquote: ({ children }) => (
-                          <blockquote className="border-l-2 border-amber-500/30 pl-3 italic text-text-secondary mb-2">{children}</blockquote>
-                        ),
-                        a: ({ href, children }) => (
-                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-amber-400 underline hover:text-amber-300">{children}</a>
-                        ),
-                        table: ({ children }) => (
-                          <div className="overflow-x-auto mb-2">
-                            <table className="min-w-full border border-white/[0.06] rounded-lg text-sm">{children}</table>
-                          </div>
-                        ),
-                        th: ({ children }) => <th className="border border-white/[0.06] px-3 py-1.5 bg-vault-900/50 font-semibold text-left">{children}</th>,
-                        td: ({ children }) => <td className="border border-white/[0.06] px-3 py-1.5">{children}</td>,
-                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                        em: ({ children }) => <em className="italic">{children}</em>,
-                        hr: () => <hr className="border-white/[0.06] my-2" />,
-                      }}
+                      components={markdownComponents}
                     >
                       {message.content}
                     </ReactMarkdown>

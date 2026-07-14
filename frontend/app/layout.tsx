@@ -40,7 +40,7 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body style={{ margin: 0, padding: 0, fontFamily: 'Arial, sans-serif' }} suppressHydrationWarning>
+      <body className="m-0 p-0 font-[Arial,sans-serif]" suppressHydrationWarning>
         {children}
       </body>
     </html>

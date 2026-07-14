@@ -14,9 +14,11 @@ import logging
 import os
 import time
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Response
 
+from app.core.redis_url import safe_redis_url
 from app.services.cache_monitor import cache_monitor
 from app.services.monitoring import (
     SystemMonitor,
@@ -29,6 +31,43 @@ from app.services.prometheus_metrics import get_metrics
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["monitoring"])
+
+
+def _get_redis_info() -> dict[str, Any]:
+    """Return Redis memory and keyspace information (best-effort)."""
+    info: dict[str, Any] = {
+        "available": False,
+        "used_memory_mb": None,
+        "maxmemory_mb": None,
+        "memory_percent": None,
+        "connected_clients": None,
+    }
+    try:
+        import redis as _redis
+
+        client = _redis.from_url(
+            safe_redis_url(),
+            decode_responses=True,
+            socket_timeout=2,
+            socket_connect_timeout=2,
+        )
+        client.ping()
+        redis_info = client.info()
+        used = redis_info.get("used_memory", 0)
+        maxmem = redis_info.get("maxmemory", 0)
+        info["available"] = True
+        info["used_memory_mb"] = round(used / (1024 * 1024), 2)
+        info["maxmemory_mb"] = round(maxmem / (1024 * 1024), 2) if maxmem else None
+        if maxmem:
+            info["memory_percent"] = round(used / maxmem, 4)
+        info["connected_clients"] = redis_info.get("connected_clients")
+        try:
+            client.close()
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.debug("Redis info collection failed: %s", exc)
+    return info
 
 
 @router.get("/health/embedding")
@@ -78,6 +117,14 @@ async def health_detailed() -> dict:
     if 0 < cache_hit_rate < 0.5:
         issues.append(f"Low cache hit rate: {cache_hit_rate:.1%}")
 
+    redis_info = _get_redis_info()
+    if redis_info["available"] and redis_info.get("memory_percent"):
+        if redis_info["memory_percent"] > 0.8:
+            overall_status = "degraded"
+            issues.append(
+                f"High Redis memory usage: {redis_info['memory_percent']:.1%}"
+            )
+
     active_alerts = alert_manager.get_active_alerts()
     if active_alerts:
         overall_status = "degraded"
@@ -122,6 +169,7 @@ async def health_detailed() -> dict:
             "cache": {
                 "hit_rate_24h": round(cache_hit_rate, 4),
                 "tokens_saved_24h": cache_monitor.get_total_tokens_saved(days=1),
+                "redis": redis_info,
             },
             "active_alerts": active_alerts,
         },
@@ -202,6 +250,21 @@ async def prometheus_metrics() -> Response:
         queue_monitor = get_queue_monitor()
         queue_depth = queue_monitor.get_queue_depth()
         metrics.gauge("sowknow_celery_queue_depth").set(queue_depth, {"queue_name": "celery"})
+
+        redis_info = _get_redis_info()
+        if redis_info["available"]:
+            if redis_info.get("used_memory_mb") is not None:
+                metrics.gauge("sowknow_redis_memory_usage_mb").set(
+                    redis_info["used_memory_mb"]
+                )
+            if redis_info.get("memory_percent") is not None:
+                metrics.gauge("sowknow_redis_memory_usage_percent").set(
+                    redis_info["memory_percent"]
+                )
+            if redis_info.get("connected_clients") is not None:
+                metrics.gauge("sowknow_redis_connected_clients").set(
+                    redis_info["connected_clients"]
+                )
     except Exception as e:
         logger.warning(f"Failed to update system metrics: {e}")
 

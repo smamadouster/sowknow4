@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 
 export interface Entity {
   id: string;
@@ -55,19 +56,20 @@ export function EntityList({ entityType, onSelectEntity, selectedEntityId }: Ent
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 400);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
     loadEntities();
-  }, [entityType, page, search]);
+  }, [entityType, page, debouncedSearch]);
 
   const loadEntities = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await api.getEntities(entityType, page, 50, search || undefined);
+      const response = await api.getEntities(entityType, page, 50, debouncedSearch || undefined);
       if (response.data) {
         const data = response.data as { entities: Entity[]; total: number };
         setEntities(data.entities || []);

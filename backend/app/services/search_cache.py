@@ -14,6 +14,7 @@ from typing import Optional
 import redis as _redis
 
 from app.core.redis_url import safe_redis_url
+from app.utils.query_normalizer import normalise_query
 
 logger = logging.getLogger(__name__)
 
@@ -54,18 +55,29 @@ def _get_redis() -> _redis.Redis | None:
         return None
 
 
+def _record_cache_metric(cache_type: str, hit: bool) -> None:
+    """Record a cache hit or miss in Prometheus counters (best-effort)."""
+    try:
+        from app.services.prometheus_metrics import get_metrics
+
+        metric_name = "sowknow_cache_hits_total" if hit else "sowknow_cache_misses_total"
+        get_metrics().counter(metric_name).inc(labels={"cache_type": cache_type})
+    except Exception as exc:
+        logger.debug("Failed to record search cache metric: %s", exc)
+
+
 class SearchCache:
     """Lightweight cache for search embeddings and results."""
 
     @staticmethod
     def _embedding_key(query: str) -> str:
-        h = hashlib.sha256(query.lower().strip().encode()).hexdigest()[:16]
+        h = hashlib.sha256(normalise_query(query).encode()).hexdigest()[:16]
         return f"sowknow:search:emb:{h}"
 
     @staticmethod
     def _result_key(query: str, user_role: str, top_k: int, buckets_hash: str) -> str:
         h = hashlib.sha256(
-            f"{query.lower().strip()}:{user_role}:{top_k}:{buckets_hash}".encode()
+            f"{normalise_query(query)}:{user_role}:{top_k}:{buckets_hash}".encode()
         ).hexdigest()[:16]
         return f"sowknow:search:res:{h}"
 
@@ -78,9 +90,11 @@ class SearchCache:
         try:
             raw = redis.get(cls._embedding_key(query))
             if raw:
+                _record_cache_metric("search_embedding", hit=True)
                 return json.loads(raw)
         except Exception as exc:
             logger.debug("search_cache get_embedding error: %s", exc)
+        _record_cache_metric("search_embedding", hit=False)
         return None
 
     @classmethod
@@ -106,9 +120,11 @@ class SearchCache:
             ).hexdigest()[:8]
             raw = redis.get(cls._result_key(query, user_role, top_k, buckets_hash))
             if raw:
+                _record_cache_metric("search_result", hit=True)
                 return json.loads(raw)
         except Exception as exc:
             logger.debug("search_cache get_result error: %s", exc)
+        _record_cache_metric("search_result", hit=False)
         return None
 
     @classmethod
@@ -135,13 +151,13 @@ class SearchCache:
 
     @classmethod
     def _collection_intent_key(cls, query: str) -> str:
-        h = hashlib.sha256(query.lower().strip().encode()).hexdigest()[:16]
+        h = hashlib.sha256(normalise_query(query).encode()).hexdigest()[:16]
         return f"sowknow:collection:intent:{h}"
 
     @classmethod
     def _collection_gather_key(cls, query: str, user_role: str) -> str:
         h = hashlib.sha256(
-            f"{query.lower().strip()}:{user_role}".encode()
+            f"{normalise_query(query)}:{user_role}".encode()
         ).hexdigest()[:16]
         return f"sowknow:collection:gather:{h}"
 
@@ -154,9 +170,11 @@ class SearchCache:
         try:
             raw = redis.get(cls._collection_intent_key(query))
             if raw:
+                _record_cache_metric("collection_intent", hit=True)
                 return json.loads(raw)
         except Exception as exc:
             logger.debug("search_cache get_collection_intent error: %s", exc)
+        _record_cache_metric("collection_intent", hit=False)
         return None
 
     @classmethod
@@ -183,9 +201,11 @@ class SearchCache:
         try:
             raw = redis.get(cls._collection_gather_key(query, user_role))
             if raw:
+                _record_cache_metric("collection_gather", hit=True)
                 return json.loads(raw)
         except Exception as exc:
             logger.debug("search_cache get_collection_gather error: %s", exc)
+        _record_cache_metric("collection_gather", hit=False)
         return None
 
     @classmethod

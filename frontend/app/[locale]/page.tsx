@@ -132,7 +132,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="bg-vault-1000 relative overflow-hidden" style={{ minHeight: 'calc(100dvh - 8rem)' }}>
+    <div className="bg-vault-1000 relative overflow-hidden min-h-[calc(100dvh-8rem)]">
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl" />
@@ -185,7 +185,6 @@ export default function Home() {
               >
                 <div
                   className={`relative bg-gradient-to-br ${service.color} backdrop-blur-sm rounded-2xl border border-white/[0.06] p-5 sm:p-6 h-full flex flex-col items-center text-center transition-all duration-350 hover:border-white/[0.14] hover:shadow-xl ${service.glowColor} hover:-translate-y-1.5 group-hover:bg-gradient-to-br`}
-                  style={{ animationDelay: `${index * 50}ms` }}
                 >
                   {/* Subtle inner glow on hover */}
                   <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }} />

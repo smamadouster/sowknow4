@@ -1,5 +1,4 @@
-"""
-Unit tests for the SemanticCache two-tier caching layer.
+"""Unit tests for the SemanticCache two-tier caching layer.
 
 Covers:
 - Cache hit/miss based on cosine similarity threshold
@@ -8,6 +7,7 @@ Covers:
 - Graceful degradation when Redis or embedding service is unavailable
 - Embedding key determinism
 - Similarity computation edge cases
+- Query normalisation before embedding/keying
 
 Blueprint reference: §6.2 Semantic Caching Layer
 """
@@ -21,11 +21,13 @@ import numpy as np
 import pytest
 
 from app.services.semantic_cache import (
-    INDEX_KEY,
+    GLOBAL_INDEX_KEY,
     REDIS_KEY_PREFIX,
     SEMANTIC_CACHE_TTL,
     SIMILARITY_THRESHOLD,
     SemanticCache,
+    _entry_key,
+    _index_key,
 )
 
 
@@ -70,7 +72,8 @@ class TestSemanticCacheGet:
         stored_emb = [0.1, 0.2, 0.3, 0.4]
         query_emb = [0.1, 0.2, 0.3, 0.4]  # identical → sim = 1.0
 
-        cache_key = f"{REDIS_KEY_PREFIX}:openrouter:standard:abc123"
+        cache_key = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:abc123"
+        index = _index_key(None)
         mock_redis.zrevrange.return_value = [cache_key]
         mock_redis.hget.side_effect = lambda key, field: {
             (cache_key, "embedding"): json.dumps(stored_emb),
@@ -84,13 +87,42 @@ class TestSemanticCacheGet:
             result = await cache.get("documents about my grandfather", "openrouter", "standard")
 
         assert result == "cached response"
+        mock_redis.zrevrange.assert_called_once_with(index, 0, 1000, withscores=False)
+
+    async def test_get_hit_within_collection_scope(self, cache, mock_redis, mock_embedding_service):
+        """A scoped query should read from the collection's index."""
+        stored_emb = [0.1, 0.2, 0.3, 0.4]
+        query_emb = [0.1, 0.2, 0.3, 0.4]
+        collection_id = "col-123"
+
+        cache_key = _entry_key("openrouter", "standard", "abc123", collection_id)
+        index = _index_key(collection_id)
+        mock_redis.zrevrange.return_value = [cache_key]
+        mock_redis.hget.side_effect = lambda key, field: {
+            (cache_key, "embedding"): json.dumps(stored_emb),
+            (cache_key, "response"): "cached response",
+        }.get((key, field))
+
+        mock_embedding_service.encode_query.return_value = query_emb
+
+        with patch("app.services.semantic_cache.embedding_service", mock_embedding_service):
+            cache._redis = mock_redis
+            result = await cache.get(
+                "documents about my grandfather",
+                "openrouter",
+                "standard",
+                collection_id=collection_id,
+            )
+
+        assert result == "cached response"
+        mock_redis.zrevrange.assert_called_once_with(index, 0, 1000, withscores=False)
 
     async def test_get_miss_when_similarity_below_threshold(self, cache, mock_redis, mock_embedding_service):
         """A query with cosine similarity < 0.90 should return None."""
         stored_emb = [1.0, 0.0, 0.0, 0.0]
         query_emb = [0.0, 1.0, 0.0, 0.0]  # orthogonal → sim = 0.0
 
-        cache_key = f"{REDIS_KEY_PREFIX}:openrouter:standard:abc123"
+        cache_key = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:abc123"
         mock_redis.zrevrange.return_value = [cache_key]
         mock_redis.hget.side_effect = lambda key, field: {
             (cache_key, "embedding"): json.dumps(stored_emb),
@@ -110,7 +142,7 @@ class TestSemanticCacheGet:
         stored_emb = [1.0, 0.0]
         query_emb = np.array([0.9, np.sqrt(1 - 0.9**2)])  # cos = 0.9
 
-        cache_key = f"{REDIS_KEY_PREFIX}:openrouter:standard:abc123"
+        cache_key = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:abc123"
         mock_redis.zrevrange.return_value = [cache_key]
         mock_redis.hget.side_effect = lambda key, field: {
             (cache_key, "embedding"): json.dumps(stored_emb),
@@ -130,7 +162,7 @@ class TestSemanticCacheGet:
         stored_emb = [1.0, 0.0]
         query_emb = np.array([0.89, np.sqrt(1 - 0.89**2)])  # cos ≈ 0.89
 
-        cache_key = f"{REDIS_KEY_PREFIX}:openrouter:standard:abc123"
+        cache_key = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:abc123"
         mock_redis.zrevrange.return_value = [cache_key]
         mock_redis.hget.side_effect = lambda key, field: {
             (cache_key, "embedding"): json.dumps(stored_emb),
@@ -150,8 +182,8 @@ class TestSemanticCacheGet:
         emb_b = [0.1, 0.2, 0.3, 0.4]   # high similarity to query
         query_emb = [0.1, 0.2, 0.3, 0.4]
 
-        key_a = f"{REDIS_KEY_PREFIX}:openrouter:standard:key_a"
-        key_b = f"{REDIS_KEY_PREFIX}:openrouter:standard:key_b"
+        key_a = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:key_a"
+        key_b = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:key_b"
         mock_redis.zrevrange.return_value = [key_a, key_b]
         mock_redis.hget.side_effect = lambda key, field: {
             (key_a, "embedding"): json.dumps(emb_a),
@@ -213,7 +245,7 @@ class TestSemanticCacheGet:
         stored_emb = [0.1, 0.2, 0.3, 0.4]
         query_emb = [0.1, 0.2, 0.3, 0.4]
 
-        cache_key = f"{REDIS_KEY_PREFIX}:openrouter:standard:abc123"
+        cache_key = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:abc123"
         mock_redis.zrevrange.return_value = [cache_key]
         mock_redis.hget.side_effect = lambda key, field: {
             (cache_key, "embedding"): json.dumps(stored_emb).encode(),
@@ -233,8 +265,8 @@ class TestSemanticCacheGet:
         stored_emb = [0.1, 0.2, 0.3, 0.4]
         query_emb = [0.1, 0.2, 0.3, 0.4]
 
-        key_bad = f"{REDIS_KEY_PREFIX}:openrouter:standard:key_bad"
-        key_good = f"{REDIS_KEY_PREFIX}:openrouter:standard:key_good"
+        key_bad = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:key_bad"
+        key_good = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:key_good"
         mock_redis.zrevrange.return_value = [key_bad, key_good]
         mock_redis.hget.side_effect = lambda key, field: {
             (key_bad, "embedding"): "not-json",
@@ -251,12 +283,12 @@ class TestSemanticCacheGet:
         assert result == "good response"
 
     async def test_get_different_model_tier_is_separate(self, cache, mock_redis, mock_embedding_service):
-        """Cache entries for different model/tier combinations should not interfere."""
+        """Cache entries for different model/tier combinations are isolated by key."""
         stored_emb = [0.1, 0.2, 0.3, 0.4]
         query_emb = [0.1, 0.2, 0.3, 0.4]
 
-        # Only a "simple" tier key exists
-        cache_key = f"{REDIS_KEY_PREFIX}:openrouter:simple:abc123"
+        # Only a "simple" tier key exists in the global index
+        cache_key = f"{REDIS_KEY_PREFIX}:global:openrouter:simple:abc123"
         mock_redis.zrevrange.return_value = [cache_key]
         mock_redis.hget.side_effect = lambda key, field: {
             (cache_key, "embedding"): json.dumps(stored_emb),
@@ -267,15 +299,36 @@ class TestSemanticCacheGet:
 
         with patch("app.services.semantic_cache.embedding_service", mock_embedding_service):
             cache._redis = mock_redis
-            # Query for "standard" tier — the key contains "simple", but the scan
-            # returns ALL keys in the index regardless of model/tier filter.
-            # The implementation scans the global index, so it WILL find the key.
-            # This is actually the current behavior — all keys are in one index.
+            # Query for "standard" tier scans the same global index and finds the key.
+            # The key itself encodes tier, but the scan does not filter by it.
             result = await cache.get("query", "openrouter", "standard")
 
-        # Current implementation does NOT filter by model/tier in the scan,
-        # so it will find and return the response regardless.
         assert result == "simple response"
+
+    async def test_get_normalises_query_before_embedding(self, cache, mock_redis, mock_embedding_service):
+        """Queries differing only in whitespace/case should use the same normalised form."""
+        stored_emb = [0.1, 0.2, 0.3, 0.4]
+        query_emb = [0.1, 0.2, 0.3, 0.4]
+
+        cache_key = f"{REDIS_KEY_PREFIX}:global:openrouter:standard:abc123"
+        mock_redis.zrevrange.return_value = [cache_key]
+        mock_redis.hget.side_effect = lambda key, field: {
+            (cache_key, "embedding"): json.dumps(stored_emb),
+            (cache_key, "response"): "cached response",
+        }.get((key, field))
+
+        mock_embedding_service.encode_query.return_value = query_emb
+
+        with patch("app.services.semantic_cache.embedding_service", mock_embedding_service):
+            cache._redis = mock_redis
+            result = await cache.get(
+                "  Documents  about MY Grand-père!! ", "openrouter", "standard"
+            )
+
+        # encode_query should receive the normalised form
+        encoded_query = mock_embedding_service.encode_query.call_args[0][0]
+        assert encoded_query == "documents about my grand-père"
+        assert result == "cached response"
 
 
 # ---------------------------------------------------------------------------
@@ -298,19 +351,19 @@ class TestSemanticCacheSet:
             await cache.set("my query", "openrouter", "standard", "my response")
 
         pipe.hset.assert_called_once()
-        pipe.expire.assert_called_once()
+        pipe.expire.assert_called()
         pipe.zadd.assert_called_once()
         pipe.execute.assert_called_once()
 
     async def test_set_hset_mapping(self, cache, mock_redis, mock_embedding_service):
-        """The HSET mapping should contain embedding, response, and raw query."""
+        """The HSET mapping should contain embedding, response, and normalised query."""
         redis, pipe = mock_redis, mock_redis.pipeline.return_value
         emb = [0.1, 0.2, 0.3, 0.4]
         mock_embedding_service.encode_query.return_value = emb
 
         with patch("app.services.semantic_cache.embedding_service", mock_embedding_service):
             cache._redis = redis
-            await cache.set("my query", "openrouter", "standard", "my response")
+            await cache.set("  MY Query!! ", "openrouter", "standard", "my response")
 
         call_args = pipe.hset.call_args[1]["mapping"]
         assert json.loads(call_args["embedding"]) == emb
@@ -326,9 +379,26 @@ class TestSemanticCacheSet:
             cache._redis = redis
             await cache.set("q", "openrouter", "standard", "r")
 
-        pipe.expire.assert_called_once()
+        pipe.expire.assert_called()
         # expire is called on the key with TTL
-        assert pipe.expire.call_args[0][1] == SEMANTIC_CACHE_TTL
+        expire_calls = [c for c in pipe.expire.call_args_list if c[0][1] == SEMANTIC_CACHE_TTL]
+        assert expire_calls, "Expected at least one EXPIRE call with SEMANTIC_CACHE_TTL"
+
+    async def test_set_uses_scoped_index(self, cache, mock_redis, mock_embedding_service):
+        """set() with collection_id should add the key to the collection index."""
+        redis, pipe = mock_redis, mock_redis.pipeline.return_value
+        emb = [0.1, 0.2, 0.3, 0.4]
+        mock_embedding_service.encode_query.return_value = emb
+        collection_id = "col-abc"
+
+        with patch("app.services.semantic_cache.embedding_service", mock_embedding_service):
+            cache._redis = redis
+            await cache.set("q", "openrouter", "standard", "r", collection_id=collection_id)
+
+        index = _index_key(collection_id)
+        pipe.zadd.assert_called_once()
+        zadd_args = pipe.zadd.call_args[0]
+        assert zadd_args[0] == index
 
     async def test_set_noop_when_embedding_disabled(self, cache):
         """When can_embed is False, set() should be a no-op."""
@@ -373,34 +443,50 @@ class TestSemanticCacheSet:
 class TestSemanticCacheInvalidate:
     """Tests for SemanticCache.invalidate_for_collection()"""
 
-    async def test_invalidate_deletes_all_matching_keys(self, cache):
-        """Should scan and delete all semantic cache keys plus their index entries."""
-        redis = MagicMock()
-        redis.scan_iter.return_value = [
-            f"{REDIS_KEY_PREFIX}:openrouter:standard:k1",
-            f"{REDIS_KEY_PREFIX}:openrouter:simple:k2",
+    async def test_invalidate_deletes_scoped_keys(self, cache):
+        """Should delete only the keys in the collection index plus the index itself."""
+        collection_id = "col-123"
+        index = _index_key(collection_id)
+        keys = [
+            f"{REDIS_KEY_PREFIX}:{collection_id}:openrouter:standard:k1",
+            f"{REDIS_KEY_PREFIX}:{collection_id}:openrouter:simple:k2",
         ]
+        redis = MagicMock()
+        redis.zrange.return_value = keys
 
         cache._redis = redis
-        deleted = await cache.invalidate_for_collection("col-123")
+        deleted = await cache.invalidate_for_collection(collection_id)
 
         assert deleted == 2
-        assert redis.delete.call_count == 2
-        assert redis.zrem.call_count == 2
-        redis.zrem.assert_any_call(INDEX_KEY, f"{REDIS_KEY_PREFIX}:openrouter:standard:k1")
-        redis.zrem.assert_any_call(INDEX_KEY, f"{REDIS_KEY_PREFIX}:openrouter:simple:k2")
+        redis.zrange.assert_called_once_with(index, 0, -1)
+        # Entries are deleted first, then the index is removed.
+        redis.delete.assert_any_call(*keys)
+        redis.delete.assert_any_call(index)
+
+    async def test_invalidate_global_only_deletes_global_keys(self, cache):
+        """invalidate_for_collection(None) should only clear the global index."""
+        keys = [
+            f"{REDIS_KEY_PREFIX}:global:openrouter:standard:k1",
+        ]
+        redis = MagicMock()
+        redis.zrange.return_value = keys
+
+        cache._redis = redis
+        deleted = await cache.invalidate_for_collection(None)
+
+        assert deleted == 1
+        redis.zrange.assert_called_once_with(GLOBAL_INDEX_KEY, 0, -1)
 
     async def test_invalidate_returns_zero_when_no_keys(self, cache):
-        """When the cache is empty, return 0."""
+        """When the index is empty, return 0."""
         redis = MagicMock()
-        redis.scan_iter.return_value = []
+        redis.zrange.return_value = []
 
         cache._redis = redis
         deleted = await cache.invalidate_for_collection("col-123")
 
         assert deleted == 0
-        redis.delete.assert_not_called()
-        redis.zrem.assert_not_called()
+        redis.delete.assert_called_once()  # index delete still happens
 
     async def test_invalidate_returns_zero_when_redis_unavailable(self, cache):
         """When Redis is None, return 0."""

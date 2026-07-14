@@ -138,21 +138,21 @@ export default function DocumentsPage() {
     }
   }, [page, pageSize, bucketFilter, debouncedSearch, sortBy, sortDir]);
 
+  // Consolidated polling: document refresh, pipeline health, and upload pause status.
+  // Health is checked every 10s and pause status every 15s, aligned to a single 5s tick.
+  // All polling is paused while the page is hidden to avoid wasted requests.
   useEffect(() => {
-    const hasProcessing = documents.some(
-      (d) => d.status === 'pending' || d.status === 'processing',
-    );
-    if (!hasProcessing) return;
+    let tick = 0;
 
-    const interval = setInterval(() => {
-      refreshDocuments();
-    }, 5000);
+    const refreshIfProcessing = () => {
+      const hasProcessing = documents.some(
+        (d) => d.status === 'pending' || d.status === 'processing',
+      );
+      if (hasProcessing) {
+        refreshDocuments();
+      }
+    };
 
-    return () => clearInterval(interval);
-  }, [documents, refreshDocuments]);
-
-  // Poll pipeline health for traffic-light indicator
-  useEffect(() => {
     const checkHealth = async () => {
       try {
         const res = await api.getPipelineHealth();
@@ -164,13 +164,7 @@ export default function DocumentsPage() {
         // silently ignore — don't spam users if endpoint is unavailable
       }
     };
-    checkHealth();
-    const interval = setInterval(checkHealth, 10000);
-    return () => clearInterval(interval);
-  }, []);
 
-  // Poll upload pause status
-  useEffect(() => {
     const checkPause = async () => {
       try {
         const res = await api.getUploadPauseStatus();
@@ -181,10 +175,19 @@ export default function DocumentsPage() {
         // silently ignore
       }
     };
-    checkPause();
-    const interval = setInterval(checkPause, 15000);
+
+    const runTick = async () => {
+      if (document.hidden) return;
+      refreshIfProcessing();
+      if (tick % 2 === 0) await checkHealth();
+      if (tick % 3 === 0) await checkPause();
+      tick++;
+    };
+
+    runTick();
+    const interval = setInterval(runTick, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [documents, refreshDocuments]);
 
   const handleSort = (col: typeof sortBy) => {
     if (sortBy === col) {

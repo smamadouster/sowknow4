@@ -8,6 +8,7 @@ import { useRouter } from '@/i18n/routing';
 import TagSelector from '@/components/TagSelector';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useDebounce } from '@/hooks/useDebounce';
 import MobileSheet from '@/components/mobile/MobileSheet';
 import FAB from '@/components/mobile/FAB';
 import SwipeableRow from '@/components/mobile/SwipeableRow';
@@ -48,6 +49,7 @@ export default function NotesPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 400);
   const [showEditor, setShowEditor] = useState(false);
   const [editingNote, setEditingNote] = useState<NoteItem | null>(null);
   // Detail view now uses dedicated page at /notes/[id]
@@ -64,8 +66,8 @@ export default function NotesPage() {
     try {
       setLoading(true);
       const { api } = await import('@/lib/api');
-      const response = searchQuery
-        ? await api.searchNotes(searchQuery, page, 50)
+      const response = debouncedSearchQuery
+        ? await api.searchNotes(debouncedSearchQuery, page, 50)
         : await api.getNotes(page, 50);
       if (response.data && !response.error) {
         const data = response.data as NotesResponse;
@@ -77,7 +79,7 @@ export default function NotesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchQuery]);
+  }, [page, debouncedSearchQuery]);
 
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
 

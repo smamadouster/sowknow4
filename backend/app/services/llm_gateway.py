@@ -156,6 +156,7 @@ class LLMGateway:
         user_id: str | None = None,
         user_role: str | None = None,
         module: str | None = None,
+        collection_id: str | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         """
@@ -174,6 +175,8 @@ class LLMGateway:
             user_role: Optional user role (admin, superuser, user) for quota limits.
             module: Optional module name for concurrency caps
                 (chat, collections, smart_folders, knowledge_graph).
+            collection_id: Optional collection/workspace scope for semantic cache
+                invalidation and key scoping.
             **kwargs: Provider-specific overrides (rarely needed).
 
         Yields:
@@ -286,9 +289,15 @@ class LLMGateway:
             if not stream and query:
                 from app.services.semantic_cache import semantic_cache
 
-                cached = await semantic_cache.get(query, model="openrouter", tier=tier)
+                cached = await semantic_cache.get(
+                    query, model="openrouter", tier=tier, collection_id=collection_id
+                )
                 if cached is not None:
-                    logger.info("LLMGateway semantic cache hit for query=%s", query[:60])
+                    logger.info(
+                        "LLMGateway semantic cache hit for query=%s collection=%s",
+                        query[:60],
+                        collection_id or "global",
+                    )
                     yield cached
                     return
 
@@ -304,6 +313,7 @@ class LLMGateway:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     tier=tier_enum,
+                    collection_id=collection_id,
                 )
                 timed_gen = self._timed_generate(router_gen, tier=tier, stream=True)
                 try:
@@ -328,6 +338,7 @@ class LLMGateway:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     tier=tier_enum,
+                    collection_id=collection_id,
                 )
                 timed_gen = self._timed_generate(router_gen, tier=tier, stream=False)
                 try:
@@ -350,7 +361,11 @@ class LLMGateway:
                     full_response = "".join(parts)
                     if full_response:
                         await semantic_cache.set(
-                            query, model="openrouter", tier=tier, response=full_response
+                            query,
+                            model="openrouter",
+                            tier=tier,
+                            response=full_response,
+                            collection_id=collection_id,
                         )
 
         do_gen = _do_generate()
@@ -378,11 +393,17 @@ class LLMGateway:
             return getattr(svc, "model", "unknown")
         return "unknown"
 
-    def check_cache(self, messages: list[dict[str, str]]) -> str | None:
+    def check_cache(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tier: str = "standard",
+        collection_id: str | None = None,
+    ) -> str | None:
         """Check Redis cache for a cached non-streaming response (OpenRouter)."""
         svc = self._router._openrouter
         if svc is not None and hasattr(svc, "check_cache"):
-            return svc.check_cache(messages)
+            return svc.check_cache(messages, tier=tier, collection_id=collection_id)
         return None
 
     def invalidate_collection_cache(self, collection_id: str) -> int:

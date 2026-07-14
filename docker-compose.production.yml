@@ -122,9 +122,12 @@ services:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
       - sowknow-backups:/app/backups
-    # Do NOT expose the backend directly on the host. All traffic must route
-    # through nginx so HTTPS redirect, HSTS, rate limits, and security headers
-    # are applied consistently.
+    # The backend is bound to loopback only (127.0.0.1:8001) so the host nginx
+    # reverse proxy can reach it, but external clients cannot bypass nginx and
+    # hit the backend over plain HTTP.  All public traffic must still route
+    # through nginx for HTTPS redirect, HSTS, rate limits and security headers.
+    ports:
+      - "127.0.0.1:8001:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint: ["/bin/sh", "/app/entrypoint.sh"]

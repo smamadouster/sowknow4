@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     curl \
     ffmpeg \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements

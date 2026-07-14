@@ -9,12 +9,15 @@ before the response body is fully consumed, so the session would be closed
 while the generator is still running.
 """
 
+import logging
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 from app.database import AsyncSessionLocal
 
+logger = logging.getLogger(__name__)
 
 # Endpoints that return StreamingResponse and must manage their own session.
 _STREAMING_PATHS = {
@@ -40,4 +43,5 @@ class TransactionMiddleware(BaseHTTPMiddleware):
                 return response
             except Exception:
                 await session.rollback()
+                logger.exception("Transaction middleware rolled back due to unhandled exception")
                 raise

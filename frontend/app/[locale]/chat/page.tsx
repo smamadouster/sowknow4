@@ -49,20 +49,30 @@ export default function ChatPage() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const streamAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!isMobile) setSidebarOpen(true);
   }, [isMobile]);
 
   useEffect(() => {
-    loadSessions();
+    const controller = new AbortController();
+    loadSessions(controller.signal);
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
-    if (currentSession) {
-      loadMessages(currentSession.id);
-    }
+    if (!currentSession) return;
+    const controller = new AbortController();
+    loadMessages(currentSession.id, controller.signal);
+    return () => controller.abort();
   }, [currentSession]);
+
+  useEffect(() => {
+    return () => {
+      streamAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -72,10 +82,11 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadSessions = async () => {
+  const loadSessions = async (signal?: AbortSignal) => {
     try {
       const res = await fetch(`${API_BASE}/v1/chat/sessions?limit=50`, {
         credentials: 'include',
+        signal,
       });
       if (res.ok) {
         const data = await res.json();
@@ -85,20 +96,23 @@ export default function ChatPage() {
         }
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Error loading sessions:', e);
     }
   };
 
-  const loadMessages = async (sessionId: string) => {
+  const loadMessages = async (sessionId: string, signal?: AbortSignal) => {
     try {
       const res = await fetch(`${API_BASE}/v1/chat/sessions/${sessionId}/messages?limit=100`, {
         credentials: 'include',
+        signal,
       });
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages || []);
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Error loading messages:', e);
       setError(t('error_loading'));
     }
@@ -203,6 +217,10 @@ export default function ChatPage() {
     setMessages(prev => [...prev, assistantMessage]);
     setStreamingLlm(null);
 
+    streamAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    streamAbortControllerRef.current = controller;
+
     try {
       const response = await fetch(
         `${API_BASE}/v1/chat/sessions/${currentSession.id}/message?stream=true`,
@@ -214,6 +232,7 @@ export default function ChatPage() {
           },
           credentials: 'include',
           body: JSON.stringify({ content: userMessage.content }),
+          signal: controller.signal,
         }
       );
 
@@ -277,12 +296,22 @@ export default function ChatPage() {
         }
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setIsLoading(false);
+        setIsStreaming(false);
+        return;
+      }
       console.error('Error sending message:', e);
       setError(t('streaming_error'));
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
+      streamAbortControllerRef.current = null;
     }
+  };
+
+  const stopGeneration = () => {
+    streamAbortControllerRef.current?.abort();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -594,21 +623,33 @@ export default function ChatPage() {
               rows={1}
               disabled={!currentSession || isStreaming}
             />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || !currentSession || isStreaming}
-              aria-label={t('send')}
-              aria-busy={isLoading}
-              className="px-5 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 font-medium font-display min-w-[44px] min-h-[44px]"
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-vault-1000/30 border-t-vault-1000 rounded-full animate-spin" />
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            {isStreaming ? (
+              <button
+                onClick={stopGeneration}
+                aria-label="Stop generation"
+                className="px-5 py-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl hover:bg-red-500/20 transition-all font-medium font-display min-w-[44px] min-h-[44px]"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
                 </svg>
-              )}
-            </button>
+              </button>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim() || !currentSession}
+                aria-label={t('send')}
+                aria-busy={isLoading}
+                className="px-5 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-vault-1000 rounded-xl hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 font-medium font-display min-w-[44px] min-h-[44px]"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-vault-1000/30 border-t-vault-1000 rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

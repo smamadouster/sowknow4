@@ -8,6 +8,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import MobileSheet from '@/components/mobile/MobileSheet';
 import FAB from '@/components/mobile/FAB';
 import { api } from '@/lib/api';
+import { showToast } from '@/lib/toast';
 
 interface Subscription {
   id: string;
@@ -356,9 +357,9 @@ export default function SubscriptionsPage() {
     const res = await api.testSubscriptionReminder();
     setTestLoading(false);
     if (res.status === 200 && res.data?.sent) {
-      alert(`Test reminder sent to ${res.data.recipient}`);
+      showToast(`Test reminder sent to ${res.data.recipient}`, 'success');
     } else {
-      alert(res.error || 'Failed to send test reminder');
+      showToast(res.error || 'Failed to send test reminder', 'error');
     }
   };
 

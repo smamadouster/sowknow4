@@ -178,12 +178,17 @@ class InputGuard:
 
     @staticmethod
     def _scan_pii(query: str) -> bool:
-        """Delegate to the existing PII detection service."""
+        """Delegate to the existing PII detection service.
+
+        SECURITY: PII scan failures are treated as PII detected (fail-closed).
+        If we cannot verify that a query is safe, we must not send it to an
+        external LLM or include it in broad search results.
+        """
         try:
             return pii_detection_service.detect_pii(query)
         except Exception:
-            logger.debug("InputGuard: PII scan failed — assuming no PII")
-            return False
+            logger.exception("InputGuard: PII scan failed — treating as PII detected")
+            return True
 
     @staticmethod
     def _classify_intent(query: str) -> str:

@@ -1241,7 +1241,9 @@ async def set_whisper_model(
         )
         await db.commit()
     except Exception:
-        pass  # Don't fail the request if audit logging fails
+        # Audit logging is best-effort: don't fail the request, but do record
+        # the failure so operators can detect a broken audit pipeline.
+        logger.exception("Audit logging failed for whisper model change")
 
     return {
         "message": f"Whisper model reloaded from '{previous}' to '{size}'",
@@ -1352,7 +1354,9 @@ async def force_reset_document(
             request=request,
         )
     except Exception:
-        pass
+        # Audit logging is best-effort: don't fail the request, but do record
+        # the failure so operators can detect a broken audit pipeline.
+        logger.exception("Audit logging failed for document force-reset")
 
     return {
         "document_id": str(document_id),

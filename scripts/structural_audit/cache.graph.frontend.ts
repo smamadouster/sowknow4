@@ -6,6 +6,13 @@
 
 // 🧠 FRONTEND ARCHITECTURE MAP (Auto-generated via ts-morph)
 
+### FILE: frontend/app/error.tsx
+[fn]: default({
+  error,
+  reset,
+})
+
+---
 ### FILE: frontend/app/layout.tsx
 [local_deps]: ./globals.css
 [ext_deps]: next-intl/server
@@ -76,6 +83,11 @@
 ### FILE: frontend/components/TagSelector.tsx
 [ext_deps]: react, next-intl, @/hooks/useIsMobile, @/components/TagAutocomplete
 [fn]: default({ tags, onChange, required = false, placeholder })
+
+---
+### FILE: frontend/components/ToastContainer.tsx
+[ext_deps]: react, @/lib/toast
+[fn]: default()
 
 ---
 ### FILE: frontend/components/VoiceRecorder.tsx
@@ -163,8 +175,25 @@
 [export]: useSearchCacheStore
 
 ---
+### FILE: frontend/lib/toast.ts
+[ext_deps]: zustand
+[fn]: showToast(message, type)
+[fn]: hideToast(id)
+[type]: ToastType
+[interface]: Toast { props: [id, message, type] }
+[export]: useToastStore
+
+---
+### FILE: frontend/app/[locale]/error.tsx
+[ext_deps]: next-intl, @/i18n/routing
+[fn]: default({
+  error,
+  reset,
+})
+
+---
 ### FILE: frontend/app/[locale]/layout.tsx
-[ext_deps]: next-intl, next-intl/server, next/navigation, @/i18n/routing, @/components/LanguageSelector, @/components/Navigation, @/components/CommandPalette, @/components/PrivacyBadge, @/components/PWAInstallPrompt, @/components/OfflineIndicator, @/components/AppHooks
+[ext_deps]: next-intl, next-intl/server, next/navigation, @/i18n/routing, @/components/LanguageSelector, @/components/Navigation, @/components/CommandPalette, @/components/PrivacyBadge, @/components/PWAInstallPrompt, @/components/OfflineIndicator, @/components/AppHooks, @/components/ToastContainer
 [fn]: default({
   children,
   params,
@@ -295,7 +324,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/collections/page.tsx
-[ext_deps]: react, next/link, next-intl, @/i18n/routing, @/lib/api
+[ext_deps]: react, next/link, next-intl, @/i18n/routing, @/lib/api, @/lib/toast
 [fn]: default()
 [export]: dynamic
 
@@ -357,7 +386,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/settings/page.tsx
-[ext_deps]: react, next-intl, next/navigation, @/lib/api, @/lib/formatDate, @/lib/store
+[ext_deps]: react, next-intl, next/navigation, @/lib/api, @/lib/formatDate, @/lib/store, @/lib/toast
 [fn]: default()
 
 ---
@@ -374,7 +403,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/subscriptions/page.tsx
-[ext_deps]: react, next-intl, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/lib/api
+[ext_deps]: react, next-intl, @/hooks/useIsMobile, @/components/mobile/MobileSheet, @/components/mobile/FAB, @/lib/api, @/lib/toast
 [fn]: default()
 [export]: dynamic
 

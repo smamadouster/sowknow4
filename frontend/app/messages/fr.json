@@ -456,6 +456,13 @@
     "retry": "Réessayer",
     "home": "Retour à l'accueil"
   },
+  "error": {
+    "title": "Une erreur s'est produite",
+    "description": "Nous avons rencontré une erreur inattendue. Vous pouvez réessayer ou retourner à l'accueil.",
+    "error_id": "ID d'erreur",
+    "try_again": "Réessayer",
+    "go_home": "Accueil"
+  },
   "errors": {
     "generic": "Une erreur s'est produite",
     "network": "Erreur de connexion",

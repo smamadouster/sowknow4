@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations, useLocale } from "next-intl";
 import { Link as IntlLink } from "@/i18n/routing";
 import { api, getCsrfToken } from "@/lib/api";
+import { showToast } from "@/lib/toast";
 
 // Disable static optimization for this client component
 export const dynamic = 'force-dynamic';
@@ -185,11 +186,11 @@ export default function CollectionsPage() {
       if (!res.error) {
         fetchCollections();
       } else {
-        alert(res.error || 'Failed to delete collection');
+        showToast(res.error || 'Failed to delete collection', 'error');
       }
     } catch (error) {
       console.error('Error deleting collection:', error);
-      alert('Error deleting collection');
+      showToast('Error deleting collection', 'error');
     } finally {
       setDeletingId(null);
     }

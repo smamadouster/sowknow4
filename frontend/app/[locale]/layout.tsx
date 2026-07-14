@@ -9,6 +9,7 @@ import PrivacyBadge from '@/components/PrivacyBadge';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import OfflineIndicator from '@/components/OfflineIndicator';
 import AppHooks from '@/components/AppHooks';
+import ToastContainer from '@/components/ToastContainer';
 
 export default async function LocaleLayout({
   children,
@@ -73,6 +74,7 @@ export default async function LocaleLayout({
 
       <AppHooks />
       <OfflineIndicator />
+      <ToastContainer />
       <div className="flex" style={{ minHeight: 'calc(100dvh - 3.5rem)' }}>
         <Navigation />
 

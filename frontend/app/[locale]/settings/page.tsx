@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getCsrfToken } from '@/lib/api';
 import { formatDateShort } from '@/lib/formatDate';
 import { useAuthStore } from '@/lib/store';
+import { showToast } from '@/lib/toast';
 
 interface User {
   id: string;
@@ -173,13 +174,19 @@ export default function SettingsPage() {
       
       if (res.ok) {
         const data = await res.json();
-        alert(`New password: ${data.new_password}\n\nPlease share this with the user securely.`);
+        const password = data.new_password as string;
+        try {
+          await navigator.clipboard.writeText(password);
+          showToast('New password copied to clipboard', 'success');
+        } catch {
+          showToast(`New password: ${password}`, 'info');
+        }
       } else {
-        alert('Failed to reset password');
+        showToast('Failed to reset password', 'error');
       }
     } catch (e) {
       console.error('Error resetting password:', e);
-      alert('Error resetting password');
+      showToast('Error resetting password', 'error');
     } finally {
       setResettingPassword(null);
     }

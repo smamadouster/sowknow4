@@ -215,8 +215,10 @@ def _is_stage_inflight(document_id: str, stage: StageEnum) -> bool:
 
         return False
     except Exception:
+        # SECURITY: fail closed. If we cannot verify the stage is not already
+        # in flight, do not dispatch another task.
         logger.exception("Error checking inflight status for doc %s stage %s", document_id, stage)
-        return False
+        return True
     finally:
         db.close()
 
@@ -263,7 +265,10 @@ def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -
         finally:
             db_check.close()
     except Exception:
+        # SECURITY: fail closed. If we cannot verify the document status,
+        # do not dispatch the pipeline.
         logger.exception("Error checking document status for dispatch %s", document_id)
+        return "error: could not verify document status"
 
     pipeline = _build_chain(document_id, from_stage)
     if pipeline is None:

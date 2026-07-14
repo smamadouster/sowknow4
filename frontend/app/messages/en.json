@@ -456,6 +456,13 @@
     "retry": "Try again",
     "home": "Go to home"
   },
+  "error": {
+    "title": "Something went wrong",
+    "description": "We encountered an unexpected error. You can try again or go back home.",
+    "error_id": "Error ID",
+    "try_again": "Try again",
+    "go_home": "Go home"
+  },
   "errors": {
     "generic": "An error occurred",
     "network": "Network error",

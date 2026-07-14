@@ -63,7 +63,14 @@ def _convert_search_results_to_chunks(search_results) -> list[RawChunk]:
         try:
             bucket = DocumentBucket(sr.document_bucket) if sr.document_bucket else DocumentBucket.PUBLIC
         except Exception:
-            bucket = DocumentBucket.PUBLIC
+            # SECURITY: fail closed. If we cannot determine the document bucket,
+            # do not expose the chunk rather than defaulting to PUBLIC.
+            logger.warning(
+                "Search agent: could not parse document_bucket '%s' for document %s — skipping chunk",
+                sr.document_bucket,
+                sr.document_id,
+            )
+            continue
         chunks.append(RawChunk(
             chunk_id=sr.chunk_id,
             document_id=sr.document_id,
@@ -124,7 +131,11 @@ async def search(
                 answer_synthesis="Cette requête est en cours de traitement. / This query is already being processed.",
             )
     except Exception as e:
-        logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
+        logger.exception("InputGuard: guard processing failed for user %s: %s", current_user.id, e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Input safety check failed. Please try again.",
+        ) from e
 
     if _search_semaphore._value == 0:
         raise HTTPException(
@@ -183,7 +194,18 @@ async def search_stream(
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
     except Exception as e:
-        logger.warning("InputGuard: guard processing failed, continuing without guard: %s", e)
+        logger.exception("InputGuard: guard processing failed for user %s: %s", current_user.id, e)
+
+        async def _error_gen():
+            yield _sse_event("error", {
+                "message": "Input safety check failed. Please try again.",
+            })
+
+        return StreamingResponse(
+            _error_gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     async def event_generator():
         # NOTE: We create our own session here because StreamingResponse runs

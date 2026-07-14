@@ -122,8 +122,9 @@ services:
       - sowknow-public-data:/data/public
       - sowknow-confidential-data:/data/confidential
       - sowknow-backups:/app/backups
-    ports:
-      - "8001:8000"
+    # Do NOT expose the backend directly on the host. All traffic must route
+    # through nginx so HTTPS redirect, HSTS, rate limits, and security headers
+    # are applied consistently.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
@@ -462,7 +463,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - JWT_SECRET=${JWT_SECRET}
+        # JWT_SECRET must NEVER be passed to the frontend build.
         - NEXT_PUBLIC_API_URL=https://sowknow.gollamtech.com/api
         - NEXT_PUBLIC_APP_URL=https://sowknow.gollamtech.com
     container_name: sowknow-frontend
@@ -476,7 +477,8 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=https://sowknow.gollamtech.com/api
       - NEXT_PUBLIC_APP_URL=https://sowknow.gollamtech.com
-      - JWT_SECRET=${JWT_SECRET}
+      # JWT_SECRET is not needed by the frontend runtime; middleware only checks
+      # cookie presence and the backend validates tokens cryptographically.
     ports:
       - "3000:3000"
     networks:

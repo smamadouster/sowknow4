@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import _rate_limit_exceeded_handler
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -393,6 +394,14 @@ else:
 # TrustedHost Middleware - Prevents Host header attacks
 # Only allows requests from configured hosts
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+# ProxyHeaders Middleware - Trust X-Forwarded-* headers from nginx.
+# SEC-05: Direct backend access is blocked at the network level, so all
+# requests reaching the app come through the reverse proxy.  Wrapping the
+# app after TrustedHostMiddleware means this runs first on each request,
+# populating request.client and request.url from forwarded headers before
+# rate-limiting, CSRF and logging need the real client IP.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # CORS Middleware - Controls cross-origin requests
 # SECURITY: Never use allow_origins=["*"] with allow_credentials=True

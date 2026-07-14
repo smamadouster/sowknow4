@@ -15,9 +15,10 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from app.utils.constants import CSRF_COOKIE_NAME
+
 logger = logging.getLogger(__name__)
 
-CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 
 SAFE_METHODS: set[str] = {"GET", "HEAD", "OPTIONS", "TRACE"}

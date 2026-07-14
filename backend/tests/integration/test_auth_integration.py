@@ -113,7 +113,8 @@ class TestTokenLifecycle:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Expire Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -185,7 +186,8 @@ class TestRoleBasedResourceAccess:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Regular User",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -216,7 +218,8 @@ class TestRoleBasedResourceAccess:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Super User",
             role=UserRole.SUPERUSER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(superuser)
         db.commit()
@@ -247,7 +250,8 @@ class TestRoleBasedResourceAccess:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Admin User",
             role=UserRole.ADMIN,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(admin)
         db.commit()
@@ -282,7 +286,8 @@ class TestSessionManagement:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Multi Session",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -326,7 +331,8 @@ class TestSessionManagement:
             hashed_password=get_password_hash(old_password),
             full_name="Change Pass",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -387,7 +393,8 @@ class TestSecurityHeaders:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Sensitive Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -465,7 +472,8 @@ class TestTokenRotation:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Rotation Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -523,7 +531,8 @@ class TestCookieSecurity:
             hashed_password=get_password_hash("SecurePass123!"),
             full_name="Path Restrict",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()

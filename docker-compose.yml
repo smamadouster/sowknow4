@@ -3,7 +3,9 @@
 # VPS: Hostinger 32GB shared VPS (upgraded from 16GB on 2026-03-23)
 #
 # NAMING CONVENTION: All containers use "sowknow4-" prefix. No exceptions.
-# PORT POLICY: Only backend (8001) and frontend (3000) exposed to host.
+# PORT POLICY: Only frontend (3000), nginx (80/443) and Ollama loopback (127.0.0.1:11434)
+#              are exposed to host. The backend is internal-only and must be reached
+#              through nginx so HTTPS, HSTS, rate limits and security headers apply.
 #              Internal services (postgres, redis, vault, nats) are network-only.
 #
 # Memory Allocation:
@@ -194,8 +196,9 @@ services:
       - sowknow-backups:/app/backups
       - ./backend:/app
       - sowknow-model-cache:/models
-    ports:
-      - "8001:8000"
+    # Do NOT expose the backend directly on the host. All traffic must route
+    # through nginx so HTTPS redirect, HSTS, rate limits, and security headers
+    # are applied consistently.
     depends_on:
       postgres:
         condition: service_healthy
@@ -658,14 +661,15 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - JWT_SECRET=${JWT_SECRET}
+        # JWT_SECRET must NEVER be passed to the frontend build.
         - NEXT_PUBLIC_API_URL=/api
     container_name: sowknow4-frontend
     restart: unless-stopped
     logging: *default-logging
     environment:
       - NEXT_PUBLIC_API_URL=/api
-      - JWT_SECRET=${JWT_SECRET}
+      # JWT_SECRET is not needed by the frontend runtime; middleware only checks
+      # cookie presence and the backend validates tokens cryptographically.
     ports:
       - "3000:3000"
     depends_on:

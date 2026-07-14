@@ -2,10 +2,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Accept build-time env vars that Next.js middleware needs inlined
-ARG JWT_SECRET
+# Accept build-time env vars that Next.js client components need inlined.
+# JWT_SECRET must NEVER be passed to the frontend image; middleware intentionally
+# does not verify JWTs to avoid baking secrets into client-side bundles.
 ARG NEXT_PUBLIC_API_URL
-ENV JWT_SECRET=${JWT_SECRET}
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # Install build dependencies for native modules (e.g. canvas)

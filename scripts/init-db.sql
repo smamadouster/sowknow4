@@ -20,14 +20,6 @@ CREATE TABLE sowknow.users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create admin user
-INSERT INTO sowknow.users (email, hashed_password, full_name, role, is_superuser, can_access_confidential)
-VALUES (
-    'admin@sowknow.local',
-    -- bcrypt hash for 'Admin123!'
-    '$2b$12$6Xo5q7v8w9y0z1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4',
-    'System Administrator',
-    'admin',
-    TRUE,
-    TRUE
-);
+-- NOTE: No default admin user is seeded here. In production, run scripts/deploy.sh
+-- which creates an admin from the ADMIN_EMAIL/ADMIN_PASSWORD values in .env.
+-- In development, create an admin manually or via the deployment script.

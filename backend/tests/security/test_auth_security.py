@@ -47,7 +47,8 @@ class TestLoginSecurity:
             hashed_password=hashed,
             full_name="Test User",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -95,7 +96,8 @@ class TestLoginSecurity:
             hashed_password=hashed,
             full_name="Valid User",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -174,6 +176,38 @@ class TestLoginSecurity:
         assert response.status_code == 400
         assert "inactive" in response.json()["detail"].lower()
 
+    def test_login_with_unverified_email(self, test_client: TestClient, db: Session):
+        """Test login with unverified email returns 401"""
+        password = "UnverifiedPassword123!"
+        hashed = get_password_hash(password)
+
+        user = User(
+            email="unverified@example.com",
+            hashed_password=hashed,
+            full_name="Unverified User",
+            role=UserRole.USER,
+            is_active=True,
+            email_verified=False,
+        )
+        db.add(user)
+        db.commit()
+
+        response = test_client.post(
+            "/api/v1/auth/login",
+            data={
+                "username": "unverified@example.com",
+                "password": password
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+
+        # Should return 401 and indicate email verification is required
+        assert response.status_code == 401
+        assert "verify" in response.json()["detail"].lower()
+
+        # No cookies should be set
+        assert len(response.cookies) == 0
+
     def test_login_missing_credentials(self, test_client: TestClient):
         """Test login with missing credentials returns 400 (custom validation)."""
         response = test_client.post(
@@ -203,7 +237,8 @@ class TestProtectedRouteAccess:
             hashed_password=get_password_hash("password"),
             full_name="Token User",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -234,7 +269,8 @@ class TestProtectedRouteAccess:
             hashed_password=get_password_hash("password"),
             full_name="Expired User",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -310,7 +346,8 @@ class TestProtectedRouteAccess:
             hashed_password=get_password_hash("password"),
             full_name="Deleted User",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -423,7 +460,8 @@ class TestCookieSecurity:
             hashed_password=hashed,
             full_name="Cookie Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -453,7 +491,8 @@ class TestCookieSecurity:
             hashed_password=hashed,
             full_name="Failed Login Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -487,7 +526,8 @@ class TestCookieSecurity:
             hashed_password=hashed,
             full_name="Cookie Expire Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -526,7 +566,8 @@ class TestCookieSecurity:
             hashed_password=hashed,
             full_name="Secure Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -562,7 +603,8 @@ class TestCookieSecurity:
             hashed_password=hashed,
             full_name="SameSite Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -599,7 +641,8 @@ class TestTokenNotInResponseBody:
             hashed_password=hashed,
             full_name="Token Location",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -634,7 +677,8 @@ class TestTokenNotInResponseBody:
             hashed_password=hashed,
             full_name="User Info Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -676,7 +720,8 @@ class TestLogout:
             hashed_password=hashed,
             full_name="Logout Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -729,7 +774,8 @@ class TestLogout:
             hashed_password=hashed,
             full_name="After Logout Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -770,7 +816,8 @@ class TestTokenRotation:
             hashed_password=hashed,
             full_name="Token Rotation Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -822,7 +869,8 @@ class TestTokenRotation:
             hashed_password=hashed,
             full_name="Expired Refresh Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()
@@ -916,7 +964,8 @@ class TestPasswordSecurity:
             hashed_password=hashed,
             full_name="Plaintext Test",
             role=UserRole.USER,
-            is_active=True
+            is_active=True,
+            email_verified=True,
         )
         db.add(user)
         db.commit()

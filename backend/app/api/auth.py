@@ -17,6 +17,7 @@ Token Blacklist:
 """
 
 import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -33,14 +34,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.limiter import limiter
-from app.middleware.csrf import CSRF_COOKIE_NAME, generate_csrf_token
+from app.middleware.csrf import generate_csrf_token
 from app.models.user import User
 from app.schemas.auth import ForgotPasswordRequest, ResendVerificationRequest, TelegramAuthRequest
 from app.schemas.token import LoginResponse
 from app.schemas.user import UserCreate, UserPublic
 from app.services.token_blacklist import blacklist_token as blacklist_jwt
 from app.services.token_blacklist import is_token_blacklisted as jwt_is_blacklisted
-from app.utils.constants import COOKIE_ACCESS_TOKEN_NAME, COOKIE_REFRESH_TOKEN_NAME
+from app.utils.constants import (
+    COOKIE_ACCESS_TOKEN_NAME,
+    COOKIE_REFRESH_TOKEN_NAME,
+    CSRF_COOKIE_NAME,
+)
 from app.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -84,6 +89,9 @@ BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 TELEGRAM_ADMIN_USER_IDS = {
     int(x.strip()) for x in os.getenv("TELEGRAM_ADMIN_USER_IDS", "").split(",") if x.strip()
 }
+
+# Email verification token TTL (seconds)
+EMAIL_VERIFY_TTL = 86400  # 24 hours
 
 
 async def verify_telegram_user(telegram_user_id: int, bot_token: str) -> bool:
@@ -165,6 +173,19 @@ def is_token_blacklisted(token: str) -> bool:
 # =============================================================================
 
 
+def _cookie_domain(name: str) -> str | None:
+    """
+    Return the Domain attribute for a cookie.
+
+    Cookies with the ``__Host-`` prefix must NOT specify a Domain attribute,
+    so this returns ``None`` for prefixed host cookies.  Other cookies keep
+    the configured COOKIE_DOMAIN.
+    """
+    if name.startswith("__Host-"):
+        return None
+    return COOKIE_DOMAIN
+
+
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     """
     Set httpOnly, Secure, SameSite=lax cookies for authentication tokens.
@@ -174,6 +195,8 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
     - Secure: Ensures cookies only sent over HTTPS (False for development HTTP)
     - SameSite=lax: Prevents CSRF attacks while allowing normal navigation
     - Tokens NOT returned in response body (prevents XSS via JSON)
+    - In production, access/CSRF cookies use the __Host- prefix (no Domain,
+      Path=/, Secure) and the refresh cookie uses __Secure- (Secure).
 
     Args:
         response: FastAPI Response object
@@ -188,7 +211,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Convert to seconds (900)
         expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
-        domain=COOKIE_DOMAIN,
+        domain=_cookie_domain(COOKIE_ACCESS_TOKEN_NAME),
         httponly=True,  # CRITICAL: Prevents XSS access
         secure=SECURE_FLAG,  # True in production, False for HTTP development
         samesite=SAMESITE_VALUE,  # "lax" allows normal navigation
@@ -203,7 +226,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # 604800 seconds
         expires=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         path="/api/v1/auth",  # RESTRICTED to auth routes only
-        domain=COOKIE_DOMAIN,
+        domain=_cookie_domain(COOKIE_REFRESH_TOKEN_NAME),
         httponly=True,  # CRITICAL: Prevents XSS access
         secure=SECURE_FLAG,  # True in production, False for HTTP development
         samesite=SAMESITE_VALUE,  # "lax" allows normal navigation
@@ -216,7 +239,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         expires=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
-        domain=COOKIE_DOMAIN,
+        domain=_cookie_domain(CSRF_COOKIE_NAME),
         httponly=False,  # Must be JS-readable for double-submit pattern
         secure=SECURE_FLAG,
         samesite="strict",  # Stricter than auth cookies — never sent cross-site
@@ -237,13 +260,25 @@ def clear_auth_cookies(response: Response) -> None:
         response: FastAPI Response object
     """
     # Clear access token cookie
-    response.delete_cookie(key=COOKIE_ACCESS_TOKEN_NAME, path="/", domain=COOKIE_DOMAIN)
+    response.delete_cookie(
+        key=COOKIE_ACCESS_TOKEN_NAME,
+        path="/",
+        domain=_cookie_domain(COOKIE_ACCESS_TOKEN_NAME),
+    )
 
     # Clear refresh token cookie (must match path used when setting)
-    response.delete_cookie(key=COOKIE_REFRESH_TOKEN_NAME, path="/api/v1/auth", domain=COOKIE_DOMAIN)
+    response.delete_cookie(
+        key=COOKIE_REFRESH_TOKEN_NAME,
+        path="/api/v1/auth",
+        domain=_cookie_domain(COOKIE_REFRESH_TOKEN_NAME),
+    )
 
     # Clear CSRF cookie
-    response.delete_cookie(key=CSRF_COOKIE_NAME, path="/", domain=COOKIE_DOMAIN)
+    response.delete_cookie(
+        key=CSRF_COOKIE_NAME,
+        path="/",
+        domain=_cookie_domain(CSRF_COOKIE_NAME),
+    )
 
     logger.debug("Auth cookies cleared")
 
@@ -360,13 +395,13 @@ async def register(request: Request, user_data: UserCreate, db: AsyncSession = D
         # Generic error message prevents email enumeration
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email already exists",
+            detail="Registration failed. Please try again with different information.",
         )
 
     # Hash password with bcrypt
     hashed_password = get_password_hash(user_data.password)
 
-    # Create new user with default role
+    # Create new user with default role (email unverified until admin delivers token)
     db_user = User(
         email=normalized_email,
         hashed_password=hashed_password,
@@ -378,7 +413,22 @@ async def register(request: Request, user_data: UserCreate, db: AsyncSession = D
     await db.commit()
     await db.refresh(db_user)
 
-    logger.info(f"New user registered: {db_user.email}")
+    # Generate and store an email-verification token for admin-managed delivery.
+    verify_token = secrets.token_urlsafe(32)
+    if redis_client:
+        try:
+            redis_client.setex(
+                f"email_verify:{verify_token}",
+                EMAIL_VERIFY_TTL,
+                str(db_user.id),
+            )
+        except Exception as e:
+            logger.error(f"Failed to store verification token for {db_user.email}: {e}")
+
+    logger.info(
+        f"New user registered: {db_user.email} (verification token generated, "
+        f"admin delivery required)"
+    )
     return UserPublic.from_orm(db_user)
 
 
@@ -422,6 +472,12 @@ async def login(
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
+
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email not verified. Please verify your email before logging in.",
+        )
 
     # Create JWT tokens
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -700,8 +756,6 @@ async def forgot_password(
 # EMAIL VERIFICATION
 # =============================================================================
 
-EMAIL_VERIFY_TTL = 86400  # 24 hours
-
 
 @router.post("/verify-email/{token}")
 async def verify_email(token: str, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
@@ -860,21 +914,29 @@ async def telegram_auth(
     """
     # SECURITY: Validate Bot API Key header
     incoming_api_key = request.headers.get("X-Bot-Api-Key")
-    if not incoming_api_key or incoming_api_key != BOT_API_KEY:
+    if not incoming_api_key or not hmac.compare_digest(incoming_api_key, BOT_API_KEY):
         logger.warning(
             f"Telegram auth failed: invalid or missing API key from {request.client.host if request.client else 'unknown'}"
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
-    # SECURITY: Verify Telegram user ID against Telegram API
-    if TELEGRAM_BOT_TOKEN:
-        is_valid_telegram_user = await verify_telegram_user(auth_data.telegram_user_id, TELEGRAM_BOT_TOKEN)
-        if not is_valid_telegram_user:
-            logger.warning(f"Telegram auth failed: invalid telegram_user_id {auth_data.telegram_user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Telegram credentials",
-            )
+    # SECURITY: Telegram-side identity verification is mandatory.  Without a bot
+    # token anyone who obtains BOT_API_KEY could create arbitrary users,
+    # including admins, by supplying a random telegram_user_id.
+    if not TELEGRAM_BOT_TOKEN:
+        logger.error("Telegram auth failed: TELEGRAM_BOT_TOKEN is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telegram authentication is not configured",
+        )
+
+    is_valid_telegram_user = await verify_telegram_user(auth_data.telegram_user_id, TELEGRAM_BOT_TOKEN)
+    if not is_valid_telegram_user:
+        logger.warning(f"Telegram auth failed: invalid telegram_user_id {auth_data.telegram_user_id}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Telegram credentials",
+        )
 
     # Create deterministic but non-enumerable email
     # Use UUID-based hash to prevent enumeration

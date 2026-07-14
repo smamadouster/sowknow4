@@ -224,7 +224,12 @@ create_admin_user() {
 
     source .env
     ADMIN_EMAIL="${ADMIN_EMAIL:-admin@sowknow.local}"
-    ADMIN_PASSWORD="${ADMIN_PASSWORD:-Admin123!}"
+
+    if [ -z "${ADMIN_PASSWORD}" ]; then
+        log "ERROR: ADMIN_PASSWORD must be set in .env before deployment."
+        log "Generate a strong password and add it to your .env file."
+        exit 1
+    fi
 
     docker-compose exec -T backend python -c "
 from app.database import SessionLocal
@@ -242,7 +247,8 @@ if not admin:
         role=UserRole.ADMIN,
         is_superuser=True,
         can_access_confidential=True,
-        is_active=True
+        is_active=True,
+        email_verified=True
     )
     db.add(admin)
     db.commit()

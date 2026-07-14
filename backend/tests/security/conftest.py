@@ -121,7 +121,8 @@ def admin_user(db: Session, test_password: str) -> User:
         role=UserRole.ADMIN,
         is_superuser=True,
         can_access_confidential=True,
-        is_active=True
+        is_active=True,
+        email_verified=True,
     )
     db.add(user)
     db.commit()
@@ -139,7 +140,8 @@ def superuser(db: Session, test_password: str) -> User:
         role=UserRole.SUPERUSER,
         is_active=True,
         is_superuser=True,
-        can_access_confidential=True
+        can_access_confidential=True,
+        email_verified=True,
     )
     db.add(user)
     db.commit()
@@ -155,7 +157,8 @@ def regular_user(db: Session, test_password: str) -> User:
         hashed_password=get_password_hash(test_password),
         full_name="Regular User",
         role=UserRole.USER,
-        is_active=True
+        is_active=True,
+        email_verified=True,
     )
     db.add(user)
     db.commit()

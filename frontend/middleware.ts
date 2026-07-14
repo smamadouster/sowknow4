@@ -2,7 +2,10 @@ import createMiddleware from 'next-intl/middleware';
 import { NextRequest } from 'next/server';
 import { routing } from './i18n/routing';
 
-const ACCESS_TOKEN_COOKIE = 'access_token';
+// In production the backend sets __Host-access_token (Path=/, Secure, no Domain).
+// Development uses the legacy access_token name.  Check both so the UX gate
+// works regardless of environment.
+const ACCESS_TOKEN_COOKIES = ['__Host-access_token', 'access_token'];
 
 const t = createMiddleware({
   ...routing,
@@ -44,7 +47,7 @@ const authPaths = [
  * silent refresh or redirecting to login.
  */
 function hasSessionCookie(request: NextRequest): boolean {
-  return Boolean(request.cookies.get(ACCESS_TOKEN_COOKIE)?.value);
+  return ACCESS_TOKEN_COOKIES.some(name => Boolean(request.cookies.get(name)?.value));
 }
 
 export default async function middleware(request: NextRequest) {

@@ -71,15 +71,21 @@ class ApiClient {
   /**
    * Read the CSRF double-submit cookie set by the backend on login/refresh.
    * The cookie is non-httpOnly so JS can read it and echo it back in a header.
+   *
+   * In production the cookie is named __Host-csrf_token; development uses the
+   * legacy csrf_token name.  Check both so the client works in either env.
    */
   private getCsrfToken(): string {
     if (typeof document === 'undefined') return '';
-    return (
-      document.cookie
+    const names = ['__Host-csrf_token', 'csrf_token'];
+    for (const name of names) {
+      const value = document.cookie
         .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] ?? ''
-    );
+        .find((row) => row.startsWith(`${name}=`))
+        ?.split('=')[1];
+      if (value) return value;
+    }
+    return '';
   }
 
   private getRequestHeaders(options: RequestInit): Record<string, string> {

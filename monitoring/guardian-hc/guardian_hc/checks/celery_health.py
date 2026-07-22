@@ -19,8 +19,8 @@ class CeleryHealthChecker:
         self.redis_port = c.get("redis_port", 6379)
         self.redis_password = c.get("redis_password", "")
         self.max_queue_depth = c.get("max_queue_depth", 100)
-        self.worker_container = c.get("worker_container", "sowknow4-celery-worker")
-        self.beat_container = c.get("beat_container", "sowknow4-celery-beat")
+        self.worker_container = c.get("worker_container", "sowknow-celery-worker")
+        self.beat_container = c.get("beat_container", "sowknow-celery-beat")
 
     async def check(self) -> list[dict]:
         results = []

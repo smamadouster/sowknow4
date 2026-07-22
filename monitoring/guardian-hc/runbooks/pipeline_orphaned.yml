@@ -12,7 +12,7 @@ steps:
   - id: count_orphaned
     name: "Count chunked docs with no embedded row"
     action: exec
-    container: sowknow4-postgres
+    container: sowknow-postgres
     command: >-
       psql -U postgres -t -c
       "WITH chunked_docs AS (
@@ -35,7 +35,7 @@ steps:
   - id: heal_orphaned
     name: "Create missing embedded rows and dispatch"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python -c "
       import os; os.chdir('/app');
@@ -75,7 +75,7 @@ steps:
   - id: verify_healed
     name: "Verify orphaned count dropped to zero"
     action: exec
-    container: sowknow4-postgres
+    container: sowknow-postgres
     command: >-
       psql -U postgres -t -c
       "WITH chunked_docs AS (
@@ -118,7 +118,7 @@ steps:
 
       Documents remain orphaned after auto-heal.
       Manual investigation needed:
-      • `docker logs sowknow4-celery-heavy`
+      • `docker logs sowknow-celery-heavy`
       • Check for OOM kills: `dmesg | grep -i oom`
       • Verify embed-server health: `curl http://embed-server:8000/health`
     terminal: true

@@ -143,7 +143,7 @@ class ResourceHogsChecker:
                 if rss_mb < self.mem_threshold_mb:
                     continue
                 # Skip known legitimate heavy services (embed server can grow to 6GB under load)
-                if any(x in cmd for x in ['embed_server.main', 'sowknow4-embed-server', 'postgres', 'redis-server']):
+                if any(x in cmd for x in ['embed_server.main', 'sowknow-embed-server', 'postgres', 'redis-server']):
                     continue
                 # Parse CPU time as proxy for runtime
                 hours = 0

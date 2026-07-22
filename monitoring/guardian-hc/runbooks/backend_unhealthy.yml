@@ -35,7 +35,7 @@ steps:
   - id: check_container_state
     name: "Confirm backend container is running"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: "echo alive"
     expect_in_stdout: "alive"
     timeout: 5
@@ -46,10 +46,10 @@ steps:
   - id: check_db_connectivity
     name: "Test DB connection from backend"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python3 -c "
-      from app.db.session import SessionLocal;
+      from app.database import SessionLocal;
       db = SessionLocal();
       db.execute(__import__('sqlalchemy').text('SELECT 1'));
       db.close();
@@ -62,9 +62,9 @@ steps:
 
   # Step 5: Restart backend (RestartTracker gated)
   - id: restart_backend
-    name: "Restart sowknow4-backend"
+    name: "Restart sowknow-backend"
     action: restart_container
-    container: sowknow4-backend
+    container: sowknow-backend
     wait_after: 25
     on_success: verify_after_restart
     on_failure: escalate
@@ -91,9 +91,9 @@ steps:
     message: >-
       🔴 *Guardian runbook: backend_unhealthy*
 
-      Backend health failure — DB connection test failed from inside sowknow4-backend.
+      Backend health failure — DB connection test failed from inside sowknow-backend.
       Postgres may be down or connection pool exhausted.
-      Check: `docker logs sowknow4-postgres` and active connections.
+      Check: `docker logs sowknow-postgres` and active connections.
     terminal: true
 
   - id: escalate
@@ -104,7 +104,7 @@ steps:
 
       Backend failed and did not recover after auto-restart.
       Manual investigation needed:
-      • `docker logs sowknow4-backend`
+      • `docker logs sowknow-backend`
       • Check Alembic migration state
       • Check DB pool exhaustion (pg_stat_activity)
       • Check available memory (VPS has 32GB — may need container tuning)

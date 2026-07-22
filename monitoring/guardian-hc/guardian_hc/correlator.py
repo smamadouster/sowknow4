@@ -380,7 +380,7 @@ class IncidentCorrelator:
         lines.append("MANUAL INTERVENTION REQUIRED")
         lines.append("")
 
-        container = root.container or f"sowknow4-{root.service}"
+        container = root.container or f"sowknow-{root.service}"
         lines.append(f"Suggested: check {root.service} logs")
         lines.append(f"  docker logs {container} --tail 50")
 

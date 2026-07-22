@@ -31,7 +31,7 @@ YAML format:
     - id: my_step
       name: "Human-readable label"
       action: exec
-      container: sowknow4-backend
+      container: sowknow-backend
       command: "python3 -c 'print(ok)'"
       expect_in_stdout: "ok"          # optional — checked after returncode
       expect_returncode: 0            # default 0
@@ -71,7 +71,8 @@ class StepResult:
 class RunbookResult:
     runbook_name: str
     check_name: str
-    outcome: str          # "resolved" | "escalated" | "probe_error" | "suppressed" | "incomplete"
+    outcome: str = ""     # "resolved" | "escalated" | "probe_error" | "suppressed" | "incomplete"
+                          # filled by the terminal step; empty -> "incomplete" at completion
     steps_executed: list[StepResult] = field(default_factory=list)
     duration_s: float = 0.0
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

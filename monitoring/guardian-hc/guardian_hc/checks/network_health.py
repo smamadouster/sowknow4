@@ -41,8 +41,8 @@ class NetworkHealthChecker:
     def __init__(self, config: dict = None):
         cfg = config or {}
         self.probe_pairs = cfg.get("probe_pairs", [
-            {"from": "sowknow4-backend", "to_host": "redis", "to_port": 6379},
-            {"from": "sowknow4-backend", "to_host": "postgres", "to_port": 5432},
+            {"from": "sowknow-backend", "to_host": "redis", "to_port": 6379},
+            {"from": "sowknow-backend", "to_host": "postgres", "to_port": 5432},
         ])
 
     async def check(self) -> dict:

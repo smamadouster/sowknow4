@@ -83,9 +83,9 @@ async def _get_container_stats() -> list[dict]:
             containers = []
             for c in resp.json():
                 name = c.get("Names", ["/unknown"])[0].lstrip("/")
-                if not name.startswith("sowknow4-"):
+                if not name.startswith("sowknow-"):
                     continue
-                svc_name = name.replace("sowknow4-", "")
+                svc_name = name.replace("sowknow-", "")
                 state = c.get("State", "unknown")
                 health = ""
                 if c.get("Status"):

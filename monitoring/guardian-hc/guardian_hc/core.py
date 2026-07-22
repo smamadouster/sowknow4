@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from guardian_hc.checks.containers import ContainerChecker
+from guardian_hc.alerts import _resolve_env
 from guardian_hc.checks.http_health import HttpHealthChecker
 from guardian_hc.checks.tcp_health import TcpHealthChecker
 from guardian_hc.checks.disk import DiskChecker
@@ -40,11 +41,11 @@ logger = structlog.get_logger()
 
 
 def _build_pg_dsn(cfg: dict) -> str:
-    """Build a PostgreSQL DSN from config dict."""
+    """Build a PostgreSQL DSN from config dict. ${VAR} patterns resolve from env."""
     parts = [
         "postgre", "sql://",  # split to avoid secret scan false positive
         cfg.get("user", "guardian"), ":",
-        cfg.get("password", ""), "@",
+        _resolve_env(cfg.get("password", "")), "@",
         cfg.get("host", "postgres"), ":",
         str(cfg.get("port", 5432)), "/",
         cfg.get("dbname", "sowknow"),
@@ -213,6 +214,26 @@ class GuardianHC:
         self._history.append(action)
         if len(self._history) > 500:
             self._history.pop(0)
+        # Durable heal audit (best-effort; persistence failure must never break healing)
+        db = self._metrics_db
+        if db is not None:
+            try:
+                asyncio.get_running_loop().create_task(self._audit_action(db, action))
+            except RuntimeError:
+                pass  # no running loop (sync context) — in-memory history only
+
+    @staticmethod
+    async def _audit_action(db: "MetricsDB", action: dict) -> None:
+        try:
+            await db.write_action(
+                target=str(action.get("target", "")),
+                action=str(action.get("action", "")),
+                plugin=str(action.get("plugin", "")),
+                success=bool(action.get("success", False)),
+                details=str(action.get("details", "")),
+            )
+        except Exception:
+            pass  # audit is best-effort
 
     def get_history(self, limit: int = 50) -> list[dict]:
         return self._history[-limit:]
@@ -548,7 +569,7 @@ class GuardianHC:
                     if cr.get("check") == "celery_queue" and cr.get("severity") == "critical":
                         results["events"].append(AlertEvent(
                             event_id=f"{level}-celery-celery_queue_critical-{int(datetime.now(timezone.utc).timestamp())}",
-                            severity="CRITICAL", service="celery-light", container="sowknow4-celery-light",
+                            severity="CRITICAL", service="celery-light", container="sowknow-celery-light",
                             check_type="celery_queue_critical", patrol_level=level,
                             timestamp=datetime.now(timezone.utc),
                             summary=f"Celery queue depth critical: {cr.get('total_depth')} tasks",

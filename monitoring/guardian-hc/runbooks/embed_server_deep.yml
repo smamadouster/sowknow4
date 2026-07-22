@@ -13,7 +13,7 @@ steps:
   - id: verify_unhealthy
     name: "Re-verify /embed endpoint"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python3 -c "
       import httpx, os, sys;
@@ -37,7 +37,7 @@ steps:
   - id: check_queue_depth
     name: "Check pipeline.embed queue depth"
     action: exec
-    container: sowknow4-redis
+    container: sowknow-redis
     command: >-
       redis-cli {redis_auth} LLEN pipeline.embed
     expect_returncode: 0
@@ -49,7 +49,7 @@ steps:
   - id: purge_if_flooded
     name: "Purge pipeline.embed if flooded"
     action: exec
-    container: sowknow4-redis
+    container: sowknow-redis
     command: >-
       DEPTH=$(redis-cli {redis_auth} LLEN pipeline.embed);
       if [ "$DEPTH" -gt 250 ]; then
@@ -66,7 +66,7 @@ steps:
   - id: restart_embed_server
     name: "Restart embed-server container"
     action: restart_container
-    container: sowknow4-embed-server
+    container: sowknow-embed-server
     wait_after: 30
     on_success: verify_after_restart
     on_failure: escalate
@@ -75,7 +75,7 @@ steps:
   - id: verify_after_restart
     name: "Verify embed server generates vectors post-restart"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python3 -c "
       import httpx, os, sys, time;
@@ -111,7 +111,7 @@ steps:
 
       Embed server restarted but still cannot generate vectors.
       Manual investigation needed:
-      • `docker logs sowknow4-embed-server`
-      • Check model disk space: `docker exec sowknow4-embed-server df -h /models`
+      • `docker logs sowknow-embed-server`
+      • Check model disk space: `docker exec sowknow-embed-server df -h /models`
       • Check for OOM: `dmesg | grep -i oom`
     terminal: true

@@ -13,7 +13,7 @@ steps:
   - id: check_probe_import
     name: "Verify probe import path is correct"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: "python3 -c 'from app.tasks.guardian_tasks import guardian_ping; print(ok)'"
     expect_in_stdout: "ok"
     timeout: 15
@@ -24,7 +24,7 @@ steps:
   - id: check_worker_state
     name: "Confirm celery-light container is running"
     action: exec
-    container: sowknow4-celery-light
+    container: sowknow-celery-light
     command: "pgrep -f 'celery worker' > /dev/null && echo running"
     expect_in_stdout: "running"
     timeout: 10
@@ -35,7 +35,7 @@ steps:
   - id: check_redis_queue
     name: "Check Redis connectivity and queue depth"
     action: exec
-    container: sowknow4-redis
+    container: sowknow-redis
     command: "redis-cli {redis_auth} PING && redis-cli {redis_auth} LLEN celery"
     expect_in_stdout: "PONG"
     timeout: 10
@@ -46,7 +46,7 @@ steps:
   - id: submit_test_task
     name: "Submit guardian_ping task and verify completion"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python3 -c "
       from app.tasks.guardian_tasks import guardian_ping;
@@ -61,9 +61,9 @@ steps:
 
   # Step 5: Restart celery-light (with RestartTracker cooldown)
   - id: restart_worker
-    name: "Restart sowknow4-celery-light"
+    name: "Restart sowknow-celery-light"
     action: restart_container
-    container: sowknow4-celery-light
+    container: sowknow-celery-light
     wait_after: 20
     on_success: verify_after_restart
     on_failure: escalate
@@ -72,7 +72,7 @@ steps:
   - id: verify_after_restart
     name: "Re-verify task completion after restart"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python3 -c "
       from app.tasks.guardian_tasks import guardian_ping;
@@ -97,7 +97,7 @@ steps:
     message: >-
       ⚠️ *Guardian runbook: celery_completion*
 
-      Probe config error — the probe's Python import failed inside sowknow4-backend.
+      Probe config error — the probe's Python import failed inside sowknow-backend.
       Celery workers are likely healthy. Fix the import path in probes.py.
       No containers were restarted.
     terminal: true
@@ -108,7 +108,7 @@ steps:
     message: >-
       🔴 *Guardian runbook: celery_completion*
 
-      Redis is unreachable from sowknow4-backend. Celery tasks cannot be dispatched.
+      Redis is unreachable from sowknow-backend. Celery tasks cannot be dispatched.
       Check network connectivity and Redis password configuration.
     terminal: true
 
@@ -120,8 +120,8 @@ steps:
 
       Celery task completion failed after auto-heal attempt.
       Manual investigation needed:
-      • `docker logs sowknow4-celery-light`
-      • `docker logs sowknow4-backend`
+      • `docker logs sowknow-celery-light`
+      • `docker logs sowknow-backend`
       • Check Redis queue depth and connectivity
       • Verify task routing config in celery_app.py
     terminal: true

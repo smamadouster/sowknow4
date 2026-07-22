@@ -174,7 +174,7 @@ ollama:
 
 vps_load:
   load_threshold: 6.0
-  steal_threshold: 20.0
+  steal_threshold: 30.0  # was 20.0: shared-VPS steal hovers 17-27% (noisy neighbor, not fixable from inside); 30 still catches pathological cases
 
 # Docker network health -- detects stale nftables rules from dead bridges
 network:

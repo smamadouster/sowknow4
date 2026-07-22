@@ -11,7 +11,7 @@ steps:
   - id: count_stray
     name: "Count long-running pytest processes"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python -c "
       import subprocess, json, sys, os, time;
@@ -54,7 +54,7 @@ steps:
   - id: kill_and_alert
     name: "Kill stray pytest processes and alert"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python -c "
       import subprocess, json, sys;

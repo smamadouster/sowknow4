@@ -51,15 +51,15 @@ class SentinelPlugin(GuardianPlugin):
         hint = result.heal_hint or ""
         if hint == "restart_backend":
             healer = ContainerHealer()
-            h = await healer.heal("sowknow4-backend")
+            h = await healer.heal("sowknow-backend")
             return HealResult(
-                plugin=self.name, target="sowknow4-backend",
+                plugin=self.name, target="sowknow-backend",
                 action="restarted", success=h.get("healed", False),
             )
         if hint == "restart_celery_workers":
             healer = ContainerHealer()
             success = True
-            for container in ["sowknow4-celery-light", "sowknow4-celery-heavy"]:
+            for container in ["sowknow-celery-light", "sowknow-celery-heavy"]:
                 h = await healer.heal(container)
                 if not h.get("healed"):
                     success = False
@@ -105,7 +105,7 @@ class SentinelPlugin(GuardianPlugin):
     async def _check_queue_drain(self, ctx: CheckContext) -> list[CheckResult]:
         """Detect queues growing but not draining."""
         try:
-            cmd = ["docker", "exec", "sowknow4-redis", "redis-cli"]
+            cmd = ["docker", "exec", "sowknow-redis", "redis-cli"]
             if self._redis_password:
                 cmd.extend(["-a", self._redis_password])
 

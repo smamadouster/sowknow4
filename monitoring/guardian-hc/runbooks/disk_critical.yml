@@ -13,7 +13,7 @@ steps:
   - id: check_usage
     name: "Capture current disk usage"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: "df -h / | tail -1"
     expect_returncode: 0
     timeout: 10
@@ -24,7 +24,7 @@ steps:
   - id: prune_docker_images
     name: "Prune dangling Docker images"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: "docker image prune -f 2>&1 || echo skipped"
     expect_returncode: 0
     timeout: 60
@@ -35,7 +35,7 @@ steps:
   - id: prune_build_cache
     name: "Prune Docker build cache"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: "docker builder prune -f 2>&1 || echo skipped"
     expect_returncode: 0
     timeout: 60
@@ -46,7 +46,7 @@ steps:
   - id: truncate_large_logs
     name: "Truncate container logs over 50M"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       find /var/lib/docker/containers -name '*.log' -size +50M
       -exec truncate -s 0 {} \; 2>/dev/null; echo done
@@ -59,7 +59,7 @@ steps:
   - id: check_after_cleanup
     name: "Check disk usage after cleanup"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python3 -c "
       import shutil; u=shutil.disk_usage('/');

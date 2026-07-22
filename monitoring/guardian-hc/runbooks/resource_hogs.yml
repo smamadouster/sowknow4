@@ -16,7 +16,7 @@ steps:
   - id: diagnose_and_kill
     name: "Detect and kill resource hogs"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python -c "
       import subprocess, json, sys, os, time;

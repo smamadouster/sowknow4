@@ -124,7 +124,7 @@ class NetworkHealer:
             "s.connect(('redis', 6379)); print('ok')\""
         )
         rc, out, _ = await _host_exec(
-            "docker", "exec", "sowknow4-backend",
+            "docker", "exec", "sowknow-backend",
             "sh", "-c", cmd,
             timeout=10,
         )

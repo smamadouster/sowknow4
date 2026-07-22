@@ -508,7 +508,7 @@ class InfrastructurePlugin(GuardianPlugin):
     async def _check_restart_rate(self) -> list[CheckResult]:
         """Detect containers that are restarting abnormally fast.
 
-        Samples every sowknow4-* container's RestartCount via the Docker
+        Samples every sowknow-* container's RestartCount via the Docker
         Engine API, stores the sample in a per-container sliding window, and
         alerts when the count has grown by `_restart_alert_threshold` or more
         within `_restart_window_minutes`.
@@ -530,9 +530,9 @@ class InfrastructurePlugin(GuardianPlugin):
                 for c in containers:
                     names = c.get("Names", [])
                     name = names[0].lstrip("/") if names else ""
-                    # Scope to sowknow4-* only — Guardian should not babysit
+                    # Scope to sowknow-* only — Guardian should not babysit
                     # other projects sharing this host (ghostshell, etc.)
-                    if not name.startswith("sowknow4-"):
+                    if not name.startswith("sowknow-"):
                         continue
 
                     insp = await client.get(f"/containers/{c['Id']}/json")

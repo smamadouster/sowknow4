@@ -20,7 +20,7 @@ steps:
   - id: diagnose_and_heal
     name: "Diagnose, heal stuck/ transient-failed stages, restart worker if dead"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python -c "
       import os, subprocess, json, sys;
@@ -74,7 +74,7 @@ steps:
           hc = subprocess.run(
               ['docker', 'inspect',
                '--format={{.State.Status}} {{.State.Health.Status}}',
-               'sowknow4-celery-heavy'],
+               'sowknow-celery-heavy'],
               capture_output=True, text=True, timeout=10
           );
           worker_state = hc.stdout.strip() if hc.returncode == 0 else 'unknown';
@@ -114,7 +114,7 @@ steps:
           if stuck_total > 0 and not worker_healthy:
               print(f'Restarting celery-heavy (state={worker_state})');
               r = subprocess.run(
-                  ['docker', 'restart', 'sowknow4-celery-heavy'],
+                  ['docker', 'restart', 'sowknow-celery-heavy'],
                   capture_output=True, text=True, timeout=60
               );
               restarted = r.returncode == 0;
@@ -160,7 +160,7 @@ steps:
   - id: verify
     name: "Verify stuck and transient-failed counts are zero"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python -c "
       import os, sys;
@@ -216,8 +216,8 @@ steps:
 
       Pipeline stages remain stuck after smart auto-heal.
       Manual investigation needed:
-      • `docker logs sowknow4-celery-heavy`
-      • `docker logs sowknow4-embed-server`
+      • `docker logs sowknow-celery-heavy`
+      • `docker logs sowknow-embed-server`
       • Check pipeline_stages for error messages
       • Check Redis: `redis-cli LLEN pipeline.embed`
       • Check for OOM: `dmesg | grep -i oom`

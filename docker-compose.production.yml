@@ -621,6 +621,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - GMAIL_SMTP_USER=${GMAIL_SMTP_USER}
       - GMAIL_SMTP_PASSWORD=${GMAIL_SMTP_PASSWORD}
+      - GUARDIAN_DB_PASSWORD=${GUARDIAN_DB_PASSWORD}
       - GUARDIAN_LOG_DIR=/tmp
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

@@ -32,7 +32,7 @@ class ProbesPlugin(GuardianPlugin):
     # "nginx" probe removed 2026-04-11: sowknow4 runs nginx on the host, not
     # in a container. The old probe hit http://localhost:80 (which from inside
     # the Guardian container is itself) and hard-coded heal_hint
-    # "restart:sowknow4-nginx", which never existed. Host nginx is health-
+    # "restart:sowknow-nginx", which never existed. Host nginx is health-
     # checked by the external host watchdog and Cloudflare instead.
     PROBE_LEVELS: dict[str, list[str]] = {
         "critical": ["jwt", "redis_deep", "celery_completion", "pipeline_orphaned", "embed_server_cascade"],
@@ -109,10 +109,10 @@ class ProbesPlugin(GuardianPlugin):
 
         if hint == "restart_backend":
             healer = ContainerHealer()
-            out = await healer.heal("sowknow4-backend")
+            out = await healer.heal("sowknow-backend")
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-backend",
+                target="sowknow-backend",
                 action="restart_backend",
                 success=out.get("healed", False),
                 details=str(out),
@@ -189,7 +189,7 @@ class ProbesPlugin(GuardianPlugin):
 
     def _redis_cli_cmd(self, *args: str) -> list[str]:
         """Build a redis-cli docker exec command, injecting auth if configured."""
-        cmd = ["docker", "exec", "sowknow4-redis", "redis-cli"]
+        cmd = ["docker", "exec", "sowknow-redis", "redis-cli"]
         if self._redis_password:
             cmd += ["--no-auth-warning", "-a", self._redis_password]
         cmd += list(args)
@@ -225,7 +225,7 @@ class ProbesPlugin(GuardianPlugin):
                     severity=Severity.CRITICAL,
                     summary="Redis PING failed",
                     needs_healing=True,
-                    heal_hint="restart:sowknow4-redis",
+                    heal_hint="restart:sowknow-redis",
                 )
 
             info_proc = subprocess.run(
@@ -275,7 +275,7 @@ class ProbesPlugin(GuardianPlugin):
                 severity=Severity.CRITICAL,
                 summary=f"Redis deep check failed: {exc!s:.200}",
                 needs_healing=True,
-                heal_hint="restart:sowknow4-redis",
+                heal_hint="restart:sowknow-redis",
             )
 
     async def _check_postgres_deep(self, ctx: CheckContext) -> CheckResult:
@@ -283,7 +283,7 @@ class ProbesPlugin(GuardianPlugin):
         try:
             conn_result = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-postgres",
+                    "docker", "exec", "sowknow-postgres",
                     "psql", "-U", "postgres", "-t", "-c",
                     "SELECT count(*) FROM pg_stat_activity WHERE state IS NOT NULL;",
                 ],
@@ -308,7 +308,7 @@ class ProbesPlugin(GuardianPlugin):
 
             max_result = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-postgres",
+                    "docker", "exec", "sowknow-postgres",
                     "psql", "-U", "postgres", "-t", "-c",
                     "SHOW max_connections;",
                 ],
@@ -316,7 +316,7 @@ class ProbesPlugin(GuardianPlugin):
             )
             idle_result = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-postgres",
+                    "docker", "exec", "sowknow-postgres",
                     "psql", "-U", "postgres", "-t", "-c",
                     "SELECT count(*) FROM pg_stat_activity WHERE state='idle in transaction'"
                     " AND now()-state_change > interval '5 minutes';",
@@ -325,7 +325,7 @@ class ProbesPlugin(GuardianPlugin):
             )
             deadlock_result = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-postgres",
+                    "docker", "exec", "sowknow-postgres",
                     "psql", "-U", "postgres", "-t", "-c",
                     "SELECT sum(deadlocks) FROM pg_stat_database;",
                 ],
@@ -449,7 +449,7 @@ class ProbesPlugin(GuardianPlugin):
         try:
             submit = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-backend",
+                    "docker", "exec", "sowknow-backend",
                     "python3", "-c",
                     (
                         "from app.tasks.guardian_tasks import guardian_ping;"
@@ -503,7 +503,7 @@ class ProbesPlugin(GuardianPlugin):
                 summary="Celery task did not complete within 30s",
                 details={"stderr": stderr[:500]},
                 needs_healing=True,
-                heal_hint="restart:sowknow4-celery-light",
+                heal_hint="restart:sowknow-celery-light",
             )
         except Exception as exc:
             return CheckResult(
@@ -514,7 +514,7 @@ class ProbesPlugin(GuardianPlugin):
                 severity=Severity.CRITICAL,
                 summary=f"Celery completion check failed: {exc!s:.200}",
                 needs_healing=True,
-                heal_hint="restart:sowknow4-celery-light",
+                heal_hint="restart:sowknow-celery-light",
             )
 
     async def _check_pipeline(self, ctx: CheckContext) -> CheckResult:
@@ -534,7 +534,7 @@ class ProbesPlugin(GuardianPlugin):
             for stage, interval in thresholds:
                 result = subprocess.run(
                     [
-                        "docker", "exec", "sowknow4-postgres",
+                        "docker", "exec", "sowknow-postgres",
                         "psql", "-U", "postgres", "-t", "-c",
                         f"SELECT count(*) FROM pipeline_stages"
                         f" WHERE stage='{stage}' AND status='RUNNING'"
@@ -586,7 +586,7 @@ class ProbesPlugin(GuardianPlugin):
         try:
             result = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-postgres",
+                    "docker", "exec", "sowknow-postgres",
                     "psql", "-U", "postgres", "-t", "-c",
                     "WITH chunked_docs AS ("
                     "  SELECT document_id FROM pipeline_stages"
@@ -697,7 +697,7 @@ class ProbesPlugin(GuardianPlugin):
         try:
             cpu_pct = 0.0
             stats_proc = subprocess.run(
-                ["docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}", "sowknow4-embed-server"],
+                ["docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}", "sowknow-embed-server"],
                 capture_output=True, text=True, timeout=15,
             )
             if stats_proc.returncode == 0 and stats_proc.stdout.strip():
@@ -778,7 +778,7 @@ class ProbesPlugin(GuardianPlugin):
                 summary=f"Nginx returned HTTP {resp.status_code}",
                 details={"status_code": resp.status_code},
                 needs_healing=True,
-                heal_hint="restart:sowknow4-nginx",
+                heal_hint="restart:sowknow-nginx",
             )
         except Exception as exc:
             return CheckResult(
@@ -789,7 +789,7 @@ class ProbesPlugin(GuardianPlugin):
                 severity=Severity.HIGH,
                 summary=f"Nginx unreachable: {exc!s:.200}",
                 needs_healing=True,
-                heal_hint="restart:sowknow4-nginx",
+                heal_hint="restart:sowknow-nginx",
             )
 
     async def _check_auth_flow(self, ctx: CheckContext) -> CheckResult:
@@ -839,13 +839,13 @@ class ProbesPlugin(GuardianPlugin):
     async def _heal_redis_memory_purge(self) -> HealResult:
         try:
             proc = subprocess.run(
-                ["docker", "exec", "sowknow4-redis", "redis-cli", "MEMORY", "PURGE"],
+                ["docker", "exec", "sowknow-redis", "redis-cli", "MEMORY", "PURGE"],
                 capture_output=True, text=True, timeout=15,
             )
             success = proc.returncode == 0
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-redis",
+                target="sowknow-redis",
                 action="redis_memory_purge",
                 success=success,
                 details=proc.stdout.strip() or proc.stderr.strip(),
@@ -853,7 +853,7 @@ class ProbesPlugin(GuardianPlugin):
         except Exception as exc:
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-redis",
+                target="sowknow-redis",
                 action="redis_memory_purge",
                 success=False,
                 details=str(exc)[:200],
@@ -863,7 +863,7 @@ class ProbesPlugin(GuardianPlugin):
         try:
             proc = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-postgres",
+                    "docker", "exec", "sowknow-postgres",
                     "psql", "-U", "postgres", "-c",
                     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
                     " WHERE state='idle in transaction'"
@@ -874,7 +874,7 @@ class ProbesPlugin(GuardianPlugin):
             success = proc.returncode == 0
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-postgres",
+                target="sowknow-postgres",
                 action="kill_pg_idle",
                 success=success,
                 details=proc.stdout.strip()[:500],
@@ -882,7 +882,7 @@ class ProbesPlugin(GuardianPlugin):
         except Exception as exc:
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-postgres",
+                target="sowknow-postgres",
                 action="kill_pg_idle",
                 success=False,
                 details=str(exc)[:200],
@@ -892,7 +892,7 @@ class ProbesPlugin(GuardianPlugin):
         try:
             proc = subprocess.run(
                 [
-                    "docker", "exec", "sowknow4-postgres",
+                    "docker", "exec", "sowknow-postgres",
                     "psql", "-U", "postgres", "-c",
                     "UPDATE pipeline_stages SET status='PENDING', updated_at=now()"
                     " WHERE status='RUNNING'"
@@ -903,7 +903,7 @@ class ProbesPlugin(GuardianPlugin):
             success = proc.returncode == 0
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-postgres",
+                target="sowknow-postgres",
                 action="requeue_stuck_docs",
                 success=success,
                 details=proc.stdout.strip()[:500],
@@ -911,7 +911,7 @@ class ProbesPlugin(GuardianPlugin):
         except Exception as exc:
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-postgres",
+                target="sowknow-postgres",
                 action="requeue_stuck_docs",
                 success=False,
                 details=str(exc)[:200],
@@ -929,12 +929,12 @@ class ProbesPlugin(GuardianPlugin):
 
             # 2. Restart embed-server to clear stuck threads
             healer = ContainerHealer()
-            out = await healer.heal("sowknow4-embed-server")
+            out = await healer.heal("sowknow-embed-server")
             restart_ok = out.get("healed", False)
 
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-embed-server",
+                target="sowknow-embed-server",
                 action="embed_cascade_purge_and_restart",
                 success=purge_ok and restart_ok,
                 details=(
@@ -946,7 +946,7 @@ class ProbesPlugin(GuardianPlugin):
         except Exception as exc:
             return HealResult(
                 plugin=self.name,
-                target="sowknow4-embed-server",
+                target="sowknow-embed-server",
                 action="embed_cascade_purge_and_restart",
                 success=False,
                 details=str(exc)[:200],

@@ -13,7 +13,7 @@ steps:
   - id: check_queue
     name: "Check pipeline.embed queue depth"
     action: exec
-    container: sowknow4-redis
+    container: sowknow-redis
     command: >-
       redis-cli {redis_auth} LLEN pipeline.embed
     expect_returncode: 0
@@ -25,7 +25,7 @@ steps:
   - id: purge_queue
     name: "Purge pipeline.embed queue"
     action: exec
-    container: sowknow4-redis
+    container: sowknow-redis
     command: >-
       redis-cli {redis_auth} LTRIM pipeline.embed 1 0
     expect_returncode: 0
@@ -37,7 +37,7 @@ steps:
   - id: restart_embed_server
     name: "Restart embed-server container"
     action: restart_container
-    container: sowknow4-embed-server
+    container: sowknow-embed-server
     wait_after: 30
     on_success: verify_after_restart
     on_failure: escalate
@@ -46,7 +46,7 @@ steps:
   - id: verify_after_restart
     name: "Verify embed server healthy post-restart"
     action: exec
-    container: sowknow4-backend
+    container: sowknow-backend
     command: >-
       python3 -c "
       import httpx, os, sys, time, subprocess;
@@ -82,7 +82,7 @@ steps:
 
       Embed server CPU cascade persists after queue purge and restart.
       Manual investigation needed:
-      • `docker logs sowknow4-embed-server`
-      • `docker exec sowknow4-redis redis-cli LLEN pipeline.embed`
+      • `docker logs sowknow-embed-server`
+      • `docker exec sowknow-redis redis-cli LLEN pipeline.embed`
       • Check for mass upload or backfill task flooding the queue
     terminal: true

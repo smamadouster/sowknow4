@@ -165,7 +165,7 @@ class TrendsPlugin(GuardianPlugin):
     async def _collect_redis_metrics(self) -> list[tuple[str, float, str, dict]]:
         metrics = []
         try:
-            cmd = ["docker", "exec", "sowknow4-redis", "redis-cli"]
+            cmd = ["docker", "exec", "sowknow-redis", "redis-cli"]
             if self._redis_password:
                 cmd.extend(["-a", self._redis_password])
             info = subprocess.run(cmd + ["INFO", "memory"], capture_output=True, text=True, timeout=5)
@@ -189,7 +189,7 @@ class TrendsPlugin(GuardianPlugin):
         metrics = []
         try:
             cmd_base = [
-                "docker", "exec", "sowknow4-postgres",
+                "docker", "exec", "sowknow-postgres",
                 "psql", "-U", "sowknow", "-d", "sowknow4", "-t", "-A", "-c",
             ]
             proc = subprocess.run(
@@ -209,7 +209,7 @@ class TrendsPlugin(GuardianPlugin):
     async def _collect_celery_metrics(self) -> list[tuple[str, float, str, dict]]:
         metrics = []
         try:
-            cmd = ["docker", "exec", "sowknow4-redis", "redis-cli"]
+            cmd = ["docker", "exec", "sowknow-redis", "redis-cli"]
             if self._redis_password:
                 cmd.extend(["-a", self._redis_password])
             total = 0

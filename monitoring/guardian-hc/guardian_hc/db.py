@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS guardian_patterns (
     created_at         TEXT NOT NULL DEFAULT (datetime('now')),
     active             INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS guardian_heal_audit (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    target     TEXT NOT NULL,
+    action     TEXT NOT NULL,
+    plugin     TEXT NOT NULL DEFAULT '',
+    success    INTEGER NOT NULL DEFAULT 0,
+    details    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 _PG_SCHEMA = """
@@ -60,6 +70,16 @@ CREATE TABLE IF NOT EXISTS guardian_patterns (
     last_matched       TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     active             BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS guardian_heal_audit (
+    id         BIGSERIAL PRIMARY KEY,
+    target     VARCHAR(255) NOT NULL,
+    action     VARCHAR(255) NOT NULL,
+    plugin     VARCHAR(255) NOT NULL DEFAULT '',
+    success    BOOLEAN NOT NULL DEFAULT FALSE,
+    details    TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 """
 
@@ -130,6 +150,10 @@ class MetricsDB:
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
         return cutoff.isoformat()
 
+    def _cutoff_dt(self, hours: int) -> datetime.datetime:
+        """asyncpg needs a real datetime against TIMESTAMPTZ (no string coercion)."""
+        return datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+
     # ------------------------------------------------------------------
     # Metric writes
     # ------------------------------------------------------------------
@@ -180,6 +204,33 @@ class MetricsDB:
             )
             await self._sqlite_conn.commit()
 
+    async def write_action(
+        self,
+        target: str,
+        action: str,
+        plugin: str = "",
+        success: bool = False,
+        details: str = "",
+    ) -> None:
+        """Append one heal/action outcome to guardian_heal_audit (durable heal history)."""
+        if self._use_pg and self._pg_conn is not None:
+            await self._pg_conn.execute(
+                "INSERT INTO guardian_heal_audit (target, action, plugin, success, details)"
+                " VALUES ($1, $2, $3, $4, $5)",
+                target,
+                action,
+                plugin,
+                success,
+                details[:2000],
+            )
+        else:
+            await self._sqlite_conn.execute(
+                "INSERT INTO guardian_heal_audit (target, action, plugin, success, details)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (target, action, plugin, int(success), details[:2000]),
+            )
+            await self._sqlite_conn.commit()
+
     # ------------------------------------------------------------------
     # Metric reads
     # ------------------------------------------------------------------
@@ -194,15 +245,16 @@ class MetricsDB:
         cutoff = self._cutoff_iso(hours)
 
         if self._use_pg and self._pg_conn is not None:
+            cutoff_dt = self._cutoff_dt(hours)
             if service is not None:
                 rows = await self._pg_conn.fetch(
                     "SELECT * FROM guardian_metrics WHERE metric=$1 AND ts > $2 AND service=$3 ORDER BY ts DESC",
-                    metric, cutoff, service,
+                    metric, cutoff_dt, service,
                 )
             else:
                 rows = await self._pg_conn.fetch(
                     "SELECT * FROM guardian_metrics WHERE metric=$1 AND ts > $2 ORDER BY ts DESC",
-                    metric, cutoff,
+                    metric, cutoff_dt,
                 )
             return [dict(r) for r in rows]
         else:
@@ -328,7 +380,7 @@ class MetricsDB:
 
         if self._use_pg and self._pg_conn is not None:
             result = await self._pg_conn.execute(
-                "DELETE FROM guardian_metrics WHERE ts < $1", cutoff
+                "DELETE FROM guardian_metrics WHERE ts < $1", self._cutoff_dt(hours)
             )
             # asyncpg returns "DELETE N"
             return int(result.split()[-1])

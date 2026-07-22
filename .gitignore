@@ -108,3 +108,4 @@ screenshots/
 SOWKNOW_AUDIT_REPORT.txt
 audit_reports/
 .wolf/token-ledger.json
+scripts/.backup.env

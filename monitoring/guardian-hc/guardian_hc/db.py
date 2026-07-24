@@ -146,6 +146,31 @@ class MetricsDB:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    async def _ensure_pg(self) -> bool:
+        """Ensure the PostgreSQL connection is alive, reconnecting if needed.
+
+        asyncpg connections die permanently when the server restarts — without
+        this, a single Postgres bounce breaks every metrics write until the
+        guardian process itself restarts (observed 2026-07-24: trends.write
+        'connection is closed' for hours after a Postgres restart).
+        Falls back to the SQLite buffer when PG stays unreachable.
+        """
+        if not (self._use_pg and self._pg_dsn and asyncpg is not None):
+            return False
+        if self._pg_conn is not None and not self._pg_conn.is_closed():
+            return True
+        try:
+            self._pg_conn = await asyncpg.connect(self._pg_dsn)
+            return True
+        except Exception:
+            self._pg_conn = None
+            if self._sqlite_conn is None:
+                self._sqlite_conn = await aiosqlite.connect(self._fallback_path)
+                self._sqlite_conn.row_factory = aiosqlite.Row
+                await self._sqlite_conn.executescript(_SQLITE_SCHEMA)
+                await self._sqlite_conn.commit()
+            return False
+
     def _cutoff_iso(self, hours: int) -> str:
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
         return cutoff.isoformat()
@@ -168,7 +193,7 @@ class MetricsDB:
         """Insert a single metric row."""
         if tags is None:
             tags = {}
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             await self._pg_conn.execute(
                 "INSERT INTO guardian_metrics (metric, value, service, tags) VALUES ($1, $2, $3, $4)",
                 metric,
@@ -189,7 +214,7 @@ class MetricsDB:
 
         Each tuple: (metric, value, service, tags).
         """
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             rows = [(m, v, s, json.dumps(t)) for m, v, s, t in metrics]
             await self._pg_conn.executemany(
                 "INSERT INTO guardian_metrics (metric, value, service, tags) VALUES ($1, $2, $3, $4)",
@@ -213,7 +238,7 @@ class MetricsDB:
         details: str = "",
     ) -> None:
         """Append one heal/action outcome to guardian_heal_audit (durable heal history)."""
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             await self._pg_conn.execute(
                 "INSERT INTO guardian_heal_audit (target, action, plugin, success, details)"
                 " VALUES ($1, $2, $3, $4, $5)",
@@ -244,7 +269,7 @@ class MetricsDB:
         """Return metrics within `hours` time window, newest first."""
         cutoff = self._cutoff_iso(hours)
 
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             cutoff_dt = self._cutoff_dt(hours)
             if service is not None:
                 rows = await self._pg_conn.fetch(
@@ -274,7 +299,7 @@ class MetricsDB:
 
     async def get_latest(self, metric: str, service: str | None = None) -> float | None:
         """Return the most recently inserted value for a metric."""
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             if service is not None:
                 row = await self._pg_conn.fetchrow(
                     "SELECT value FROM guardian_metrics WHERE metric=$1 AND service=$2 ORDER BY ts DESC LIMIT 1",
@@ -378,7 +403,7 @@ class MetricsDB:
         """Delete metrics older than `hours`. Returns count deleted."""
         cutoff = self._cutoff_iso(hours)
 
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             result = await self._pg_conn.execute(
                 "DELETE FROM guardian_metrics WHERE ts < $1", self._cutoff_dt(hours)
             )
@@ -407,7 +432,7 @@ class MetricsDB:
         """Insert a new pattern and return its id."""
         tc_json = json.dumps(trigger_conditions)
 
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             row = await self._pg_conn.fetchrow(
                 """INSERT INTO guardian_patterns
                    (pattern_name, trigger_conditions, predicted_outcome, recommended_action, confidence)
@@ -428,7 +453,7 @@ class MetricsDB:
 
     async def get_active_patterns(self) -> list[dict]:
         """Return all active patterns ordered by confidence DESC."""
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             rows = await self._pg_conn.fetch(
                 "SELECT * FROM guardian_patterns WHERE active=TRUE ORDER BY confidence DESC"
             )
@@ -460,7 +485,7 @@ class MetricsDB:
         - Deactivate if confidence < 0.2
         """
         # Fetch current confidence
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             row = await self._pg_conn.fetchrow(
                 "SELECT confidence FROM guardian_patterns WHERE id=$1", pattern_id
             )
@@ -480,7 +505,7 @@ class MetricsDB:
         now_ts = _now_iso()
         active = 0 if new_conf < 0.2 else 1
 
-        if self._use_pg and self._pg_conn is not None:
+        if await self._ensure_pg():
             pg_active = active == 1
             await self._pg_conn.execute(
                 """UPDATE guardian_patterns

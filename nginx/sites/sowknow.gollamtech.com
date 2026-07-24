@@ -8,9 +8,14 @@ server {
     listen [::]:80;
     server_name sowknow.gollamtech.com;
 
-    # Let's Encrypt challenge
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
+    # Uploads go through this vhost — without this the default is 1MB.
+    client_max_body_size 150M;
+
+    # ACME http-01 passthrough to ghostshell-caddy (TLS issuer for this host).
+    # Upstream is the caddy CONTAINER IP on ghostshell_frontend — refresh after a
+    # caddy recreate (`docker inspect ghostshell-caddy`).
+    location ^~ /.well-known/acme-challenge/ {
+        proxy_pass http://172.20.0.12;
     }
 
     # Exact match so the limiter only applies to login, not the whole API

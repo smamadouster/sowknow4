@@ -166,21 +166,20 @@ class TestStorageServiceEncryption:
         assert stored_content == content
 
     def test_save_file_no_key_confidential(self, storage_without_key):
-        """Test that confidential files are saved unencrypted when key not available"""
-        # When encryption key is not available, should save unencrypted
-        content = b"secret content"
-        result = storage_without_key.save_file(
-            file_content=content, original_filename="secret.pdf", bucket="confidential"
-        )
+        """Confidential uploads must FAIL when no key is configured.
 
-        # Should save but without encryption
-        assert result["encrypted"] is False
+        Storing plaintext silently was the old behavior — it left the entire
+        production confidential bucket unencrypted for months. The invariant
+        is now: no key, no confidential write.
+        """
+        import pytest
 
-        # Content should be readable
-        retrieved = storage_without_key.get_file(
-            result["filename"], bucket="confidential"
-        )
-        assert retrieved == content
+        from app.services.storage_service import EncryptionError
+
+        with pytest.raises(EncryptionError, match="STORAGE_ENCRYPTION_KEY"):
+            storage_without_key.save_file(
+                file_content=b"secret content", original_filename="secret.pdf", bucket="confidential"
+            )
 
     def test_round_trip_confidential(self, storage_with_key):
         """Test encrypt/decrypt round-trip for confidential documents"""

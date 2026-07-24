@@ -19,19 +19,13 @@ from app.tasks.base import log_task_memory
 logger = logging.getLogger(__name__)
 
 
-@shared_task(
-    bind=True,
-    name="app.tasks.article_tasks.generate_articles_for_document",
-    autoretry_for=(httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError),
-    max_retries=5,
-    retry_backoff=True,
-    retry_backoff_max=600,
-    soft_time_limit=600,
-    time_limit=660,
-)
-def generate_articles_for_document(self, document_id: str, force: bool = False) -> dict:
+def run_article_generation(document_id: str, force: bool = False) -> dict:
     """
     Generate articles for a single document using LLM.
+
+    Plain work function (no Celery retry machinery) — callers own the
+    retry/time budget. The pipeline's article_stage calls this directly;
+    the standalone Celery task below wraps it for queued dispatch.
 
     Args:
         document_id: UUID of the document
@@ -153,6 +147,25 @@ def generate_articles_for_document(self, document_id: str, force: bool = False) 
 
     finally:
         db.close()
+
+
+@shared_task(
+    bind=True,
+    name="app.tasks.article_tasks.generate_articles_for_document",
+    autoretry_for=(httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError),
+    max_retries=5,
+    retry_backoff=True,
+    retry_backoff_max=600,
+    soft_time_limit=600,
+    time_limit=660,
+)
+def generate_articles_for_document(self, document_id: str, force: bool = False) -> dict:
+    """Queued-dispatch wrapper around run_article_generation.
+
+    Retry machinery lives ONLY here (and in the pipeline's article_stage for
+    pipeline-driven runs) — never nested in both at once.
+    """
+    return run_article_generation(document_id, force=force)
 
 
 @shared_task(

@@ -372,6 +372,7 @@ def _run_ocr(document_id: str) -> None:
     from app.services.text_extractor import text_extractor
 
     db = SessionLocal()
+    _tmp_decrypted: str | None = None
     try:
         doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
         doc = db.query(Document).filter(Document.id == doc_uuid).first()
@@ -382,6 +383,26 @@ def _run_ocr(document_id: str) -> None:
         filename = doc.original_filename or doc.filename
         file_ext = (filename or "").lower().rsplit(".", 1)[-1]
         file_ext = f".{file_ext}" if file_ext else ""
+
+        # Confidential files are encrypted at rest (new uploads and migrated
+        # legacy files) — decrypt to a temp file first, since the extractors
+        # below read directly from disk. decrypt_bytes_lenient passes legacy
+        # plaintext files through unchanged.
+        from app.models.document import DocumentBucket
+        from app.services.storage_service import storage_service
+
+        _bucket_value = doc.bucket.value if hasattr(doc.bucket, "value") else str(doc.bucket)
+        if _bucket_value == DocumentBucket.CONFIDENTIAL.value and storage_service.encryption_ready:
+            import tempfile as _tempfile
+
+            if not os.path.exists(doc.file_path):
+                raise _PermanentPipelineError(f"Stored file not found: {doc.file_path}")
+            with open(doc.file_path, "rb") as _fh:
+                _raw = storage_service.decrypt_bytes_lenient(_fh.read())
+            with _tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as _tmp:
+                _tmp.write(_raw)
+                _tmp_decrypted = _tmp.name
+            file_path = _tmp_decrypted
 
         # Fail fast for known unprocessable formats (video, audio, etc.)
         if file_ext in _UNPROCESSABLE_EXTENSIONS:
@@ -461,18 +482,33 @@ def _run_ocr(document_id: str) -> None:
 
         # Write sidecar .txt file — but preserve existing content if extraction
         # returns empty (prevents destroying previously-extracted text on reprocess).
-        txt_path = file_path + ".txt"
+        # Confidential sidecars are encrypted at rest (they contain the full
+        # extracted text of confidential documents). The sidecar always lives
+        # next to the STORED file (not the decrypted temp copy).
+        from app.models.document import DocumentBucket
+        from app.services.storage_service import storage_service
+
+        _bucket_value = doc.bucket.value if hasattr(doc.bucket, "value") else str(doc.bucket)
+        _encrypt_sidecar = (
+            _bucket_value == DocumentBucket.CONFIDENTIAL.value and storage_service.encryption_ready
+        )
+
+        txt_path = doc.file_path + ".txt"
         existing_text = ""
         if os.path.exists(txt_path):
             try:
-                with open(txt_path, encoding="utf-8") as fh:
-                    existing_text = fh.read()
+                with open(txt_path, "rb") as fh:
+                    existing_text = storage_service.decrypt_bytes_lenient(fh.read()).decode("utf-8")
             except Exception:
                 pass
 
         if extracted_text or not existing_text:
-            with open(txt_path, "w", encoding="utf-8") as fh:
-                fh.write(extracted_text or "")
+            if _encrypt_sidecar:
+                with open(txt_path, "wb") as fh:
+                    fh.write(storage_service.encrypt_text(extracted_text or ""))
+            else:
+                with open(txt_path, "w", encoding="utf-8") as fh:
+                    fh.write(extracted_text or "")
         else:
             logger.warning(
                 "OCR returned empty for doc %s but sidecar %.0f bytes exists — preserving",
@@ -495,6 +531,11 @@ def _run_ocr(document_id: str) -> None:
 
     finally:
         db.close()
+        if _tmp_decrypted and os.path.exists(_tmp_decrypted):
+            try:
+                os.unlink(_tmp_decrypted)
+            except OSError:
+                pass
 
 
 def _run_chunk(document_id: str) -> None:
@@ -515,8 +556,12 @@ def _run_chunk(document_id: str) -> None:
         if not os.path.exists(txt_path):
             raise FileNotFoundError(f"Sidecar text file not found: {txt_path}")
 
-        with open(txt_path, encoding="utf-8") as fh:
-            text = fh.read()
+        # Confidential sidecars are encrypted at rest; lenient decrypt also
+        # reads legacy plaintext sidecars from before the migration.
+        from app.services.storage_service import storage_service
+
+        with open(txt_path, "rb") as fh:
+            text = storage_service.decrypt_bytes_lenient(fh.read()).decode("utf-8")
 
         placeholder_mode = False
         if not text.strip():
@@ -756,13 +801,13 @@ def _run_index(document_id: str) -> None:
 def _run_articles(document_id: str) -> None:
     """Generate knowledge articles from document chunks.
 
-    Delegates to the fully-featured generate_articles_for_document task which
-    handles DB loading, LLM routing, article storage, and embedding dispatch.
+    Calls the plain work function directly — the outer article_stage task
+    owns the retry/time budget, so no nested Celery autoretry runs inside
+    its hard limit.
     """
-    from app.tasks.article_tasks import generate_articles_for_document
+    from app.tasks.article_tasks import run_article_generation
 
-    # Call the task synchronously — __call__ handles bind=True self injection
-    result = generate_articles_for_document(document_id)
+    result = run_article_generation(document_id)
     logger.info("Articles generated for doc %s: %s", document_id, result.get("status", "unknown"))
 
 

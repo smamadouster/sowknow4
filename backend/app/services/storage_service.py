@@ -154,6 +154,31 @@ class StorageService:
             logger.error(f"Decryption failed: {e}")
             raise EncryptionError(f"Failed to decrypt data: {e}")
 
+    def encrypt_text(self, text: str) -> bytes:
+        """Encrypt a text payload, returning Fernet token bytes.
+
+        Used for confidential sidecar files (extracted text), which are
+        addressed by absolute path rather than through save_file.
+        """
+        return self._encrypt_data(text.encode("utf-8"))
+
+    def decrypt_bytes_lenient(self, data: bytes) -> bytes:
+        """Decrypt if data is a valid Fernet token, else return it unchanged.
+
+        Tolerates the mixed state during/after the plaintext→encrypted
+        migration of the confidential bucket.
+        """
+        if not self._fernet or not data:
+            return data
+        try:
+            return self._fernet.decrypt(data)
+        except Exception:
+            return data
+
+    @property
+    def encryption_ready(self) -> bool:
+        return self._fernet is not None
+
     def get_bucket_path(self, bucket: str) -> Path:
         """Get the path for a specific bucket"""
         if bucket == "confidential":
@@ -209,8 +234,15 @@ class StorageService:
         # Generate unique filename
         filename = self.generate_filename(original_filename)
 
-        # Determine if we should encrypt
-        encrypt = (bucket == "confidential" and self._fernet is not None) or force_encrypt
+        # Determine if we should encrypt. Encryption for the confidential
+        # bucket is an INVARIANT, not a preference: without a key we must
+        # refuse rather than silently store plaintext.
+        if bucket == "confidential" and self._fernet is None:
+            raise EncryptionError(
+                "Confidential bucket requires STORAGE_ENCRYPTION_KEY — "
+                "refusing to store plaintext"
+            )
+        encrypt = bucket == "confidential" or force_encrypt
 
         if encrypt:
             if not self._fernet:

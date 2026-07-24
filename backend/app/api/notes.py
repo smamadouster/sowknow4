@@ -173,8 +173,18 @@ async def upload_note_audio(
     file_path = f"{audio_dir}/{audio_id}{ext}"
 
     content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    # Cap size before writing: this endpoint had no limit beyond nginx's
+    # body cap, and reads the whole payload into memory.
+    MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10MB, same as the other audio paths
+    if len(content) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=400, detail="Audio file too large (max 10MB)")
+    import asyncio
+
+    def _write_audio() -> None:
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+    await asyncio.to_thread(_write_audio)
 
     note_audio = NoteAudio(
         id=audio_id,

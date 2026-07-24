@@ -9,10 +9,12 @@ import hmac
 import logging
 import os
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.documents_common import is_upload_paused_async
+from app.limiter import limiter
 from app.api.documents_upload import _do_upload_document, _upload_semaphore
 from app.database import get_db
 from app.models.user import User
@@ -59,7 +61,9 @@ def _validate_api_key(key: str) -> None:
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
+@limiter.limit("20/minute")
 async def internal_upload(
+    request: Request,
     file: UploadFile = File(...),
     bucket: str = Form("public"),
     title: str | None = Form(None),
@@ -77,13 +81,18 @@ async def internal_upload(
     _validate_api_key(x_bot_api_key)
     bot_user = await _get_bot_user(db)
 
-    logger.info(f"Internal upload: file={file.filename}, bucket={bucket}, bot_user={bot_user.email}")
-
-    if _upload_semaphore._value == 0:
+    # The bot endpoint must honor the same pause/backpressure gate as the
+    # user-facing upload endpoints (was bypassed: the key holder could
+    # enqueue unboundedly during an admin pause or pipeline red state).
+    paused, reason = await is_upload_paused_async()
+    if paused:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Too many uploads in progress. Please retry shortly.",
+            detail=f"Uploads temporarily paused: {reason}",
         )
+
+    logger.info(f"Internal upload: file={file.filename}, bucket={bucket}, bot_user={bot_user.email}")
+
     async with _upload_semaphore:
         return await _do_upload_document(
             file=file,

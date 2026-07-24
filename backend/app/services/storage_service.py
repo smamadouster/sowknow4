@@ -239,6 +239,21 @@ class StorageService:
             "encrypted": encrypt,
         }
 
+    async def save_file_async(
+        self,
+        file_content: bytes,
+        original_filename: str,
+        bucket: str = "public",
+        force_encrypt: bool = False,
+    ) -> dict:
+        """Async wrapper for save_file — the sync implementation does CPU-bound
+        encryption and blocking disk I/O, so it must run off the event loop."""
+        import asyncio
+
+        return await asyncio.to_thread(
+            self.save_file, file_content, original_filename, bucket, force_encrypt
+        )
+
     def delete_file(self, filename: str, bucket: str = "public") -> bool:
         """
         Delete a file from the specified bucket

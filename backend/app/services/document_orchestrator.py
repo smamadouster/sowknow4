@@ -40,7 +40,7 @@ ALLOWED_EXTENSIONS = {
     ".mp4", ".mov", ".avi", ".mkv",
     ".rtf", ".zip", ".xmind", ".msg", ".oft",
 }
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
+MAX_FILE_SIZE = 150 * 1024 * 1024  # 150 MB — matches nginx client_max_body_size
 AUDIO_EXTENSIONS = {".ogg", ".webm", ".wav", ".mp3", ".m4a", ".flac", ".aac"}
 
 
@@ -114,6 +114,8 @@ def validate_magic_bytes(filename: str, content: bytes) -> bool:
         ".webp": (content[:4] == b"RIFF" and content[8:12] == b"WEBP"),
         ".zip": (content[:4] == b"PK\x03\x04"),  # docx, epub, xlsx
         ".docx": (content[:4] == b"PK\x03\x04"),
+        ".pptx": (content[:4] == b"PK\x03\x04"),
+        ".ppsx": (content[:4] == b"PK\x03\x04"),
         ".xlsx": (content[:4] == b"PK\x03\x04"),
         ".xlsm": (content[:4] == b"PK\x03\x04"),
         ".xltx": (content[:4] == b"PK\x03\x04"),
@@ -157,7 +159,8 @@ class DocumentOrchestrator:
         # ── Deduplication ──
         file_hash = deduplication_service.calculate_hash(content)
         duplicate = await deduplication_service.is_duplicate(
-            file_hash=file_hash, filename=file.filename, size=len(content), db=db
+            file_hash=file_hash, filename=file.filename, size=len(content), db=db,
+            uploaded_by=str(current_user.id),
         )
         if duplicate:
             logger.info(f"Duplicate detected: {file.filename} → {duplicate.id}")
@@ -169,7 +172,7 @@ class DocumentOrchestrator:
             )
 
         # ── Storage ──
-        save_result = storage_service.save_file(
+        save_result = await storage_service.save_file_async(
             file_content=content, original_filename=file.filename, bucket=bucket
         )
 
@@ -196,6 +199,7 @@ class DocumentOrchestrator:
             size=len(content),
             document_id=str(document.id),
             db=db,
+            uploaded_by=str(current_user.id),
         )
 
         # ── Audit log for confidential uploads ──
@@ -411,17 +415,22 @@ class DocumentOrchestrator:
             )
         except Exception as exc:
             logger.error("Failed to queue document %s: %s", document.id, exc)
-            document.status = DocumentStatus.ERROR
-            document.pipeline_stage = "failed"
-            document.pipeline_error = str(exc)[:500]
-            document.document_metadata = {
-                **(document.document_metadata or {}),
-                "processing_error": f"Failed to queue: {exc}",
-            }
-            await db.commit()
+            # Compensating cleanup: from the uploader's perspective the upload
+            # failed — don't leave an orphan file on disk or a zombie ERROR
+            # row that the sweeper will never touch.
+            bucket_value = document.bucket.value if hasattr(document.bucket, "value") else str(document.bucket)
+            try:
+                storage_service.delete_file(document.filename, bucket_value)
+            except Exception:
+                logger.warning("Failed to remove orphaned file for doc %s", document.id)
+            try:
+                await db.delete(document)
+                await db.commit()
+            except Exception:
+                logger.warning("Failed to remove zombie document row %s", document.id)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Document saved but failed to queue for processing: {exc}",
+                detail=f"Document upload failed while queueing for processing: {exc}",
             )
 
 

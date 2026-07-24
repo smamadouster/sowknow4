@@ -6,6 +6,7 @@ Split from documents.py to reduce the god-router surface area.
 
 import logging
 import os
+import hmac
 import tempfile
 from datetime import UTC, datetime
 
@@ -46,7 +47,7 @@ async def create_journal_entry(
         )
 
     if x_bot_api_key:
-        if not BOT_API_KEY or x_bot_api_key != BOT_API_KEY:
+        if not BOT_API_KEY or not hmac.compare_digest(x_bot_api_key, BOT_API_KEY):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
 
     now = datetime.now(UTC)
@@ -54,7 +55,7 @@ async def create_journal_entry(
     content = entry.text.encode("utf-8")
     filename = f"journal_{now.strftime('%Y%m%d_%H%M%S')}.txt"
 
-    save_result = storage_service.save_file(file_content=content, original_filename=filename, bucket="confidential")
+    save_result = await storage_service.save_file_async(file_content=content, original_filename=filename, bucket="confidential")
 
     document = Document(
         filename=save_result["filename"],
@@ -118,7 +119,7 @@ async def create_journal_entry_from_voice(
         )
 
     if x_bot_api_key:
-        if not BOT_API_KEY or x_bot_api_key != BOT_API_KEY:
+        if not BOT_API_KEY or not hmac.compare_digest(x_bot_api_key, BOT_API_KEY):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
 
     MAX_AUDIO_SIZE = 10 * 1024 * 1024
@@ -170,7 +171,7 @@ async def create_journal_entry_from_voice(
     filename = f"journal_{now.strftime('%Y%m%d_%H%M%S')}.txt"
     text_content = transcript.encode("utf-8")
 
-    save_result = storage_service.save_file(file_content=text_content, original_filename=filename, bucket="confidential")
+    save_result = await storage_service.save_file_async(file_content=text_content, original_filename=filename, bucket="confidential")
 
     document = Document(
         filename=save_result["filename"],

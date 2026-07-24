@@ -4,14 +4,16 @@ Upload endpoints for single and batch document ingestion.
 Split from documents.py to reduce the god-router surface area.
 """
 
+import hmac
 import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.limiter import limiter
 from app.api.documents_common import (
     ALLOWED_EXTENSIONS,
     BOT_API_KEY,
@@ -21,7 +23,7 @@ from app.api.documents_common import (
     create_audit_log,
     get_file_extension,
     get_mime_type,
-    is_upload_paused,
+    is_upload_paused_async,
     validate_magic_bytes,
     _queue_document_for_processing,
 )
@@ -40,7 +42,9 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
+@limiter.limit("10/minute")
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     bucket: str = Form("public"),
     title: str | None = Form(None),
@@ -52,16 +56,11 @@ async def upload_document(
     db: AsyncSession = Depends(get_db),
 ) -> DocumentUploadResponse:
     """Upload a document to the specified bucket."""
-    paused, reason = is_upload_paused()
+    paused, reason = await is_upload_paused_async()
     if paused:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=reason,
-        )
-    if _upload_semaphore._value == 0:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Too many uploads in progress. Please retry shortly.",
         )
     async with _upload_semaphore:
         result = await _do_upload_document(
@@ -92,7 +91,7 @@ async def _do_upload_document(
     if x_bot_api_key:
         if not BOT_API_KEY:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bot API key not configured")
-        if x_bot_api_key != BOT_API_KEY:
+        if not hmac.compare_digest(x_bot_api_key, BOT_API_KEY):
             logger.warning(
                 "Invalid Bot API Key. Received length: %d, Expected length: %d",
                 len(x_bot_api_key),
@@ -121,6 +120,7 @@ async def process_single_file_upload(
     batch_id: str | None = None,
 ) -> tuple[DocumentUploadResponse | None, str | None]:
     """Helper function to process a single file upload within a batch."""
+    save_result: dict | None = None
     try:
         if not file.filename:
             return None, "No filename provided"
@@ -148,7 +148,8 @@ async def process_single_file_upload(
         file_hash = deduplication_service.calculate_hash(content)
 
         duplicate_doc = await deduplication_service.is_duplicate(
-            file_hash=file_hash, filename=file.filename, size=len(content), db=db
+            file_hash=file_hash, filename=file.filename, size=len(content), db=db,
+            uploaded_by=str(current_user.id),
         )
 
         if duplicate_doc:
@@ -159,7 +160,7 @@ async def process_single_file_upload(
                 message="Document already exists (duplicate detected)",
             ), None
 
-        save_result = storage_service.save_file(
+        save_result = await storage_service.save_file_async(
             file_content=content, original_filename=file.filename, bucket=bucket
         )
 
@@ -186,6 +187,7 @@ async def process_single_file_upload(
             size=len(content),
             document_id=str(document.id),
             db=db,
+            uploaded_by=str(current_user.id),
         )
 
         if bucket == "confidential":
@@ -202,6 +204,13 @@ async def process_single_file_upload(
         return response, None
 
     except Exception as exc:
+        # Compensating cleanup: don't leave the stored file orphaned when
+        # the DB write or queueing failed after it was persisted.
+        if save_result:
+            try:
+                storage_service.delete_file(save_result["filename"], bucket)
+            except Exception:
+                logger.warning("Failed to clean up orphaned upload file: %s", save_result.get("filename"))
         logger.error("Error processing file %s: %s", file.filename, exc)
         return None, f"Error processing file {file.filename}: {exc}"
 
@@ -210,7 +219,9 @@ MAX_FILES_PER_BATCH = 20
 
 
 @router.post("/upload-batch", response_model=BatchUploadResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("5/minute")
 async def upload_batch_documents(
+    request: Request,
     files: list[UploadFile] = File(...),
     bucket: str = Form("public"),
     x_bot_api_key: str | None = Header(None, alias="X-Bot-Api-Key"),
@@ -228,7 +239,7 @@ async def upload_batch_documents(
     if x_bot_api_key:
         if not BOT_API_KEY:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bot API key not configured")
-        if x_bot_api_key != BOT_API_KEY:
+        if not hmac.compare_digest(x_bot_api_key, BOT_API_KEY):
             logger.warning("Invalid Bot API Key")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Bot API Key")
 
@@ -293,7 +304,7 @@ async def upload_batch_documents(
         )
 
     # Check upload pause before processing batch
-    paused, reason = is_upload_paused()
+    paused, reason = await is_upload_paused_async()
     if paused:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

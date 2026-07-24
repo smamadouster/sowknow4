@@ -71,22 +71,34 @@ class DeduplicationService:
             sha256.update(chunk)
         return sha256.hexdigest()
 
-    async def is_duplicate(self, file_hash: str, filename: str, size: int, db: Session) -> Document | None:
+    async def is_duplicate(
+        self,
+        file_hash: str,
+        filename: str,
+        size: int,
+        db: Session,
+        uploaded_by: str | None = None,
+    ) -> Document | None:
         """
-        Check if file has already been uploaded
+        Check if file has already been uploaded BY THE SAME USER.
 
         Args:
             file_hash: SHA256 hash of file content
             filename: Original filename
             size: File size in bytes
             db: Database session
+            uploaded_by: ID of the user uploading. Dedup is scoped per user:
+                a hash match owned by someone else must NOT leak the other
+                user's document (existence or ID) to this uploader.
 
         Returns:
-            Existing Document if duplicate, None otherwise
+            Existing Document owned by this user if duplicate, None otherwise
         """
+        cache_key = f"{uploaded_by}:{file_hash}" if uploaded_by else file_hash
+
         # Check cache first
-        if file_hash in self.hash_cache:
-            cached = self.hash_cache[file_hash]
+        if cache_key in self.hash_cache:
+            cached = self.hash_cache[cache_key]
             # Verify size matches
             if cached.size == size:
                 logger.debug(f"Duplicate found in cache: {filename}")
@@ -95,13 +107,16 @@ class DeduplicationService:
                 doc = result.scalar_one_or_none()
                 return doc
 
-        # Check database using metadata. Multiple legacy rows may share a hash,
-        # so choose the newest same-size document instead of raising.
-        result = await db.execute(
-            select(Document)
-            .where(Document.document_metadata["sha256_hash"].astext == file_hash)
-            .order_by(Document.created_at.desc())
+        # Check database using metadata, scoped to this uploader.
+        # Multiple legacy rows may share a hash, so choose the newest
+        # same-size document instead of raising.
+        query = select(Document).where(
+            Document.document_metadata["sha256_hash"].astext == file_hash
         )
+        if uploaded_by:
+            query = query.where(Document.uploaded_by == uploaded_by)
+        query = query.order_by(Document.created_at.desc())
+        result = await db.execute(query)
         docs = result.scalars().all()
 
         for doc in docs:
@@ -115,13 +130,14 @@ class DeduplicationService:
                 )
                 continue
             logger.info(f"Duplicate found in database: {filename} -> {doc.filename}")
-            self._add_to_cache(file_hash, filename, size, str(doc.id))
+            self._add_to_cache(cache_key, filename, size, str(doc.id))
             return doc
 
         return None
 
     async def register_upload(
-        self, file_hash: str, filename: str, size: int, document_id: str, db: AsyncSession
+        self, file_hash: str, filename: str, size: int, document_id: str, db: AsyncSession,
+        uploaded_by: str | None = None,
     ) -> None:
         """
         Register a new file upload to prevent future duplicates
@@ -132,6 +148,7 @@ class DeduplicationService:
             size: File size in bytes
             document_id: ID of uploaded document
             db: Database session
+            uploaded_by: ID of the uploader (scopes the cache entry per user)
         """
         # Update document metadata with hash
         result = await db.execute(select(Document).where(Document.id == document_id))
@@ -143,8 +160,9 @@ class DeduplicationService:
             metadata["hash_date"] = datetime.utcnow().isoformat()
             doc.document_metadata = metadata
 
-        # Add to cache
-        self._add_to_cache(file_hash, filename, size, document_id)
+        # Add to cache (per-user key when the uploader is known)
+        cache_key = f"{uploaded_by}:{file_hash}" if uploaded_by else file_hash
+        self._add_to_cache(cache_key, filename, size, document_id)
 
         logger.debug(f"Registered upload: {filename} (hash: {file_hash[:16]}...)")
 

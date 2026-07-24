@@ -114,6 +114,7 @@ services:
       # to avoid URL parsing issues with special characters in passwords
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
       - EMBED_SERVER_URL=http://embed-server:8000,http://embed-server-2:8000
       - RERANK_SERVER_URL=http://rerank-server:8000
       - CELERY_MEMORY_WARN_MB=2048
@@ -238,6 +239,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
       - EMBED_SERVER_URL=http://embed-server:8000,http://embed-server-2:8000
       - RERANK_SERVER_URL=http://rerank-server:8000
       - CELERY_MEMORY_WARN_MB=768
@@ -283,6 +285,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
       - CELERY_MEMORY_WARN_MB=1152
       - CELERY_MEMORY_CRIT_MB=1382
     volumes:
@@ -325,6 +328,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
       - CELERY_MEMORY_WARN_MB=768
       - CELERY_MEMORY_CRIT_MB=896
     volumes:
@@ -368,6 +372,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
       - EMBED_SERVER_URL=http://embed-server:8000,http://embed-server-2:8000
       - EMBED_CHUNK_CAP=512
       - CELERY_MEMORY_WARN_MB=1152
@@ -408,6 +413,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
       - CELERY_MEMORY_WARN_MB=384
       - CELERY_MEMORY_CRIT_MB=448
     volumes:
@@ -446,6 +452,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DATABASE_USER:-sowknow}:${DATABASE_PASSWORD:-}@postgres:5432/${DATABASE_NAME:-sowknow}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

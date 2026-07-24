@@ -22,17 +22,27 @@ Full history: `docs/archive/Mastertask_full_history.md`
 | 14 | OCR Modernization | 2026-02-23 | PaddleOCR 3-mode (Base/Large/Gundam) |
 | 14b | JWT Token Refresh | 2026-02 | Role propagation fix |
 | -- | Codebase Remediation | 2026-03-27 | 10 tasks, 21 commits, 422 unit tests pass |
+| -- | Upload Pipeline & Guardian Remediation | 2026-07-24 | 10 commits. Guardian restart loops stopped (jwt probe: 2-consecutive-failure gate + RestartTracker gating). Guardian pipeline probes repaired (dead for months: wrong PG role, enum case, schema, swallowed errors). Sweeper self-block fixed (force dispatch); stage timeouts aligned with Celery limits; MaxRetriesExceeded handled; 4,325 duplicate chunk pairs deduped + unique constraint (mig 033). Upload hardening: unified validation (150MB), rate limits, per-user dedup, compare_digest, pause on /internal/upload, orphan cleanup. **Crypto: STORAGE_ENCRYPTION_KEY was never wired to any container — entire confidential bucket (7,111 docs / 12,611 files) was plaintext; now enforced no-key-no-write, all files re-encrypted, OCR decrypt-to-temp.** Alerting restored (Telegram + email) + 30min flood throttle. bcrypt off event loop; nginx login rate limit; guardian MetricsDB reconnect. 40+3 historical stage failures recovered; 7,333 docs enriched. |
 | -- | Drag-and-Drop Upload | 2026-02 | Frontend batch upload |
 | -- | Context Caching | 2026-02 | OpenRouter Redis cache + confidential bypass |
 | -- | Telegram Sessions | 2026-02 | Redis-backed persistent sessions |
 
 ## Production Readiness: READY
 
-All P0/P1 security issues resolved. Tri-LLM routing enforced. 100% audit coverage. At-rest encryption. PDF export. Batch upload.
+All P0/P1 security issues resolved. Tri-LLM routing enforced. 100% audit coverage. PDF export. Batch upload. At-rest encryption **actually live since 2026-07-24** — Phase 10b shipped the code but the key was never provisioned; the bucket was plaintext until the 2026-07-24 remediation.
 
 ---
 
 ## Open Items
+
+### User-Action Items (2026-07-24)
+- ~~Gmail app password for guardian email alerts~~ — DONE 2026-07-24 (email channel verified live)
+- **TailscaleUploader on MacBook**: loops login→403→login when active (no cookies/CSRF sent). Fix on the Mac: use Bearer header or SOWKNOW_BOT_API_KEY mode (see `scripts/macos-uploader/`). Server-side impact now contained (bcrypt threadpool + nginx 10r/m login limit).
+- **Rotate telegram-bot ADMIN_PASSWORD** (was exposed in a debug session 2026-07-24).
+- **Old-layout documents** (`storage/documents/...` paths): files missing on disk — decide cleanup vs restore from backup.
+- **`.env` backup coverage**: STORAGE_ENCRYPTION_KEY + TELEGRAM_CHAT_ID exist only in `.env` on this host. Losing the key = confidential bucket unreadable.
+- Pre-existing: 2 test collection errors (`testcontainers` package missing from backend venv).
+- Pre-existing: notes audio stored unencrypted in `/data/audio/` (no pipeline, capped 10MB since 2026-07-24).
 
 ### 175 Integration Test Failures (PostgreSQL suite)
 

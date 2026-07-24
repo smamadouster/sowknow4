@@ -1573,3 +1573,23 @@
 | 03:35 | Session end: 12 writes across 4 files (page.tsx, input_guard.py, search_agent.py, search_agent_router.py) | 0 reads | ~1244 tok |
 | 05:00 | Session end: 12 writes across 4 files (page.tsx, input_guard.py, search_agent.py, search_agent_router.py) | 0 reads | ~1244 tok |
 | 06:07 | Edited backend/app/services/search_service.py | modified _safe_call() | ~183 |
+
+## Session: 2026-07-24 — Upload Pipeline & Guardian Remediation
+
+| Time | Action | File(s) | Outcome |
+|------|--------|---------|---------|
+| 15:06 | Investigated guardian restart loops | guardian_heal_audit, backend logs | jwt probe restarted backend 2× post-fix (13:09, 14:53); old loop was sentinel stale_data (316 restarts in 12h); RestartTracker gating was bypassed (hint "restart_backend" never matched "restart:" gate) |
+| 15:40 | Fix 1: jwt retry-before-restart + tracker gating | guardian_hc/plugins/probes.py | 2 consecutive failures before heal; hint → restart:sowknow-backend; auth_flow probe fixed (JSON→form, could never succeed) |
+| 15:45 | Fix 2: bcrypt off event loop | api/auth.py, api/admin.py | 5 call sites via asyncio.to_thread; login flood from MacBook (SOWKNOW-TailscaleUploader) caused 5.7-6.9s stalls |
+| 15:50 | Fix 3: login flood containment | nginx/sites/sowknow.gollamtech.com | 10r/m + burst 10 → 429; client lives only on MacBook (not in any repo here) |
+| 15:55 | Fix 4: alert channels | .env | Telegram restored (TELEGRAM_CHAT_ID was missing); Gmail 535 → user regenerated app password later, verified |
+| 16:05 | nginx regression self-found+fixed | nginx vhost | repo file had drifted from live (client_max_body_size 150M + caddy ACME passthrough dropped); bogus 3-arg diff had said "identical" |
+| 17:00 | Phase 1: guardian DB access | probes.py, trends.py, sentinel.py, runbooks | role postgres doesn't exist; enum labels lowercase; schema sowknow; errors now LOUD; real pipeline.* queues watched; 291 tests |
+| 17:45 | Phase 2: pipeline correctness | pipeline_orchestrator, pipeline_sweeper, pipeline_tasks, mig 033 | sweeper self-block (force=True), timeout truth, MaxRetriesExceeded→FAILED+DLQ, 4325 dup chunk pairs deduped + unique index |
+| 18:20 | Phase 3: upload hardening | documents_*, internal.py, dedup, storage, notes | unified validation 150MB, rate limits, per-user dedup, compare_digest, pause on internal, orphan cleanup, notes audio 10MB |
+| 18:35 | Phase 4: crypto | storage_service, pipeline_tasks, compose, encrypt script | KEY WAS NEVER WIRED TO ANY CONTAINER — 7,111 confidential docs/12,611 files plaintext. Enforced no-key-no-write, OCR decrypt-to-temp, sidecar crypto, all 12,611 re-encrypted in place |
+| 19:00 | Deploy + recover | alembic 033, requeue 43 stages | 40 entities + embedded failures recovered; 7,333 enriched; E2E public+confidential uploads completed all 8 stages |
+| 19:30 | Alert flood control | guardian_hc/alerts.py | 30min per-fingerprint throttle with suppressed-count summary; deployed 1872e1e |
+| 19:35 | Guardian MetricsDB reconnect | guardian_hc/db.py | _ensure_pg() at 10 sites — Postgres bounce no longer kills metrics writes |
+
+**Lessons recorded:** (1) Guardian healing code needs live-fire testing — three separate probe layers were dead while reporting healthy. (2) Env vars in .env do NOT reach containers unless compose wires them — the crypto key gap was a wiring gap, not a missing key. (3) Always diff live config against repo with exact file pairs before deploying — glob diffs lie. (4) Test artifacts and requeues verified against live DB before/after every phase.

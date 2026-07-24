@@ -48,6 +48,11 @@ class ProbesPlugin(GuardianPlugin):
         ],
     }
 
+    # Consecutive failures required before a probe may trigger a heal.
+    # A single transient failure (event-loop stall, docker bridge hiccup)
+    # must never restart a container.
+    HEAL_AFTER_CONSECUTIVE_FAILURES = 2
+
     def __init__(self, config: dict) -> None:
         self._backend_url: str = config.get("backend_url", "http://localhost:8000")
         self._redis_host: str = config.get("redis_host", "localhost")
@@ -58,6 +63,21 @@ class ProbesPlugin(GuardianPlugin):
         # (name only, no credentials). Normalise to dict to keep usage consistent.
         sa = config.get("service_account", {})
         self._service_account: dict = sa if isinstance(sa, dict) else {}
+        # Per-check consecutive failure streaks (retry-before-restart gating)
+        self._fail_streaks: dict[str, int] = {}
+
+    def _note_probe_result(self, check_name: str, ok: bool) -> bool:
+        """Track consecutive failures for check_name.
+
+        Returns True only when the failure streak has reached
+        HEAL_AFTER_CONSECUTIVE_FAILURES, i.e. healing is allowed.
+        """
+        if ok:
+            self._fail_streaks[check_name] = 0
+            return False
+        streak = self._fail_streaks.get(check_name, 0) + 1
+        self._fail_streaks[check_name] = streak
+        return streak >= self.HEAL_AFTER_CONSECUTIVE_FAILURES
 
     # ------------------------------------------------------------------
     # Public plugin interface
@@ -149,12 +169,20 @@ class ProbesPlugin(GuardianPlugin):
     # ------------------------------------------------------------------
 
     async def _check_jwt(self, ctx: CheckContext) -> CheckResult:
-        """Verify JWT authentication service responds correctly."""
+        """Verify JWT authentication service responds correctly.
+
+        Restart-on-failure is gated two ways:
+        - this probe must fail HEAL_AFTER_CONSECUTIVE_FAILURES times in a row
+          before needs_healing is set (transient stalls self-heal), and
+        - the hint uses the "restart:<container>" form so core's
+          RestartTracker cooldown applies.
+        """
         url = f"{self._backend_url}/api/v1/health/auth-check"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)
             if resp.status_code == 200:
+                self._note_probe_result("jwt", ok=True)
                 return CheckResult(
                     plugin=self.name,
                     module="Authentication Service",
@@ -164,28 +192,34 @@ class ProbesPlugin(GuardianPlugin):
                     summary="JWT auth endpoint healthy",
                     details={"status_code": resp.status_code},
                 )
-            return CheckResult(
-                plugin=self.name,
-                module="Authentication Service",
-                check_name="jwt",
-                status="fail",
-                severity=Severity.CRITICAL,
+            return self._jwt_failure(
                 summary=f"JWT auth endpoint returned HTTP {resp.status_code}",
                 details={"status_code": resp.status_code},
-                needs_healing=True,
-                heal_hint="restart_backend",
             )
         except Exception as exc:
-            return CheckResult(
-                plugin=self.name,
-                module="Authentication Service",
-                check_name="jwt",
-                status="fail",
-                severity=Severity.CRITICAL,
+            return self._jwt_failure(
                 summary=f"JWT auth endpoint unreachable: {exc!s:.200}",
-                needs_healing=True,
-                heal_hint="restart_backend",
             )
+
+    def _jwt_failure(self, summary: str, details: dict | None = None) -> CheckResult:
+        may_heal = self._note_probe_result("jwt", ok=False)
+        streak = self._fail_streaks["jwt"]
+        if not may_heal:
+            summary += (
+                f" (failure {streak}/{self.HEAL_AFTER_CONSECUTIVE_FAILURES}"
+                " — will heal only if it repeats)"
+            )
+        return CheckResult(
+            plugin=self.name,
+            module="Authentication Service",
+            check_name="jwt",
+            status="fail",
+            severity=Severity.CRITICAL,
+            summary=summary,
+            details=details or {},
+            needs_healing=may_heal,
+            heal_hint="restart:sowknow-backend" if may_heal else None,
+        )
 
     def _redis_cli_cmd(self, *args: str) -> list[str]:
         """Build a redis-cli docker exec command, injecting auth if configured."""
@@ -793,14 +827,20 @@ class ProbesPlugin(GuardianPlugin):
             )
 
     async def _check_auth_flow(self, ctx: CheckContext) -> CheckResult:
-        """Full auth-flow probe: POST /api/v1/auth/login with service account."""
+        """Full auth-flow probe: POST /api/v1/auth/login with service account.
+
+        The login endpoint expects OAuth2 form data (username/password
+        form fields), NOT a JSON body — posting JSON always returns 4xx.
+        Healing is gated on consecutive failures like the jwt probe.
+        """
         url = f"{self._backend_url}/api/v1/auth/login"
         username = self._service_account.get("username", "")
         password = self._service_account.get("password", "")
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(url, json={"username": username, "password": password})
+                resp = await client.post(url, data={"username": username, "password": password})
             if resp.status_code == 200:
+                self._note_probe_result("auth_flow", ok=True)
                 return CheckResult(
                     plugin=self.name,
                     module="Authentication Service",
@@ -809,28 +849,34 @@ class ProbesPlugin(GuardianPlugin):
                     severity=Severity.INFO,
                     summary="Auth login flow succeeded",
                 )
-            return CheckResult(
-                plugin=self.name,
-                module="Authentication Service",
-                check_name="auth_flow",
-                status="fail",
-                severity=Severity.CRITICAL,
+            return self._auth_flow_failure(
                 summary=f"Auth login flow returned HTTP {resp.status_code}",
                 details={"status_code": resp.status_code},
-                needs_healing=True,
-                heal_hint="restart_backend",
             )
         except Exception as exc:
-            return CheckResult(
-                plugin=self.name,
-                module="Authentication Service",
-                check_name="auth_flow",
-                status="fail",
-                severity=Severity.CRITICAL,
+            return self._auth_flow_failure(
                 summary=f"Auth flow unreachable: {exc!s:.200}",
-                needs_healing=True,
-                heal_hint="restart_backend",
             )
+
+    def _auth_flow_failure(self, summary: str, details: dict | None = None) -> CheckResult:
+        may_heal = self._note_probe_result("auth_flow", ok=False)
+        streak = self._fail_streaks["auth_flow"]
+        if not may_heal:
+            summary += (
+                f" (failure {streak}/{self.HEAL_AFTER_CONSECUTIVE_FAILURES}"
+                " — will heal only if it repeats)"
+            )
+        return CheckResult(
+            plugin=self.name,
+            module="Authentication Service",
+            check_name="auth_flow",
+            status="fail",
+            severity=Severity.CRITICAL,
+            summary=summary,
+            details=details or {},
+            needs_healing=may_heal,
+            heal_hint="restart:sowknow-backend" if may_heal else None,
+        )
 
     # ------------------------------------------------------------------
     # Heal helpers

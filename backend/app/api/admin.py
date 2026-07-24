@@ -2,6 +2,7 @@
 Admin API endpoints for user management, dashboard, stats, and audit logging
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -185,7 +186,7 @@ async def create_user(
     if existing_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists")
 
-    hashed_password = get_password_hash(user_data.password)
+    hashed_password = await asyncio.to_thread(get_password_hash, user_data.password)
 
     new_user = User(
         email=normalized_email,

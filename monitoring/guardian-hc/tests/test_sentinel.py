@@ -447,7 +447,7 @@ class TestSentinelHeal:
         with patch("guardian_hc.plugins.sentinel.ContainerHealer", mock_healer_cls):
             heal_result = asyncio.run(p.heal(result))
 
-        mock_healer.heal.assert_awaited_once_with("sowknow4-backend")
+        mock_healer.heal.assert_awaited_once_with("sowknow-backend")
         assert heal_result is not None
         assert heal_result.plugin == "sentinel"
 
@@ -475,8 +475,8 @@ class TestSentinelHeal:
 
         assert mock_healer.heal.await_count == 2
         calls = [c.args[0] for c in mock_healer.heal.await_args_list]
-        assert "sowknow4-celery-light" in calls
-        assert "sowknow4-celery-heavy" in calls
+        assert "sowknow-celery-light" in calls
+        assert "sowknow-celery-heavy" in calls
         assert heal_result is not None
 
     def test_heal_unknown_hint_returns_none(self):

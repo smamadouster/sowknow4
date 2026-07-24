@@ -22,6 +22,7 @@ import logging
 import os
 import secrets
 import uuid
+import asyncio
 from datetime import timedelta
 
 import redis
@@ -338,7 +339,7 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     user = result.scalar_one_or_none()
     if not user:
         return False
-    if not verify_password(password, user.hashed_password):
+    if not await asyncio.to_thread(verify_password, password, user.hashed_password):
         return False
     return user
 
@@ -346,16 +347,10 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
 # =============================================================================
 # RATE LIMITING ANNOTATIONS
 # =============================================================================
-# RATE_LIMIT: All endpoints below are rate-limited by Nginx at reverse proxy level
-# Configuration: limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=100r/m;
-# To add app-level rate limiting, integrate slowapi or fastapi-limiter
-# Example with slowapi:
-#   from slowapi import Limiter
-#   from slowapi.util import get_remote_address
-#   limiter = Limiter(key_func=get_remote_address)
-#   @router.post("/login")
-#   @limiter.limit("100/minute")
-#   async def login(...): ...
+# RATE_LIMIT: /login is limited at two layers:
+#   - Nginx: limit_req zone=sowknow_login_limit, 10r/m + burst 10, HTTP 429
+#     (see nginx/sites/sowknow.gollamtech.com)
+#   - App: slowapi @limiter.limit("20/minute") on the endpoint itself
 
 
 # =============================================================================
@@ -398,8 +393,9 @@ async def register(request: Request, user_data: UserCreate, db: AsyncSession = D
             detail="Registration failed. Please try again with different information.",
         )
 
-    # Hash password with bcrypt
-    hashed_password = get_password_hash(user_data.password)
+    # Hash password with bcrypt (offloaded: bcrypt is CPU-bound and would
+    # otherwise block the event loop for ~250ms per call)
+    hashed_password = await asyncio.to_thread(get_password_hash, user_data.password)
 
     # Create new user with default role (email unverified until admin delivers token)
     db_user = User(
@@ -955,7 +951,7 @@ async def telegram_auth(
 
         # Generate a random password for Telegram users
         temp_password = secrets.token_urlsafe(32)
-        hashed_password = get_password_hash(temp_password)
+        hashed_password = await asyncio.to_thread(get_password_hash, temp_password)
 
         user_role = "admin" if auth_data.telegram_user_id in TELEGRAM_ADMIN_USER_IDS else "user"
 

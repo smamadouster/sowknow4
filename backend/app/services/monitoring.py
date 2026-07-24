@@ -855,8 +855,16 @@ class SystemMonitor:
         Get Docker container stats.
 
         Returns:
-            Dictionary with container resource usage
+            Dictionary with container resource usage. When the docker CLI is
+            not available (e.g. inside the backend container), returns a
+            clean "unavailable" payload instead of raising.
         """
+        import shutil
+
+        if shutil.which("docker") is None:
+            # Expected inside the backend container — no docker CLI installed.
+            # Not an error condition; the dashboard just hides this panel.
+            return {"unavailable": True, "containers": [], "total_sowknow_mb": 0.0}
         try:
             import subprocess
 

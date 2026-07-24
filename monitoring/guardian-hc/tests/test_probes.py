@@ -142,13 +142,52 @@ class TestCheckJwtFail:
         result = self._run_failing_jwt(500)
         assert result.status == "fail"
 
-    def test_jwt_fail_needs_healing(self):
+    def test_jwt_first_fail_no_healing(self):
+        """A single transient failure must not trigger a restart."""
         result = self._run_failing_jwt(500)
-        assert result.needs_healing is True
+        assert result.needs_healing is False
+        assert result.heal_hint is None
 
-    def test_jwt_fail_heal_hint(self):
-        result = self._run_failing_jwt(500)
-        assert result.heal_hint == "restart_backend"
+    def test_jwt_second_consecutive_fail_heals(self):
+        """Two consecutive failures trigger healing with a tracker-gated hint."""
+        plugin = _make_plugin()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            first = asyncio.run(plugin._check_jwt(_make_ctx()))
+            second = asyncio.run(plugin._check_jwt(_make_ctx()))
+
+        assert first.needs_healing is False
+        assert second.needs_healing is True
+        assert second.heal_hint == "restart:sowknow-backend"
+
+    def test_jwt_pass_resets_streak(self):
+        """A pass between failures resets the consecutive-failure counter."""
+        plugin = _make_plugin()
+        mock_response = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            mock_response.status_code = 500
+            mock_client.get = AsyncMock(return_value=mock_response)
+            asyncio.run(plugin._check_jwt(_make_ctx()))  # fail 1
+            mock_response.status_code = 200
+            mock_client.get = AsyncMock(return_value=mock_response)
+            asyncio.run(plugin._check_jwt(_make_ctx()))  # pass -> reset
+            mock_response.status_code = 500
+            mock_client.get = AsyncMock(return_value=mock_response)
+            result = asyncio.run(plugin._check_jwt(_make_ctx()))  # fail 1 again
+
+        assert result.needs_healing is False
 
     def test_jwt_fail_severity_critical(self):
         result = self._run_failing_jwt(500)
@@ -157,7 +196,7 @@ class TestCheckJwtFail:
     def test_jwt_401_also_fails(self):
         result = self._run_failing_jwt(401)
         assert result.status == "fail"
-        assert result.needs_healing is True
+        assert result.needs_healing is False
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +216,8 @@ class TestCheckJwtException:
             result = asyncio.run(plugin._check_jwt(_make_ctx()))
 
         assert result.status == "fail"
-        assert result.needs_healing is True
-        assert result.heal_hint == "restart_backend"
+        assert result.needs_healing is False  # first failure: no restart
+        assert result.heal_hint is None
 
     def test_jwt_exception_severity_critical(self):
         plugin = _make_plugin()
@@ -265,7 +304,7 @@ class TestHealDispatch:
 
         assert heal_result is not None
         assert heal_result.plugin == "probes"
-        mock_healer.heal.assert_called_once_with("sowknow4-backend")
+        mock_healer.heal.assert_called_once_with("sowknow-backend")
 
     def test_unknown_heal_hint_returns_none(self):
         """heal() with unrecognized hint returns None gracefully."""

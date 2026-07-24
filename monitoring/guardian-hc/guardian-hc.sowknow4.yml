@@ -123,6 +123,9 @@ services:
       restart: true
 
 alerts:
+  # Flood control: identical alerts are sent at most once per this window;
+  # repeats are counted and summarized on the next send. 0 disables.
+  throttle_minutes: 30
   telegram:
     token: "${TELEGRAM_BOT_TOKEN}"
     chat_id: "${TELEGRAM_CHAT_ID}"

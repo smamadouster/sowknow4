@@ -1,6 +1,9 @@
 import os
 import re
+import json
+import time
 import asyncio
+import hashlib
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -44,11 +47,85 @@ class AlertManager:
         self.email_from = _resolve_env(em.get("from", self.smtp_user))
         self.email_to = _resolve_env(em.get("to", ""))
 
+        # Alert flood control: identical alerts are sent at most once per
+        # throttle window; repeats are counted and summarized on the next send.
+        self.throttle_minutes = int(config.get("throttle_minutes", 30))
+        self._throttle_state_file = (
+            os.getenv("GUARDIAN_STATE_DIR", "/tmp") + "/guardian-alert-throttle.json"
+        )
+        self._throttle: dict[str, dict] = self._load_throttle_state()
+
+    # ------------------------------------------------------------------
+    # Throttle (flood control)
+    # ------------------------------------------------------------------
+
+    def _load_throttle_state(self) -> dict:
+        try:
+            with open(self._throttle_state_file) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _save_throttle_state(self) -> None:
+        try:
+            tmp = self._throttle_state_file + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(self._throttle, f)
+            os.replace(tmp, self._throttle_state_file)
+        except Exception as e:
+            logger.warning("alert.throttle.save_failed", error=str(e)[:100])
+
+    @staticmethod
+    def _throttle_key(message: str) -> str:
+        """Coarse fingerprint: digits stripped so '3 stuck' and '5 stuck'
+        variants of the same alert share one throttle bucket."""
+        normalized = re.sub(r"\d+", "N", message[:200])
+        return hashlib.sha1(normalized.encode()).hexdigest()
+
+    def _throttle_check(self, message: str) -> str | None:
+        """Return a suffix to append when sending, or None to suppress.
+
+        First send in a window: allowed (with a "×N suppressed" note if the
+        previous window had repeats). Repeats inside the window: counted
+        and suppressed.
+        """
+        if self.throttle_minutes <= 0:
+            return ""
+        key = self._throttle_key(message)
+        now = time.time()
+        entry = self._throttle.get(key)
+        window = self.throttle_minutes * 60
+        if entry and now - entry["ts"] < window:
+            entry["count"] += 1
+            self._save_throttle_state()
+            logger.info(
+                "alert.throttled", key=key[:8], count=entry["count"],
+                window_min=self.throttle_minutes,
+            )
+            return None
+        suppressed = entry["count"] if entry else 0
+        self._throttle[key] = {"ts": now, "count": 0}
+        # Bound state size (drop entries older than 7 days)
+        if len(self._throttle) > 500:
+            cutoff = now - 7 * 86400
+            self._throttle = {k: v for k, v in self._throttle.items() if v["ts"] > cutoff}
+        self._save_throttle_state()
+        if suppressed:
+            return (
+                f"\n\n_(this alert repeated {suppressed}× in the last "
+                f"{self.throttle_minutes}min — repeats are throttled)_"
+            )
+        return ""
+
     @property
     def email_configured(self) -> bool:
         return bool(self.smtp_user and self.smtp_password and self.email_to)
 
     async def send(self, message: str):
+        suffix = self._throttle_check(message)
+        if suffix is None:
+            return  # throttled repeat — counted, not sent
+        message = message + suffix
         if self.telegram_token and self.telegram_chat_id:
             try:
                 async with httpx.AsyncClient(timeout=10) as client:
@@ -100,6 +177,10 @@ class AlertManager:
 
     async def send_email_only(self, message: str):
         """Send alert via email only (used when Telegram is down)."""
+        suffix = self._throttle_check(message)
+        if suffix is None:
+            return  # throttled repeat
+        message = message + suffix
         await self.send_email(
             subject="Guardian HC Alert (Telegram DOWN)",
             html_body=f"<p>{message}</p>",

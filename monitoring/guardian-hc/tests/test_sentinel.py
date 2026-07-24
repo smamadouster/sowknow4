@@ -216,15 +216,15 @@ class TestCheckQueueDrain:
         p = _make_plugin()
         ctx = _make_ctx()
 
-        # Simulate 3 growing readings, each call sums 4 queues (all return same val)
-        # Reading 1: total = 20, Reading 2: total = 40, Reading 3: total = 60
+        # Simulate 3 growing readings, each call sums 6 queues (all return same val)
+        # Reading 1: total = 30, Reading 2: total = 60, Reading 3: total = 90
         outputs = (
-            # reading 1: 4 queues × 5 each
-            "5", "5", "5", "5",
-            # reading 2: 4 queues × 10 each
-            "10", "10", "10", "10",
-            # reading 3: 4 queues × 15 each
-            "15", "15", "15", "15",
+            # reading 1: 6 queues × 5 each
+            "5", "5", "5", "5", "5", "5",
+            # reading 2: 6 queues × 10 each
+            "10", "10", "10", "10", "10", "10",
+            # reading 3: 6 queues × 15 each
+            "15", "15", "15", "15", "15", "15",
         )
 
         with self._patch_subprocess(outputs):
@@ -246,9 +246,9 @@ class TestCheckQueueDrain:
         ctx = _make_ctx()
 
         outputs = (
-            "5", "5", "5", "5",   # reading 1: total=20
-            "5", "5", "5", "5",   # reading 2: total=20 (stable)
-            "5", "5", "5", "5",   # reading 3: total=20 (stable)
+            "5", "5", "5", "5", "5", "5",   # reading 1: total=30
+            "5", "5", "5", "5", "5", "5",   # reading 2: total=30 (stable)
+            "5", "5", "5", "5", "5", "5",   # reading 3: total=30 (stable)
         )
 
         with self._patch_subprocess(outputs):
@@ -263,11 +263,11 @@ class TestCheckQueueDrain:
         p = _make_plugin()
         ctx = _make_ctx()
 
-        # All queues have tiny values totaling 4 each reading
+        # All queues have tiny values totaling <= 5 each reading
         outputs = (
-            "1", "1", "1", "1",  # total=4
-            "2", "1", "1", "0",  # total=4
-            "2", "2", "1", "0",  # total=5
+            "1", "1", "1", "1", "0", "0",  # total=4
+            "2", "1", "1", "0", "0", "0",  # total=4
+            "2", "2", "1", "0", "0", "0",  # total=5
         )
 
         with self._patch_subprocess(outputs):

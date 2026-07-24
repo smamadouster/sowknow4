@@ -190,7 +190,7 @@ class TrendsPlugin(GuardianPlugin):
         try:
             cmd_base = [
                 "docker", "exec", "sowknow-postgres",
-                "psql", "-U", "sowknow", "-d", "sowknow4", "-t", "-A", "-c",
+                "psql", "-U", "sowknow", "-d", "sowknow", "-t", "-A", "-c",
             ]
             proc = subprocess.run(
                 cmd_base + ["SELECT count(*) FROM pg_stat_activity WHERE datname = current_database();"],

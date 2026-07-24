@@ -45,8 +45,8 @@ steps:
           stuck_by_stage = {};
           for stage, interval in thresholds.items():
               sql = text(f\"\"\"
-                  SELECT count(*) FROM pipeline_stages
-                  WHERE stage = :stage AND status = 'RUNNING'
+                  SELECT count(*) FROM sowknow.pipeline_stages
+                  WHERE stage = :stage AND status = 'running'
                   AND updated_at < now() - interval '{interval}'
               \"\"\");
               count = db.execute(sql, {'stage': stage}).scalar() or 0;
@@ -61,8 +61,8 @@ steps:
               'temporary failure in name resolution',
           ];
           failed_sql = text('''
-              SELECT stage, count(*) FROM pipeline_stages
-              WHERE status = 'FAILED'
+              SELECT stage, count(*) FROM sowknow.pipeline_stages
+              WHERE status = 'failed'
               AND error_message ILIKE ANY(:patterns)
               GROUP BY stage
           ''');
@@ -87,10 +87,10 @@ steps:
           stuck_healed = 0;
           for stage, interval in thresholds.items():
               sql = text(f\"\"\"
-                  UPDATE pipeline_stages
-                  SET status = 'PENDING', updated_at = now(),
+                  UPDATE sowknow.pipeline_stages
+                  SET status = 'pending', updated_at = now(),
                       error_message = NULL, started_at = NULL, worker_id = NULL
-                  WHERE stage = :stage AND status = 'RUNNING'
+                  WHERE stage = :stage AND status = 'running'
                   AND updated_at < now() - interval '{interval}'
               \"\"\");
               result = db.execute(sql, {'stage': stage});
@@ -98,11 +98,11 @@ steps:
 
           # ── 5. Heal transient FAILED stages ──
           failed_sql = text('''
-              UPDATE pipeline_stages
-              SET status = 'PENDING', updated_at = now(),
+              UPDATE sowknow.pipeline_stages
+              SET status = 'pending', updated_at = now(),
                   error_message = NULL, attempt = 0,
                   started_at = NULL, worker_id = NULL
-              WHERE status = 'FAILED'
+              WHERE status = 'failed'
               AND error_message ILIKE ANY(:patterns)
           ''');
           result = db.execute(failed_sql, {'patterns': transient_patterns});
@@ -176,7 +176,7 @@ steps:
           };
           stuck_total = 0;
           for stage, interval in thresholds.items():
-              sql = text(f\"SELECT count(*) FROM pipeline_stages WHERE stage = :stage AND status = 'RUNNING' AND updated_at < now() - interval '{interval}'\");
+              sql = text(f\"SELECT count(*) FROM sowknow.pipeline_stages WHERE stage = :stage AND status = 'running' AND updated_at < now() - interval '{interval}'\");
               stuck_total += db.execute(sql, {'stage': stage}).scalar() or 0;
 
           transient_patterns = [
@@ -184,7 +184,7 @@ steps:
               'unreachable', 'server disconnected',
               'temporary failure in name resolution',
           ];
-          failed_sql = text(\"SELECT count(*) FROM pipeline_stages WHERE status = 'FAILED' AND error_message ILIKE ANY(:patterns)\");
+          failed_sql = text(\"SELECT count(*) FROM sowknow.pipeline_stages WHERE status = 'failed' AND error_message ILIKE ANY(:patterns)\");
           failed_total = db.execute(failed_sql, {'patterns': transient_patterns}).scalar() or 0;
 
           print(f'VERIFY stuck={stuck_total} failed={failed_total}');

@@ -14,13 +14,13 @@ steps:
     action: exec
     container: sowknow-postgres
     command: >-
-      psql -U postgres -t -c
+      psql -U sowknow -d sowknow -t -c
       "WITH chunked_docs AS (
-         SELECT document_id FROM pipeline_stages
+         SELECT document_id FROM sowknow.pipeline_stages
          WHERE stage='chunked' AND status='completed'
        ),
        embedded_docs AS (
-         SELECT document_id FROM pipeline_stages WHERE stage='embedded'
+         SELECT document_id FROM sowknow.pipeline_stages WHERE stage='embedded'
        )
        SELECT count(*) FROM chunked_docs c
        WHERE NOT EXISTS (
@@ -77,13 +77,13 @@ steps:
     action: exec
     container: sowknow-postgres
     command: >-
-      psql -U postgres -t -c
+      psql -U sowknow -d sowknow -t -c
       "WITH chunked_docs AS (
-         SELECT document_id FROM pipeline_stages
+         SELECT document_id FROM sowknow.pipeline_stages
          WHERE stage='chunked' AND status='completed'
        ),
        embedded_docs AS (
-         SELECT document_id FROM pipeline_stages WHERE stage='embedded'
+         SELECT document_id FROM sowknow.pipeline_stages WHERE stage='embedded'
        )
        SELECT count(*) FROM chunked_docs c
        WHERE NOT EXISTS (

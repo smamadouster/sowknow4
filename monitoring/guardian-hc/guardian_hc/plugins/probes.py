@@ -318,7 +318,7 @@ class ProbesPlugin(GuardianPlugin):
             conn_result = subprocess.run(
                 [
                     "docker", "exec", "sowknow-postgres",
-                    "psql", "-U", "postgres", "-t", "-c",
+                    "psql", "-U", "sowknow", "-d", "sowknow", "-t", "-c",
                     "SELECT count(*) FROM pg_stat_activity WHERE state IS NOT NULL;",
                 ],
                 capture_output=True, text=True, timeout=15,
@@ -343,7 +343,7 @@ class ProbesPlugin(GuardianPlugin):
             max_result = subprocess.run(
                 [
                     "docker", "exec", "sowknow-postgres",
-                    "psql", "-U", "postgres", "-t", "-c",
+                    "psql", "-U", "sowknow", "-d", "sowknow", "-t", "-c",
                     "SHOW max_connections;",
                 ],
                 capture_output=True, text=True, timeout=15,
@@ -351,7 +351,7 @@ class ProbesPlugin(GuardianPlugin):
             idle_result = subprocess.run(
                 [
                     "docker", "exec", "sowknow-postgres",
-                    "psql", "-U", "postgres", "-t", "-c",
+                    "psql", "-U", "sowknow", "-d", "sowknow", "-t", "-c",
                     "SELECT count(*) FROM pg_stat_activity WHERE state='idle in transaction'"
                     " AND now()-state_change > interval '5 minutes';",
                 ],
@@ -360,7 +360,7 @@ class ProbesPlugin(GuardianPlugin):
             deadlock_result = subprocess.run(
                 [
                     "docker", "exec", "sowknow-postgres",
-                    "psql", "-U", "postgres", "-t", "-c",
+                    "psql", "-U", "sowknow", "-d", "sowknow", "-t", "-c",
                     "SELECT sum(deadlocks) FROM pg_stat_database;",
                 ],
                 capture_output=True, text=True, timeout=15,
@@ -552,7 +552,12 @@ class ProbesPlugin(GuardianPlugin):
             )
 
     async def _check_pipeline(self, ctx: CheckContext) -> CheckResult:
-        """Detect pipeline stages stuck in RUNNING beyond their stage-specific hard_timeout."""
+        """Detect pipeline stages stuck in RUNNING beyond their stage-specific hard_timeout.
+
+        NOTE: stage/status enum labels are lowercase in the DB and the table
+        lives in schema "sowknow". A failed query must be LOUD — silently
+        treating it as zero stuck stages blinded this probe for months.
+        """
         try:
             # Stage-aware thresholds (hard_timeout * 1.5)
             thresholds = [
@@ -569,14 +574,25 @@ class ProbesPlugin(GuardianPlugin):
                 result = subprocess.run(
                     [
                         "docker", "exec", "sowknow-postgres",
-                        "psql", "-U", "postgres", "-t", "-c",
-                        f"SELECT count(*) FROM pipeline_stages"
-                        f" WHERE stage='{stage}' AND status='RUNNING'"
+                        "psql", "-U", "sowknow", "-d", "sowknow", "-t", "-c",
+                        f"SELECT count(*) FROM sowknow.pipeline_stages"
+                        f" WHERE stage='{stage}' AND status='running'"
                         f" AND updated_at < now() - interval '{interval}';",
                     ],
                     capture_output=True, text=True, timeout=15,
                 )
-                count = int(result.stdout.strip() or 0) if result.returncode == 0 else 0
+                if result.returncode != 0:
+                    return CheckResult(
+                        plugin=self.name,
+                        module="Document Pipeline",
+                        check_name="pipeline",
+                        status="warning",
+                        severity=Severity.WARNING,
+                        summary=f"Pipeline stuck-stage query failed for stage '{stage}': {(result.stderr or '')[:200]}",
+                        details={"stderr": (result.stderr or "")[:500], "stage": stage},
+                        needs_healing=False,
+                    )
+                count = int(result.stdout.strip() or 0)
                 if count > 0:
                     stuck_by_stage[stage] = count
                     total_stuck += count
@@ -621,13 +637,13 @@ class ProbesPlugin(GuardianPlugin):
             result = subprocess.run(
                 [
                     "docker", "exec", "sowknow-postgres",
-                    "psql", "-U", "postgres", "-t", "-c",
+                    "psql", "-U", "sowknow", "-d", "sowknow", "-t", "-c",
                     "WITH chunked_docs AS ("
-                    "  SELECT document_id FROM pipeline_stages"
+                    "  SELECT document_id FROM sowknow.pipeline_stages"
                     "  WHERE stage='chunked' AND status='completed'"
                     "),"
                     "embedded_docs AS ("
-                    "  SELECT document_id FROM pipeline_stages"
+                    "  SELECT document_id FROM sowknow.pipeline_stages"
                     "  WHERE stage='embedded'"
                     ")"
                     " SELECT count(*) FROM chunked_docs c"
@@ -638,6 +654,17 @@ class ProbesPlugin(GuardianPlugin):
                 ],
                 capture_output=True, text=True, timeout=15,
             )
+            if result.returncode != 0:
+                return CheckResult(
+                    plugin=self.name,
+                    module="Document Pipeline",
+                    check_name="pipeline_orphaned",
+                    status="warning",
+                    severity=Severity.WARNING,
+                    summary=f"Orphaned-stage query failed: {(result.stderr or '')[:200]}",
+                    details={"stderr": (result.stderr or "")[:500]},
+                    needs_healing=False,
+                )
             orphaned = int(result.stdout.strip() or 0)
             if orphaned > 0:
                 return CheckResult(
@@ -910,7 +937,7 @@ class ProbesPlugin(GuardianPlugin):
             proc = subprocess.run(
                 [
                     "docker", "exec", "sowknow-postgres",
-                    "psql", "-U", "postgres", "-c",
+                    "psql", "-U", "sowknow", "-d", "sowknow", "-c",
                     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
                     " WHERE state='idle in transaction'"
                     " AND now()-state_change > interval '5 minutes';",
@@ -939,9 +966,9 @@ class ProbesPlugin(GuardianPlugin):
             proc = subprocess.run(
                 [
                     "docker", "exec", "sowknow-postgres",
-                    "psql", "-U", "postgres", "-c",
-                    "UPDATE pipeline_stages SET status='PENDING', updated_at=now()"
-                    " WHERE status='RUNNING'"
+                    "psql", "-U", "sowknow", "-d", "sowknow", "-c",
+                    "UPDATE sowknow.pipeline_stages SET status='pending', updated_at=now()"
+                    " WHERE status='running'"
                     " AND updated_at < now() - interval '10 minutes';",
                 ],
                 capture_output=True, text=True, timeout=15,

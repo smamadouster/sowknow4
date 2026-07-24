@@ -138,7 +138,12 @@ class SentinelPlugin(GuardianPlugin):
                 cmd.extend(["-a", self._redis_password])
 
             total = 0
-            for queue in ["celery", "document_processing", "heavy_processing", "collection_processing"]:
+            # Real pipeline queues from celery_app.py task_routes — the previous
+            # list (celery, document_processing, heavy_processing,
+            # collection_processing) watched two queues that don't exist and
+            # none of the actual stage queues.
+            for queue in ["pipeline.ocr", "pipeline.chunk", "pipeline.embed",
+                          "pipeline.index", "pipeline.articles", "pipeline.entities"]:
                 proc = subprocess.run(
                     cmd + ["LLEN", queue], capture_output=True, text=True, timeout=5,
                 )

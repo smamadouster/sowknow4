@@ -137,7 +137,7 @@ class TestResumesStuckRunningStages:
         assert result["stuck_resumed"] == 1
         assert result["stuck_failed"] == 0
         assert stuck_stage.status == StageStatus.PENDING
-        mock_dispatch.assert_called_once_with(str(doc_id), from_stage=StageEnum.OCR)
+        mock_dispatch.assert_called_once_with(str(doc_id), from_stage=StageEnum.OCR, force=True)
 
 
 class TestMarksExhaustedStagesAsFailed:
@@ -201,7 +201,7 @@ class TestDispatchesBackpressuredDocuments:
         assert result["backpressure_dispatched"] == 1
         assert result["stuck_resumed"] == 0
         assert result["stuck_failed"] == 0
-        mock_dispatch.assert_called_once_with(str(doc_id))
+        mock_dispatch.assert_called_once_with(str(doc_id), force=True)
 
     @patch("app.database.SessionLocal")
     @patch("app.tasks.pipeline_orchestrator.dispatch_document")

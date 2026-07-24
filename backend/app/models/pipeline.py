@@ -37,9 +37,15 @@ class StageStatus(enum.StrEnum):
 
 
 # Per-stage retry configuration
+# soft/hard timeouts MUST match the Celery decorator limits in
+# app/tasks/pipeline_tasks.py — the sweeper and the inflight guard derive
+# their stuck thresholds from these values, and a mismatch causes
+# slow-but-healthy tasks to be reset and re-dispatched while still running.
+# (EMBEDDED base limits are extended dynamically per chunk count by
+# app/tasks/pipeline_orchestrator._get_embed_time_limits.)
 STAGE_RETRY_CONFIG = {
-    StageEnum.OCR: {"max_attempts": 3, "backoff": [30, 60, 120], "soft_timeout": 300, "hard_timeout": 360},
-    StageEnum.CHUNKED: {"max_attempts": 2, "backoff": [15, 30], "soft_timeout": 120, "hard_timeout": 180},
+    StageEnum.OCR: {"max_attempts": 3, "backoff": [30, 60, 120], "soft_timeout": 600, "hard_timeout": 900},
+    StageEnum.CHUNKED: {"max_attempts": 2, "backoff": [15, 30], "soft_timeout": 600, "hard_timeout": 900},
     StageEnum.EMBEDDED: {"max_attempts": 6, "backoff": [60, 120, 300], "soft_timeout": 1800, "hard_timeout": 1980},
     StageEnum.INDEXED: {"max_attempts": 2, "backoff": [15, 30], "soft_timeout": 120, "hard_timeout": 180},
     StageEnum.ARTICLES: {"max_attempts": 6, "backoff": [60, 120, 300, 600, 900, 1200], "soft_timeout": 600, "hard_timeout": 720},

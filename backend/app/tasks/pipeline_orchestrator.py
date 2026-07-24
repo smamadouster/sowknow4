@@ -174,12 +174,16 @@ def _build_chain(document_id: str, from_stage: StageEnum = StageEnum.OCR):
     return chain(*tasks)
 
 
-def _is_stage_inflight(document_id: str, stage: StageEnum) -> bool:
+def _is_stage_inflight(document_id: str, stage: StageEnum, skip_recent_pending: bool = False) -> bool:
     """Check if a stage already has an active task in flight.
 
     Uses the PipelineStage row: RUNNING with a recent started_at means a worker
     is currently processing it (or will retry shortly).  PENDING with a very
     recent updated_at means it was just queued.
+
+    skip_recent_pending=True is used by the sweeper/recovery paths: they set a
+    stage PENDING themselves (which bumps updated_at) and must still be allowed
+    to dispatch — otherwise every recovery dispatch is self-blocked for 60s.
     """
     from app.database import SessionLocal
     from app.models.pipeline import PipelineStage, StageStatus
@@ -205,11 +209,21 @@ def _is_stage_inflight(document_id: str, stage: StageEnum) -> bool:
             from app.models.pipeline import STAGE_RETRY_CONFIG
             cfg = STAGE_RETRY_CONFIG.get(stage, {})
             hard_timeout = cfg.get("hard_timeout", 600)
+            if stage == StageEnum.EMBEDDED:
+                # Embed limits extend dynamically with chunk count — a large
+                # document legitimately runs far beyond the base 1980s.
+                try:
+                    from app.models.document import Document
+                    doc = db.query(Document).filter(Document.id == document_id).first()
+                    if doc and doc.chunk_count:
+                        _, hard_timeout = _get_embed_time_limits(doc.chunk_count)
+                except Exception:
+                    pass  # fall back to the base limit
             if (now - row.started_at).total_seconds() < hard_timeout:
                 return True
 
         # PENDING + updated_at within 60s → just queued by sweeper or upload
-        if row.status == StageStatus.PENDING and row.updated_at is not None:
+        if not skip_recent_pending and row.status == StageStatus.PENDING and row.updated_at is not None:
             if (now - row.updated_at).total_seconds() < 60:
                 return True
 
@@ -223,12 +237,15 @@ def _is_stage_inflight(document_id: str, stage: StageEnum) -> bool:
         db.close()
 
 
-def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -> str:
+def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR, force: bool = False) -> str:
     """Build and dispatch the processing chain for a document.
 
     Args:
         document_id: UUID of the document to process.
         from_stage: Stage to start the chain from (default: OCR for new documents).
+        force: Skip the "PENDING updated <60s ago" inflight guard. Used by the
+            sweeper and recovery runbooks, which set the stage PENDING
+            themselves immediately before dispatching.
 
     Returns:
         'dispatched' on success, 'backpressure:<queue>' if queues are full,
@@ -238,7 +255,7 @@ def dispatch_document(document_id: str, from_stage: StageEnum = StageEnum.OCR) -
     if blocked_queue:
         return f"backpressure:{blocked_queue}"
 
-    if _is_stage_inflight(document_id, from_stage):
+    if _is_stage_inflight(document_id, from_stage, skip_recent_pending=force):
         logger.info(
             "Skipping dispatch for document %s stage %s — already inflight",
             document_id, from_stage.name,

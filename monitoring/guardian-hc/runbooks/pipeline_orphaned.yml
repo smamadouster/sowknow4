@@ -60,7 +60,7 @@ steps:
           db.commit();
           dispatched = 0;
           for doc_id in missing:
-              if dispatch_document(str(doc_id), from_stage=StageEnum.EMBEDDED) == 'dispatched':
+              if dispatch_document(str(doc_id), from_stage=StageEnum.EMBEDDED, force=True) == 'dispatched':
                   dispatched += 1;
           print(f'HEALED: created={len(missing)} dispatched={dispatched}');
       finally:

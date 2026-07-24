@@ -18,7 +18,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 
-from celery.exceptions import Reject
+from celery.exceptions import MaxRetriesExceededError, Reject
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.celery_app import celery_app
@@ -185,6 +185,59 @@ def _clear_document_error(document_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _fail_stage_permanently(task, document_id: str, stage: StageEnum, exc: Exception, attempts: int) -> None:
+    """Mark a stage FAILED, mirror the error to Document, and write to the DLQ.
+
+    Shared by the explicit attempt-budget branch and the MaxRetriesExceededError
+    path, so every terminal failure leaves the same observable state.
+    """
+    error_text = str(exc)
+    update_stage(document_id, stage, StageStatus.FAILED, error=error_text)
+
+    # Mirror error to Document so the status API can surface it
+    from app.database import SessionLocal
+    from app.models.document import Document, DocumentStatus
+
+    doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == doc_uuid).first()
+        if doc:
+            doc.status = DocumentStatus.ERROR
+            doc.pipeline_error = error_text[:500]
+            meta = doc.document_metadata or {}
+            meta["processing_error"] = error_text[:500]
+            meta["last_error_at"] = datetime.now(UTC).isoformat()
+            doc.document_metadata = dict(meta)
+            flag_modified(doc, "document_metadata")
+            db.commit()
+    finally:
+        db.close()
+
+    logger.error(
+        "Stage %s permanently failed for doc %s after %d attempt(s) — %s",
+        stage, document_id, attempts, error_text[:200],
+    )
+
+    # Write to Dead Letter Queue for observability
+    try:
+        import traceback as _tb
+        from app.services.dlq_service import DeadLetterQueueService
+
+        DeadLetterQueueService.store_failed_task(
+            task_name=task.name,
+            task_id=task.request.id or "unknown",
+            args=(document_id,),
+            kwargs={},
+            exception=exc,
+            traceback_str=_tb.format_exc(),
+            retry_count=attempts,
+            extra_metadata={"document_id": document_id, "stage": stage.value},
+        )
+    except Exception:
+        logger.exception("DLQ write failed for doc %s stage %s", document_id, stage)
+
+
 def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
     """
     Generic pipeline stage runner.
@@ -270,61 +323,28 @@ def _stage_task(self, document_id: str, stage: StageEnum, work_fn) -> str:
         backoff_list = retry_cfg.get("backoff", [30, 60, 120])
 
         if attempts >= max_attempts:
-            error_text = str(exc)
-            update_stage(document_id, stage, StageStatus.FAILED, error=error_text)
-
-            # Also write to Document so the status API can surface the error
-            # without needing to query PipelineStage.
-            from app.database import SessionLocal
-            from app.models.document import Document, DocumentStatus
-
-            db = SessionLocal()
-            try:
-                doc_uuid = uuid.UUID(document_id) if isinstance(document_id, str) else document_id
-                doc = db.query(Document).filter(Document.id == doc_uuid).first()
-                if doc:
-                    doc.status = DocumentStatus.ERROR
-                    doc.pipeline_error = error_text[:500]
-                    meta = doc.document_metadata or {}
-                    meta["processing_error"] = error_text[:500]
-                    meta["last_error_at"] = datetime.now(UTC).isoformat()
-                    doc.document_metadata = dict(meta)
-                    flag_modified(doc, "document_metadata")
-                    db.commit()
-            finally:
-                db.close()
-
             logger.error(
                 "Stage %s exhausted %d attempts for doc %s — rejecting task",
                 stage,
                 max_attempts,
                 document_id,
             )
-
-            # Write to Dead Letter Queue for observability
-            try:
-                import traceback as _tb
-                from app.services.dlq_service import DeadLetterQueueService
-
-                DeadLetterQueueService.store_failed_task(
-                    task_name=self.name,
-                    task_id=self.request.id or "unknown",
-                    args=(document_id,),
-                    kwargs={},
-                    exception=exc,
-                    traceback_str=_tb.format_exc(),
-                    retry_count=attempts,
-                    extra_metadata={"document_id": document_id, "stage": stage.value},
-                )
-            except Exception:
-                logger.exception("DLQ write failed for doc %s stage %s", document_id, stage)
-
-            raise Reject(error_text, requeue=False)
+            _fail_stage_permanently(self, document_id, stage, exc, attempts)
+            raise Reject(str(exc)[:200], requeue=False)
 
         # Determine backoff countdown (use list index, capped at last value)
         backoff_idx = min(attempts - 1, len(backoff_list) - 1)
         countdown = backoff_list[backoff_idx]
-        raise self.retry(exc=exc, countdown=countdown)
+        try:
+            self.retry(exc=exc, countdown=countdown)
+        except MaxRetriesExceededError:
+            # Celery's decorator max_retries is the effective cap — the DB
+            # attempt counter does not increment for same-task retries
+            # (update_stage treats them as continuation). Without this, the
+            # stage would linger RUNNING until the sweeper's stuck threshold.
+            _fail_stage_permanently(self, document_id, stage, exc, attempts)
+            raise Reject(str(exc)[:200], requeue=False)
+        raise  # self.retry() always raises Retry; this is unreachable
 
     update_stage(document_id, stage, StageStatus.COMPLETED)
     _sync_document_stage(document_id, stage.value)

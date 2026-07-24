@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     event,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
@@ -226,6 +227,12 @@ class DocumentChunk(Base, TimestampMixin):
         __table_args__ = (
             Index("ix_document_chunks_document_id", "document_id"),
             Index("ix_document_chunks_chunk_index", "document_id", "chunk_index"),
+            # Uniqueness makes the chunk stage's DELETE-all + INSERT-all safe
+            # against concurrent duplicate runs (see migration 033).
+            UniqueConstraint(
+                "document_id", "chunk_index",
+                name="uq_document_chunks_doc_index",
+            ),
             Index(
                 "ix_document_chunks_embedding_vector",
                 "embedding_vector",

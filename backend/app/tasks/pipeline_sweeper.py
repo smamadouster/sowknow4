@@ -150,6 +150,20 @@ def pipeline_sweeper() -> dict:
             )
 
             for ps in stuck_stages:
+                if stage == StageEnum.EMBEDDED:
+                    # Embed limits scale with chunk count
+                    # (pipeline_orchestrator._get_embed_time_limits) — re-check
+                    # per document so a large, healthy embed is not reset mid-run.
+                    from app.models.document import Document as _Doc
+                    from app.tasks.pipeline_orchestrator import _get_embed_time_limits
+
+                    _doc = db.query(_Doc).filter(_Doc.id == ps.document_id).first()
+                    _chunks = (_doc.chunk_count or 0) if _doc else 0
+                    _, _dyn_hard = _get_embed_time_limits(_chunks)
+                    if ps.started_at is not None and (
+                        now - ps.started_at
+                    ).total_seconds() < _dyn_hard * 2:
+                        continue
                 if _skip_if_error(ps.document_id):
                     continue
                 if ps.attempt >= ps.max_attempts:
@@ -222,7 +236,7 @@ def pipeline_sweeper() -> dict:
                         doc.status = DocumentStatus.PENDING
                         db.commit()
 
-                    result = dispatch_document(str(ps.document_id), from_stage=stage)
+                    result = dispatch_document(str(ps.document_id), from_stage=stage, force=True)
                     if result == "dispatched":
                         stuck_resumed += 1
 
@@ -266,7 +280,7 @@ def pipeline_sweeper() -> dict:
                     break
                 if _skip_if_error(ps.document_id):
                     continue
-                result = dispatch_document(str(ps.document_id), from_stage=next_stage)
+                result = dispatch_document(str(ps.document_id), from_stage=next_stage, force=True)
                 if result == "dispatched":
                     stalled_dispatched += 1
                     total_dispatched += 1
@@ -330,7 +344,7 @@ def pipeline_sweeper() -> dict:
                 db.add(row)
                 db.commit()
 
-                result = dispatch_document(str(doc_id), from_stage=next_stage)
+                result = dispatch_document(str(doc_id), from_stage=next_stage, force=True)
                 if result == "dispatched":
                     missing_intermediate_dispatched += 1
                     total_dispatched += 1
@@ -406,7 +420,7 @@ def pipeline_sweeper() -> dict:
             db.add(row)
             db.commit()
 
-            result = dispatch_document(str(doc_id), from_stage=StageEnum.ENRICHED)
+            result = dispatch_document(str(doc_id), from_stage=StageEnum.ENRICHED, force=True)
             if result == "dispatched":
                 missing_enriched_dispatched += 1
                 total_dispatched += 1
@@ -440,7 +454,7 @@ def pipeline_sweeper() -> dict:
                 .first()
             )
             if ocr_exists is None:
-                result = dispatch_document(str(ps.document_id))
+                result = dispatch_document(str(ps.document_id), force=True)
                 if result == "dispatched":
                     backpressure_dispatched += 1
                     total_dispatched += 1
@@ -487,7 +501,7 @@ def pipeline_sweeper() -> dict:
             ps.error_message = f"Sweeper: auto-retrying after transient failure (attempt {ps.attempt})"
             db.commit()
 
-            result = dispatch_document(str(ps.document_id), from_stage=ps.stage)
+            result = dispatch_document(str(ps.document_id), from_stage=ps.stage, force=True)
             if result == "dispatched":
                 failed_retried += 1
                 total_dispatched += 1

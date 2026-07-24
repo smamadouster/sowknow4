@@ -1,11 +1,12 @@
 #!/bin/bash
 # SOWKNOW Alert Monitoring Script
 # Checks alerts via backend API and sends notifications
-# Run this via cron: */5 * * * * /root/development/src/active/sowknow4/scripts/monitor-alerts.sh
+# Run this via cron: */5 * * * * root /home/development/src/active/sowknow4/scripts/monitor-alerts.sh
 
 set -e
 
-API_URL="${API_URL:-http://localhost:8000}"
+# Backend publishes 127.0.0.1:8001 on the host (8000 inside its container).
+API_URL="${API_URL:-http://localhost:8001}"
 ALERT_LOG="/var/log/sowknow-alerts.log"
 MAX_LOG_SIZE=10485760
 
@@ -31,12 +32,13 @@ check_service() {
     fi
 }
 
-# Check API health first
+# Check API health first — the comprehensive endpoint grades "ok"/"degraded"
+# (never "healthy"); /health alone is a 307 redirect to the docs.
 echo "=== SOWKNOW Alert Monitor - $(date) ==="
 
-HEALTH_RESPONSE=$(curl -sf "${API_URL}/health" 2>/dev/null || echo '{}')
+HEALTH_RESPONSE=$(curl -sf "${API_URL}/api/v1/health" 2>/dev/null || echo '{}')
 
-if echo "$HEALTH_RESPONSE" | grep -q '"status": "healthy"'; then
+if echo "$HEALTH_RESPONSE" | grep -qE '"status": ?"(ok|degraded)"'; then
     echo "API: OK"
 else
     log_alert "CRITICAL: Backend API unhealthy or unreachable"
@@ -49,8 +51,8 @@ echo "--- System Metrics ---"
 SYSTEM_METRICS=$(curl -sf "${API_URL}/api/v1/monitoring/system" 2>/dev/null || echo '{}')
 
 if command -v jq > /dev/null 2>&1; then
-    MEM_PERCENT=$(echo "$SYSTEM_METRICS" | jq -r '.monitoring.memory.percent // 0')
-    DISK_PERCENT=$(echo "$SYSTEM_METRICS" | jq -r '.monitoring.disk.percent // 0')
+    MEM_PERCENT=$(echo "$SYSTEM_METRICS" | jq -r '.memory.percent // 0')
+    DISK_PERCENT=$(echo "$SYSTEM_METRICS" | jq -r '.disk.percent // 0')
     
     echo "Memory: ${MEM_PERCENT}%"
     echo "Disk: ${DISK_PERCENT}%"
@@ -74,7 +76,7 @@ echo "--- Queue Status ---"
 QUEUE_METRICS=$(curl -sf "${API_URL}/api/v1/monitoring/queue" 2>/dev/null || echo '{}')
 
 if command -v jq > /dev/null 2>&1; then
-    QUEUE_DEPTH=$(echo "$QUEUE_METRICS" | jq -r '.queue_depth // 0')
+    QUEUE_DEPTH=$(echo "$QUEUE_METRICS" | jq -r '.depth // 0')
     echo "Queue Depth: $QUEUE_DEPTH"
     
     # Check queue threshold (PRD: >100 = WARNING)
@@ -89,11 +91,11 @@ echo "--- Active Alerts ---"
 ALERTS=$(curl -sf "${API_URL}/api/v1/monitoring/alerts" 2>/dev/null || echo '[]')
 
 if command -v jq > /dev/null 2>&1; then
-    ALERT_COUNT=$(echo "$ALERTS" | jq 'length')
+    ALERT_COUNT=$(echo "$ALERTS" | jq '.active_alerts | length')
     echo "Active Alerts: $ALERT_COUNT"
-    
+
     if [ "$ALERT_COUNT" -gt 0 ]; then
-        echo "$ALERTS" | jq -r '.[] | "  - \(.name): \(.threshold)"'
+        echo "$ALERTS" | jq -r '.active_alerts[] | "  - \(.name): \(.threshold)"'
         log_alert "ALERT: $ALERT_COUNT active monitoring alerts"
     fi
 else

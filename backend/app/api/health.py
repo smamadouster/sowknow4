@@ -53,8 +53,15 @@ async def _check_redis() -> str:
 
 
 async def _check_vault() -> str:
+    # Vault is optional: the container is profile-gated off by design
+    # (docker-compose.yml, 2026-04-10 — unseal key mismatch, backend decoupled in
+    # b27cd1c). No VAULT_ADDR configured -> "disabled", never a failing lookup
+    # against a hostname that does not resolve (the '[Errno -3]' restart-loop
+    # noise of 2026-07-24). Set VAULT_ADDR to opt back in.
+    vault_addr = os.getenv("VAULT_ADDR", "")
+    if not vault_addr:
+        return "disabled"
     try:
-        vault_addr = os.getenv("VAULT_ADDR", "http://vault:8200")
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{vault_addr}/v1/sys/health",
@@ -108,7 +115,7 @@ async def comprehensive_health() -> JSONResponse:
     nats_s = results[3] if isinstance(results[3], str) else "unavailable"
 
     critical_ok = db == "ok" and redis_s == "ok"
-    all_ok = all(s == "ok" for s in [db, redis_s, vault_s, nats_s])
+    all_ok = all(s == "ok" for s in [db, redis_s, nats_s]) and vault_s in ("ok", "disabled")
 
     if all_ok:
         overall = "ok"

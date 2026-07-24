@@ -70,7 +70,12 @@ class SentinelPlugin(GuardianPlugin):
         return None
 
     async def _check_stale_data(self, ctx: CheckContext) -> list[CheckResult]:
-        """Detect backend returning 200 but with stale data."""
+        """Detect backend returning 200 but with stale data — only when work waits.
+
+        Staleness with an EMPTY pipeline is benign user inactivity (2026-07-24:
+        last_write 2026-07-02 with zero pending documents restarted the backend
+        every ~2.5min for three weeks — a restart cannot create user activity).
+        Only fail when documents are actually waiting on the pipeline."""
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(f"{self._backend_url}/api/v1/health/deep")
@@ -88,19 +93,42 @@ class SentinelPlugin(GuardianPlugin):
 
                 age_minutes = (datetime.now(timezone.utc) - last_dt).total_seconds() / 60
 
-                if age_minutes > self.STALENESS_THRESHOLD_MINUTES:
-                    return [CheckResult(
-                        plugin=self.name, module="Storage Layer",
-                        check_name="stale_data", status="fail",
-                        severity=Severity.HIGH,
-                        summary=f"Last DB write was {age_minutes:.0f}min ago (threshold: {self.STALENESS_THRESHOLD_MINUTES}min)",
-                        details={"last_write": last_write, "age_minutes": age_minutes},
-                        needs_healing=True, heal_hint="restart_backend",
-                    )]
-                return []
+                if age_minutes <= self.STALENESS_THRESHOLD_MINUTES:
+                    return []
+
+                backlog = self._pending_documents()
+                if backlog == 0:
+                    return []  # idle installation, not a stuck pipeline
+                return [CheckResult(
+                    plugin=self.name, module="Storage Layer",
+                    check_name="stale_data", status="fail",
+                    severity=Severity.HIGH,
+                    summary=f"Last DB write was {age_minutes:.0f}min ago with {backlog} document(s) pending (threshold: {self.STALENESS_THRESHOLD_MINUTES}min)",
+                    details={"last_write": last_write, "age_minutes": age_minutes,
+                             "pending_documents": backlog},
+                    needs_healing=True, heal_hint="restart_backend",
+                )]
         except Exception as e:
             logger.warning("sentinel.stale_data.error", error=str(e)[:200])
             return []
+
+    def _pending_documents(self) -> int:
+        """Documents waiting on the pipeline; -1 when unknown (fail open to the
+        restart — an unverifiable backlog keeps the legacy behaviour)."""
+        try:
+            proc = subprocess.run(
+                ["docker", "exec", "sowknow-postgres", "psql", "-U", "sowknow",
+                 "-d", "sowknow", "-t", "-A", "-c",
+                 "SELECT count(*) FROM documents WHERE status IN "
+                 "('pending','uploading','processing')"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if proc.returncode != 0:
+                return -1
+            return int(proc.stdout.strip().split()[-1])
+        except Exception as e:
+            logger.warning("sentinel.pending_documents.error", error=str(e)[:200])
+            return -1
 
     async def _check_queue_drain(self, ctx: CheckContext) -> list[CheckResult]:
         """Detect queues growing but not draining."""

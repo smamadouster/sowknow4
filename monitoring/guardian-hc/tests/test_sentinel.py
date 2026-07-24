@@ -81,7 +81,8 @@ class TestCheckStaleData:
         return resp
 
     def test_stale_data_detected(self):
-        """A last_write 10 minutes ago should trigger a fail result."""
+        """A last_write 10 minutes ago WITH pending documents should trigger a
+        fail result — staleness only matters when work is waiting."""
         p = _make_plugin()
         ctx = _make_ctx()
         stale_ts = _stale_timestamp(10)
@@ -92,7 +93,8 @@ class TestCheckStaleData:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.get = AsyncMock(return_value=mock_resp)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx.AsyncClient", return_value=mock_client), \
+                patch.object(p, "_pending_documents", return_value=3):
             results = asyncio.run(p._check_stale_data(ctx))
 
         assert len(results) == 1
@@ -103,6 +105,45 @@ class TestCheckStaleData:
         assert r.needs_healing is True
         assert r.heal_hint == "restart_backend"
         assert r.severity == Severity.HIGH
+        assert r.details["pending_documents"] == 3
+
+    def test_stale_data_idle_installation_no_alert(self):
+        """2026-07-24 restart loop: stale last_write with ZERO pending documents
+        is benign user inactivity — a restart cannot create user activity."""
+        p = _make_plugin()
+        ctx = _make_ctx()
+        stale_ts = _stale_timestamp(60 * 24 * 21)  # ~3 weeks, like the incident
+
+        mock_resp = self._mock_response(stale_ts)
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client), \
+                patch.object(p, "_pending_documents", return_value=0):
+            results = asyncio.run(p._check_stale_data(ctx))
+
+        assert results == []
+
+    def test_stale_data_unknown_backlog_keeps_legacy_behaviour(self):
+        """An unverifiable backlog (-1) fails open to the restart."""
+        p = _make_plugin()
+        ctx = _make_ctx()
+        stale_ts = _stale_timestamp(10)
+
+        mock_resp = self._mock_response(stale_ts)
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        with patch("httpx.AsyncClient", return_value=mock_client), \
+                patch.object(p, "_pending_documents", return_value=-1):
+            results = asyncio.run(p._check_stale_data(ctx))
+
+        assert len(results) == 1
+        assert results[0].needs_healing is True
 
     def test_fresh_data_no_alert(self):
         """A last_write 1 minute ago should produce no results."""

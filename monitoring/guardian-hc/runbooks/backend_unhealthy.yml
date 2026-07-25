@@ -47,7 +47,7 @@ steps:
     name: "Test DB connection from backend"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python3 -c "
       from app.database import SessionLocal;
       db = SessionLocal();

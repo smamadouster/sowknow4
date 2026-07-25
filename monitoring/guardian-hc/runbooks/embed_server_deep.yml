@@ -14,7 +14,7 @@ steps:
     name: "Re-verify /embed endpoint"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python3 -c "
       import httpx, os, sys;
       url = os.getenv('EMBED_SERVER_URL', 'http://embed-server:8000') + '/embed';
@@ -76,7 +76,7 @@ steps:
     name: "Verify embed server generates vectors post-restart"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python3 -c "
       import httpx, os, sys, time;
       url = os.getenv('EMBED_SERVER_URL', 'http://embed-server:8000') + '/embed';

@@ -8,13 +8,15 @@ triggers:
   - check_name: celery_completion
 
 steps:
-  # Step 1: Verify the probe can import the task. If this fails, the probe
-  # itself is broken — Celery is likely fine. Don't restart anything.
+  # Step 1: Self-check that guardian_ping imports cleanly inside the backend.
+  # If this fails, the backend is not running the expected code — Celery is
+  # likely fine. Don't restart anything.
   - id: check_probe_import
     name: "Verify probe import path is correct"
     action: exec
     container: sowknow-backend
-    command: "python3 -c 'from app.tasks.guardian_tasks import guardian_ping; print(ok)'"
+    command: >-
+      python3 -c "from app.tasks.guardian_tasks import guardian_ping; print('ok')"
     expect_in_stdout: "ok"
     timeout: 15
     on_success: check_worker_state
@@ -47,7 +49,7 @@ steps:
     name: "Submit guardian_ping task and verify completion"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python3 -c "
       from app.tasks.guardian_tasks import guardian_ping;
       r = guardian_ping.apply_async();
@@ -73,7 +75,7 @@ steps:
     name: "Re-verify task completion after restart"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python3 -c "
       from app.tasks.guardian_tasks import guardian_ping;
       r = guardian_ping.apply_async();
@@ -97,8 +99,11 @@ steps:
     message: >-
       ⚠️ *Guardian runbook: celery_completion*
 
-      Probe config error — the probe's Python import failed inside sowknow-backend.
-      Celery workers are likely healthy. Fix the import path in probes.py.
+      Runbook self-check failed — importing app.tasks.guardian_tasks inside
+      sowknow-backend did not succeed. Celery workers are likely healthy.
+      Check that sowknow-backend is running the expected code version and that
+      `python3 -c "from app.tasks.guardian_tasks import guardian_ping"` succeeds
+      inside the container.
       No containers were restarted.
     terminal: true
 

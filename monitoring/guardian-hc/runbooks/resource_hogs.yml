@@ -17,7 +17,7 @@ steps:
     name: "Detect and kill resource hogs"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python -c "
       import subprocess, json, sys, os, time;
 

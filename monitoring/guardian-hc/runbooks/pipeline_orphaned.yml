@@ -36,7 +36,7 @@ steps:
     name: "Create missing embedded rows and dispatch"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python -c "
       import os; os.chdir('/app');
       from app.database import SessionLocal;

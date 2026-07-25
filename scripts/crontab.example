@@ -1,29 +1,42 @@
 # SOWKNOW Cron Configuration
-# Add these entries to crontab (crontab -e)
+#
+# Install as /etc/cron.d/sowknow (root-owned, 0644). The entries below use the
+# /etc/cron.d format, which REQUIRES the user field (here: root) after the
+# schedule. If you install via `crontab -e` instead, remove that user field.
+#
+# History: the February 2026 version of this file pointed at
+# /root/development/... (a path that does not exist on this host) and omitted
+# the user field — every job silently failed until 2026-07-24. Do not
+# reintroduce either mistake.
 
 # Resource monitoring every 5 minutes (PRD: alerts trigger after 5 min sustained)
 # - SOWKNOW memory >6GB: WARNING
-# - VPS memory >80%: CRITICAL  
+# - VPS memory >80%: CRITICAL
 # - 5xx error rate >5%: CRITICAL
-*/5 * * * * /root/development/src/active/sowknow4/scripts/monitor_resources.sh >> /var/log/sowknow-monitor.log 2>&1
+*/5 * * * * root /home/development/src/active/sowknow4/scripts/monitor_resources.sh >> /var/log/sowknow-monitor.log 2>&1
 
 # Monitor alerts every 5 minutes (PRD: alerts trigger after 5 min sustained)
-*/5 * * * * /root/development/src/active/sowknow4/scripts/monitor-alerts.sh >> /var/log/sowknow-cron.log 2>&1
+*/5 * * * * root /home/development/src/active/sowknow4/scripts/monitor-alerts.sh >> /var/log/sowknow-cron.log 2>&1
 
 # Daily health check at 9 AM (PRD: daily anomaly reports at 09:00)
-0 9 * * * /root/development/src/active/sowknow4/scripts/monitor.sh >> /var/log/sowknow-health.log 2>&1
+0 9 * * * root /home/development/src/active/sowknow4/scripts/monitor.sh >> /var/log/sowknow-health.log 2>&1
 
-# Daily PostgreSQL backup at 2 AM
-0 2 * * * /home/development/src/active/sowknow4/scripts/backup.sh >> /var/log/sowknow/backup.log 2>&1
+# Daily PostgreSQL backup at 2 AM (Restic snapshot tagged "daily")
+GPG_BACKUP_RECIPIENT=backup@gollamtech.com
+0 2 * * * root GPG_BACKUP_RECIPIENT=backup@gollamtech.com /home/development/src/active/sowknow4/scripts/backup.sh >> /var/log/sowknow/backup.log 2>&1
 
 # Weekly full backup (Restic: DB dumps + Docker volumes + config) on Sundays at 3 AM
-0 3 * * 0 /home/development/src/active/sowknow4/scripts/backup-full.sh >> /var/log/sowknow/backup.log 2>&1
+0 3 * * 0 root /home/development/src/active/sowknow4/scripts/backup-full.sh >> /var/log/sowknow/backup.log 2>&1
 
 # Weekly backup verification on Mondays at 4 AM
-0 4 * * 1 /home/development/src/active/sowknow4/scripts/backup-verify.sh >> /var/log/sowknow/backup.log 2>&1
+0 4 * * 1 root /home/development/src/active/sowknow4/scripts/backup-verify.sh >> /var/log/sowknow/backup.log 2>&1
 
-# Monthly restore test (first Sunday of month at 3 AM) - kept for compatibility
-0 3 1-7 * 0 /home/development/src/active/sowknow4/scripts/restore_test.sh >> /var/log/sowknow/restore_test.log 2>&1
+# Monthly restore test (first Sunday of month at 3 AM)
+0 3 1-7 * 0 root /home/development/src/active/sowknow4/scripts/restore_test.sh >> /var/log/sowknow_restore_test.log 2>&1
 
 # Log rotation (daily)
-0 0 * * * /root/development/src/active/sowknow4/scripts/rotate-logs.sh
+0 0 * * * root /home/development/src/active/sowknow4/scripts/rotate-logs.sh
+
+# Backup freshness watchdog — alert if the newest daily snapshot is older
+# than 25h (a silently-dead backup is indistinguishable from a working one).
+17 * * * * root /home/development/src/active/sowknow4/scripts/backup-freshness.sh >> /var/log/sowknow/backup.log 2>&1

@@ -47,7 +47,7 @@ steps:
     name: "Verify embed server healthy post-restart"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python3 -c "
       import httpx, os, sys, time, subprocess;
       url = os.getenv('EMBED_SERVER_URL', 'http://embed-server:8000') + '/embed';

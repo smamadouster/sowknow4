@@ -60,7 +60,7 @@ steps:
     name: "Check disk usage after cleanup"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python3 -c "
       import shutil; u=shutil.disk_usage('/');
       pct=round(u.used/u.total*100);

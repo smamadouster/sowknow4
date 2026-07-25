@@ -192,7 +192,8 @@ fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-SNAPSHOT_COUNT="$(restic snapshots --tag daily --json 2>/dev/null | grep -c '"time"' || echo 0)"
+# restic --json emits one compact line, so count occurrences, not lines.
+SNAPSHOT_COUNT="$(restic snapshots --tag daily --json 2>/dev/null | grep -o '"time"' | wc -l || true)"
 log "Daily backup completed successfully. Daily snapshots: $SNAPSHOT_COUNT"
 log "Latest snapshots:"
 restic snapshots --tag daily --last 3 2>/dev/null >> "$BACKUP_LOG_FILE" || true

@@ -21,7 +21,7 @@ steps:
     name: "Diagnose, heal stuck/ transient-failed stages, restart worker if dead"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python -c "
       import os, subprocess, json, sys;
       os.chdir('/app');
@@ -161,7 +161,7 @@ steps:
     name: "Verify stuck and transient-failed counts are zero"
     action: exec
     container: sowknow-backend
-    command: >-
+    command: |
       python -c "
       import os, sys;
       os.chdir('/app');

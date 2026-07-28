@@ -26,7 +26,7 @@ EMBED_URLS = os.getenv(
     "EMBED_SERVER_URL", "http://embed-server:8000,http://embed-server-2:8000"
 ).split(",")
 BATCH_FETCH = 512
-BATCH_EMBED = 64
+BATCH_EMBED = 16  # reduced 2026-07-28: 64-chunk CPU batches exceeded 300s on loaded box
 LOG = "/tmp/backfill_chunks.log"
 
 

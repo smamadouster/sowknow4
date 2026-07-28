@@ -9,6 +9,7 @@ Model: cross-encoder/ms-marco-MiniLM-L-6-v2 (~20MB, fast on CPU)
 """
 
 import logging
+import math
 import os
 from typing import Optional
 
@@ -50,6 +51,11 @@ async def rerank_passages(query: str, passages: list[str]) -> list[tuple[int, fl
         response.raise_for_status()
         data = response.json()
         scores = data.get("scores", [])
+        # The cross-encoder returns raw logits (unbounded, roughly -10..+10).
+        # Squash through sigmoid so scores share the 0..1 scale of the other
+        # relevance signals — blending raw logits into final_score pushed
+        # results past the 1.0 cap (P0, 2026-07-28).
+        scores = [1.0 / (1.0 + math.exp(-s)) for s in scores]
         indexed = list(enumerate(scores))
         indexed.sort(key=lambda x: x[1], reverse=True)
         return indexed

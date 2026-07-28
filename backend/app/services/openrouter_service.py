@@ -36,13 +36,13 @@ logger = logging.getLogger(__name__)
 # Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-small-2409")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 
 # Tiered model configuration for cost/quality optimization
 OPENROUTER_TIER_MODELS = {
-    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "anthropic/claude-3.5-sonnet"),
-    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "mistralai/mistral-small-2409"),
-    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "google/gemini-2.0-flash-001"),
+    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "anthropic/claude-sonnet-4"),
+    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "google/gemini-2.5-flash"),
+    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "google/gemini-2.5-flash"),
 }
 OPENROUTER_TIER_BUDGET_PCT = {
     "complex": 0.5,  # 50% of daily budget reserved for complex tasks
@@ -386,6 +386,7 @@ class OpenRouterService:
         tier: str = "standard",
         use_openrouter_cache: bool | None = None,
         openrouter_cache_ttl: int | None = None,
+        _allow_model_failover: bool = True,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using OpenRouter (OpenAI-compatible API)
@@ -705,6 +706,38 @@ class OpenRouterService:
                 )
                 # Re-raise to trigger tenacity retry with exponential backoff
                 raise
+
+            # P0 fix (2026-07-28): an invalid/deprecated model ID is a config
+            # error, not a transient failure — tenacity retries can't fix it,
+            # and yielding "Error: API error - 4xx" as content makes callers
+            # parse the error string as LLM output (this silently killed
+            # intent parsing and synthesis when mistral-small-2409 was
+            # deprecated upstream; gemini-2.0-flash-001 then 404'd the same
+            # way). Fail over ONCE to the simple-tier model. OpenRouter uses
+            # 400 for invalid model IDs and 404 for unknown/unavailable ones.
+            if e.response.status_code in (400, 404) and _allow_model_failover:
+                failover_model = OPENROUTER_TIER_MODELS.get("simple")
+                if failover_model and failover_model != model:
+                    logger.warning(
+                        "OpenRouter 400 (invalid request, likely deprecated model "
+                        "'%s') — failing over to simple-tier model '%s'",
+                        model,
+                        failover_model,
+                    )
+                    async for chunk in self.chat_completion(
+                        messages=messages,
+                        stream=stream,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        cache_key=None,
+                        user_id=user_id,
+                        is_confidential=is_confidential,
+                        collection_id=collection_id,
+                        tier="simple",
+                        _allow_model_failover=False,
+                    ):
+                        yield chunk
+                    return
 
             logger.error(f"OpenRouter API error: {e} - {error_body}")
             yield f"Error: API error - {e.response.status_code if e.response else 'unknown'}"

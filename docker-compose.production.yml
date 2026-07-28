@@ -54,8 +54,22 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1920m
-          cpus: '1.5'
+          # 2026-07-28: raised 1920m→4096m. At 1.4M×1024-dim vectors, index
+          # maintenance (HNSW builds) plus query load needs real headroom;
+          # the old cap made maintenance crawl and starved connections.
+          memory: 4096m
+          cpus: '2'
+    # 2026-07-28: workload tuning for a 1.4M-chunk vector workload on a 31GB
+    # shared host. maintenance_work_mem raised so index builds stay in memory
+    # (default 64MB forced multi-hour disk-spilled HNSW builds).
+    command: >
+      postgres
+      -c shared_buffers=1GB
+      -c effective_cache_size=3GB
+      -c work_mem=16MB
+      -c maintenance_work_mem=512MB
+      -c max_parallel_maintenance_workers=2
+      -c max_connections=100
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sowknow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -71,7 +85,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    shm_size: '512mb'
+    # 2026-07-28: raised 512mb→2gb. Parallel index builds allocate dynamic
+    # shared memory in /dev/shm; 512MB failed 1GB maintenance_work_mem with
+    # "could not resize shared memory segment: No space left on device".
+    shm_size: '2gb'
 
   # Redis
   redis:

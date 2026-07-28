@@ -18,8 +18,11 @@ services:
       type: tcp
       host: postgres
       port: 5432
+    # P0 incident 2026-07-28: NEVER auto-restart Postgres. A slow query is not a
+    # dead database — restarting kills every in-flight search connection and was
+    # the direct cause of the search outage (100 restarts/day). Alert only.
     auto_heal:
-      restart: true
+      restart: false
 
   - name: "redis"
     container: "sowknow-redis"
@@ -38,9 +41,14 @@ services:
       type: http
       url: "http://backend:8000/api/v1/health"
       timeout: 15
+    # P0 incident 2026-07-28: no auto-restart/rebuild. Guardian's own DNS
+    # lookups intermittently fail (sentinel.stale_data "Temporary failure in
+    # name resolution"), producing false-negative health checks — with
+    # rebuild_on_failure it was REPLACING the backend every 2-3 minutes,
+    # killing every in-flight search. Alert only; heal manually.
     auto_heal:
-      restart: true
-      rebuild_on_failure: true
+      restart: false
+      rebuild_on_failure: false
 
   - name: "embed-server"
     container: "sowknow-embed-server"
@@ -48,9 +56,11 @@ services:
       type: http
       url: "http://embed-server:8000/health"
       timeout: 15
+    # 2026-07-28: rebuild removed — same false-positive DNS issue as backend.
+    # Plain restart is safe here (stateless, requests fail over to replica 2).
     auto_heal:
       restart: true
-      rebuild_on_failure: true
+      rebuild_on_failure: false
 
   - name: "rerank-server"
     container: "sowknow-rerank-server"
@@ -58,9 +68,11 @@ services:
       type: http
       url: "http://rerank-server:8000/health"
       timeout: 15
+    # 2026-07-28: rebuild removed — same false-positive DNS issue. Rerank is
+    # fail-open in search, a restart only degrades ranking briefly.
     auto_heal:
       restart: true
-      rebuild_on_failure: true
+      rebuild_on_failure: false
 
   - name: "celery-light"
     container: "sowknow-celery-light"
@@ -75,7 +87,7 @@ services:
       type: container
     auto_heal:
       restart: true
-      rebuild_on_failure: true
+      rebuild_on_failure: false  # 2026-07-28: false-positive DNS heals were replacing containers
 
   - name: "celery-entities"
     container: "sowknow-celery-entities"
@@ -113,7 +125,7 @@ services:
       timeout: 10
     auto_heal:
       restart: true
-      rebuild_on_failure: true
+      rebuild_on_failure: false  # 2026-07-28: false-positive DNS heals were replacing containers
 
   - name: "telegram-bot"
     container: "sowknow-telegram-bot"

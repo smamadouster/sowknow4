@@ -126,10 +126,10 @@ class Settings(BaseSettings):
     # LLM Model Configuration
     # ------------------------------------------------------------------
 
-    OPENROUTER_MODEL: str = Field(default="mistralai/mistral-small-2409")
-    OPENROUTER_TIER_SIMPLE: str = Field(default="google/gemini-2.0-flash-001")
-    OPENROUTER_TIER_STANDARD: str = Field(default="mistralai/mistral-small-2409")
-    OPENROUTER_TIER_COMPLEX: str = Field(default="anthropic/claude-3.5-sonnet")
+    OPENROUTER_MODEL: str = Field(default="google/gemini-2.5-flash")
+    OPENROUTER_TIER_SIMPLE: str = Field(default="google/gemini-2.5-flash")
+    OPENROUTER_TIER_STANDARD: str = Field(default="google/gemini-2.5-flash")
+    OPENROUTER_TIER_COMPLEX: str = Field(default="anthropic/claude-sonnet-4")
     OPENROUTER_BASE_URL: str = Field(default="https://openrouter.ai/api/v1")
     OPENROUTER_SITE_URL: str = Field(default="https://sowknow.gollamtech.com")
     OPENROUTER_SITE_NAME: str = Field(default="SOWKNOW")

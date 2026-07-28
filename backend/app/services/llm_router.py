@@ -62,6 +62,7 @@ class TaskTier(StrEnum):
 class FallbackTrigger(StrEnum):
     """Reasons that trigger a fallback to the next provider or tier."""
 
+    HTTP_400 = "invalid_request"  # e.g. deprecated/invalid model ID — config error, fail over to next tier
     HTTP_429 = "rate_limit"
     HTTP_5XX = "server_error"
     TTFT_EXCEEDED = "ttft_exceeded"

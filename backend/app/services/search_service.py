@@ -178,21 +178,40 @@ class HybridSearchService:
 
         # Build SQL query for vector similarity using pgvector's cosine distance operator
         # Uses embedding_vector column for pgvector operations
+        #
+        # P0 fix (2026-07-28): two-stage candidate pool. Filtering on the joined
+        # documents.bucket made the planner abandon the HNSW index and exact-sort
+        # ~1.1M vectors (30-90s per query, triggered Guardian Postgres restarts).
+        # The inner CTE is filter-free so the HNSW ANN index is used; ACL is
+        # enforced on the candidate pool before anything leaves the DB.
+        candidate_pool = max((limit + offset) * 10, 500)
         sql_query = text("""
+            WITH candidates AS (
+                SELECT
+                    id,
+                    document_id,
+                    chunk_text,
+                    chunk_index,
+                    page_number,
+                    1 - (embedding_vector <=> CAST(:embedding AS vector)) as similarity
+                FROM document_chunks
+                WHERE embedding_vector IS NOT NULL
+                ORDER BY embedding_vector <=> CAST(:embedding AS vector)
+                LIMIT :pool
+            )
             SELECT
-                dc.id as chunk_id,
-                dc.document_id,
+                c.id as chunk_id,
+                c.document_id,
                 COALESCE(d.original_filename, d.filename) as document_name,
                 d.bucket as document_bucket,
-                dc.chunk_text,
-                dc.chunk_index,
-                dc.page_number,
-                1 - (dc.embedding_vector <=> CAST(:embedding AS vector)) as similarity
-            FROM document_chunks dc
-            JOIN documents d ON dc.document_id = d.id
+                c.chunk_text,
+                c.chunk_index,
+                c.page_number,
+                c.similarity
+            FROM candidates c
+            JOIN documents d ON c.document_id = d.id
             WHERE d.bucket::text = ANY(:buckets)
-            AND dc.embedding_vector IS NOT NULL
-            ORDER BY dc.embedding_vector <=> CAST(:embedding AS vector)
+            ORDER BY c.similarity DESC
             LIMIT :limit OFFSET :offset
         """)
 
@@ -201,6 +220,7 @@ class HybridSearchService:
             {
                 "embedding": embedding_array,
                 "buckets": bucket_filter,
+                "pool": candidate_pool,
                 "limit": limit,
                 "offset": offset,
             },
@@ -316,6 +336,13 @@ class HybridSearchService:
 
         search_results = []
         for row in result:
+            # ts_rank_cd × phrase/lang boosts is unbounded (observed 2.0–3.6 for
+            # common single terms) and was saturating final_score at the 1.0
+            # cap, making every boilerplate match "highly_relevant" (P0,
+            # 2026-07-28). Squash to (0,1) with rank/(1+rank) — monotonic, so
+            # ordering is unchanged, but the scale now means something.
+            raw_rank = float(row.rank)
+            kw_score = raw_rank / (1.0 + raw_rank) if raw_rank > 0 else 0.0
             search_results.append(
                 SearchResult(
                     chunk_id=str(row.chunk_id),
@@ -326,8 +353,8 @@ class HybridSearchService:
                     chunk_index=row.chunk_index,
                     page_number=row.page_number,
                     semantic_score=0.0,
-                    keyword_score=float(row.rank),
-                    final_score=float(row.rank),  # Will be recalculated by hybrid_search
+                    keyword_score=kw_score,
+                    final_score=kw_score,  # Will be recalculated by hybrid_search
                     match_source="keyword",
                 )
             )
@@ -596,21 +623,38 @@ class HybridSearchService:
         embedding_array = "[" + ",".join(map(str, query_embedding)) + "]"
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
+        # Same two-stage candidate-pool pattern as semantic_search (P0 fix
+        # 2026-07-28): keep the inner ANN query filter-free so the HNSW index
+        # is used, apply bucket/status ACL on the candidate pool.
+        candidate_pool = max(limit * 10, 300)
         sql_query = text("""
+            WITH candidates AS (
+                SELECT
+                    id,
+                    document_id,
+                    bucket,
+                    title,
+                    summary,
+                    status,
+                    1 - (embedding_vector <=> CAST(:embedding AS vector)) as similarity
+                FROM sowknow.articles
+                WHERE embedding_vector IS NOT NULL
+                ORDER BY embedding_vector <=> CAST(:embedding AS vector)
+                LIMIT :pool
+            )
             SELECT
-                a.id as article_id,
-                a.document_id,
+                c.id as article_id,
+                c.document_id,
                 COALESCE(d.original_filename, d.filename) as document_name,
-                a.bucket as document_bucket,
-                a.title,
-                a.summary,
-                1 - (a.embedding_vector <=> CAST(:embedding AS vector)) as similarity
-            FROM sowknow.articles a
-            JOIN sowknow.documents d ON a.document_id = d.id
-            WHERE a.bucket = ANY(:buckets)
-            AND a.embedding_vector IS NOT NULL
-            AND a.status = 'indexed'
-            ORDER BY a.embedding_vector <=> CAST(:embedding AS vector)
+                c.bucket as document_bucket,
+                c.title,
+                c.summary,
+                c.similarity
+            FROM candidates c
+            JOIN sowknow.documents d ON c.document_id = d.id
+            WHERE c.bucket = ANY(:buckets)
+            AND c.status = 'indexed'
+            ORDER BY c.similarity DESC
             LIMIT :limit
         """)
 
@@ -619,6 +663,7 @@ class HybridSearchService:
             {
                 "embedding": embedding_array,
                 "buckets": bucket_filter,
+                "pool": candidate_pool,
                 "limit": limit,
             },
         )
@@ -821,6 +866,10 @@ class HybridSearchService:
             },
         )
 
+        # Same unbounded-rank squash as keyword_search (P0, 2026-07-28).
+        def _squashed(rank: float) -> float:
+            return rank / (1.0 + rank) if rank > 0 else 0.0
+
         return [
             SearchResult(
                 chunk_id=str(row.article_id),
@@ -831,8 +880,8 @@ class HybridSearchService:
                 chunk_index=0,
                 page_number=None,
                 semantic_score=0.0,
-                keyword_score=float(row.rank),
-                final_score=float(row.rank),
+                keyword_score=_squashed(float(row.rank)),
+                final_score=_squashed(float(row.rank)),
                 result_type="article",
                 article_id=str(row.article_id),
                 article_title=row.title,
@@ -1063,8 +1112,7 @@ class HybridSearchService:
 
         # Dynamic minimum threshold: lowered from 0.25/0.15 to 0.08/0.05 so that
         # keyword-only matches (e.g. when embed server is down) are not silently
-        # dropped for short queries.  The MIN_RRF_NORM_FLOOR already prevents
-        # near-zero scores from being inflated.
+        # dropped for short queries.
         if word_count <= 3:
             min_threshold = max(self.min_score_threshold, 0.08)
         else:

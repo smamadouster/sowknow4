@@ -9,7 +9,12 @@ class ContainerHealer:
             async with httpx.AsyncClient(transport=transport, base_url="http://docker", timeout=30) as client:
                 resp = await client.get("/containers/json?all=true")
                 for c in resp.json():
-                    if any(container_name in n for n in c.get("Names", [])):
+                    # Exact name match (Docker names carry a leading '/').
+                    # Previously a SUBSTRING match: healing "postgres" could
+                    # restart mastersre-postgres / ghostshell-postgres, and
+                    # "embed-server" matched two different containers
+                    # (2026-07-28 P0 incident).
+                    if any(n.lstrip("/") == container_name for n in c.get("Names", [])):
                         r = await client.post(f"/containers/{c['Id']}/restart", params={"t": 10})
                         if r.status_code in (200, 204):
                             return {"healed": True, "action": "restarted"}

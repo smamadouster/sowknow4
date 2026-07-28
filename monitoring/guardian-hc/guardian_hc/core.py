@@ -316,6 +316,34 @@ class GuardianHC:
             # No runbook — fall back to plugin.heal() with RestartTracker gating
             if hint.startswith("restart:"):
                 container = hint.split(":", 1)[1]
+
+                # Respect the service's auto_heal.restart flag (2026-07-28 P0:
+                # plugin heal hints bypassed it entirely — a flaky TCP probe
+                # during a heavy index build restarted Postgres mid-REINDEX
+                # even though auto_heal.restart was false).
+                svc_cfg = next(
+                    (s for s in self.config.services if s.container == container),
+                    None,
+                )
+                if svc_cfg is not None and svc_cfg.auto_heal.get("restart") is False:
+                    logger.warning(
+                        "plugin.heal_disabled_by_config",
+                        check=result.check_name,
+                        container=container,
+                    )
+                    self.log_action({
+                        "target": result.check_name,
+                        "action": "plugin_heal_disabled_by_config",
+                        "plugin": plugin.name,
+                        "success": False,
+                        "details": f"auto_heal.restart=false for {container}",
+                    })
+                    await self.alert_manager.send(
+                        f"⚠️ Guardian: *{result.check_name}* needs healing but "
+                        f"auto-restart is disabled for `{container}` — manual action required."
+                    )
+                    continue
+
                 tracker = self._get_tracker(container)
                 can, msg = tracker.can_restart()
                 if not can:

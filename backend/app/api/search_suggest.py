@@ -109,6 +109,8 @@ async def search_suggest(
     rows = result.mappings().all()
 
     # Fallback: trigram similarity for typos (only if prefix yielded nothing and len >= 2)
+    # NOTE: documents has no "title" column — match on filenames only
+    # (referencing title here caused HTTP 503 on every non-prefix query).
     if not rows and len(prefix) >= 2:
         fuzzy_sql = text("""
             SELECT
@@ -120,12 +122,10 @@ async def search_suggest(
             WHERE status = 'indexed'
               AND bucket::text = ANY(:buckets)
               AND (
-                  title % :prefix
-                  OR original_filename % :prefix
+                  original_filename % :prefix
                   OR filename % :prefix
               )
             ORDER BY GREATEST(
-                similarity(COALESCE(title, ''), :prefix),
                 similarity(COALESCE(original_filename, ''), :prefix),
                 similarity(COALESCE(filename, ''), :prefix)
             ) DESC

@@ -44,11 +44,6 @@ RRF_K = 60
 HIGHLY_RELEVANT_THRESHOLD = 0.82
 RELEVANT_THRESHOLD = 0.65
 PARTIALLY_THRESHOLD = 0.45
-# Floor for RRF score normalization: prevents weak absolute scores from being
-# inflated to near-1.0 when all results are poor (≈ top-1 from a single list).
-# Raised from 0.015 → 0.08 to suppress boilerplate/footer matches that cluster
-# around 0.82 after relative normalization.
-MIN_RRF_NORM_FLOOR = 0.08
 
 
 def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]:
@@ -102,9 +97,6 @@ def rerank_and_build_results(
 
     results: list[SearchResult] = []
     has_confidential = False
-    max_rrf = max((c.rrf_score for c in chunks), default=1.0) or 1.0
-    # Don't inflate weak absolute scores to high relative scores
-    max_rrf = max(max_rrf, MIN_RRF_NORM_FLOOR)
 
     for doc_id, doc_chunks in doc_map.items():
         sorted_chunks = sorted(doc_chunks, key=lambda c: c.rrf_score, reverse=True)
@@ -115,10 +107,17 @@ def rerank_and_build_results(
                 continue
             has_confidential = True
 
-        # Top-2 average: documents with multiple relevant chunks rank higher
+        # Top-2 average: documents with multiple relevant chunks rank higher.
+        # P0 fix (2026-07-28): rrf_score is already an absolute, calibrated
+        # blend (semantic + keyword + RRF rank + cross-encoder, capped at 1.0).
+        # Previously this was divided by the result-set max, which forced the
+        # top hit to ~1.0 "highly_relevant" on EVERY query — even pure
+        # boilerplate matches (e.g. "Liste" matching contract footers showed
+        # 95%+ confidence). Use the absolute score directly so the label is
+        # honest: weak matches now correctly show as marginal/partial.
         top_chunks = sorted_chunks[:2]
         doc_score = sum(c.rrf_score for c in top_chunks) / len(top_chunks)
-        normalized_score = min(doc_score / max_rrf, 1.0)
+        normalized_score = min(doc_score, 1.0)
         label = _score_to_label(normalized_score)
         excerpt = _build_excerpt(best.text, intent.keywords)
         highlights = _extract_highlights(doc_chunks, intent.keywords)
@@ -377,10 +376,46 @@ async def _call_llm(
 
 
 def _clean_json(raw: str) -> str:
+    """Extract the first balanced JSON object from an LLM reply.
+
+    Models frequently wrap JSON in markdown fences, add a preamble, or
+    append commentary after the closing brace (observed with gemini-2.5-flash:
+    "Extra data: line 16" from json.loads). json.loads alone is too strict,
+    so we isolate the first balanced {...} block, tracking strings so braces
+    inside string values don't break the count.
+    """
     raw = raw.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
-    return raw.strip()
+    raw = raw.strip()
+
+    start = raw.find("{")
+    if start == -1:
+        return raw
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(raw)):
+        ch = raw[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return raw[start : i + 1]
+    # Unbalanced — return from the first brace and let json.loads report it
+    return raw[start:]
 
 
 # ---- STAGE 1: INTENT AGENT ----

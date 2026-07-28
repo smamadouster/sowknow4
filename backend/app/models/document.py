@@ -219,6 +219,11 @@ class DocumentChunk(Base, TimestampMixin):
     search_vector = Column(TSVECTOR, nullable=True)
     search_language = Column(String(10), nullable=False, server_default="french")
 
+    # ACL bucket denormalized from documents (migration 034) — maintained by
+    # DB triggers. Lets semantic search filter ACL on the same table as the
+    # vector index (index-native, no join-filter plan cliff).
+    bucket = Column(String(20), nullable=False, server_default="public")
+
     # Relationships
     document = relationship("Document", back_populates="chunks")
 

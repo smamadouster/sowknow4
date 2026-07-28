@@ -1,311 +1,52 @@
 #!/bin/bash
-# SOWKNOW Phase 1 Production Deployment Script
-# Date: February 2026
+###############################################################################
+# SOWKNOW4 deploy — the ONLY sanctioned way to deploy this stack.
+#
+# Hard-won rules (P0 incident 2026-07-28):
+#  1. EVERY service has its own image tag (backend, celery-*, telegram-bot,
+#     embed-server, guardian-hc). Building only "backend" leaves the fleet on
+#     stale code — always build all.
+#  2. ALWAYS --no-deps on up: after .env edits, compose considers every
+#     env_file consumer stale and will recreate POSTGRES as a dependency,
+#     killing searches and index builds mid-flight.
+#  3. Never `compose down` (and never with -v). Recreate services individually.
+#  4. Index-building migrations must be CONCURRENTLY — run heavy migrations
+#     as explicit ops steps, not during a routine deploy.
+#
+# Usage:
+#   scripts/deploy.sh            # build all + recreate changed services
+#   scripts/deploy.sh backend    # build + recreate one service
+###############################################################################
+set -euo pipefail
+cd "$(dirname "$0")/.."
 
-set -e
+COMPOSE="docker compose -f docker-compose.production.yml"
+SERVICES="backend celery-light celery-heavy celery-entities celery-articles celery-collections celery-beat telegram-bot embed-server embed-server-2 rerank-server guardian-hc frontend"
+TARGET="${1:-$SERVICES}"
 
-echo "================================"
-echo "SOWKNOW Phase 1 Deployment"
-echo "================================"
-echo ""
+echo "=== [1/3] Pre-deploy checks ==="
+if ! docker exec sowknow-postgres pg_isready -U "${POSTGRES_USER:-sowknow}" >/dev/null 2>&1; then
+    echo "FATAL: postgres not ready"; exit 1
+fi
+# Refuse to deploy during long-running index maintenance
+MAINT=$(docker exec sowknow-postgres psql -U "${POSTGRES_USER:-sowknow}" -d "${POSTGRES_DB:-sowknow}" -tAc \
+    "SELECT count(*) FROM pg_stat_progress_create_index" 2>/dev/null || echo "0")
+if [ "$MAINT" != "0" ]; then
+    echo "FATAL: index build in progress (pg_stat_progress_create_index non-empty) — wait for it"; exit 1
+fi
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+echo "=== [2/3] Build: $TARGET ==="
+$COMPOSE build $TARGET
 
-# Configuration
-PROJECT_NAME="sowknow4"
-BACKUP_DIR="/backups"
-LOG_FILE="deployment_$(date +%Y%m%d_%H%M%S).log"
+echo "=== [3/3] Recreate (--no-deps): $TARGET ==="
+$COMPOSE up -d --no-deps $TARGET
 
-# Functions
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE"
-}
-
-error() {
-    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"
-}
-
-warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1" | tee -a "$LOG_FILE"
-}
-
-# Pre-flight checks
-preflight_checks() {
-    log "Running pre-flight checks..."
-
-    # Check Docker
-    if ! command -v docker &> /dev/null; then
-        error "Docker is not installed"
-        exit 1
-    fi
-
-    # Check Docker Compose
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-        error "Docker Compose is not installed"
-        exit 1
-    fi
-
-    # Check .env file
-    if [ ! -f ".env" ]; then
-        error ".env file not found. Please create it from .env.example"
-        exit 1
-    fi
-
-    # Check required environment variables
-    source .env
-    REQUIRED_VARS=("DATABASE_PASSWORD" "JWT_SECRET" "MOONSHOT_API_KEY" "TELEGRAM_BOT_TOKEN")
-    MISSING_VARS=()
-
-    for var in "${REQUIRED_VARS[@]}"; do
-        if [ -z "${!var}" ]; then
-            MISSING_VARS+=("$var")
-        fi
-    done
-
-    if [ ${#MISSING_VARS[@]} -gt 0 ]; then
-        error "Missing required environment variables: ${MISSING_VARS[*]}"
-        exit 1
-    fi
-
-    # Check Ollama connectivity
-    log "Checking Ollama connectivity..."
-    if curl -s http://localhost:11434/api/tags > /dev/null; then
-        log "Ollama is accessible"
-    else
-        warn "Ollama is not accessible. Confidential document processing will be degraded."
-    fi
-
-    log "Pre-flight checks completed"
-}
-
-# Backup existing data
-backup_data() {
-    log "Creating backup of existing data..."
-
-    mkdir -p "$BACKUP_DIR"
-
-    # Backup PostgreSQL
-    if docker ps | grep -q "$PROJECT_NAME-postgres"; then
-        log "Backing up PostgreSQL..."
-        docker exec "$PROJECT_NAME-postgres" pg_dump -U sowknow sowknow | gzip > "$BACKUP_DIR/postgres_backup_$(date +%Y%m%d_%H%M%S).sql.gz"
-        log "PostgreSQL backup completed"
-    fi
-
-    # Backup document volumes
-    log "Backing up document volumes..."
-    docker run --rm -v "$PROJECT_NAME-sowknow-public-data:/data/public" -v "$BACKUP_DIR:/backup" \
-        alpine tar czf "/backup/public_docs_$(date +%Y%m%d_%H%M%S).tar.gz" -C /data public || true
-
-    docker run --rm -v "$PROJECT_NAME-sowknow-confidential-data:/data/confidential" -v "$BACKUP_DIR:/backup" \
-        alpine tar czf "/backup/confidential_docs_$(date +%Y%m%d_%H%M%S).tar.gz" -C /data confidential || true
-
-    log "Backup completed"
-}
-
-# Build and deploy
-deploy() {
-    log "Building Docker images..."
-    docker-compose build --no-cache
-
-    log "Stopping existing containers..."
-    docker-compose down
-
-    log "Starting containers..."
-    docker-compose up -d
-
-    log "Waiting for services to be healthy..."
-    sleep 30
-
-    # Run database migrations
-    log "Running database migrations..."
-    docker-compose exec -T backend alembic upgrade head || error "Migration failed"
-
-    log "Deployment completed"
-}
-
-# Health checks
-health_checks() {
-    log "Running health checks..."
-
-    # Check backend
-    log "Checking backend health..."
-    if curl -f http://localhost:8000/health > /dev/null; then
-        log "Backend is healthy"
-    else
-        error "Backend health check failed"
-        return 1
-    fi
-
-    # Check frontend
-    log "Checking frontend health..."
-    if curl -f http://localhost:3000 > /dev/null; then
-        log "Frontend is healthy"
-    else
-        error "Frontend health check failed"
-        return 1
-    fi
-
-    # Check PostgreSQL
-    log "Checking PostgreSQL health..."
-    if docker exec "$PROJECT_NAME-postgres" pg_isready -U sowknow > /dev/null; then
-        log "PostgreSQL is healthy"
-    else
-        error "PostgreSQL health check failed"
-        return 1
-    fi
-
-    # Check Redis
-    log "Checking Redis health..."
-    if docker exec "$PROJECT_NAME-redis" redis-cli ping > /dev/null; then
-        log "Redis is healthy"
-    else
-        error "Redis health check failed"
-        return 1
-    fi
-
-    # Check Celery worker
-    log "Checking Celery worker..."
-    if docker-compose exec -T celery-worker celery -A app.celery_app inspect ping > /dev/null; then
-        log "Celery worker is healthy"
-    else
-        warn "Celery worker health check failed"
-    fi
-
-    log "All health checks completed"
-}
-
-# Post-deploy pipeline check
-check_pipeline() {
-    log "Checking pipeline status..."
-
-    # Clear any stale sweeper lock from previous crashes
-    if docker exec "$PROJECT_NAME-redis" redis-cli del "pipeline:sweeper:lock" > /dev/null 2>&1; then
-        log "Cleared stale pipeline sweeper lock"
-    fi
-
-    # Run sweeper once to resume stuck documents
-    log "Running pipeline sweeper..."
-    docker-compose exec -T celery-worker celery -A app.celery_app call pipeline.sweeper || warn "Sweeper call failed"
-
-    # Show pipeline stats
-    log "Pipeline status:"
-    docker-compose exec -T backend python -c "
-import asyncio, sys
-sys.path.insert(0, '.')
-from app.database import async_session_factory
-from app.models.pipeline import PipelineStage, StageEnum, StageStatus
-from sqlalchemy import func
-
-async def show():
-    async with async_session_factory() as db:
-        print(f\"{'Stage':<12} {'Pending':>8} {'Running':>8} {'Failed':>8}\")
-        print('-' * 40)
-        for s in StageEnum:
-            counts = {}
-            for status, count in (await db.execute(
-                db.query(PipelineStage.status, func.count())
-                .filter(PipelineStage.stage == s)
-                .group_by(PipelineStage.status)
-            )).all():
-                counts[status] = count
-            print(f\"{s.value:<12} {counts.get(StageStatus.PENDING, 0):>8} {counts.get(StageStatus.RUNNING, 0):>8} {counts.get(StageStatus.FAILED, 0):>8}\")
-
-asyncio.run(show())
-" || warn "Could not fetch pipeline stats"
-}
-
-# Create admin user
-create_admin_user() {
-    log "Creating admin user..."
-
-    source .env
-    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@sowknow.local}"
-
-    if [ -z "${ADMIN_PASSWORD}" ]; then
-        log "ERROR: ADMIN_PASSWORD must be set in .env before deployment."
-        log "Generate a strong password and add it to your .env file."
-        exit 1
-    fi
-
-    docker-compose exec -T backend python -c "
-from app.database import SessionLocal
-from app.models.user import User, UserRole
-from app.utils.security import get_password_hash
-
-db = SessionLocal()
-admin = db.query(User).filter(User.email == '$ADMIN_EMAIL').first()
-
-if not admin:
-    admin = User(
-        email='$ADMIN_EMAIL',
-        hashed_password=get_password_hash('$ADMIN_PASSWORD'),
-        full_name='System Administrator',
-        role=UserRole.ADMIN,
-        is_superuser=True,
-        can_access_confidential=True,
-        is_active=True,
-        email_verified=True
-    )
-    db.add(admin)
-    db.commit()
-    print('Admin user created successfully')
-else:
-    print('Admin user already exists')
-"
-
-    log "Admin user setup completed"
-}
-
-# Display deployment summary
-deployment_summary() {
-    log ""
-    log "================================"
-    log "Deployment Summary"
-    log "================================"
-    log ""
-    log "Services deployed:"
-    log "  - PostgreSQL (pgvector): localhost:5432"
-    log "  - Redis: localhost:6379"
-    log "  - Backend API: http://localhost:8000"
-    log "  - Frontend: http://localhost:3000"
-    log "  - Nginx: http://localhost (HTTP), http://localhost:443 (HTTPS)"
-    log ""
-    log "Admin credentials:"
-    source .env
-    log "  Email: ${ADMIN_EMAIL:-admin@sowknow.local}"
-    log "  (Password set during setup, change on first login)"
-    log ""
-    log "Next steps:"
-    log "  1. Access the application at http://localhost"
-    log "  2. Login with admin credentials"
-    log "  3. Upload your first document"
-    log "  4. Test search functionality"
-    log "  5. Start a chat conversation"
-    log ""
-    log "Logs: docker-compose logs -f"
-    log "Status: docker-compose ps"
-    log ""
-}
-
-# Main execution
-main() {
-    log "Starting SOWKNOW Phase 1 deployment..."
-
-    preflight_checks
-    backup_data
-    deploy
-    health_checks
-    check_pipeline
-    create_admin_user
-    deployment_summary
-
-    log "Deployment completed successfully!"
-    log "Log file: $LOG_FILE"
-}
-
-# Run main function
-main "$@"
+echo "=== Post-deploy smoke ==="
+sleep 10
+H=$(curl -s -m 15 http://127.0.0.1:8001/api/v1/health || echo '{}')
+echo "health: $H"
+echo "$H" | grep -q '"status":"ok"' || { echo "SMOKE FAIL: backend unhealthy"; exit 1; }
+S=$(curl -s -m 15 http://127.0.0.1:8001/api/v1/search/health || echo '{}')
+echo "search: $S"
+echo "$S" | grep -q '"status":"healthy"' || { echo "SMOKE FAIL: search unhealthy"; exit 1; }
+echo "=== Deploy OK ==="

@@ -179,12 +179,14 @@ class HybridSearchService:
         # Build SQL query for vector similarity using pgvector's cosine distance operator
         # Uses embedding_vector column for pgvector operations
         #
-        # P0 fix (2026-07-28): two-stage candidate pool. Filtering on the joined
-        # documents.bucket made the planner abandon the HNSW index and exact-sort
-        # ~1.1M vectors (30-90s per query, triggered Guardian Postgres restarts).
-        # The inner CTE is filter-free so the HNSW ANN index is used; ACL is
-        # enforced on the candidate pool before anything leaves the DB.
+        # P0 fix (2026-07-28): two-stage candidate pool, ACL filter on the
+        # DENORMALIZED document_chunks.bucket (migration 034) so the filter is
+        # on the same table as the vector index. Filtering via JOIN on
+        # documents.bucket made the planner abandon HNSW and exact-sort 1.1M
+        # vectors. iterative_scan=strict_order lets pgvector 0.8 walk the
+        # graph until the filtered LIMIT is satisfied (no recall collapse).
         candidate_pool = max((limit + offset) * 10, 500)
+        await db.execute(text("SET LOCAL hnsw.iterative_scan = 'strict_order'"))
         sql_query = text("""
             WITH candidates AS (
                 SELECT
@@ -193,9 +195,11 @@ class HybridSearchService:
                     chunk_text,
                     chunk_index,
                     page_number,
+                    bucket,
                     1 - (embedding_vector <=> CAST(:embedding AS vector)) as similarity
                 FROM document_chunks
                 WHERE embedding_vector IS NOT NULL
+                  AND bucket = ANY(:buckets)
                 ORDER BY embedding_vector <=> CAST(:embedding AS vector)
                 LIMIT :pool
             )
@@ -203,13 +207,16 @@ class HybridSearchService:
                 c.id as chunk_id,
                 c.document_id,
                 COALESCE(d.original_filename, d.filename) as document_name,
-                d.bucket as document_bucket,
+                c.bucket as document_bucket,
                 c.chunk_text,
                 c.chunk_index,
                 c.page_number,
                 c.similarity
             FROM candidates c
             JOIN documents d ON c.document_id = d.id
+            -- Belt-and-braces ACL: while migration 034's backfill is in flight,
+            -- chunk buckets may be NULL; the join filter guarantees no
+            -- confidential chunk can ever leak through this path.
             WHERE d.bucket::text = ANY(:buckets)
             ORDER BY c.similarity DESC
             LIMIT :limit OFFSET :offset
@@ -624,9 +631,10 @@ class HybridSearchService:
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
         # Same two-stage candidate-pool pattern as semantic_search (P0 fix
-        # 2026-07-28): keep the inner ANN query filter-free so the HNSW index
-        # is used, apply bucket/status ACL on the candidate pool.
+        # 2026-07-28): bucket is native to articles, so the ANN query filters
+        # ACL directly with iterative_scan for correct filtered recall.
         candidate_pool = max(limit * 10, 300)
+        await db.execute(text("SET LOCAL hnsw.iterative_scan = 'strict_order'"))
         sql_query = text("""
             WITH candidates AS (
                 SELECT
@@ -639,6 +647,8 @@ class HybridSearchService:
                     1 - (embedding_vector <=> CAST(:embedding AS vector)) as similarity
                 FROM sowknow.articles
                 WHERE embedding_vector IS NOT NULL
+                  AND bucket = ANY(:buckets)
+                  AND status = 'indexed'
                 ORDER BY embedding_vector <=> CAST(:embedding AS vector)
                 LIMIT :pool
             )
@@ -652,8 +662,6 @@ class HybridSearchService:
                 c.similarity
             FROM candidates c
             JOIN sowknow.documents d ON c.document_id = d.id
-            WHERE c.bucket = ANY(:buckets)
-            AND c.status = 'indexed'
             ORDER BY c.similarity DESC
             LIMIT :limit
         """)

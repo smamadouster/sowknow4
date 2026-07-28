@@ -7,7 +7,7 @@ version: "2.0"
 
 app:
   name: "SOWKNOW4 Legacy Knowledge Vault"
-  compose_file: "/var/docker/sowknow4/docker-compose.production.yml"
+  compose_file: "/home/development/src/active/sowknow4/docker-compose.production.yml"
 
 services:
   # --- Infrastructure ---

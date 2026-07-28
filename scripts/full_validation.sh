@@ -171,21 +171,21 @@ HEALTHY_COUNT=$(docker ps --format '{{.Names}}' 2>/dev/null | grep "sowknow" | x
 run_check "Healthy containers ($HEALTHY_COUNT)" "0"
 
 log_info "Checking backend container..."
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "sowknow4-backend"; then
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "sowknow-backend"; then
     run_check "Backend container running" "0"
 else
     run_check "Backend container running" "1"
 fi
 
 log_info "Checking postgres container..."
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "sowknow4-postgres"; then
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "sowknow-postgres"; then
     run_check "Postgres container running" "0"
 else
     run_check "Postgres container running" "1"
 fi
 
 log_info "Checking redis container..."
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "sowknow4-redis"; then
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "sowknow-redis"; then
     run_check "Redis container running" "0"
 else
     run_check "Redis container running" "1"
@@ -248,9 +248,9 @@ echo "========================================"
 echo ""
 
 log_info "Testing backup volume writability..."
-if docker exec sowknow4-postgres touch /backups/validation_test.txt 2>/dev/null; then
+if docker exec sowknow-postgres touch /backups/validation_test.txt 2>/dev/null; then
     run_check "Backup volume writable from postgres" "0"
-    docker exec sowknow4-postgres rm -f /backups/validation_test.txt 2>/dev/null || true
+    docker exec sowknow-postgres rm -f /backups/validation_test.txt 2>/dev/null || true
 else
     run_check "Backup volume writable from postgres" "1"
 fi

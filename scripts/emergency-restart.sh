@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.production.yml}"
 PROJECT_DIR="${PROJECT_DIR:-/var/docker/sowknow4}"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,17 +27,17 @@ log ""
 
 # ── 1. Stop Celery Beat first (prevents sweeper from firing during restart) ──
 log "Step 1/5: Stopping celery-beat to pause scheduled tasks..."
-docker compose -f "$COMPOSE_FILE" stop sowknow4-celery-beat || warn "celery-beat not running"
+docker compose -f "$COMPOSE_FILE" stop sowknow-celery-beat || warn "celery-beat not running"
 sleep 2
 
 # ── 2. Gracefully stop the high-CPU containers ──
 log "Step 2/5: Stopping high-CPU containers..."
-docker compose -f "$COMPOSE_FILE" stop sowknow4-backend sowknow4-embed-server sowknow4-embed-server-2 || true
+docker compose -f "$COMPOSE_FILE" stop sowknow-backend sowknow-embed-server sowknow-embed-server-2 || true
 sleep 3
 
 # ── 3. Rebuild & restart (uses cached layers — fast) ──
 log "Step 3/5: Rebuilding & restarting backend + embed servers..."
-docker compose -f "$COMPOSE_FILE" up -d --build sowknow4-backend sowknow4-embed-server sowknow4-embed-server-2
+docker compose -f "$COMPOSE_FILE" up -d --build sowknow-backend sowknow-embed-server sowknow-embed-server-2
 
 log "Waiting 15s for containers to start..."
 sleep 15
@@ -46,22 +46,22 @@ sleep 15
 log "Step 4/5: Running health checks..."
 HEALTHY=0
 
-if docker exec sowknow4-backend curl -sf http://localhost:8000/api/v1/health >/dev/null 2>&1 || \
-   docker exec sowknow4-backend curl -sf http://localhost:8000/health >/dev/null 2>&1; then
+if docker exec sowknow-backend curl -sf http://localhost:8000/api/v1/health >/dev/null 2>&1 || \
+   docker exec sowknow-backend curl -sf http://localhost:8000/health >/dev/null 2>&1; then
     log "  ✓ backend health OK"
     HEALTHY=$((HEALTHY + 1))
 else
     err "  ✗ backend health FAILED"
 fi
 
-if docker exec sowknow4-embed-server curl -sf http://localhost:8000/health >/dev/null 2>&1; then
+if docker exec sowknow-embed-server curl -sf http://localhost:8000/health >/dev/null 2>&1; then
     log "  ✓ embed-server health OK"
     HEALTHY=$((HEALTHY + 1))
 else
     err "  ✗ embed-server health FAILED"
 fi
 
-if docker exec sowknow4-embed-server-2 curl -sf http://localhost:8000/health >/dev/null 2>&1; then
+if docker exec sowknow-embed-server-2 curl -sf http://localhost:8000/health >/dev/null 2>&1; then
     log "  ✓ embed-server-2 health OK"
     HEALTHY=$((HEALTHY + 1))
 else
@@ -70,18 +70,18 @@ fi
 
 # ── 5. Restart Celery Beat ──
 log "Step 5/5: Restarting celery-beat..."
-docker compose -f "$COMPOSE_FILE" up -d sowknow4-celery-beat
+docker compose -f "$COMPOSE_FILE" up -d sowknow-celery-beat
 
 # ── Summary ──
 log ""
 log "=== Restart Summary ==="
 log "Healthy services: $HEALTHY/3"
-docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" sowknow4-backend sowknow4-embed-server sowknow4-embed-server-2 2>/dev/null || true
+docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" sowknow-backend sowknow-embed-server sowknow-embed-server-2 2>/dev/null || true
 log ""
 log "If CPU is still high after 2 minutes, run:"
-log "  docker logs --tail 50 sowknow4-backend"
-log "  docker logs --tail 50 sowknow4-embed-server"
-log "  docker exec sowknow4-postgres psql -U sowknow -c \"SELECT stage, status, COUNT(*) FROM sowknow.pipeline_stages GROUP BY stage, status;\""
+log "  docker logs --tail 50 sowknow-backend"
+log "  docker logs --tail 50 sowknow-embed-server"
+log "  docker exec sowknow-postgres psql -U sowknow -c \"SELECT stage, status, COUNT(*) FROM sowknow.pipeline_stages GROUP BY stage, status;\""
 log ""
 
 if [ "$HEALTHY" -eq 3 ]; then

@@ -90,6 +90,31 @@ services:
     # "could not resize shared memory segment: No space left on device".
     shm_size: '2gb'
 
+  # NATS message broker (adopted 2026-07-28: previously the orphan
+  # sowknow4-nats from the stale /var/docker/sowknow4 stack served this —
+  # JetStream was verified empty before the swap, no data migrated)
+  nats:
+    image: nats:2.10-alpine
+    container_name: sowknow-nats
+    restart: unless-stopped
+    command: ["--jetstream", "--store_dir=/data", "-m", "8222"]
+    volumes:
+      - sowknow-nats-data:/data
+    # NO ports — internal network only
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    networks:
+      - sowknow-net
+
   # Redis
   redis:
     image: redis:7-alpine
@@ -200,6 +225,48 @@ services:
         limits:
           memory: 4096m
           cpus: '1.5'
+    networks:
+      - sowknow-net
+
+  # Second embedding replica (adopted 2026-07-28: replaces the unmanaged
+  # orphan sowknow4-embed-server-2 from the stale /var/docker/sowknow4 stack;
+  # backend/celery EMBED_SERVER_URL already round-robins to embed-server-2).
+  # Three workers with staggered max-requests so both replicas never restart
+  # simultaneously.
+  embed-server-2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.embed
+    container_name: sowknow-embed-server-2
+    restart: unless-stopped
+    environment:
+      - SENTENCE_TRANSFORMERS_HOME=/models
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - VECLIB_MAXIMUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - EMBED_MAX_BATCH_SIZE=64
+      - EMBED_BATCH_WINDOW_MS=100
+    volumes:
+      - ./backend:/app
+      - sowknow-model-cache:/models
+    command: >
+      uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
+      --workers 3 --limit-max-requests 12000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          memory: 4096m
+          cpus: '2.0'
     networks:
       - sowknow-net
 
@@ -673,6 +740,8 @@ volumes:
   sowknow-backups:
     driver: local
   sowknow-model-cache:
+    driver: local
+  sowknow-nats-data:
     driver: local
   certbot-www:
     driver: local

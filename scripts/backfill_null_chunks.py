@@ -57,7 +57,7 @@ async def worker(wid: int, queue: asyncio.Queue, client: httpx.AsyncClient) -> N
             resp = await client.post(
                 f"{url}/embed",
                 json={"texts": [r[1] for r in batch]},
-                timeout=300,
+                timeout=600,  # 2026-07-28: measured 223-307s per 32-batch on loaded CPU
             )
             resp.raise_for_status()
             vectors = resp.json()

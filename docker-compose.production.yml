@@ -265,7 +265,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4096m
+          # 2026-07-28: 3 workers × ~1.3GB model + batch spikes exceeded 4096m
+          # (OOMKilled observed) — 6GB keeps all three workers alive.
+          memory: 6144m
           cpus: '2.0'
     networks:
       - sowknow-net

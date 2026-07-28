@@ -17,6 +17,13 @@ RUN pip install --no-cache-dir torch==2.1.0 --index-url https://download.pytorch
 COPY embed_server/requirements.txt /tmp/embed_requirements.txt
 RUN pip install --no-cache-dir -r /tmp/embed_requirements.txt
 
+# 2026-07-28: requirements install silently UPGRADES torch (sentence-transformers
+# declares torch>=1.11.0 unpinned) — a rebuild pulled torch 2.13.0, which made
+# CPU inference 30-60x slower on this host and froze the embed batcher queue.
+# Force the pinned CPU wheel back AFTER requirements so the final state is
+# guaranteed regardless of resolver drift.
+RUN pip install --no-cache-dir --force-reinstall --no-deps torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+
 # Model cache dir — volume-mounted at runtime, NOT baked in
 RUN mkdir -p /models && chown appuser:appuser /models
 

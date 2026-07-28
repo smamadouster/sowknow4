@@ -26,7 +26,7 @@ EMBED_URLS = os.getenv(
     "EMBED_SERVER_URL", "http://embed-server:8000,http://embed-server-2:8000"
 ).split(",")
 BATCH_FETCH = 512
-BATCH_EMBED = 16  # reduced 2026-07-28: 64-chunk CPU batches exceeded 300s on loaded box
+BATCH_EMBED = 32  # 2026-07-28: sweet spot — 64 timed out, 16 too slow (29h ETA)
 LOG = "/tmp/backfill_chunks.log"
 
 
@@ -80,7 +80,7 @@ def main() -> None:
                 total_done += len(batch)
                 if total_done % 2048 < BATCH_EMBED:
                     log(f"progress: {total_done} chunks embedded")
-                time.sleep(1.5)  # throttled 2026-07-28: leave embed capacity for interactive search
+                time.sleep(0.3)  # overnight window: light throttle, embed compute dominates anyway
     log(f"backfill complete: {total_done} chunks embedded")
 
 

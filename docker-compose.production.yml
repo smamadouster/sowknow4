@@ -206,7 +206,10 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - VECLIB_MAXIMUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
-      - EMBED_MAX_BATCH_SIZE=64
+      - EMBED_MAX_BATCH_SIZE=32
+      # 2026-07-28: 64-text coalesced batches spiked the single worker past
+      # its 4GB limit mid-batch (disconnects during backfill). 32 keeps
+      # activation memory well under the cap.
       - EMBED_BATCH_WINDOW_MS=100
     volumes:
       - ./backend:/app

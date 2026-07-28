@@ -30,7 +30,7 @@ EMBED_URLS = os.getenv(
 ).split(",")
 BATCH_FETCH = 4096
 BATCH_EMBED = 32
-WORKERS = 6
+WORKERS = int(os.getenv("BACKFILL_WORKERS", "3"))  # 2026-07-28: 6 workers OOMed the single-worker replica
 LOG = "/tmp/backfill_chunks.log"
 
 _done = 0

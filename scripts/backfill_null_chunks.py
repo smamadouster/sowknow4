@@ -80,7 +80,7 @@ def main() -> None:
                 total_done += len(batch)
                 if total_done % 2048 < BATCH_EMBED:
                     log(f"progress: {total_done} chunks embedded")
-                time.sleep(0.5)
+                time.sleep(1.5)  # throttled 2026-07-28: leave embed capacity for interactive search
     log(f"backfill complete: {total_done} chunks embedded")
 
 

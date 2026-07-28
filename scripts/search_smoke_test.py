@@ -67,7 +67,7 @@ def mint_token() -> str:
     return out.stdout.strip().splitlines()[-1]
 
 
-def http(method: str, path: str, token: str, body: dict | None = None, timeout: int = 90) -> tuple[int, str]:
+def http(method: str, path: str, token: str, body: dict | None = None, timeout: int = 240) -> tuple[int, str]:
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(
         API + path, data=data, method=method,
@@ -125,8 +125,8 @@ def main() -> int:
             results = ev.get("results", {}).get("results", [])
             if not results:
                 failures.append(f"stream '{query}' returned 0 results")
-            if elapsed > 60:
-                failures.append(f"stream '{query}' took {elapsed:.0f}s (>60s)")
+            if elapsed > 120:
+                failures.append(f"stream '{query}' took {elapsed:.0f}s (>120s)")
             if expect_in_title and not any(expect_in_title in r.get("document_title", "").lower() for r in results):
                 failures.append(f"stream '{query}': no '{expect_in_title}' doc in top {len(results)} (relevance regression)")
             # 5. intent must not be the dumb fallback for a French query

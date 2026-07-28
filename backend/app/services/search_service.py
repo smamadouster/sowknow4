@@ -164,12 +164,17 @@ class HybridSearchService:
             return []
         logger.info("semantic_search CONTINUING query=%s", query)
 
-        # Generate query embedding (with cache)
+        # Generate query embedding (with cache).
+        # P0 (2026-07-28): encode_query is a SYNC httpx call — invoked directly
+        # here it blocked the entire single-worker event loop for the full
+        # HTTP round trip + retries, freezing /health and getting the backend
+        # killed by watchdogs whenever embed servers were busy. Offload to a
+        # thread so the loop stays responsive.
         cached_embedding = SearchCache.get_embedding(query)
         if cached_embedding is not None:
             query_embedding = cached_embedding
         else:
-            query_embedding = embedding_service.encode_query(query)
+            query_embedding = await asyncio.to_thread(embedding_service.encode_query, query)
             SearchCache.set_embedding(query, query_embedding)
         embedding_array = "[" + ",".join(map(str, query_embedding)) + "]"
 
@@ -626,7 +631,7 @@ class HybridSearchService:
         if not embedding_service.can_embed:
             return []
 
-        query_embedding = embedding_service.encode_query(query)
+        query_embedding = await asyncio.to_thread(embedding_service.encode_query, query)
         embedding_array = "[" + ",".join(map(str, query_embedding)) + "]"
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 

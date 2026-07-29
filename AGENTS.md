@@ -21,6 +21,9 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   cross-encoder rerank (`rerank-server`), agentic SSE pipeline
   (`backend/app/api/search_agent_router.py`, `services/search_agent.py`,
   `services/search_service.py`).
+  pg_trgm typo-fallback is FILENAME-ONLY (2026-07-29): `chunk_text % query`
+  at 1.37M chunks matched 40k+ GIN candidates = 5-13s for noise results.
+  Never re-add trigram similarity over chunk_text.
 - ACL: two buckets (public/confidential). `document_chunks.bucket` is
   denormalized (migration 034, trigger-maintained) — filter ACL on the chunk
   table, never via JOIN (join filter = planner abandons HNSW).

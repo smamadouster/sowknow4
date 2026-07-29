@@ -85,7 +85,6 @@ class CollectionService:
         parsed_intent = await self.intent_parser.parse_intent(
             query=collection_data.query,
             user_language="en",  # TODO: Get from user profile
-            use_ollama=False,
         )
 
         # Gather documents based on parsed intent
@@ -192,6 +191,10 @@ class CollectionService:
             # Stage 2: GATHER + VERIFY
             results = await self._gather_and_verify(parsed_intent, strategy, user, db)
 
+            # A search timeout inside gather triggers a session rollback, which
+            # expires ORM attributes — reload before touching collection.*
+            await db.refresh(collection)
+
             # Stage 3: SYNTHESIZE
             ai_summary = None
             if results:
@@ -257,7 +260,7 @@ class CollectionService:
             Preview data with intent and documents
         """
         # Parse intent
-        parsed_intent = await self.intent_parser.parse_intent(query=query, use_ollama=False)
+        parsed_intent = await self.intent_parser.parse_intent(query=query)
 
         # Gather documents
         documents = await self._gather_documents_for_intent(intent=parsed_intent, user=user, db=db)
@@ -320,6 +323,10 @@ class CollectionService:
         # Stage 2: GATHER + VERIFY
         results = await self._gather_and_verify(parsed_intent, strategy, user, db)
 
+        # A search timeout inside gather triggers a session rollback, which
+        # expires ORM attributes — reload before touching collection.*
+        await db.refresh(collection)
+
         # Remove existing items
         from sqlalchemy import delete as sql_delete
         await db.execute(sql_delete(CollectionItem).where(CollectionItem.collection_id == collection_id))
@@ -380,16 +387,16 @@ class CollectionService:
             logger.info(f"Intent cache hit for query: {query[:50]}")
             intent = ParsedIntentModel(**cached)
         else:
-            # Always MiniMax — never Ollama for collections
+            # Simple tier (Gemini Flash) via gateway — never Ollama for collections
             intent = await self.intent_parser.parse_intent(
-                query=query, user_language="en", use_ollama=False,
+                query=query, user_language="en",
             )
 
             # Quality gate: retry on low confidence
             if intent.confidence < 0.5:
                 logger.info(f"Low confidence ({intent.confidence}) for '{query}', retrying")
                 retry_intent = await self.intent_parser.parse_intent(
-                    query=query, user_language="en", use_ollama=False,
+                    query=query, user_language="en",
                 )
                 if retry_intent.confidence > intent.confidence:
                     intent = retry_intent
@@ -460,8 +467,18 @@ class CollectionService:
                     all_results.extend(res)
                 except asyncio.TimeoutError:
                     logger.warning(f"Collection gather {search_name} timed out")
+                    # wait_for cancels the query mid-flight, leaving the
+                    # transaction invalid — rollback so later stages can commit
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.warning(f"Collection gather {search_name} failed: {e}")
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
 
             # Phase 2: If still low, run tag search (slower LIKE scan)
             if len(all_results) < min_results * 3:
@@ -473,8 +490,16 @@ class CollectionService:
                     all_results.extend(tag_res)
                 except asyncio.TimeoutError:
                     logger.warning("Collection gather tag_search timed out")
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.warning(f"Collection gather tag_search failed: {e}")
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
 
             # Group by document_id, prefer articles
             grouped = {}

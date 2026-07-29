@@ -433,8 +433,11 @@ class LLMGateway:
         Used by legacy consumers that expect a single string response.
         Delegates to MiniMax when available, otherwise OpenRouter.
         """
-        # Prefer MiniMax for non-streaming calls (legacy behaviour)
-        svc = self._router._minimax or self._router._openrouter
+        # Prefer MiniMax for non-streaming calls (legacy behaviour), but only
+        # when it is actually configured — its non-stream helper concatenates
+        # error chunks ("Error: MINIMAX_API_KEY not configured") into the result.
+        minimax = self._router._minimax
+        svc = minimax if (minimax is not None and getattr(minimax, "api_key", None)) else self._router._openrouter
         if svc is None:
             raise RuntimeError("No LLM provider available for non-streaming completion")
 

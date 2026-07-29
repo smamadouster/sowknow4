@@ -371,7 +371,7 @@ class HybridSearchService:
                 )
             )
 
-        # Fallback: trigram similarity for typos when tsvector returns <3 results
+        # Fallback: filename trigram similarity for typos when tsvector returns <3 results
         if len(search_results) < 3 and len(query.strip()) >= 2:
             fallback = await self._trigram_fallback_search(
                 query=query, limit=limit, db=db, user=user
@@ -712,6 +712,12 @@ class HybridSearchService:
         """
         Fallback keyword search using pg_trgm similarity for typo tolerance.
         Only called when standard tsvector search returns very few results.
+
+        Filename-only: trigram similarity over chunk_text was dropped
+        (2026-07-29) — at 1.37M chunks the GIN trgm index matched 40k+
+        candidates and the query took 5-13s for ~0-2 noise results, which
+        timed out collection builds and slowed user searches. Filenames
+        (7k documents) are the high-value typo case and scan in ms.
         """
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
@@ -724,18 +730,12 @@ class HybridSearchService:
                 dc.chunk_text,
                 dc.chunk_index,
                 dc.page_number,
-                GREATEST(
-                    similarity(COALESCE(d.original_filename, d.filename), :query),
-                    similarity(dc.chunk_text, :query)
-                ) as rank
-            FROM sowknow.document_chunks dc
-            JOIN sowknow.documents d ON dc.document_id = d.id
+                similarity(COALESCE(d.original_filename, d.filename), :query) as rank
+            FROM sowknow.documents d
+            JOIN sowknow.document_chunks dc
+              ON dc.document_id = d.id AND dc.chunk_index = 0
             WHERE d.bucket::text = ANY(:buckets)
-              AND dc.search_vector IS NOT NULL
-              AND (
-                  COALESCE(d.original_filename, d.filename) % :query
-                  OR dc.chunk_text % :query
-              )
+              AND COALESCE(d.original_filename, d.filename) % :query
             ORDER BY rank DESC
             LIMIT :limit
         """)

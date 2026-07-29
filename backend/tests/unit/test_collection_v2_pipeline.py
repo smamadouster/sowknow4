@@ -15,11 +15,11 @@ class TestCollectionQueueRouting:
 
 
 class TestStage1Understand:
-    """Stage 1: Intent parsing always uses MiniMax, never Ollama."""
+    """Stage 1: Intent parsing always uses the simple tier (never Ollama)."""
 
     @pytest.mark.asyncio
-    async def test_understand_uses_minimax_not_ollama(self):
-        """Intent parsing must pass use_ollama=False."""
+    async def test_understand_uses_simple_tier_not_ollama(self):
+        """Intent parsing must not pass a use_ollama kwarg (simple tier is hardcoded in the parser)."""
         from unittest.mock import AsyncMock, patch
 
         from app.services.collection_service import collection_service
@@ -34,7 +34,7 @@ class TestStage1Understand:
         ) as mock_parse:
             await collection_service._understand_query("Find financial documents")
             mock_parse.assert_called_once()
-            assert mock_parse.call_args.kwargs.get("use_ollama") is False
+            assert "use_ollama" not in mock_parse.call_args.kwargs
 
     @pytest.mark.asyncio
     async def test_understand_retries_on_low_confidence(self):

@@ -449,6 +449,7 @@ class CollectionService:
         # results are weak, e.g. footer matches).
         MIN_COLLECTION_NORM_FLOOR = 0.10
         results = []
+        rerank_applied = False  # set when the cross-encoder gate actually scored
 
         for attempt in range(max_attempts):
             # Phase 1: Run the 4 core searches SEQUENTIALLY.
@@ -456,11 +457,14 @@ class CollectionService:
             # (PendingRollbackError) because asyncpg connections are not safe
             # for concurrent query execution.
             all_results = []
+            # Wider nets (50) so real content ranked just below the boilerplate
+            # band still reaches grouping + the rerank gate — dedup by document
+            # happens downstream, so duplicates cost nothing here.
             for search_name, coro in [
-                ("article_semantic", self.search_service.article_semantic_search(query=search_query, limit=25, db=db, user=user)),
-                ("article_keyword", self.search_service.article_keyword_search(query=search_query, limit=25, db=db, user=user)),
-                ("semantic", self.search_service.semantic_search(query=search_query, limit=25, offset=0, db=db, user=user)),
-                ("keyword", self.search_service.keyword_search(query=search_query, limit=25, offset=0, db=db, user=user)),
+                ("article_semantic", self.search_service.article_semantic_search(query=search_query, limit=50, db=db, user=user)),
+                ("article_keyword", self.search_service.article_keyword_search(query=search_query, limit=50, db=db, user=user)),
+                ("semantic", self.search_service.semantic_search(query=search_query, limit=50, offset=0, db=db, user=user)),
+                ("keyword", self.search_service.keyword_search(query=search_query, limit=50, offset=0, db=db, user=user)),
             ]:
                 try:
                     res = await asyncio.wait_for(coro, timeout=12.0)
@@ -528,6 +532,11 @@ class CollectionService:
 
                 existing = grouped.get(doc_id)
                 if not existing or score > existing["relevance_score"] or (is_article and existing.get("result_type") != "article"):
+                    passage = None
+                    if is_article and getattr(r, "article_title", None):
+                        passage = f'{r.article_title} — {getattr(r, "article_summary", "") or ""}'
+                    else:
+                        passage = getattr(r, "chunk_text", None)
                     grouped[doc_id] = {
                         "document_id": doc_id,
                         "article_id": getattr(r, "article_id", None),
@@ -536,7 +545,37 @@ class CollectionService:
                         "document_name": getattr(r, "document_name", None),
                         "relevance_score": score,
                         "result_type": r.result_type,
+                        "passage": passage,
                     }
+
+            # Cross-encoder rerank — the only reliable defence against degenerate
+            # chunks ("-", ",", repeated page headers) whose e5 embeddings float
+            # to the top of EVERY semantic query on this corpus (measured 2026-07-29:
+            # "-" chunk = 0.852 cosine vs ~0.82 for real campaign content). Without
+            # this, junk documents filled collections at 85-100% relevance.
+            if grouped:
+                from app.services.rerank_service import rerank_passages
+
+                top_candidates = sorted(
+                    grouped.values(), key=lambda x: x["relevance_score"], reverse=True
+                )[:40]
+                try:
+                    passages = [c.get("passage") or c.get("document_name") or "" for c in top_candidates]
+                    rerank_scores = await rerank_passages(search_query, passages)
+                    if rerank_scores:
+                        rerank_applied = True
+                        for idx, rscore in rerank_scores:
+                            c = top_candidates[idx]
+                            c["relevance_score"] = 0.3 * c["relevance_score"] + 0.7 * rscore
+                except Exception as exc:
+                    logger.warning(f"Collection gather rerank skipped: {exc}")
+
+                # Absolute quality gate (pre-normalization): drop documents the
+                # cross-encoder judged irrelevant so an all-junk result set
+                # cannot be re-inflated by the normalization below.
+                grouped = {
+                    k: v for k, v in grouped.items() if v["relevance_score"] >= 0.35
+                }
 
             # Normalize scores relative to the best match so they map to a 0-1 scale,
             # but enforce a floor so weak overall result sets don't inflate to 80%+.
@@ -553,7 +592,10 @@ class CollectionService:
                 reverse=True,
             )[:50]
 
-            if len(results) >= min_results:
+            # When the cross-encoder gate ran, few results means few RELEVANT
+            # documents — broadening the query would just re-pollute the gated
+            # set (2026-07-29: 2 perfect campaign docs -> broadened -> 18 junk).
+            if len(results) >= min_results or rerank_applied:
                 logger.info(f"Stage 2: Found {len(results)} results on attempt {attempt + 1}")
                 SearchCache.set_collection_gather(search_query, user_role, results)
                 return results

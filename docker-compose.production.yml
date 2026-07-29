@@ -21,7 +21,7 @@
 #   redis:           512MB  cpus: 0.5  (Cache & message queue)
 #   backend:         1GB    cpus: 1.0  (FastAPI application)
 #   embed-server:    4096MB cpus: 1.5  (Embedding model)
-#   rerank-server:   1024MB cpus: 0.5  (Reranking model)
+#   rerank-server:   1024MB cpus: 2.0  (Reranking model — latency-critical)
 #   celery-light:    1024MB cpus: 1.0  (OCR/chunk/index + general tasks)
 #   celery-heavy:    1536MB cpus: 1.0  (pipeline.embed -> embed-server)
 #   celery-entities: 1536MB cpus: 1.0  (pipeline.entities NER/LLM)
@@ -35,7 +35,7 @@
 #   prometheus:      256MB  cpus: 0.25 (Metrics scraper)
 #   ollama:          SHARED (Uses ghostshell-api on host, no container memory)
 #   TOTAL MEMORY:   ~15300MB
-#   TOTAL CPU:       ~11.0 (CFS scheduler time-sliced on shared VPS)
+#   TOTAL CPU:       ~12.5 (CFS scheduler time-sliced on shared VPS)
 #
 # Backup Strategy:
 #   - Daily PostgreSQL dumps: docker exec sowknow-postgres pg_dump -U sowknow sowknow > backup_$(date +%Y%m%d).sql
@@ -285,6 +285,7 @@ services:
     environment:
       - RERANK_PORT=8000
       - RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+      - RERANK_TORCH_THREADS=2
       - SENTENCE_TRANSFORMERS_HOME=/models
       - HF_HOME=/models
       - TRANSFORMERS_CACHE=/models
@@ -300,7 +301,10 @@ services:
       resources:
         limits:
           memory: 1024m
-          cpus: '0.5'
+          # 0.5 CPU throttled cross-encoder inference to ~6s/request (2026-07-29),
+          # blowing the rerank client's 5s timeout and silently disabling
+          # reranking everywhere. Latency-critical: give it real cores.
+          cpus: '2.0'
     networks:
       - sowknow-net
 

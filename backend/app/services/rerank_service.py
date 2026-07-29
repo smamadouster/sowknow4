@@ -28,7 +28,10 @@ def _get_client() -> httpx.AsyncClient:
     if _client is None:
         _client = httpx.AsyncClient(
             base_url=RERANK_SERVER_URL,
-            timeout=5.0,
+            # 5s was too tight for a CPU-throttled rerank-server: every timeout
+            # silently degraded search to RRF-only (2026-07-29). The server is
+            # fast (~1s) when not throttled; 15s is the degraded-mode budget.
+            timeout=15.0,
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
         )
     return _client

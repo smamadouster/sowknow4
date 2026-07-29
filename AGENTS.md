@@ -30,6 +30,16 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - Scores are calibrated: keyword rank is squashed rank/(1+rank), cross-encoder
   logits are sigmoid-squashed, labels are absolute (no relative normalization).
   Do not reintroduce unbounded boosts into final_score.
+- Collections gather (2026-07-29): reranks top-40 candidates with the
+  cross-encoder (blend 0.3 raw / 0.7 rerank) and applies an ABSOLUTE gate
+  pre-normalization. Degenerate chunks ("-", ",", repeated headers) embed near
+  the corpus mean and outrank real content — never trust raw vector top-N
+  without the reranker. Once the gate ran, do NOT broaden the query: few
+  results means few relevant docs. semantic_search excludes chunk_text < 30
+  chars from the candidate pool.
+- rerank-server is latency-critical: 0.5 CPU throttled it to ~6s/request and
+  the client's 5s timeout silently disabled reranking fleet-wide. Keep its
+  2.0 CPU limit and torch thread clamp (RERANK_TORCH_THREADS).
 - LLM tiers via OpenRouter env vars (gemini-2.5-flash simple/standard,
   claude-sonnet-4 complex). openrouter_service fails over to simple tier on
   400/404 (dead model IDs are config errors, not retryable). Verify model IDs

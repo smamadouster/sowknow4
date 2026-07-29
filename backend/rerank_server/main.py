@@ -25,6 +25,13 @@ def _load_model():
     if _model is not None:
         return _model
     try:
+        import torch
+
+        # Clamp CPU threads to the container's CPU limit (compose: 2.0).
+        # Default torch thread count (= host cores) thrashes under CFS
+        # throttling and made a 2-passage rerank take ~6s (2026-07-29).
+        torch.set_num_threads(int(os.getenv("RERANK_TORCH_THREADS", "2")))
+
         from sentence_transformers import CrossEncoder
 
         model_name = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")

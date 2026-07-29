@@ -169,6 +169,10 @@ IMPORTANT RULES:
 - If no document type is mentioned, use ["all"]
 - Extract entities even if not explicitly searched for (they may be in the documents)
 - For collection_name, create a descriptive but concise title
+- keywords must be TOPICAL terms only (the subject matter the user is interested
+  in). NEVER include meta/structural words like "document", "documents", "dossier",
+  "fichier", "file", "folder", "tous", "toutes", "all", "faire" — they describe
+  the request, not the content, and they dilute semantic search.
 - Respond ONLY with valid JSON, no explanations
 
 Response format (JSON only):
@@ -195,7 +199,7 @@ Examples:
 Query: "Show me all financial documents from 2023"
 Response:
 {
-  "keywords": ["financial", "documents"],
+  "keywords": ["financial"],
   "date_range": {"type": "custom", "custom": {"start": "2023-01-01", "end": "2023-12-31"}},
   "entities": [],
   "document_types": ["all"],
@@ -225,7 +229,7 @@ Response:
 Query: "Documents related to John's birthday last week"
 Response:
 {
-  "keywords": ["birthday", "documents"],
+  "keywords": ["birthday"],
   "date_range": {"type": "last_week"},
   "entities": [{"type": "person", "name": "John"}],
   "document_types": ["all"],

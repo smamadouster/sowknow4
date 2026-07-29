@@ -205,6 +205,9 @@ class HybridSearchService:
                 FROM document_chunks
                 WHERE embedding_vector IS NOT NULL
                   AND bucket = ANY(:buckets)
+                  -- Degenerate chunks ("-", ",", OCR fragments) embed near the
+                  -- corpus mean and outrank real content on every query.
+                  AND length(chunk_text) >= 30
                 ORDER BY embedding_vector <=> CAST(:embedding AS vector)
                 LIMIT :pool
             )

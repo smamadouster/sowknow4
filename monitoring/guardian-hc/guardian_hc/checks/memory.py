@@ -11,10 +11,18 @@ class MemoryChecker:
                     cid = container["Id"][:12]
                     name = container["Names"][0].lstrip("/")
                     stats = (await client.get(f"/containers/{cid}/stats?stream=false")).json()
-                    mem_u = stats.get("memory_stats", {}).get("usage", 0)
-                    mem_l = stats.get("memory_stats", {}).get("limit", 1)
+                    mem_stats = stats.get("memory_stats", {})
+                    mem_u = mem_stats.get("usage", 0)
+                    mem_l = mem_stats.get("limit", 1)
+                    # cgroup v1 counts page cache in `usage`. Subtract the
+                    # reclaimable file cache (same working-set math as
+                    # `docker stats`) or file-heavy services like postgres
+                    # pin at ~100% forever and false-positive.
+                    cg = mem_stats.get("stats", {})
+                    inactive = cg.get("total_inactive_file", cg.get("inactive_file", 0))
+                    working = max(mem_u - inactive, 0)
                     if mem_l > 0 and mem_l < 2**62:
-                        pct = (mem_u / mem_l) * 100
+                        pct = (working / mem_l) * 100
                         # Early warning at 80% so operators have time to react before
                         # the 90% auto-heal threshold triggers a container restart.
                         severity = (

@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 import structlog
 
+from guardian_hc.alerts import _resolve_env
 from guardian_hc.healers.container_healer import ContainerHealer
 from guardian_hc.plugin import (
     CheckContext,
@@ -61,8 +62,13 @@ class ProbesPlugin(GuardianPlugin):
         self._nginx_url: str = config.get("nginx_url", "http://localhost:80")
         # service_account may be a dict {username, password} or a bare string
         # (name only, no credentials). Normalise to dict to keep usage consistent.
+        # ${VAR} patterns in values resolve from the environment (same
+        # convention as alerts.* / database.password) so secrets stay out of
+        # the committed YAML.
         sa = config.get("service_account", {})
-        self._service_account: dict = sa if isinstance(sa, dict) else {}
+        self._service_account: dict = (
+            {k: _resolve_env(str(v)) for k, v in sa.items()} if isinstance(sa, dict) else {}
+        )
         # Per-check consecutive failure streaks (retry-before-restart gating)
         self._fail_streaks: dict[str, int] = {}
 

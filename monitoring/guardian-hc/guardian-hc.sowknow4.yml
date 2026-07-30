@@ -211,7 +211,9 @@ plugins:
     enabled: true
   probes:
     enabled: true
-    service_account: "guardian-probe"
+    service_account:
+      username: "guardian-probe@sowknow.local"
+      password: "${GUARDIAN_PROBE_PASSWORD}"
   sentinel:
     enabled: true
   trends:

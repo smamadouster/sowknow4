@@ -105,3 +105,24 @@ def test_no_stats_key_falls_back_to_raw_usage(monkeypatch):
     stats = {"abc123def456": _stats_payload(usage=int(LIMIT * 0.95), limit=LIMIT, stats={})}
     results = _run(monkeypatch, containers, stats)
     assert results[0]["severity"] == "critical"
+
+
+def test_memory_alert_opt_out_suppresses_healing_but_keeps_reading(monkeypatch):
+    """A declared service with memory.alert: false is never healed/alerted,
+    but its reading still shows up truthfully for reports."""
+    from types import SimpleNamespace
+
+    containers = [{"Id": "abc123def456", "Names": ["/sowknow-embed-server-2"]}]
+    stats = {"abc123def456": _stats_payload(usage=int(LIMIT * 0.999), limit=LIMIT, stats={})}
+    services = [SimpleNamespace(container="sowknow-embed-server-2", memory={"alert": False})]
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda *a, **k: None)
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: FakeClient(containers, stats))
+    import asyncio
+
+    results = asyncio.run(MemoryChecker().check(services))
+    assert results[0]["severity"] == "critical"
+    assert results[0]["needs_healing"] is False
+    assert results[0]["alert_suppressed"] is True

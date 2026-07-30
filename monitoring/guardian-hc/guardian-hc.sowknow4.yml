@@ -75,6 +75,10 @@ services:
     auto_heal:
       restart: false
       rebuild_on_failure: false
+    # Same steady-state reason: a permanent ~100% memory reading is not
+    # actionable — suppress the alert (readings still recorded for reports).
+    memory:
+      alert: false
 
   - name: "rerank-server"
     container: "sowknow-rerank-server"

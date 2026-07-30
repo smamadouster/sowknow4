@@ -115,6 +115,7 @@ class ServiceConfig:
     container: str
     health_check: dict = field(default_factory=dict)
     auto_heal: dict = field(default_factory=dict)
+    memory: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -180,6 +181,7 @@ class GuardianHC:
                 container=svc.get("container", ""),
                 health_check=svc.get("health_check", {}),
                 auto_heal=svc.get("auto_heal", {}),
+                memory=svc.get("memory", {}),
             ))
 
         config = GuardianConfig(

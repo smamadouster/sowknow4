@@ -62,6 +62,20 @@ services:
       restart: true
       rebuild_on_failure: false
 
+  - name: "embed-server-2"
+    container: "sowknow-embed-server-2"
+    health_check:
+      type: http
+      url: "http://embed-server-2:8000/health"
+      timeout: 15
+    # 2026-07-30: never auto-restart on memory. The torch caching allocator
+    # grows to the cgroup limit and stays there (working set ~100% is steady
+    # state, not a leak) — a restart heals nothing and takes the replica
+    # offline mid-search. It was restarted every patrol while undeclared.
+    auto_heal:
+      restart: false
+      rebuild_on_failure: false
+
   - name: "rerank-server"
     container: "sowknow-rerank-server"
     health_check:

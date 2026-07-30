@@ -26,7 +26,6 @@ from guardian_hc.checks.celery_health import CeleryHealthChecker
 from guardian_hc.healers.container_healer import ContainerHealer
 from guardian_hc.healers.disk_healer import DiskHealer
 from guardian_hc.healers.ssl_healer import SslHealer
-from guardian_hc.healers.memory_healer import MemoryHealer
 from guardian_hc.healers.network_healer import NetworkHealer
 from guardian_hc.patrol.runner import PatrolRunner
 from guardian_hc.alerts import AlertManager
@@ -145,7 +144,6 @@ class GuardianHC:
         self.disk_checker = DiskChecker(config.disk)
         self.disk_healer = DiskHealer(config.disk)
         self.memory_checker = MemoryChecker()
-        self.memory_healer = MemoryHealer()
         self.ssl_checker = SslChecker(config.ssl)
         self.ssl_healer = SslHealer(config.ssl)
         self.drift_checker = ConfigDriftChecker(config)
@@ -525,6 +523,44 @@ class GuardianHC:
                 return svc
         return None
 
+    async def _handle_memory_critical(self, ms: dict, level: str, results: dict) -> None:
+        """Route one needs_healing memory result.
+
+        Declared + auto_heal.restart → tracked restart (RestartTracker flap
+        protection). Declared without restart, or undeclared → alert only.
+        Undeclared containers are NEVER restarted: no auto_heal policy or
+        flap protection applies, the container may belong to another stack
+        (ghostshell, victim, ...), and a server pinned at its limit by design
+        (embed-server-2's torch allocator) is not healed by a restart — it
+        was being restarted every patrol (2026-07-30).
+        """
+        svc = self._find_svc_for_container(ms["container"])
+        if svc and svc.auto_heal.get("restart", False):
+            await self._try_heal_container(svc, "memory_critical", results)
+            return
+        if svc:
+            summary = f"{svc.name} memory at {ms.get('mem_pct')}% (auto-heal disabled)"
+            details = f"Container memory usage at {ms.get('mem_pct')}% but auto-heal is disabled in config."
+            service = svc.name
+        else:
+            summary = f"{ms['container']} memory at {ms.get('mem_pct')}% (undeclared container — no auto-heal)"
+            details = (
+                "Container is not declared in config.services, so no auto_heal "
+                "policy or restart-flap protection applies. Guardian never restarts "
+                "undeclared containers; declare it with an explicit auto_heal policy."
+            )
+            service = ms["container"]
+        results["events"].append(AlertEvent(
+            event_id=f"{level}-{service}-memory_critical-{int(datetime.now(timezone.utc).timestamp())}",
+            severity="HIGH", service=service, container=ms["container"],
+            check_type="memory_critical", patrol_level=level,
+            timestamp=datetime.now(timezone.utc),
+            summary=summary, details=details,
+            heal_attempted=False, heal_success=None, heal_action=None,
+            restart_attempts=0, restart_suppressed=False,
+        ))
+        results["failed"] += 1
+
     async def run_check_cycle(self, level: str = "standard") -> dict:
         """Run a complete check + heal cycle."""
         results = {"level": level, "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -568,26 +604,7 @@ class GuardianHC:
             for ms in mem_status:
                 results["checks"].append({"type": "memory", **ms})
                 if ms.get("needs_healing"):
-                    svc = self._find_svc_for_container(ms["container"])
-                    if svc and svc.auto_heal.get("restart", False):
-                        await self._try_heal_container(svc, "memory_critical", results)
-                    elif svc:
-                        results["events"].append(AlertEvent(
-                            event_id=f"{level}-{svc.name}-memory_critical-{int(datetime.now(timezone.utc).timestamp())}",
-                            severity="HIGH", service=svc.name, container=svc.container,
-                            check_type="memory_critical", patrol_level=level,
-                            timestamp=datetime.now(timezone.utc),
-                            summary=f"{svc.name} memory at {ms.get('mem_pct')}% (auto-heal disabled)",
-                            details=f"Container memory usage at {ms.get('mem_pct')}% but auto-heal is disabled in config.",
-                            heal_attempted=False, heal_success=None, heal_action=None,
-                            restart_attempts=0, restart_suppressed=False,
-                        ))
-                        results["failed"] += 1
-                    else:
-                        heal = await self.memory_healer.heal(ms["container"])
-                        self.log_action({"target": ms["container"], "action": "memory_restart", **heal})
-                        if heal.get("healed"):
-                            results["healed"] += 1
+                    await self._handle_memory_critical(ms, level, results)
 
             # Celery health -- queue depth + worker responsiveness
             celery_results = await self.celery_checker.check()

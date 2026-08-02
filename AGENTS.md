@@ -30,13 +30,20 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - Scores are calibrated: keyword rank is squashed rank/(1+rank), cross-encoder
   logits are sigmoid-squashed, labels are absolute (no relative normalization).
   Do not reintroduce unbounded boosts into final_score.
-- Collections gather (2026-07-29): reranks top-40 candidates with the
+- Collections gather (2026-08-02): reranks top-60 candidates with the
   cross-encoder (blend 0.3 raw / 0.7 rerank) and applies an ABSOLUTE gate
-  pre-normalization. Degenerate chunks ("-", ",", repeated headers) embed near
+  (0.35). Scores are displayed ABSOLUTE — relative max-normalization was
+  removed (it inflated every top doc to 100% / marginal ones to 97%).
+  Degenerate chunks ("-", ",", repeated headers) embed near
   the corpus mean and outrank real content — never trust raw vector top-N
   without the reranker. Once the gate ran, do NOT broaden the query: few
   results means few relevant docs. semantic_search excludes chunk_text < 30
-  chars from the candidate pool.
+  chars from the candidate pool. Chunk branches search at limit=150,
+  collection cap 120.
+- LLM stream sentinel: providers yield "\n__USAGE__: {...}" as a trailing
+  chunk — `startswith("__USAGE__")` MISSES the leading newline and leaked
+  usage JSON into stored summaries (2026-08-02). Match `"__USAGE__" in chunk`
+  or split the joined text on it.
 - rerank-server is latency-critical: 0.5 CPU throttled it to ~6s/request and
   the client's 5s timeout silently disabled reranking fleet-wide. Keep its
   2.0 CPU limit and torch thread clamp (RERANK_TORCH_THREADS).

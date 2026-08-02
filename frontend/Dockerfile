@@ -8,6 +8,11 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
+# Build stamp (git short hash + UTC build time) shown above the logout button
+# so users can tell whether they run the latest version. Passed by deploy.sh.
+ARG NEXT_PUBLIC_BUILD_STAMP=dev
+ENV NEXT_PUBLIC_BUILD_STAMP=${NEXT_PUBLIC_BUILD_STAMP}
+
 # Install build dependencies for native modules (e.g. canvas)
 RUN apk add --no-cache python3 make g++ pkgconfig pixman-dev cairo-dev pango-dev libjpeg-turbo-dev giflib-dev
 

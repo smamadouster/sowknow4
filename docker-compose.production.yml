@@ -569,6 +569,8 @@ services:
         # JWT_SECRET must NEVER be passed to the frontend build.
         - NEXT_PUBLIC_API_URL=https://sowknow.gollamtech.com/api
         - NEXT_PUBLIC_APP_URL=https://sowknow.gollamtech.com
+        # Build stamp shown in the UI; set by scripts/deploy.sh at build time.
+        - NEXT_PUBLIC_BUILD_STAMP=${NEXT_PUBLIC_BUILD_STAMP:-dev}
     container_name: sowknow-frontend
     restart: unless-stopped
     deploy:

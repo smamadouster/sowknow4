@@ -342,8 +342,19 @@ export function Navigation() {
           )}
         </nav>
 
-        {/* Bottom: logout */}
+        {/* Bottom: build stamp + logout */}
         <div className="border-t border-white/[0.06] p-2">
+          <div
+            className={`px-3 pb-1 text-[10px] font-mono text-text-muted/60 truncate select-none ${
+              isCollapsed ? 'text-center px-0' : ''
+            }`}
+            title={`${t('build')}: ${process.env.NEXT_PUBLIC_BUILD_STAMP || 'dev'}`}
+            aria-label={`${t('build')}: ${process.env.NEXT_PUBLIC_BUILD_STAMP || 'dev'}`}
+          >
+            {isCollapsed
+              ? (process.env.NEXT_PUBLIC_BUILD_STAMP || 'dev').split('-')[0]
+              : `build ${process.env.NEXT_PUBLIC_BUILD_STAMP || 'dev'}`}
+          </div>
           <button
             onClick={() => setShowLogoutConfirm(true)}
             aria-label={t('logout')}

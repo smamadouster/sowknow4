@@ -36,6 +36,10 @@ if [ "$MAINT" != "0" ]; then
 fi
 
 echo "=== [2/3] Build: $TARGET ==="
+# Build stamp for the frontend UI (git short hash + UTC time) — lets users
+# tell whether they run the latest version (shown above the logout button).
+export NEXT_PUBLIC_BUILD_STAMP="$(git rev-parse --short HEAD 2>/dev/null || echo nogit)-$(date -u +%Y%m%d-%H%M)"
+echo "build stamp: $NEXT_PUBLIC_BUILD_STAMP"
 $COMPOSE build $TARGET
 
 echo "=== [3/3] Recreate (--no-deps): $TARGET ==="

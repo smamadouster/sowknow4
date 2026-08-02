@@ -53,6 +53,7 @@
     "journal": "Mon Journal",
     "settings": "Paramètres",
     "logout": "Déconnexion",
+    "build": "Version du build",
     "logout_confirm": "Êtes-vous sûr de vouloir vous déconnecter ?",
     "logout_streaming_warning": "L'IA génère actuellement une réponse. La déconnexion l'interrompra.",
     "logout_upload_warning": "Des fichiers sont en cours de téléchargement. La déconnexion les annulera.",

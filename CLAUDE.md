@@ -51,3 +51,9 @@ This project uses OpenWolf for context management. Read and follow .wolf/OPENWOL
 - **Encryption**: At-rest Fernet encryption for confidential docs, zero PII to cloud
 - **Audit**: All confidential access logged with timestamp + user ID
 - **Admin API**: `POST /api/v1/admin/users/{id}/reset-password` (admin only, returns temp password)
+
+## TESTING — Collection Orchestrator
+- **/test collections**: validate the Collection Requests module (nav → Collection Requests, or `POST /api/v1/collection-requests`) with the reference query:
+  **"me rassembler tous les fichiers au sujet de MATFORCE MALI"**
+  Expected: clarification → confirmation → grounded deliverable (computed insights only, annotated item list, disclosures). Live scenario harness: `scripts/collection_scenario_check.py`.
+- Build stamp: current deployed build (git short hash + UTC time) is shown above the logout button; set at build time by `scripts/deploy.sh` via `NEXT_PUBLIC_BUILD_STAMP`.

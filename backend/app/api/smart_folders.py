@@ -22,7 +22,7 @@ from app.database import get_db
 from app.models.audit import AuditAction, AuditLog
 from app.models.note import Note, NoteBucket
 from app.models.smart_folder import SmartFolder, SmartFolderReport, SmartFolderStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.collection import (
     CollectionReportRequest,
     SmartFolderGenerateRequest as LegacySmartFolderGenerateRequest,
@@ -558,14 +558,32 @@ async def get_report_templates(
 @router.get("/reports/{report_id}")
 async def get_report(
     report_id: UUID,
-    current_user: User = Depends(require_superuser_or_admin),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """Get a previously generated report (placeholder)."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Report history not yet implemented",
+) -> SmartFolderReportResponse:
+    """Get a previously generated report.
+
+    Available to the report's owner; admins/superusers may read any report.
+    """
+    result = await db.execute(
+        select(SmartFolderReport, SmartFolder)
+        .join(SmartFolder, SmartFolderReport.smart_folder_id == SmartFolder.id)
+        .where(SmartFolderReport.id == report_id)
     )
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found",
+        )
+    report, folder = row
+    is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERUSER)
+    if folder.user_id != current_user.id and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found",
+        )
+    return _report_to_response(report)
 
 
 # -----------------------------------------------------------------------------

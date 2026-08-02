@@ -47,6 +47,33 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - Embedding: `intfloat/multilingual-e5-large` via embed-server + embed-server-2
   (HTTP, circuit breaker). Chunk-level backfill: `scripts/backfill_null_chunks.py`.
 
+## Collection Orchestrator (2026-08-02, spec v2.0 in docs/collection_refactor/)
+
+- Orchestration layer over Search (`backend/app/services/collection_orchestrator/`,
+  API `/api/v1/collection-requests`, frontend `app/[locale]/collection-requests/`).
+  Defining rule: **compute first, narrate second** — the LLM only narrates
+  pre-computed analysis outputs; the GroundingValidator strips any narrative
+  claim that doesn't match a computed value (verified live: it rejects real
+  fabricated claims on every run). Never let raw document text reach the
+  summary prompt outside `<verified_data>` segments.
+- Absolute relevance gate (`COLLECTION_RELEVANCE_GATE=0.45`) after ranking —
+  marginal semantic matches are not results; all-gated = honest zero-result
+  outcome, never a fabricated summary.
+- LLM streams may append a `__USAGE__` sentinel trailer (base_llm_service
+  convention). Any JSON parse of LLM output must go through
+  `smart_folder/query_parser.extract_first_json` — naive find("{")..rfind("}")
+  spans the sentinel's JSON and fails.
+- Job model: Celery `collections` queue, checkpointed stages (resume on
+  retry), cooperative cancel, idempotency keys, ≤3 concurrent jobs/user.
+  Relevance/dedup/extraction/thresholds are `COLLECTION_*` settings, not
+  constants.
+- `/api/v1/collections` and smart-folder reports are owner-scoped for ALL
+  authenticated users since 2026-08-02 (was admin-only — that was the
+  "collections are broken" report's real cause).
+- Migration 035 applied live 2026-08-02 (additive only). Audit retention
+  purge: daily beat `collection-audit-retention` (03:30 UTC).
+- Live scenario harness: `scripts/collection_scenario_check.py`.
+
 ## Ops rules (incident-forged)
 
 - Guardian-HC (`monitoring/guardian-hc/`) watches and ALERTS. It must never

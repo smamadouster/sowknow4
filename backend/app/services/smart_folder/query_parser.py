@@ -5,6 +5,7 @@ Uses an LLM to extract structured parameters from a natural-language request.
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -12,6 +13,47 @@ from typing import Any
 from app.services.llm_router import llm_router, TaskTier
 
 logger = logging.getLogger(__name__)
+
+
+def extract_first_json(raw: str) -> Any:
+    """Extract the first balanced JSON object/array from LLM output.
+
+    Tolerates markdown fences, leading prose, and the "__USAGE__" sentinel
+    trailer the LLM stream may append (base_llm_service convention: callers
+    must skip it). Raises json.JSONDecodeError if no balanced JSON is found.
+    """
+    # The usage sentinel is always a trailer — cut everything from it on.
+    text = re.split(r"__USAGE__", raw, maxsplit=1)[0].strip()
+    # Strip a wrapping code fence.
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```\s*$", "", text).strip()
+    # Scan for the first balanced {...} or [...] — whichever opens first.
+    starts = [(i, c) for i, c in enumerate(text) if c in "{["]
+    for start, open_ch in starts:
+        close_ch = "}" if open_ch == "{" else "]"
+        depth = 0
+        in_str = False
+        escape = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == open_ch:
+                depth += 1
+            elif ch == close_ch:
+                depth -= 1
+                if depth == 0:
+                    return json.loads(text[start : i + 1])
+    raise json.JSONDecodeError("no balanced JSON found", raw, 0)
 
 
 @dataclass
@@ -80,16 +122,7 @@ Rules:
                 response_chunks.append(chunk)
 
             raw_response = "".join(response_chunks).strip()
-            # Clean up markdown code fences if present
-            if raw_response.startswith("```json"):
-                raw_response = raw_response[7:]
-            if raw_response.startswith("```"):
-                raw_response = raw_response[3:]
-            if raw_response.endswith("```"):
-                raw_response = raw_response[:-3]
-            raw_response = raw_response.strip()
-
-            data = json.loads(raw_response)
+            data = extract_first_json(raw_response)
 
             time_range_start = None
             time_range_end = None

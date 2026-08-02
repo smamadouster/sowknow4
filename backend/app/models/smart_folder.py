@@ -34,6 +34,23 @@ class RelationshipType(enum.StrEnum):
     GENERAL = "general"
 
 
+class CollectionJobState(enum.StrEnum):
+    """State of a Collection Orchestrator job attached to a smart folder."""
+
+    DRAFT = "draft"
+    CLARIFYING = "clarifying"
+    CONFIRMED = "confirmed"
+    QUEUED = "queued"
+    SEARCHING = "searching"
+    PROCESSING = "processing"
+    ANALYSING = "analysing"
+    SUMMARISING = "summarising"
+    PACKAGING = "packaging"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class SmartFolder(Base, TimestampMixin):
     """A saved Smart Folder query configuration.
 
@@ -95,6 +112,27 @@ class SmartFolder(Base, TimestampMixin):
 
     # Error message if generation failed
     error_message = Column(Text, nullable=True)
+
+    # --- Collection Orchestrator (additive, all nullable) -----------------
+
+    # Idempotency key for job creation (client-supplied, deduped per user)
+    idempotency_key = Column(String(255), nullable=True, index=True)
+
+    # Collection Orchestrator job state (see CollectionJobState)
+    job_state = Column(
+        String(50),
+        nullable=True,
+        default=CollectionJobState.DRAFT.value,
+    )
+
+    # Checkpoint: last completed stage + stage output refs (resumability)
+    checkpoint = Column(JSONB, nullable=True)
+
+    # Immutable snapshot of parameters after user confirmation
+    confirmed_params = Column(JSONB, nullable=True)
+
+    # Celery task driving this collection job
+    celery_task_id = Column(String(255), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="smart_folders")

@@ -41,6 +41,7 @@ from app.api import (
     search_feedback,
     search_suggest,
     smart_folders,
+    collection_requests,
     spaces,
     subscriptions,
     tags,
@@ -51,6 +52,7 @@ from app.api import health as health_router
 from app.api import status as status_router
 from app.database import create_all_tables, engine, init_pgvector
 from app.limiter import limiter
+from app.services.collection_orchestrator.pipeline_runner import TooManyJobsError
 from app.services.prometheus_metrics import get_metrics
 
 # Load environment variables
@@ -306,6 +308,19 @@ async def sqlalchemy_exception_handler(
     )
 
 
+@app.exception_handler(TooManyJobsError)
+async def too_many_jobs_exception_handler(
+    request: Request, exc: TooManyJobsError
+) -> JSONResponse:
+    """Map the collection concurrency guard to 429."""
+    return _error_response(
+        error_type="too_many_jobs",
+        message="Too many active collection jobs.",
+        detail=str(exc),
+        http_status=status.HTTP_429_TOO_MANY_REQUESTS,
+    )
+
+
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Catch-all handler so unhandled exceptions never leak tracebacks."""
@@ -458,6 +473,7 @@ app.include_router(documents.router, prefix="/api/v1")
 app.include_router(articles.router, prefix="/api/v1")
 app.include_router(collections.router, prefix="/api/v1")
 app.include_router(smart_folders.router, prefix="/api/v1")
+app.include_router(collection_requests.router, prefix="/api/v1")
 app.include_router(knowledge_graph.router, prefix="/api/v1")
 app.include_router(graph_rag.router, prefix="/api/v1")
 app.include_router(search_agent_router.router, prefix="/api/v1")

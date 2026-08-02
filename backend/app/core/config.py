@@ -139,6 +139,21 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # Collection Orchestrator
+    # ------------------------------------------------------------------
+
+    COLLECTION_ANALYSIS_BUDGET: int = 10000  # FR6.3 analysis budget
+    COLLECTION_MAX_ITEMS: int = 100000  # A5 hard cap
+    COLLECTION_CLARIFICATION_MAX_ROUNDS: int = 3  # FR1.5
+    COLLECTION_RESULT_CACHE_TTL: int = 900  # FR2.9, seconds
+    COLLECTION_FACT_CONFIDENCE_THRESHOLD: float = 0.7  # FR4.1.6
+    COLLECTION_MAX_CONCURRENT_JOBS_PER_USER: int = 3  # §2.4
+    COLLECTION_RELEVANCE_GATE: float = 0.45  # absolute gate: below = not a result (Scenario 4)
+    COLLECTION_SHOW_TRIMMED_COUNT: bool = True  # FR6.2: disclose ACL-trimmed doc count (tenant-configurable)
+    COLLECTION_AUDIT_RETENTION_DAYS: int = 2555  # FR8.4: audit trail retention (7 years)
+    COLLECTION_AUDIT_PSEUDONYMISE: bool = False  # FR8.4: hash user_id in audit exports
+
+    # ------------------------------------------------------------------
     # Validators
     # ------------------------------------------------------------------
 

@@ -11,6 +11,17 @@ from app.models.collection import (
     CollectionType,
     CollectionVisibility,
 )
+from app.models.collection_orchestrator import (
+    AnalysisResult,
+    Annotation,
+    ClarificationSession,
+    CollectionAuditEvent,
+    Deliverable,
+    FactSet,
+    Insight,
+    QueryExecution,
+    SourceItem,
+)
 from app.models.document import Document, DocumentChunk, DocumentTag
 from app.models.failed_task import FailedCeleryTask
 from app.models.knowledge_graph import (
@@ -24,6 +35,7 @@ from app.models.knowledge_graph import (
 from app.models.milestone import Milestone
 from app.models.pattern_insight import PatternInsight, PatternInsightType
 from app.models.smart_folder import (
+    CollectionJobState,
     RelationshipType,
     SmartFolder,
     SmartFolderReport,
@@ -71,6 +83,16 @@ __all__ = [
     "SmartFolderReport",
     "SmartFolderStatus",
     "RelationshipType",
+    "CollectionJobState",
+    "ClarificationSession",
+    "QueryExecution",
+    "SourceItem",
+    "Annotation",
+    "FactSet",
+    "AnalysisResult",
+    "Insight",
+    "Deliverable",
+    "CollectionAuditEvent",
     "Subscription",
     "BillingCycle",
     "SubscriptionStatus",

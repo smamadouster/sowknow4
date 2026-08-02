@@ -95,6 +95,11 @@
 [fn]: default({ mode, onAudioReady, onCancel, className = '', lang })
 
 ---
+### FILE: frontend/hooks/useCollectionRequestStream.ts
+[ext_deps]: react
+[fn]: useCollectionRequestStream()
+
+---
 ### FILE: frontend/hooks/useDebounce.ts
 [ext_deps]: react
 [fn]: useDebounce(value, delay)
@@ -156,6 +161,19 @@
 ---
 ### FILE: frontend/lib/api.ts
 [fn]: getCsrfToken()
+[interface]: CollectionClarificationQuestion { props: [id, kind, target, text, options, best_guess] }
+[interface]: CollectionClarificationPayload { props: [questions, round, max_rounds, extracted, intent] }
+[interface]: CollectionRequestCreated { props: [request_id, clarification] }
+[interface]: CollectionConfirmation { props: [params, assumptions, analysis_types] }
+[interface]: CollectionClarificationStep { props: [ready_to_confirm, questions, round, max_rounds, confirmation] }
+[interface]: CollectionRequestStatus { props: [request_id, job_state, checkpoint, error_message, deliverable_id] }
+[interface]: CollectionItemRelated { props: [id, document_id, title, link] }
+[interface]: CollectionItem { props: [id, document_id, title, annotation, category_tags, date, source, author, snippet, rank_position, relevance_score, status, page_number, link, related_items] }
+[interface]: CollectionItemsResponse { props: [items, total, page, page_size] }
+[interface]: CollectionAppendixTable { props: [title, columns, rows] }
+[interface]: CollectionAppendixEntry { props: [analysis_type, tables, charts, messages] }
+[interface]: CollectionDisclosure { props: [type, message] }
+[interface]: CollectionDeliverableView { props: [deliverable_id, request_id, version, summary_md, items, appendix, disclosures, data_as_of, generated_at, links_permission_bound] }
 [export]: api
 [export]: default
 
@@ -208,6 +226,56 @@
 ### FILE: frontend/app/i18n/request.ts
 [ext_deps]: next/navigation, next-intl/server, @/i18n/routing
 [export]: default
+
+---
+### FILE: frontend/components/collection-request/ClarificationDialog.tsx
+[ext_deps]: react, next-intl, @/lib/api
+[fn]: default({
+  questions,
+  round,
+  maxRounds,
+  loading,
+  onSubmit,
+  onSkip,
+})
+
+---
+### FILE: frontend/components/collection-request/CollectionProgress.tsx
+[ext_deps]: next-intl
+[fn]: default({
+  step = "queued",
+  message,
+  progressPercent = 0,
+})
+
+---
+### FILE: frontend/components/collection-request/ConfirmationCard.tsx
+[ext_deps]: next-intl, @/lib/api
+[fn]: default({
+  confirmation,
+  loading,
+  onConfirm,
+})
+
+---
+### FILE: frontend/components/collection-request/DeliverableView.tsx
+[ext_deps]: react, react-markdown, next-intl, @/components/smart-folder/ChartRenderer, @/lib/api, @/lib/toast, @/lib/api
+[fn]: default({ view })
+
+---
+### FILE: frontend/components/collection-request/ItemList.tsx
+[ext_deps]: react, next-intl, @/i18n/routing, @/lib/api
+[fn]: default({
+  data,
+  loading,
+  tag,
+  sort,
+  order,
+  onTagChange,
+  onSortChange,
+  onOrderChange,
+  onPageChange,
+})
 
 ---
 ### FILE: frontend/components/knowledge-graph/EntityDetail.tsx
@@ -321,6 +389,12 @@
 ### FILE: frontend/app/[locale]/chat/page.tsx
 [ext_deps]: react, next-intl, @/i18n/routing, react-markdown, rehype-highlight, rehype-sanitize, @/lib/api, @/hooks/useIsMobile, @/components/mobile/MobileBottomSheet
 [fn]: default()
+
+---
+### FILE: frontend/app/[locale]/collection-requests/page.tsx
+[ext_deps]: react, next-intl, @/i18n/routing, @/lib/api, @/lib/api, @/hooks/useCollectionRequestStream, @/hooks/useDebounce, @/components/smart-folder/SearchBar, @/components/collection-request/ClarificationDialog, @/components/collection-request/ConfirmationCard, @/components/collection-request/CollectionProgress, @/components/collection-request/DeliverableView, @/components/collection-request/ItemList
+[fn]: default()
+[export]: dynamic
 
 ---
 ### FILE: frontend/app/[locale]/collections/page.tsx

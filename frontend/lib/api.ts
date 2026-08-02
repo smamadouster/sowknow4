@@ -58,6 +58,121 @@ interface SpaceSummary { id: string; name: string; description: string | null; i
 interface SpaceDetailData extends SpaceSummary { items: SpaceItemData[]; rules: SpaceRuleData[]; }
 interface SpaceListData { spaces: SpaceSummary[]; total: number; page: number; page_size: number; }
 
+// --- Collection Orchestrator types ---
+export interface CollectionClarificationQuestion {
+  id: string;
+  kind?: string;
+  target?: string;
+  text: string;
+  options?: Array<{ value: string; label: string; canonical_id?: string | null; name?: string | null }>;
+  best_guess?: string | null;
+}
+
+export interface CollectionClarificationPayload {
+  questions: CollectionClarificationQuestion[];
+  round: number;
+  max_rounds: number;
+  extracted?: Array<Record<string, unknown>>;
+  intent?: string | null;
+}
+
+export interface CollectionRequestCreated {
+  request_id: string;
+  clarification: CollectionClarificationPayload;
+}
+
+export interface CollectionConfirmation {
+  params: Record<string, unknown>;
+  assumptions: string[];
+  analysis_types: string[];
+}
+
+export interface CollectionClarificationStep {
+  ready_to_confirm: boolean;
+  questions?: CollectionClarificationQuestion[];
+  round: number;
+  max_rounds: number;
+  confirmation?: CollectionConfirmation | null;
+}
+
+export interface CollectionRequestStatus {
+  request_id: string;
+  job_state: string | null;
+  checkpoint: Record<string, unknown> | null;
+  error_message: string | null;
+  deliverable_id: string | null;
+}
+
+export interface CollectionItemRelated {
+  id: string | null;
+  document_id: string | null;
+  title: string | null;
+  link: string | null;
+}
+
+export interface CollectionItem {
+  id: string | null;
+  document_id: string | null;
+  title: string | null;
+  annotation: string | null;
+  category_tags: string[];
+  date: string | null;
+  source: string | null;
+  author: string | null;
+  snippet: string | null;
+  rank_position: number | null;
+  relevance_score: number | null;
+  status: string;
+  page_number: number | null;
+  link: string | null;
+  related_items: CollectionItemRelated[];
+}
+
+export interface CollectionItemsResponse {
+  items: CollectionItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface CollectionAppendixTable {
+  title: string;
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+}
+
+export interface CollectionAppendixEntry {
+  analysis_type: string | null;
+  tables: CollectionAppendixTable[];
+  charts: Array<Record<string, unknown>>;
+  messages: string[];
+}
+
+export interface CollectionDisclosure {
+  type?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface CollectionDeliverableView {
+  deliverable_id: string;
+  request_id: string;
+  version: number;
+  summary_md: string | null;
+  items: CollectionItem[];
+  appendix: {
+    outcome?: string;
+    executed_queries?: Array<Record<string, unknown> | null>;
+    relaxation_suggestions?: string[];
+    analyses_rendered?: CollectionAppendixEntry[];
+    [key: string]: unknown;
+  };
+  disclosures: CollectionDisclosure[];
+  data_as_of: string | null;
+  generated_at: string | null;
+  links_permission_bound: boolean;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -1256,6 +1371,66 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(items),
     });
+  }
+
+  // --- Collection Orchestrator (collection-requests) ---
+
+  async createCollectionRequest(query: string, idempotencyKey: string) {
+    return this.request<CollectionRequestCreated>('/v1/collection-requests', {
+      method: 'POST',
+      body: JSON.stringify({ query, idempotency_key: idempotencyKey }),
+    });
+  }
+
+  async clarifyCollectionRequest(
+    requestId: string,
+    answers: Record<string, unknown> | unknown[],
+    skip: boolean = false
+  ) {
+    return this.request<CollectionClarificationStep>(`/v1/collection-requests/${requestId}/clarify`, {
+      method: 'POST',
+      body: JSON.stringify({ answers, skip }),
+    });
+  }
+
+  async confirmCollectionRequest(requestId: string) {
+    return this.request<{ request_id: string; task_id: string }>(
+      `/v1/collection-requests/${requestId}/confirm`,
+      { method: 'POST' }
+    );
+  }
+
+  async getCollectionRequestStatus(requestId: string) {
+    return this.request<CollectionRequestStatus>(`/v1/collection-requests/${requestId}/status`);
+  }
+
+  async getCollectionRequestItems(
+    requestId: string,
+    options: {
+      tag?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      sort?: 'rank' | 'date';
+      order?: 'asc' | 'desc';
+      page?: number;
+      pageSize?: number;
+    } = {}
+  ) {
+    const params = new URLSearchParams();
+    if (options.tag) params.set('tag', options.tag);
+    if (options.dateFrom) params.set('date_from', options.dateFrom);
+    if (options.dateTo) params.set('date_to', options.dateTo);
+    params.set('sort', options.sort || 'rank');
+    params.set('order', options.order || 'asc');
+    params.set('page', (options.page || 1).toString());
+    params.set('page_size', (options.pageSize || 20).toString());
+    return this.request<CollectionItemsResponse>(
+      `/v1/collection-requests/${requestId}/items?${params.toString()}`
+    );
+  }
+
+  async getCollectionDeliverable(requestId: string) {
+    return this.request<CollectionDeliverableView>(`/v1/collection-requests/${requestId}/deliverable`);
   }
 }
 

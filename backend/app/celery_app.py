@@ -46,6 +46,7 @@ celery_app = Celery(
         "app.tasks.guardian_tasks",
         "app.tasks.smart_folder_tasks",
         "app.tasks.collection_report_tasks",
+        "app.tasks.collection_request_tasks",
         "app.tasks.task_alarm_tasks",
         "app.tasks.subscription_tasks",
         "app.tasks.health_report_tasks",
@@ -91,6 +92,7 @@ celery_app.conf.update(
         "pipeline.sweeper": {"queue": "scheduled"},
         # Existing routes
         "build_smart_collection": {"queue": "collections"},
+        "app.tasks.collection_request_tasks.*": {"queue": "collections"},
         "app.tasks.document_tasks.*": {"queue": "document_processing"},
         "app.tasks.embedding_tasks.*": {"queue": "document_processing"},
         "app.tasks.article_tasks.*": {"queue": "document_processing"},
@@ -162,6 +164,11 @@ celery_app.conf.update(
         "task-alarm-checker": {
             "task": "app.tasks.task_alarm_tasks.check_task_alarms",
             "schedule": 60,  # Every 60 seconds
+            "args": (),
+        },
+        "collection-audit-retention": {
+            "task": "app.tasks.collection_request_tasks.purge_collection_audit_events_task",
+            "schedule": crontab(hour=3, minute=30),  # 03:30 UTC daily (FR8.4)
             "args": (),
         },
     },

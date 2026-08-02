@@ -1,4 +1,14 @@
+import re
+
 import httpx
+
+# Ephemeral `docker compose run` containers (e.g. ghostshell-researcher-run-742d2e58fc28,
+# legacy <project>_<service>_run_<n>). They are one-shot jobs: by the time a
+# memory alert is read the container is already gone, so the alert can never
+# be acted on (2026-07-31: three INCIDENT OPEN pages for a researcher-run
+# container that no longer existed). Readings are still recorded; alerting
+# and healing are suppressed.
+EPHEMERAL_RUN_RE = re.compile(r"(?:-run-[0-9a-f]{6,}|_run_\d+)$")
 
 
 class MemoryChecker:
@@ -40,14 +50,17 @@ class MemoryChecker:
                             "warning" if pct > 80 else
                             "ok"
                         )
+                        ephemeral = bool(EPHEMERAL_RUN_RE.search(name))
                         result = {
                             "container": name,
                             "mem_pct": round(pct, 1),
                             "severity": severity,
-                            "needs_healing": pct > 90 and name not in silenced,
+                            "needs_healing": pct > 90 and name not in silenced and not ephemeral,
                         }
                         if name in silenced and pct > 90:
                             result["alert_suppressed"] = True
+                        elif ephemeral and pct > 90:
+                            result["alert_suppressed"] = "ephemeral_run_container"
                         results.append(result)
         except Exception as e:
             results.append({"container": "error", "error": str(e)[:200], "needs_healing": False})

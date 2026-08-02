@@ -168,7 +168,13 @@ log "Backup targets: ${BACKUP_TARGETS[*]}"
 # Run daily Restic snapshot
 # ---------------------------------------------------------------------------
 log "Creating daily Restic snapshot..."
-if ! restic backup \
+# Restic exit codes: 0 = clean; 1 = warning (snapshot IS saved, but some
+# source files could not be read — expected when backing up the live
+# PostgreSQL data dir, where transient relations vanish mid-scan);
+# >=3 = fatal, no usable snapshot. Treat 1 as success-with-warning instead
+# of a false "backup failed" (same fix as backup-full.sh, 2026-08-02).
+restic_rc=0
+restic backup \
     --tag "daily" \
     --tag "host:$HOSTNAME_TAG" \
     --tag "date:$DATE" \
@@ -177,8 +183,11 @@ if ! restic backup \
     --exclude '**/node_modules' \
     --exclude '**/__pycache__' \
     --exclude '*.log' \
-    "${BACKUP_TARGETS[@]}" 2>>"$BACKUP_LOG_FILE"; then
-    fail "Restic backup failed"
+    "${BACKUP_TARGETS[@]}" 2>>"$BACKUP_LOG_FILE" || restic_rc=$?
+if [ "$restic_rc" -eq 1 ]; then
+    log "WARNING: Restic reported unreadable source files (exit 1); snapshot was still saved — continuing."
+elif [ "$restic_rc" -ne 0 ]; then
+    fail "Restic backup failed (exit $restic_rc)"
 fi
 
 # ---------------------------------------------------------------------------

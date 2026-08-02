@@ -708,6 +708,14 @@ services:
       dockerfile: Dockerfile
     container_name: sowknow-guardian-hc
     restart: unless-stopped
+    # 2026-08-02: pin upstream DNS. The host resolver intermittently returns
+    # "Temporary failure in name resolution" (sentinel.stale_data errors),
+    # which caused false-negative health checks and near-disastrous heal
+    # loops on 2026-07-28. Container-name resolution still goes through
+    # Docker's embedded DNS; this only pins the external forwarders.
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
     deploy:
       resources:
         limits:

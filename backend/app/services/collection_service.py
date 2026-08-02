@@ -445,9 +445,6 @@ class CollectionService:
         # Minimum raw score a single result must have to be considered relevant.
         # ts_rank_cd / cosine scores below this are treated as boilerplate/noise.
         MIN_RAW_SCORE = 0.15
-        # Floor for collection score normalization (prevents inflation when all
-        # results are weak, e.g. footer matches).
-        MIN_COLLECTION_NORM_FLOOR = 0.10
         results = []
         rerank_applied = False  # set when the cross-encoder gate actually scored
 
@@ -457,14 +454,16 @@ class CollectionService:
             # (PendingRollbackError) because asyncpg connections are not safe
             # for concurrent query execution.
             all_results = []
-            # Wider nets (50) so real content ranked just below the boilerplate
-            # band still reaches grouping + the rerank gate — dedup by document
-            # happens downstream, so duplicates cost nothing here.
+            # Wide nets on the chunk branches so doc-level recall is not
+            # bounded by a 50-chunk window clustering on a few documents
+            # (2026-08-02: "salaire" matches 392 distinct docs; limit=50
+            # surfaced only 44). Dedup by document happens downstream, so
+            # duplicates cost nothing here.
             for search_name, coro in [
                 ("article_semantic", self.search_service.article_semantic_search(query=search_query, limit=50, db=db, user=user)),
                 ("article_keyword", self.search_service.article_keyword_search(query=search_query, limit=50, db=db, user=user)),
-                ("semantic", self.search_service.semantic_search(query=search_query, limit=50, offset=0, db=db, user=user)),
-                ("keyword", self.search_service.keyword_search(query=search_query, limit=50, offset=0, db=db, user=user)),
+                ("semantic", self.search_service.semantic_search(query=search_query, limit=150, offset=0, db=db, user=user)),
+                ("keyword", self.search_service.keyword_search(query=search_query, limit=150, offset=0, db=db, user=user)),
             ]:
                 try:
                     res = await asyncio.wait_for(coro, timeout=12.0)
@@ -558,7 +557,7 @@ class CollectionService:
 
                 top_candidates = sorted(
                     grouped.values(), key=lambda x: x["relevance_score"], reverse=True
-                )[:40]
+                )[:60]
                 try:
                     passages = [c.get("passage") or c.get("document_name") or "" for c in top_candidates]
                     rerank_scores = await rerank_passages(search_query, passages)
@@ -570,27 +569,22 @@ class CollectionService:
                 except Exception as exc:
                     logger.warning(f"Collection gather rerank skipped: {exc}")
 
-                # Absolute quality gate (pre-normalization): drop documents the
-                # cross-encoder judged irrelevant so an all-junk result set
-                # cannot be re-inflated by the normalization below.
+                # Absolute quality gate: drop documents the cross-encoder judged
+                # irrelevant so an all-junk result set cannot pass through.
                 grouped = {
                     k: v for k, v in grouped.items() if v["relevance_score"] >= 0.35
                 }
 
-            # Normalize scores relative to the best match so they map to a 0-1 scale,
-            # but enforce a floor so weak overall result sets don't inflate to 80%+.
-            if grouped:
-                max_score = max(item["relevance_score"] for item in grouped.values())
-                max_score = max(max_score, MIN_COLLECTION_NORM_FLOOR)
-                for item in grouped.values():
-                    item["relevance_score"] = min(item["relevance_score"] / max_score, 1.0)
-
-            # Filter out documents that are still marginal after normalization
+            # Scores stay ABSOLUTE (search doctrine: calibrated labels, no
+            # relative normalization). Normalizing to the best match inflated
+            # every collection's top doc to 100% and marginal ones to 97%
+            # (2026-08-02 user report: "Plan comptable SYSCOHADA at 97%").
+            # Filter out documents that are still marginal, then cap the list.
             results = sorted(
                 [item for item in grouped.values() if item["relevance_score"] >= 0.35],
                 key=lambda x: x["relevance_score"],
                 reverse=True,
-            )[:50]
+            )[:120]
 
             # When the cross-encoder gate ran, few results means few RELEVANT
             # documents — broadening the query would just re-pollute the gated
@@ -745,10 +739,11 @@ Documents and articles in collection:
 
 Entities found: {entities_str}
 
-Summarize what this collection contains and its key themes. Be specific about the content, not generic."""
+Summarize what this collection contains and its key themes. Be specific about the content, not generic.
+Write the summary in the same language as the query above (the user's own words)."""
 
         messages = [
-            {"role": "system", "content": "You are a document collection summarizer. Write concise, specific summaries in 2-3 sentences. Respond only with the summary text, nothing else."},
+            {"role": "system", "content": "You are a document collection summarizer. Write concise, specific summaries in 2-3 sentences, in the same language as the user's query. Respond only with the summary text, nothing else."},
             {"role": "user", "content": prompt},
         ]
 
@@ -756,7 +751,9 @@ Summarize what this collection contains and its key themes. Be specific about th
             summary = await self.llm.chat_completion_non_stream(
                 messages=messages, temperature=0.5, max_tokens=500,
             )
-            return summary.strip()
+            # Defensive: never let the "__USAGE__" stream sentinel leak into
+            # a stored summary (base_llm_service convention).
+            return summary.strip().split("__USAGE__")[0].strip()
         except Exception as e:
             logger.error(f"MiniMax summary generation failed: {e}")
             return f"Collection of {len(results)} documents related to: {query}"
@@ -831,10 +828,13 @@ Generate a concise summary describing what this collection contains and its key 
                 messages=messages, stream=False, temperature=0.5, max_tokens=500,
                 has_confidential=has_confidential,
             ):
-                if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):
+                # The "__USAGE__" usage sentinel arrives as a trailing
+                # "\n__USAGE__: ..." chunk — startswith() misses the leading
+                # newline, so match anywhere and strip the joined text too.
+                if chunk and not chunk.startswith("Error:") and "__USAGE__" not in chunk:
                     response_parts.append(chunk)
 
-            return "".join(response_parts).strip()
+            return "".join(response_parts).split("__USAGE__")[0].strip()
 
         except Exception as e:
             logger.error(f"Failed to generate collection summary: {e}")

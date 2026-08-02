@@ -282,7 +282,7 @@ export default function CollectionsPage() {
                 >
                   <div className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition p-6">
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           {collection.is_pinned && (
                             <span className="text-yellow-500" title={t('pin')}>
@@ -298,7 +298,7 @@ export default function CollectionsPage() {
                             {collection.name}
                           </h3>
                         </div>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2 break-words">
                           {collection.ai_summary || collection.query}
                         </p>
                       </div>

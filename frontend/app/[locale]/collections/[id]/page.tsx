@@ -388,14 +388,14 @@ export default function CollectionDetailPage() {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                 Query
               </h2>
-              <p className="text-gray-700 dark:text-gray-300 mb-4">{collection.query}</p>
+              <p className="text-gray-700 dark:text-gray-300 mb-4 break-words">{collection.query}</p>
 
               {collection.ai_summary && (
                 <>
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                     AI Summary
                   </h2>
-                  <p className="text-gray-700 dark:text-gray-300">{collection.ai_summary}</p>
+                  <p className="text-gray-700 dark:text-gray-300 break-words whitespace-pre-wrap">{collection.ai_summary}</p>
                 </>
               )}
             </div>
@@ -429,17 +429,17 @@ export default function CollectionDetailPage() {
                           )}
                         </div>
                         {item.article_summary && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2 break-words">
                             {item.article_summary}
                           </p>
                         )}
                         {!item.article_summary && item.notes && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 break-words">
                             {item.notes}
                           </p>
                         )}
                         {item.article_title && item.document?.filename && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 break-words">
                             {item.document.filename}
                           </p>
                         )}

@@ -95,6 +95,8 @@ formatted: thousands separators, 1-decimal percentages, ISO dates).
 {sections}
 7. If a section has no supporting verified data, write "No data available." \
 for that section — never fill it with invention.
+8. Write the entire narrative — section headings included — in the language \
+of the user's collection request (confirmed_parameters.query_text).
 """.replace("{sections}", "\n".join(f"   - {s}" for s in SECTIONS))
 
 
@@ -125,8 +127,12 @@ class SummaryGenerator:
             max_tokens=4096,
             tier=TaskTier.STANDARD,
         ):
-            chunks.append(chunk)
-        return "".join(chunks)
+            # Skip error chunks and the trailing "\n__USAGE__: ..." usage
+            # sentinel (base_llm_service convention) — startswith() misses it
+            # because of the leading newline.
+            if chunk and not chunk.startswith("Error:") and "__USAGE__" not in chunk:
+                chunks.append(chunk)
+        return "".join(chunks).split("__USAGE__")[0].strip()
 
     # ------------------------------------------------------------------
     # Prompt construction

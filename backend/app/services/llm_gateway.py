@@ -449,7 +449,10 @@ class LLMGateway:
                 **kwargs,
             )
 
-        # Fallback: collect streamed chunks into a single string
+        # Fallback: collect streamed chunks into a single string.
+        # The "__USAGE__" sentinel is yielded as a trailing "\n__USAGE__: ..."
+        # chunk (base_llm_service convention), so a startswith() check misses
+        # it — match anywhere in the chunk and strip the joined text too.
         parts: list[str] = []
         async for chunk in svc.chat_completion(
             messages=messages,
@@ -458,13 +461,9 @@ class LLMGateway:
             max_tokens=max_tokens,
             **kwargs,
         ):
-            if (
-                chunk
-                and not chunk.startswith("Error:")
-                and not chunk.startswith("__USAGE__")
-            ):
+            if chunk and not chunk.startswith("Error:") and "__USAGE__" not in chunk:
                 parts.append(chunk)
-        return "".join(parts)
+        return "".join(parts).split("__USAGE__")[0].strip()
 
     # ── Report generation (quality-critical multi-tier fallback) ──
 

@@ -118,6 +118,40 @@ class TestOrchestratorSummaryGenerator:
         assert result == "narrative text"
 
 
+class TestGatherQueryText:
+    """2026-08-02: the intent parser may return raw query tokens as keywords
+    (["faire","dossier","sur","les","salaires",...]); plainto_tsquery ANDs
+    every term, so unfiltered keywords silently kill recall."""
+
+    def test_french_stopwords_filtered(self):
+        from app.services.collection_service import gather_query_text
+
+        intent = MagicMock(
+            keywords=["faire", "dossier", "sur", "les", "salaires",
+                      "tout", "qui", "rapproche", "mot", "salaire"],
+            query="faire un dossier sur les salaires",
+        )
+        assert gather_query_text(intent) == "salaires salaire"
+
+    def test_meaningful_keywords_kept_in_order(self):
+        from app.services.collection_service import gather_query_text
+
+        intent = MagicMock(keywords=["MATFORCE", "mali", "contrats"], query="q")
+        assert gather_query_text(intent) == "MATFORCE mali contrats"
+
+    def test_fallback_to_raw_query_when_all_stopwords(self):
+        from app.services.collection_service import gather_query_text
+
+        intent = MagicMock(keywords=["le", "la", "les"], query="raw query")
+        assert gather_query_text(intent) == "raw query"
+
+    def test_no_keywords_uses_raw_query(self):
+        from app.services.collection_service import gather_query_text
+
+        intent = MagicMock(keywords=[], query="raw query")
+        assert gather_query_text(intent) == "raw query"
+
+
 class TestGatherAbsoluteScores:
     """Scores must stay absolute: the best doc keeps its blended score, it is
     NOT re-inflated to 1.0 by relative normalization."""

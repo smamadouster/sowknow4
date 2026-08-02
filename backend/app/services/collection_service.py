@@ -49,6 +49,45 @@ from app.services.search_service import search_service
 
 logger = logging.getLogger(__name__)
 
+# Stopwords stripped from intent keywords before building the gather query.
+# The intent parser sometimes returns the raw query tokens (French stopwords
+# included — 2026-08-02: keywords were ["faire","dossier","sur","les",...]),
+# and plainto_tsquery ANDs every term, so a noisy keyword list silently
+# kills recall (4 docs found instead of 19+ for "salaire").
+_SEARCH_STOPWORDS = frozenset({
+    # French function words
+    "le", "la", "les", "un", "une", "des", "de", "du", "au", "aux", "en",
+    "et", "ou", "sur", "dans", "par", "pour", "avec", "sans", "sous",
+    "ce", "cet", "cette", "ces", "son", "sa", "ses", "leur", "leurs",
+    "qui", "que", "quoi", "dont", "où", "se", "me", "te", "nous", "vous",
+    "ne", "pas", "plus", "tout", "tous", "toute", "toutes", "être", "avoir",
+    # French collection-request noise verbs/nouns
+    "faire", "fait", "mot", "mots", "sujet", "dossier", "fichier", "fichiers",
+    "document", "documents", "rassembler", "rassemble", "rassembler tous",
+    "rapproche", "rapprocher", "proche", "proches", "cherche", "chercher",
+    "recherche", "trouve", "trouver", "liste", "lister", "mémo", "memo",
+    # English function words + same noise
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "at", "for",
+    "with", "without", "about", "all", "any", "me", "my", "make", "create",
+    "file", "files", "folder", "find", "search", "gather", "collect",
+    "word", "words", "related", "close", "near", "list", "memo",
+})
+
+
+def gather_query_text(intent: Any) -> str:
+    """Build the gather search query from intent keywords, stopword-filtered.
+
+    Falls back to the raw intent query when filtering leaves nothing.
+    """
+    keywords = [
+        k.strip()
+        for k in (getattr(intent, "keywords", None) or [])
+        if k and k.strip().lower() not in _SEARCH_STOPWORDS and len(k.strip()) > 1
+    ]
+    if keywords:
+        return " ".join(keywords)
+    return (getattr(intent, "query", "") or "").strip()
+
 
 class CollectionService:
     """Service for managing Smart Collections"""
@@ -431,7 +470,7 @@ class CollectionService:
         """
         import asyncio
 
-        search_query = " ".join(intent.keywords) if intent.keywords else intent.query
+        search_query = gather_query_text(intent)
         user_role = user.role.value if user and hasattr(user, "role") else "user"
 
         # Check cache first

@@ -347,6 +347,10 @@
     "subtitle": "Collection guidée avec clarification, résumé sourcé et piste d'audit",
     "search_placeholder": "Décrivez ce que vous souhaitez collecter…",
     "new_request": "Démarrer une nouvelle requête",
+    "delete_request": "Supprimer cette requête",
+    "delete_confirm": "Supprimer cette requête de collection et tous ses artefacts (éléments, analyses, livrables) ? Action irréversible.",
+    "deleting": "Suppression…",
+    "delete_error": "Échec de la suppression de la requête",
     "clarify_title": "Quelques questions pour préciser",
     "clarify_round": "Tour {round} sur {max}",
     "your_answer": "Votre réponse (texte libre)…",
@@ -437,7 +441,11 @@
     "share": "Partager",
     "share_success": "Lien copié dans le presse-papiers",
     "share_error": "Échec de la copie du lien",
-    "regenerate": "Régénérer"
+    "regenerate": "Régénérer",
+    "delete": "Supprimer",
+    "delete_confirm": "Supprimer ce dossier intelligent et tous ses rapports ? Action irréversible.",
+    "delete_success": "Dossier intelligent supprimé",
+    "delete_error": "Échec de la suppression du dossier intelligent"
   },
   "reports": {
     "title": "Rapports",

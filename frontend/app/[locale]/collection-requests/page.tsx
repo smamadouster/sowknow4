@@ -121,6 +121,25 @@ export default function CollectionRequestsPage() {
     [t]
   );
 
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = useCallback(async () => {
+    if (!requestId) return;
+    if (!window.confirm(t("delete_confirm"))) return;
+    setDeleting(true);
+    try {
+      const res = await api.deleteCollectionRequest(requestId);
+      if (!res.error || res.status === 404) {
+        // 404 = already gone — same end state.
+        resetAll();
+      } else {
+        setError(res.error || t("delete_error"));
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }, [requestId, resetAll, t]);
+
   const startProcessing = useCallback(
     (id: string) => {
       setPhase("processing");
@@ -358,7 +377,16 @@ export default function CollectionRequestsPage() {
 
         {/* New request shortcut once a flow is underway */}
         {phase !== "input" && (
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-4 mb-4">
+            {requestId && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300 transition disabled:opacity-50"
+              >
+                {deleting ? t("deleting") : t("delete_request")}
+              </button>
+            )}
             <button
               onClick={resetAll}
               className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"

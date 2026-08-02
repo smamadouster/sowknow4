@@ -158,6 +158,49 @@ async def get_smart_folder(
     }
 
 
+@router.delete("/{smart_folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_smart_folder(
+    smart_folder_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a Smart Folder and its reports (ORM cascade) plus any
+    collection-request artifacts sharing the row (FK cascade).
+
+    Idempotent: deleting an already-deleted folder returns 204. An active
+    generation/collection job is revoked before deletion.
+    """
+    result = await db.execute(select(SmartFolder).where(SmartFolder.id == smart_folder_id))
+    sf = result.scalar_one_or_none()
+    if sf is None:
+        return None  # idempotent: already gone
+    if sf.user_id != current_user.id:
+        # Exists but owned by someone else — 404 without leaking existence.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Smart Folder not found")
+
+    task_id = getattr(sf, "celery_task_id", None)
+    job_state = getattr(sf, "job_state", None)
+    if task_id and job_state not in ("completed", "failed", "cancelled"):
+        try:
+            from app.celery_app import celery_app
+
+            celery_app.control.revoke(task_id, terminate=True)
+        except Exception as exc:
+            logger.warning("Celery revoke failed for task %s: %s", task_id, exc)
+
+    await _create_audit_log(
+        db,
+        current_user.id,
+        AuditAction.SYSTEM_ACTION,
+        "smart_folder",
+        str(sf.id),
+        {"action": "delete", "name": (sf.name or "")[:100]},
+    )
+    await db.delete(sf)
+    await db.commit()
+    return None
+
+
 @router.post("/{smart_folder_id}/refresh", status_code=status.HTTP_202_ACCEPTED)
 async def refresh_smart_folder(
     smart_folder_id: UUID,

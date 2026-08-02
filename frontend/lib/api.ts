@@ -1185,8 +1185,12 @@ class ApiClient {
     }>(`/v1/smart-folders/${id}`);
   }
 
-  async refineSmartFolder(id: string, refinementQuery: string) {
-    return this.request<{ task_id: string; status: string; status_url: string; message: string }>(`/v1/smart-folders/${id}/refine`, {
+  async deleteSmartFolder(id: string) {
+    // Idempotent backend: 204 whether freshly deleted or already gone.
+    return this.request(`/v1/smart-folders/${id}`, { method: 'DELETE' });
+  }
+
+  async refineSmartFolder(id: string, refinementQuery: string) {    return this.request<{ task_id: string; status: string; status_url: string; message: string }>(`/v1/smart-folders/${id}/refine`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refinement_query: refinementQuery }),
@@ -1431,6 +1435,11 @@ class ApiClient {
 
   async getCollectionDeliverable(requestId: string) {
     return this.request<CollectionDeliverableView>(`/v1/collection-requests/${requestId}/deliverable`);
+  }
+
+  async deleteCollectionRequest(requestId: string) {
+    // Idempotent backend: 204 whether freshly deleted or already gone.
+    return this.request(`/v1/collection-requests/${requestId}`, { method: 'DELETE' });
   }
 }
 

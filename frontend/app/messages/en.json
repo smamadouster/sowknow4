@@ -347,6 +347,10 @@
     "subtitle": "Guided collection with clarification, grounded summary and audit trail",
     "search_placeholder": "Describe what you want to collect…",
     "new_request": "Start a new request",
+    "delete_request": "Delete this request",
+    "delete_confirm": "Delete this collection request and all its artifacts (items, analyses, deliverables)? This cannot be undone.",
+    "deleting": "Deleting…",
+    "delete_error": "Failed to delete the request",
     "clarify_title": "A few questions to narrow things down",
     "clarify_round": "Round {round} of {max}",
     "your_answer": "Your answer (free text)…",
@@ -437,7 +441,11 @@
     "share": "Share",
     "share_success": "Link copied to clipboard",
     "share_error": "Failed to copy link",
-    "regenerate": "Regenerate"
+    "regenerate": "Regenerate",
+    "delete": "Delete",
+    "delete_confirm": "Delete this Smart Folder and all its reports? This cannot be undone.",
+    "delete_success": "Smart Folder deleted",
+    "delete_error": "Failed to delete Smart Folder"
   },
   "reports": {
     "title": "Reports",

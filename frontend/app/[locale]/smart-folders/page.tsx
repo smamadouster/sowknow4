@@ -284,6 +284,24 @@ export default function SmartFoldersPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!smartFolder) return;
+    if (!window.confirm(t("delete_confirm"))) return;
+    try {
+      const res = await api.deleteSmartFolder(smartFolder.id);
+      if (!res.error || res.status === 404) {
+        // 404 = already gone — same end state.
+        setReport(null);
+        setSmartFolder(null);
+        setToast({ message: t("delete_success"), type: "success" });
+      } else {
+        setToast({ message: res.error || t("delete_error"), type: "error" });
+      }
+    } catch {
+      setToast({ message: t("delete_error"), type: "error" });
+    }
+  };
+
   // Load from URL param on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -380,6 +398,12 @@ export default function SmartFoldersPage() {
                 className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
               >
                 {t("regenerate")}
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition ml-auto"
+              >
+                {t("delete")}
               </button>
             </div>
 

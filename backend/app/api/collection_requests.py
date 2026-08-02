@@ -458,6 +458,48 @@ async def cancel_collection_request(
 
 
 # ---------------------------------------------------------------------------
+# DELETE /{id} — owner-scoped, idempotent
+# ---------------------------------------------------------------------------
+
+@router.delete("/{request_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def delete_collection_request(
+    request_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a collection request and all its artifacts (items, annotations,
+    factsets, analyses, deliverables, audit chain) via FK cascade.
+
+    Idempotent: deleting an already-deleted request returns 204 (same end
+    state, no false "not found" errors on retries). A request with an active
+    job is cancelled (cooperative flag + Celery revoke) before deletion.
+    """
+    result = await db.execute(select(SmartFolder).where(SmartFolder.id == request_id))
+    folder = result.scalar_one_or_none()
+    if folder is None:
+        return None  # idempotent: already gone
+    if folder.user_id != current_user.id:
+        # Exists but owned by someone else — 404 without leaking existence.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Collection request not found",
+        )
+
+    if folder.job_state not in (
+        CollectionJobState.COMPLETED.value,
+        CollectionJobState.FAILED.value,
+        CollectionJobState.CANCELLED.value,
+    ):
+        folder.job_state = CollectionJobState.CANCELLED.value
+        if folder.celery_task_id:
+            _revoke_task(folder.celery_task_id)
+
+    await db.delete(folder)
+    await db.commit()
+    return None
+
+
+# ---------------------------------------------------------------------------
 # GET /{id}/status
 # ---------------------------------------------------------------------------
 

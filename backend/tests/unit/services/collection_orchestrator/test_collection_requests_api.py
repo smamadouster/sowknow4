@@ -551,6 +551,58 @@ class TestCancel:
 
 
 # ---------------------------------------------------------------------------
+# DELETE /{id} — owner-scoped, idempotent
+# ---------------------------------------------------------------------------
+
+class TestDelete:
+    def test_delete_completed_request_returns_204_and_deletes(self, monkeypatch):
+        revoke = MagicMock()
+        monkeypatch.setattr(cr, "_revoke_task", revoke)
+        folder = make_folder(job_state="completed")
+        db = make_db([one(folder)])
+        client = make_client(db)
+
+        response = client.delete(f"/collection-requests/{FOLDER_ID}")
+
+        assert response.status_code == 204
+        db.delete.assert_awaited_once_with(folder)
+        revoke.assert_not_called()  # terminal job — nothing to revoke
+
+    def test_delete_active_job_cancels_and_revokes_first(self, monkeypatch):
+        revoke = MagicMock()
+        monkeypatch.setattr(cr, "_revoke_task", revoke)
+        folder = make_folder(job_state="analysing", celery_task_id="task-7")
+        db = make_db([one(folder)])
+        client = make_client(db)
+
+        response = client.delete(f"/collection-requests/{FOLDER_ID}")
+
+        assert response.status_code == 204
+        assert folder.job_state == "cancelled"
+        revoke.assert_called_once_with("task-7")
+        db.delete.assert_awaited_once_with(folder)
+
+    def test_delete_is_idempotent_when_already_gone(self):
+        db = make_db([one(None)])  # row not found
+        client = make_client(db)
+
+        response = client.delete(f"/collection-requests/{FOLDER_ID}")
+
+        assert response.status_code == 204  # same end state, no false error
+        db.delete.assert_not_called()
+
+    def test_delete_404_for_other_users_request(self):
+        folder = make_folder(user_id=uuid.uuid4())  # different owner
+        db = make_db([one(folder)])
+        client = make_client(db)
+
+        response = client.delete(f"/collection-requests/{FOLDER_ID}")
+
+        assert response.status_code == 404
+        db.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # GET /{id}/audit
 # ---------------------------------------------------------------------------
 

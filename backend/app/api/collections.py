@@ -397,11 +397,17 @@ async def delete_collection(
     Only the collection owner can delete it.
     """
     coll_result = await db.execute(
-        select(Collection).where(and_(Collection.id == collection_id, Collection.user_id == current_user.id))
+        select(Collection).where(Collection.id == collection_id)
     )
     collection = coll_result.scalar_one_or_none()
 
-    if not collection:
+    if collection is None:
+        # DELETE is idempotent: an already-deleted collection is a success,
+        # not an error — prevents confusing "Collection not found" toasts on
+        # double-clicks and stale-UI retries.
+        return None
+    if collection.user_id != current_user.id:
+        # Exists but owned by someone else — 404 without leaking existence.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     await db.delete(collection)

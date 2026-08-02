@@ -183,8 +183,9 @@ export default function CollectionsPage() {
     setDeletingId(collectionId);
     try {
       const res = await api.deleteCollection(collectionId);
-      if (!res.error) {
-        fetchCollections();
+      if (!res.error || res.status === 404) {
+        // 404 = already gone (e.g. deleted in another tab) — same end state.
+        await fetchCollections();
       } else {
         showToast(res.error || 'Failed to delete collection', 'error');
       }

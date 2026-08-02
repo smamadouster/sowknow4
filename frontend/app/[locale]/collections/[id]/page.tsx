@@ -239,7 +239,8 @@ export default function CollectionDetailPage() {
     setDeleteLoading(true);
     try {
       const res = await api.deleteCollection(collection.id);
-      if (!res.error) {
+      if (!res.error || res.status === 404) {
+        // 404 = already deleted elsewhere — same end state, just leave.
         setShowDeleteConfirm(false);
         router.push(`/${params.locale}/collections`);
       } else {

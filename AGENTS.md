@@ -80,6 +80,12 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - Migration 035 applied live 2026-08-02 (additive only). Audit retention
   purge: daily beat `collection-audit-retention` (03:30 UTC).
 - Live scenario harness: `scripts/collection_scenario_check.py`.
+- Legacy `/api/v1/collections` (collection_service.py): gather keywords are
+  stopword-filtered via `gather_query_text()` (unfiltered intent keywords
+  ANDed by plainto_tsquery killed recall). After a deploy, never refresh a
+  collection until `search/health` is healthy — a gather that races
+  embed-server warmup times out, breaks the session (`greenlet_spawn`), and
+  refresh then commits the empty result set over the old items.
 
 ## Ops rules (incident-forged)
 

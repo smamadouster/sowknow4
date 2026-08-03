@@ -10,7 +10,8 @@ NC='\033[0m' # No Color
 
 # Production branch name
 PROTECTED_BRANCH="master"
-REMOTE_NAME="devrepo"
+# The push remote is passed as $1 (e.g. "origin"); the Daytona-era hardcode was "devrepo".
+REMOTE_NAME="${1:-origin}"
 
 while read local_ref local_sha remote_ref remote_sha; do
     # Check if we are pushing to the PROTECTED_BRANCH

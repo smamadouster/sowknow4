@@ -61,6 +61,11 @@ services:
     auto_heal:
       restart: true
       rebuild_on_failure: false
+      # Torch model warmup after restart takes ~60-90s; the default 20s+10s
+      # verify window misreads a loading server as a failed heal and burns
+      # restart attempts (INC-20260802-001/002 flapped on this).
+      verify_delay: 120
+      verify_timeout: 15
 
   - name: "embed-server-2"
     container: "sowknow-embed-server-2"
@@ -91,6 +96,9 @@ services:
     auto_heal:
       restart: true
       rebuild_on_failure: false
+      # Model server: same warmup rationale as embed-server.
+      verify_delay: 90
+      verify_timeout: 15
 
   - name: "celery-light"
     container: "sowknow-celery-light"

@@ -165,8 +165,12 @@ def _generate_html(metrics: dict, containers: list[dict], history: list[dict], n
 
     incident_rows = ""
     for h in (healed[-5:] + failed[-5:]):
-        color = "#10B981" if h.get("healed") else "#EF4444"
-        status = "Healed" if h.get("healed") else "Pending"
+        # Same condition as the counts above: v2 plugin heals log "success",
+        # not "healed" — without this they rendered as red "Pending" rows even
+        # when the heal succeeded (2026-08-03 dashboard).
+        ok = h.get("healed") or h.get("success") is True
+        color = "#10B981" if ok else "#EF4444"
+        status = "Healed" if ok else "Pending"
         target = h.get("target", "?")
         action = h.get("action", h.get("error", ""))
         incident_rows += f"""<tr>

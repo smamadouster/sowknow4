@@ -436,14 +436,22 @@ class GuardianHC:
             logger.warning("tracker_state.save_failed", error=str(e)[:200])
 
     async def _verify_container_health(self, svc: ServiceConfig) -> bool:
-        """After restart, verify the container is actually healthy."""
-        await asyncio.sleep(HEAL_VERIFY_DELAY)
+        """After restart, verify the container is actually healthy.
+
+        verify_delay/verify_timeout are per-service overridable via auto_heal:
+        ML servers (embed/rerank) need their torch warmup window — the default
+        20s+10s misreads a loading model server as a failed heal and burns
+        restart attempts (INC-20260802-001/002).
+        """
+        delay = svc.auto_heal.get("verify_delay", HEAL_VERIFY_DELAY)
+        timeout = svc.auto_heal.get("verify_timeout", HEAL_VERIFY_TIMEOUT)
+        await asyncio.sleep(delay)
         status = await self.container_checker.check(svc.container)
         if status["status"] != "running":
             return False
         hc = svc.health_check
         if hc.get("type") == "http":
-            check = await HttpHealthChecker.check(hc.get("url", ""), timeout=HEAL_VERIFY_TIMEOUT)
+            check = await HttpHealthChecker.check(hc.get("url", ""), timeout=timeout)
             return check.get("healthy", False)
         elif hc.get("type") == "tcp":
             check = await TcpHealthChecker.check(hc.get("host", "localhost"), hc.get("port", 0))

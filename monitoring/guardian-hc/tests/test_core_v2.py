@@ -529,3 +529,54 @@ class TestV2AttrsInit:
     def test_v2_config_initialized_none(self, guardian):
         assert hasattr(guardian, "_v2_config")
         assert guardian._v2_config is None
+
+
+# ---------------------------------------------------------------------------
+# Test: per-service post-heal verification window
+# ---------------------------------------------------------------------------
+
+class TestVerifyContainerHealth:
+    """_verify_container_health honors auto_heal.verify_delay/verify_timeout.
+
+    ML servers (embed/rerank) need a torch warmup window after restart; the
+    default 20s+10s misread a loading server as a failed heal and burned
+    restart attempts (INC-20260802-001/002).
+    """
+
+    def _svc(self, auto_heal: dict) -> "ServiceConfig":
+        from guardian_hc.core import ServiceConfig
+        return ServiceConfig(
+            name="embed-server",
+            container="sowknow-embed-server",
+            health_check={"type": "http", "url": "http://embed-server:8000/health"},
+            auto_heal=auto_heal,
+        )
+
+    @pytest.mark.asyncio
+    async def test_per_service_verify_window_used(self, guardian):
+        from unittest.mock import AsyncMock, patch
+        svc = self._svc({"restart": True, "verify_delay": 120, "verify_timeout": 15})
+        with patch("guardian_hc.core.asyncio.sleep", new=AsyncMock()) as mock_sleep, \
+             patch.object(guardian.container_checker, "check",
+                          new=AsyncMock(return_value={"status": "running"})), \
+             patch("guardian_hc.core.HttpHealthChecker.check",
+                   new=AsyncMock(return_value={"healthy": True})) as mock_http:
+            ok = await guardian._verify_container_health(svc)
+        assert ok is True
+        mock_sleep.assert_awaited_once_with(120)
+        mock_http.assert_awaited_once_with("http://embed-server:8000/health", timeout=15)
+
+    @pytest.mark.asyncio
+    async def test_default_verify_window_unchanged(self, guardian):
+        from unittest.mock import AsyncMock, patch
+        from guardian_hc.core import HEAL_VERIFY_DELAY, HEAL_VERIFY_TIMEOUT
+        svc = self._svc({"restart": True})
+        with patch("guardian_hc.core.asyncio.sleep", new=AsyncMock()) as mock_sleep, \
+             patch.object(guardian.container_checker, "check",
+                          new=AsyncMock(return_value={"status": "running"})), \
+             patch("guardian_hc.core.HttpHealthChecker.check",
+                   new=AsyncMock(return_value={"healthy": True})) as mock_http:
+            ok = await guardian._verify_container_health(svc)
+        assert ok is True
+        mock_sleep.assert_awaited_once_with(HEAL_VERIFY_DELAY)
+        mock_http.assert_awaited_once_with("http://embed-server:8000/health", timeout=HEAL_VERIFY_TIMEOUT)

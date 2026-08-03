@@ -213,6 +213,14 @@ class InfrastructurePlugin(GuardianPlugin):
             port = tcp_cfg.get("port", 0)
             timeout = tcp_cfg.get("timeout", 5)
             raw = await TcpHealthChecker.check(host, port, timeout)
+            # A single-shot TCP probe flaps under load (2026-08-02: postgres
+            # paged "manual action required" while the DB was up and serving).
+            # Retry twice before declaring failure.
+            for _ in range(2):
+                if raw.get("healthy"):
+                    break
+                await asyncio.sleep(2)
+                raw = await TcpHealthChecker.check(host, port, timeout)
             ok = raw.get("healthy", False)
             results.append(
                 CheckResult(

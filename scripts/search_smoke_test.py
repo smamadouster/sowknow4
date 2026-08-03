@@ -112,11 +112,14 @@ def main() -> int:
         failures.append(f"search/health unreachable: {e}")
 
     # 2+3. stream checks
+    # Timeout (150s) must exceed the slow-stream threshold (120s) below —
+    # with a 90s timeout a slow-but-working stream was misreported as
+    # "failed: timed out" instead of "took Ns (>120s)" (2026-08-02/03 alerts).
     for query, expect_in_title in [("Liste", "liste"), ("contrat", None)]:
         try:
             t0 = time.monotonic()
             _, raw = http("POST", "/api/v1/search/stream", token,
-                          {"query": query, "mode": "auto", "limit": 8}, timeout=90)
+                          {"query": query, "mode": "auto", "limit": 8}, timeout=150)
             elapsed = time.monotonic() - t0
             ev = parse_sse(raw)
             if "error" in ev:

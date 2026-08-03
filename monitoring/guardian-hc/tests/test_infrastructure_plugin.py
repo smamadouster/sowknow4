@@ -507,6 +507,7 @@ class TestTcpHealthCheck:
         tcp_results = [r for r in results if "tcp" in r.check_name]
         assert len(tcp_results) >= 1
 
+    @patch("asyncio.sleep", new=AsyncMock())
     @patch("guardian_hc.plugins.infrastructure.ContainerChecker")
     @patch("guardian_hc.plugins.infrastructure.TcpHealthChecker")
     def test_tcp_unhealthy_returns_fail(self, MockTcp, MockContainer):
@@ -526,6 +527,36 @@ class TestTcpHealthCheck:
         tcp_results = [r for r in results if "tcp" in r.check_name]
         assert len(tcp_results) >= 1
         assert tcp_results[0].status in ("fail", "warning", "degraded")
+        # 1 initial probe + 2 retries before declaring failure
+        assert MockTcp.check.await_count == 3
+
+    @patch("asyncio.sleep", new=AsyncMock())
+    @patch("guardian_hc.plugins.infrastructure.ContainerChecker")
+    @patch("guardian_hc.plugins.infrastructure.TcpHealthChecker")
+    def test_tcp_flaky_probe_recovers_on_retry(self, MockTcp, MockContainer):
+        """A single timed-out probe under load must not declare failure
+        (2026-08-02: postgres paged "manual action required" while up)."""
+        MockContainer.return_value.check = AsyncMock(return_value={"status": "running", "container": "sowknow4-postgres"})
+        MockTcp.check = AsyncMock(side_effect=[
+            {"healthy": False, "host": "localhost", "port": 5432, "error": "timed out"},
+            {"healthy": True, "host": "localhost", "port": 5432},
+        ])
+
+        svc = ServiceConfig(
+            name="postgres",
+            container="sowknow4-postgres",
+            health_check={"tcp": {"host": "localhost", "port": 5432, "timeout": 3}},
+        )
+        cfg = _make_config(services=[svc])
+        p = self.Plugin(cfg)
+        ctx = CheckContext(patrol_level="critical", config=cfg, services=cfg["services"])
+        results = _run(p.check(ctx))
+
+        tcp_results = [r for r in results if "tcp" in r.check_name]
+        assert len(tcp_results) >= 1
+        assert tcp_results[0].status == "pass"
+        assert tcp_results[0].needs_healing is False
+        assert MockTcp.check.await_count == 2
 
 
 # ---------------------------------------------------------------------------

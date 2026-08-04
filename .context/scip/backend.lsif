@@ -17186,7 +17186,7 @@
 {"id":17186,"type":"edge","label":"item","outV":17184,"inVs":[17181],"document":17163}
 {"id":17187,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef run_collection_request_task(self, smart_folder_id, user_id)\n```"}}}
 {"id":17188,"type":"edge","label":"hover","outV":17182,"inV":17187}
-{"id":17189,"type":"vertex","label":"range","start":{"line":144,"character":0},"end":{"line":144,"character":28}}
+{"id":17189,"type":"vertex","label":"range","start":{"line":156,"character":0},"end":{"line":156,"character":28}}
 {"id":17190,"type":"vertex","label":"resultSet"}
 {"id":17191,"type":"edge","label":"next","outV":17189,"inV":17190}
 {"id":17192,"type":"vertex","label":"definitionResult"}
@@ -17194,7 +17194,7 @@
 {"id":17194,"type":"edge","label":"item","outV":17192,"inVs":[17189],"document":17163}
 {"id":17195,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _update_folder_after_failure(smart_folder_id, user_id)\n```"}}}
 {"id":17196,"type":"edge","label":"hover","outV":17190,"inV":17195}
-{"id":17197,"type":"vertex","label":"range","start":{"line":220,"character":0},"end":{"line":220,"character":34}}
+{"id":17197,"type":"vertex","label":"range","start":{"line":232,"character":0},"end":{"line":232,"character":34}}
 {"id":17198,"type":"vertex","label":"resultSet"}
 {"id":17199,"type":"edge","label":"next","outV":17197,"inV":17198}
 {"id":17200,"type":"vertex","label":"definitionResult"}
@@ -17202,7 +17202,7 @@
 {"id":17202,"type":"edge","label":"item","outV":17200,"inVs":[17197],"document":17163}
 {"id":17203,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef purge_collection_audit_events_task()\n```"}}}
 {"id":17204,"type":"edge","label":"hover","outV":17198,"inV":17203}
-{"id":17205,"type":"vertex","label":"range","start":{"line":79,"character":4},"end":{"line":79,"character":8}}
+{"id":17205,"type":"vertex","label":"range","start":{"line":81,"character":4},"end":{"line":81,"character":8}}
 {"id":17206,"type":"vertex","label":"resultSet"}
 {"id":17207,"type":"edge","label":"next","outV":17205,"inV":17206}
 {"id":17208,"type":"vertex","label":"definitionResult"}
@@ -17210,1082 +17210,1090 @@
 {"id":17210,"type":"edge","label":"item","outV":17208,"inVs":[17205],"document":17163}
 {"id":17211,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run()\n```"}}}
 {"id":17212,"type":"edge","label":"hover","outV":17206,"inV":17211}
-{"id":17213,"type":"vertex","label":"range","start":{"line":158,"character":4},"end":{"line":158,"character":11}}
+{"id":17213,"type":"vertex","label":"range","start":{"line":91,"character":4},"end":{"line":91,"character":21}}
 {"id":17214,"type":"vertex","label":"resultSet"}
 {"id":17215,"type":"edge","label":"next","outV":17213,"inV":17214}
 {"id":17216,"type":"vertex","label":"definitionResult"}
 {"id":17217,"type":"edge","label":"definition","outV":17214,"inV":17216}
 {"id":17218,"type":"edge","label":"item","outV":17216,"inVs":[17213],"document":17163}
-{"id":17219,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _update(action, countdown)\n```"}}}
+{"id":17219,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_with_session(session_factory)\n```"}}}
 {"id":17220,"type":"edge","label":"hover","outV":17214,"inV":17219}
-{"id":17221,"type":"vertex","label":"range","start":{"line":233,"character":4},"end":{"line":233,"character":10}}
+{"id":17221,"type":"vertex","label":"range","start":{"line":170,"character":4},"end":{"line":170,"character":11}}
 {"id":17222,"type":"vertex","label":"resultSet"}
 {"id":17223,"type":"edge","label":"next","outV":17221,"inV":17222}
 {"id":17224,"type":"vertex","label":"definitionResult"}
 {"id":17225,"type":"edge","label":"definition","outV":17222,"inV":17224}
 {"id":17226,"type":"edge","label":"item","outV":17224,"inVs":[17221],"document":17163}
-{"id":17227,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _purge()\n```"}}}
+{"id":17227,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _update(action, countdown)\n```"}}}
 {"id":17228,"type":"edge","label":"hover","outV":17222,"inV":17227}
-{"id":17229,"type":"edge","label":"contains","outV":17163,"inVs":[17165,17173,17181,17189,17197,17205,17213,17221]}
-{"id":17230,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/document_tasks.py","languageId":"python"}
-{"id":17231,"type":"edge","label":"contains","outV":1,"inVs":[17230]}
-{"id":17232,"type":"vertex","label":"range","start":{"line":48,"character":0},"end":{"line":48,"character":20}}
-{"id":17233,"type":"vertex","label":"resultSet"}
-{"id":17234,"type":"edge","label":"next","outV":17232,"inV":17233}
-{"id":17235,"type":"vertex","label":"definitionResult"}
-{"id":17236,"type":"edge","label":"definition","outV":17233,"inV":17235}
-{"id":17237,"type":"edge","label":"item","outV":17235,"inVs":[17232],"document":17230}
-{"id":17238,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef detect_text_language(text, fallback)\n```"}}}
-{"id":17239,"type":"edge","label":"hover","outV":17233,"inV":17238}
-{"id":17240,"type":"vertex","label":"range","start":{"line":75,"character":0},"end":{"line":75,"character":16}}
+{"id":17229,"type":"vertex","label":"range","start":{"line":245,"character":4},"end":{"line":245,"character":10}}
+{"id":17230,"type":"vertex","label":"resultSet"}
+{"id":17231,"type":"edge","label":"next","outV":17229,"inV":17230}
+{"id":17232,"type":"vertex","label":"definitionResult"}
+{"id":17233,"type":"edge","label":"definition","outV":17230,"inV":17232}
+{"id":17234,"type":"edge","label":"item","outV":17232,"inVs":[17229],"document":17163}
+{"id":17235,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _purge()\n```"}}}
+{"id":17236,"type":"edge","label":"hover","outV":17230,"inV":17235}
+{"id":17237,"type":"edge","label":"contains","outV":17163,"inVs":[17165,17173,17181,17189,17197,17205,17213,17221,17229]}
+{"id":17238,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/document_tasks.py","languageId":"python"}
+{"id":17239,"type":"edge","label":"contains","outV":1,"inVs":[17238]}
+{"id":17240,"type":"vertex","label":"range","start":{"line":48,"character":0},"end":{"line":48,"character":20}}
 {"id":17241,"type":"vertex","label":"resultSet"}
 {"id":17242,"type":"edge","label":"next","outV":17240,"inV":17241}
 {"id":17243,"type":"vertex","label":"definitionResult"}
 {"id":17244,"type":"edge","label":"definition","outV":17241,"inV":17243}
-{"id":17245,"type":"edge","label":"item","outV":17243,"inVs":[17240],"document":17230}
-{"id":17246,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef process_document(self, document_id, task_type)\n```"}}}
+{"id":17245,"type":"edge","label":"item","outV":17243,"inVs":[17240],"document":17238}
+{"id":17246,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef detect_text_language(text, fallback)\n```"}}}
 {"id":17247,"type":"edge","label":"hover","outV":17241,"inV":17246}
-{"id":17248,"type":"vertex","label":"range","start":{"line":451,"character":0},"end":{"line":451,"character":23}}
+{"id":17248,"type":"vertex","label":"range","start":{"line":75,"character":0},"end":{"line":75,"character":16}}
 {"id":17249,"type":"vertex","label":"resultSet"}
 {"id":17250,"type":"edge","label":"next","outV":17248,"inV":17249}
 {"id":17251,"type":"vertex","label":"definitionResult"}
 {"id":17252,"type":"edge","label":"definition","outV":17249,"inV":17251}
-{"id":17253,"type":"edge","label":"item","outV":17251,"inVs":[17248],"document":17230}
-{"id":17254,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef process_batch_documents(document_ids)\n```"}}}
+{"id":17253,"type":"edge","label":"item","outV":17251,"inVs":[17248],"document":17238}
+{"id":17254,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef process_document(self, document_id, task_type)\n```"}}}
 {"id":17255,"type":"edge","label":"hover","outV":17249,"inV":17254}
-{"id":17256,"type":"vertex","label":"range","start":{"line":494,"character":0},"end":{"line":494,"character":19}}
+{"id":17256,"type":"vertex","label":"range","start":{"line":451,"character":0},"end":{"line":451,"character":23}}
 {"id":17257,"type":"vertex","label":"resultSet"}
 {"id":17258,"type":"edge","label":"next","outV":17256,"inV":17257}
 {"id":17259,"type":"vertex","label":"definitionResult"}
 {"id":17260,"type":"edge","label":"definition","outV":17257,"inV":17259}
-{"id":17261,"type":"edge","label":"item","outV":17259,"inVs":[17256],"document":17230}
-{"id":17262,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_embeddings(self, chunk_ids)\n```"}}}
+{"id":17261,"type":"edge","label":"item","outV":17259,"inVs":[17256],"document":17238}
+{"id":17262,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef process_batch_documents(document_ids)\n```"}}}
 {"id":17263,"type":"edge","label":"hover","outV":17257,"inV":17262}
-{"id":17264,"type":"vertex","label":"range","start":{"line":589,"character":0},"end":{"line":589,"character":17}}
+{"id":17264,"type":"vertex","label":"range","start":{"line":494,"character":0},"end":{"line":494,"character":19}}
 {"id":17265,"type":"vertex","label":"resultSet"}
 {"id":17266,"type":"edge","label":"next","outV":17264,"inV":17265}
 {"id":17267,"type":"vertex","label":"definitionResult"}
 {"id":17268,"type":"edge","label":"definition","outV":17265,"inV":17267}
-{"id":17269,"type":"edge","label":"item","outV":17267,"inVs":[17264],"document":17230}
-{"id":17270,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef cleanup_old_tasks(days)\n```"}}}
+{"id":17269,"type":"edge","label":"item","outV":17267,"inVs":[17264],"document":17238}
+{"id":17270,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_embeddings(self, chunk_ids)\n```"}}}
 {"id":17271,"type":"edge","label":"hover","outV":17265,"inV":17270}
-{"id":17272,"type":"vertex","label":"range","start":{"line":644,"character":0},"end":{"line":644,"character":27}}
+{"id":17272,"type":"vertex","label":"range","start":{"line":589,"character":0},"end":{"line":589,"character":17}}
 {"id":17273,"type":"vertex","label":"resultSet"}
 {"id":17274,"type":"edge","label":"next","outV":17272,"inV":17273}
 {"id":17275,"type":"vertex","label":"definitionResult"}
 {"id":17276,"type":"edge","label":"definition","outV":17273,"inV":17275}
-{"id":17277,"type":"edge","label":"item","outV":17275,"inVs":[17272],"document":17230}
-{"id":17278,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef on_process_document_failure(self, exc, task_id, args, kwargs, einfo)\n```"}}}
+{"id":17277,"type":"edge","label":"item","outV":17275,"inVs":[17272],"document":17238}
+{"id":17278,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef cleanup_old_tasks(days)\n```"}}}
 {"id":17279,"type":"edge","label":"hover","outV":17273,"inV":17278}
-{"id":17280,"type":"vertex","label":"range","start":{"line":691,"character":0},"end":{"line":691,"character":30}}
+{"id":17280,"type":"vertex","label":"range","start":{"line":644,"character":0},"end":{"line":644,"character":27}}
 {"id":17281,"type":"vertex","label":"resultSet"}
 {"id":17282,"type":"edge","label":"next","outV":17280,"inV":17281}
 {"id":17283,"type":"vertex","label":"definitionResult"}
 {"id":17284,"type":"edge","label":"definition","outV":17281,"inV":17283}
-{"id":17285,"type":"edge","label":"item","outV":17283,"inVs":[17280],"document":17230}
-{"id":17286,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef on_generate_embeddings_failure(self, exc, task_id, args, kwargs, einfo)\n```"}}}
+{"id":17285,"type":"edge","label":"item","outV":17283,"inVs":[17280],"document":17238}
+{"id":17286,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef on_process_document_failure(self, exc, task_id, args, kwargs, einfo)\n```"}}}
 {"id":17287,"type":"edge","label":"hover","outV":17281,"inV":17286}
-{"id":17288,"type":"vertex","label":"range","start":{"line":716,"character":0},"end":{"line":716,"character":29}}
+{"id":17288,"type":"vertex","label":"range","start":{"line":691,"character":0},"end":{"line":691,"character":30}}
 {"id":17289,"type":"vertex","label":"resultSet"}
 {"id":17290,"type":"edge","label":"next","outV":17288,"inV":17289}
 {"id":17291,"type":"vertex","label":"definitionResult"}
 {"id":17292,"type":"edge","label":"definition","outV":17289,"inV":17291}
-{"id":17293,"type":"edge","label":"item","outV":17291,"inVs":[17288],"document":17230}
-{"id":17294,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef extract_entities_for_document(self, document_id)\n```"}}}
+{"id":17293,"type":"edge","label":"item","outV":17291,"inVs":[17288],"document":17238}
+{"id":17294,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef on_generate_embeddings_failure(self, exc, task_id, args, kwargs, einfo)\n```"}}}
 {"id":17295,"type":"edge","label":"hover","outV":17289,"inV":17294}
-{"id":17296,"type":"vertex","label":"range","start":{"line":795,"character":0},"end":{"line":795,"character":22}}
+{"id":17296,"type":"vertex","label":"range","start":{"line":716,"character":0},"end":{"line":716,"character":29}}
 {"id":17297,"type":"vertex","label":"resultSet"}
 {"id":17298,"type":"edge","label":"next","outV":17296,"inV":17297}
 {"id":17299,"type":"vertex","label":"definitionResult"}
 {"id":17300,"type":"edge","label":"definition","outV":17297,"inV":17299}
-{"id":17301,"type":"edge","label":"item","outV":17299,"inVs":[17296],"document":17230}
-{"id":17302,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef batch_extract_entities(batch_size, batch_interval)\n```"}}}
+{"id":17301,"type":"edge","label":"item","outV":17299,"inVs":[17296],"document":17238}
+{"id":17302,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef extract_entities_for_document(self, document_id)\n```"}}}
 {"id":17303,"type":"edge","label":"hover","outV":17297,"inV":17302}
-{"id":17304,"type":"vertex","label":"range","start":{"line":851,"character":0},"end":{"line":851,"character":19}}
+{"id":17304,"type":"vertex","label":"range","start":{"line":795,"character":0},"end":{"line":795,"character":22}}
 {"id":17305,"type":"vertex","label":"resultSet"}
 {"id":17306,"type":"edge","label":"next","outV":17304,"inV":17305}
 {"id":17307,"type":"vertex","label":"definitionResult"}
 {"id":17308,"type":"edge","label":"definition","outV":17305,"inV":17307}
-{"id":17309,"type":"edge","label":"item","outV":17307,"inVs":[17304],"document":17230}
-{"id":17310,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_build_pipeline(collection_id, user_id)\n```"}}}
+{"id":17309,"type":"edge","label":"item","outV":17307,"inVs":[17304],"document":17238}
+{"id":17310,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef batch_extract_entities(batch_size, batch_interval)\n```"}}}
 {"id":17311,"type":"edge","label":"hover","outV":17305,"inV":17310}
-{"id":17312,"type":"vertex","label":"range","start":{"line":894,"character":0},"end":{"line":894,"character":22}}
+{"id":17312,"type":"vertex","label":"range","start":{"line":851,"character":0},"end":{"line":851,"character":19}}
 {"id":17313,"type":"vertex","label":"resultSet"}
 {"id":17314,"type":"edge","label":"next","outV":17312,"inV":17313}
 {"id":17315,"type":"vertex","label":"definitionResult"}
 {"id":17316,"type":"edge","label":"definition","outV":17313,"inV":17315}
-{"id":17317,"type":"edge","label":"item","outV":17315,"inVs":[17312],"document":17230}
-{"id":17318,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef build_smart_collection(self, collection_id, user_id)\n```"}}}
+{"id":17317,"type":"edge","label":"item","outV":17315,"inVs":[17312],"document":17238}
+{"id":17318,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_build_pipeline(collection_id, user_id)\n```"}}}
 {"id":17319,"type":"edge","label":"hover","outV":17313,"inV":17318}
-{"id":17320,"type":"vertex","label":"range","start":{"line":910,"character":0},"end":{"line":910,"character":27}}
+{"id":17320,"type":"vertex","label":"range","start":{"line":894,"character":0},"end":{"line":894,"character":22}}
 {"id":17321,"type":"vertex","label":"resultSet"}
 {"id":17322,"type":"edge","label":"next","outV":17320,"inV":17321}
 {"id":17323,"type":"vertex","label":"definitionResult"}
 {"id":17324,"type":"edge","label":"definition","outV":17321,"inV":17323}
-{"id":17325,"type":"edge","label":"item","outV":17323,"inVs":[17320],"document":17230}
-{"id":17326,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef reprocess_pending_documents()\n```"}}}
+{"id":17325,"type":"edge","label":"item","outV":17323,"inVs":[17320],"document":17238}
+{"id":17326,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef build_smart_collection(self, collection_id, user_id)\n```"}}}
 {"id":17327,"type":"edge","label":"hover","outV":17321,"inV":17326}
-{"id":17328,"type":"vertex","label":"range","start":{"line":732,"character":4},"end":{"line":732,"character":10}}
+{"id":17328,"type":"vertex","label":"range","start":{"line":910,"character":0},"end":{"line":910,"character":27}}
 {"id":17329,"type":"vertex","label":"resultSet"}
 {"id":17330,"type":"edge","label":"next","outV":17328,"inV":17329}
 {"id":17331,"type":"vertex","label":"definitionResult"}
 {"id":17332,"type":"edge","label":"definition","outV":17329,"inV":17331}
-{"id":17333,"type":"edge","label":"item","outV":17331,"inVs":[17328],"document":17230}
-{"id":17334,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _inner()\n```"}}}
+{"id":17333,"type":"edge","label":"item","outV":17331,"inVs":[17328],"document":17238}
+{"id":17334,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef reprocess_pending_documents()\n```"}}}
 {"id":17335,"type":"edge","label":"hover","outV":17329,"inV":17334}
-{"id":17336,"type":"vertex","label":"range","start":{"line":861,"character":4},"end":{"line":861,"character":10}}
+{"id":17336,"type":"vertex","label":"range","start":{"line":732,"character":4},"end":{"line":732,"character":10}}
 {"id":17337,"type":"vertex","label":"resultSet"}
 {"id":17338,"type":"edge","label":"next","outV":17336,"inV":17337}
 {"id":17339,"type":"vertex","label":"definitionResult"}
 {"id":17340,"type":"edge","label":"definition","outV":17337,"inV":17339}
-{"id":17341,"type":"edge","label":"item","outV":17339,"inVs":[17336],"document":17230}
+{"id":17341,"type":"edge","label":"item","outV":17339,"inVs":[17336],"document":17238}
 {"id":17342,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _inner()\n```"}}}
 {"id":17343,"type":"edge","label":"hover","outV":17337,"inV":17342}
-{"id":17344,"type":"vertex","label":"range","start":{"line":25,"character":4},"end":{"line":25,"character":23}}
+{"id":17344,"type":"vertex","label":"range","start":{"line":861,"character":4},"end":{"line":861,"character":10}}
 {"id":17345,"type":"vertex","label":"resultSet"}
 {"id":17346,"type":"edge","label":"next","outV":17344,"inV":17345}
 {"id":17347,"type":"vertex","label":"definitionResult"}
 {"id":17348,"type":"edge","label":"definition","outV":17345,"inV":17347}
-{"id":17349,"type":"edge","label":"item","outV":17347,"inVs":[17344],"document":17230}
-{"id":17350,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass LangDetectException\n# methods: \n```"}}}
+{"id":17349,"type":"edge","label":"item","outV":17347,"inVs":[17344],"document":17238}
+{"id":17350,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _inner()\n```"}}}
 {"id":17351,"type":"edge","label":"hover","outV":17345,"inV":17350}
-{"id":17352,"type":"edge","label":"contains","outV":17230,"inVs":[17232,17240,17248,17256,17264,17272,17280,17288,17296,17304,17312,17320,17328,17336,17344]}
-{"id":17353,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/embedding_tasks.py","languageId":"python"}
-{"id":17354,"type":"edge","label":"contains","outV":1,"inVs":[17353]}
-{"id":17355,"type":"vertex","label":"range","start":{"line":34,"character":0},"end":{"line":34,"character":25}}
-{"id":17356,"type":"vertex","label":"resultSet"}
-{"id":17357,"type":"edge","label":"next","outV":17355,"inV":17356}
-{"id":17358,"type":"vertex","label":"definitionResult"}
-{"id":17359,"type":"edge","label":"definition","outV":17356,"inV":17358}
-{"id":17360,"type":"edge","label":"item","outV":17358,"inVs":[17355],"document":17353}
-{"id":17361,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_embeddings_batch(self, chunk_ids, model_name)\n```"}}}
-{"id":17362,"type":"edge","label":"hover","outV":17356,"inV":17361}
-{"id":17363,"type":"vertex","label":"range","start":{"line":129,"character":0},"end":{"line":129,"character":33}}
+{"id":17352,"type":"vertex","label":"range","start":{"line":25,"character":4},"end":{"line":25,"character":23}}
+{"id":17353,"type":"vertex","label":"resultSet"}
+{"id":17354,"type":"edge","label":"next","outV":17352,"inV":17353}
+{"id":17355,"type":"vertex","label":"definitionResult"}
+{"id":17356,"type":"edge","label":"definition","outV":17353,"inV":17355}
+{"id":17357,"type":"edge","label":"item","outV":17355,"inVs":[17352],"document":17238}
+{"id":17358,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass LangDetectException\n# methods: \n```"}}}
+{"id":17359,"type":"edge","label":"hover","outV":17353,"inV":17358}
+{"id":17360,"type":"edge","label":"contains","outV":17238,"inVs":[17240,17248,17256,17264,17272,17280,17288,17296,17304,17312,17320,17328,17336,17344,17352]}
+{"id":17361,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/embedding_tasks.py","languageId":"python"}
+{"id":17362,"type":"edge","label":"contains","outV":1,"inVs":[17361]}
+{"id":17363,"type":"vertex","label":"range","start":{"line":34,"character":0},"end":{"line":34,"character":25}}
 {"id":17364,"type":"vertex","label":"resultSet"}
 {"id":17365,"type":"edge","label":"next","outV":17363,"inV":17364}
 {"id":17366,"type":"vertex","label":"definitionResult"}
 {"id":17367,"type":"edge","label":"definition","outV":17364,"inV":17366}
-{"id":17368,"type":"edge","label":"item","outV":17366,"inVs":[17363],"document":17353}
-{"id":17369,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef recompute_embeddings_for_document(self, document_id)\n```"}}}
+{"id":17368,"type":"edge","label":"item","outV":17366,"inVs":[17363],"document":17361}
+{"id":17369,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_embeddings_batch(self, chunk_ids, model_name)\n```"}}}
 {"id":17370,"type":"edge","label":"hover","outV":17364,"inV":17369}
-{"id":17371,"type":"vertex","label":"range","start":{"line":231,"character":0},"end":{"line":231,"character":24}}
+{"id":17371,"type":"vertex","label":"range","start":{"line":129,"character":0},"end":{"line":129,"character":33}}
 {"id":17372,"type":"vertex","label":"resultSet"}
 {"id":17373,"type":"edge","label":"next","outV":17371,"inV":17372}
 {"id":17374,"type":"vertex","label":"definitionResult"}
 {"id":17375,"type":"edge","label":"definition","outV":17372,"inV":17374}
-{"id":17376,"type":"edge","label":"item","outV":17374,"inVs":[17371],"document":17353}
-{"id":17377,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef upgrade_embeddings_model(self, from_model, to_model, batch_size)\n```"}}}
+{"id":17376,"type":"edge","label":"item","outV":17374,"inVs":[17371],"document":17361}
+{"id":17377,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef recompute_embeddings_for_document(self, document_id)\n```"}}}
 {"id":17378,"type":"edge","label":"hover","outV":17372,"inV":17377}
-{"id":17379,"type":"edge","label":"contains","outV":17353,"inVs":[17355,17363,17371]}
-{"id":17380,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/guardian_tasks.py","languageId":"python"}
-{"id":17381,"type":"edge","label":"contains","outV":1,"inVs":[17380]}
-{"id":17382,"type":"vertex","label":"range","start":{"line":7,"character":0},"end":{"line":7,"character":13}}
-{"id":17383,"type":"vertex","label":"resultSet"}
-{"id":17384,"type":"edge","label":"next","outV":17382,"inV":17383}
-{"id":17385,"type":"vertex","label":"definitionResult"}
-{"id":17386,"type":"edge","label":"definition","outV":17383,"inV":17385}
-{"id":17387,"type":"edge","label":"item","outV":17385,"inVs":[17382],"document":17380}
-{"id":17388,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef guardian_ping(self)\n```"}}}
-{"id":17389,"type":"edge","label":"hover","outV":17383,"inV":17388}
-{"id":17390,"type":"edge","label":"contains","outV":17380,"inVs":[17382]}
-{"id":17391,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/health_report_tasks.py","languageId":"python"}
-{"id":17392,"type":"edge","label":"contains","outV":1,"inVs":[17391]}
-{"id":17393,"type":"vertex","label":"range","start":{"line":19,"character":0},"end":{"line":19,"character":16}}
-{"id":17394,"type":"vertex","label":"resultSet"}
-{"id":17395,"type":"edge","label":"next","outV":17393,"inV":17394}
-{"id":17396,"type":"vertex","label":"definitionResult"}
-{"id":17397,"type":"edge","label":"definition","outV":17394,"inV":17396}
-{"id":17398,"type":"edge","label":"item","outV":17396,"inVs":[17393],"document":17391}
-{"id":17399,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _smtp_configured()\n```"}}}
-{"id":17400,"type":"edge","label":"hover","outV":17394,"inV":17399}
-{"id":17401,"type":"vertex","label":"range","start":{"line":23,"character":0},"end":{"line":23,"character":11}}
+{"id":17379,"type":"vertex","label":"range","start":{"line":231,"character":0},"end":{"line":231,"character":24}}
+{"id":17380,"type":"vertex","label":"resultSet"}
+{"id":17381,"type":"edge","label":"next","outV":17379,"inV":17380}
+{"id":17382,"type":"vertex","label":"definitionResult"}
+{"id":17383,"type":"edge","label":"definition","outV":17380,"inV":17382}
+{"id":17384,"type":"edge","label":"item","outV":17382,"inVs":[17379],"document":17361}
+{"id":17385,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef upgrade_embeddings_model(self, from_model, to_model, batch_size)\n```"}}}
+{"id":17386,"type":"edge","label":"hover","outV":17380,"inV":17385}
+{"id":17387,"type":"edge","label":"contains","outV":17361,"inVs":[17363,17371,17379]}
+{"id":17388,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/guardian_tasks.py","languageId":"python"}
+{"id":17389,"type":"edge","label":"contains","outV":1,"inVs":[17388]}
+{"id":17390,"type":"vertex","label":"range","start":{"line":7,"character":0},"end":{"line":7,"character":13}}
+{"id":17391,"type":"vertex","label":"resultSet"}
+{"id":17392,"type":"edge","label":"next","outV":17390,"inV":17391}
+{"id":17393,"type":"vertex","label":"definitionResult"}
+{"id":17394,"type":"edge","label":"definition","outV":17391,"inV":17393}
+{"id":17395,"type":"edge","label":"item","outV":17393,"inVs":[17390],"document":17388}
+{"id":17396,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef guardian_ping(self)\n```"}}}
+{"id":17397,"type":"edge","label":"hover","outV":17391,"inV":17396}
+{"id":17398,"type":"edge","label":"contains","outV":17388,"inVs":[17390]}
+{"id":17399,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/health_report_tasks.py","languageId":"python"}
+{"id":17400,"type":"edge","label":"contains","outV":1,"inVs":[17399]}
+{"id":17401,"type":"vertex","label":"range","start":{"line":19,"character":0},"end":{"line":19,"character":16}}
 {"id":17402,"type":"vertex","label":"resultSet"}
 {"id":17403,"type":"edge","label":"next","outV":17401,"inV":17402}
 {"id":17404,"type":"vertex","label":"definitionResult"}
 {"id":17405,"type":"edge","label":"definition","outV":17402,"inV":17404}
-{"id":17406,"type":"edge","label":"item","outV":17404,"inVs":[17401],"document":17391}
-{"id":17407,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _send_email(subject, html_body, text_body)\n```"}}}
+{"id":17406,"type":"edge","label":"item","outV":17404,"inVs":[17401],"document":17399}
+{"id":17407,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _smtp_configured()\n```"}}}
 {"id":17408,"type":"edge","label":"hover","outV":17402,"inV":17407}
-{"id":17409,"type":"vertex","label":"range","start":{"line":48,"character":0},"end":{"line":48,"character":19}}
+{"id":17409,"type":"vertex","label":"range","start":{"line":23,"character":0},"end":{"line":23,"character":11}}
 {"id":17410,"type":"vertex","label":"resultSet"}
 {"id":17411,"type":"edge","label":"next","outV":17409,"inV":17410}
 {"id":17412,"type":"vertex","label":"definitionResult"}
 {"id":17413,"type":"edge","label":"definition","outV":17410,"inV":17412}
-{"id":17414,"type":"edge","label":"item","outV":17412,"inVs":[17409],"document":17391}
-{"id":17415,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef daily_health_report()\n```"}}}
+{"id":17414,"type":"edge","label":"item","outV":17412,"inVs":[17409],"document":17399}
+{"id":17415,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _send_email(subject, html_body, text_body)\n```"}}}
 {"id":17416,"type":"edge","label":"hover","outV":17410,"inV":17415}
-{"id":17417,"type":"edge","label":"contains","outV":17391,"inVs":[17393,17401,17409]}
-{"id":17418,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/monitoring_tasks.py","languageId":"python"}
-{"id":17419,"type":"edge","label":"contains","outV":1,"inVs":[17418]}
-{"id":17420,"type":"vertex","label":"range","start":{"line":38,"character":0},"end":{"line":38,"character":19}}
-{"id":17421,"type":"vertex","label":"resultSet"}
-{"id":17422,"type":"edge","label":"next","outV":17420,"inV":17421}
-{"id":17423,"type":"vertex","label":"definitionResult"}
-{"id":17424,"type":"edge","label":"definition","outV":17421,"inV":17423}
-{"id":17425,"type":"edge","label":"item","outV":17423,"inVs":[17420],"document":17418}
-{"id":17426,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef check_worker_memory(self)\n```"}}}
-{"id":17427,"type":"edge","label":"hover","outV":17421,"inV":17426}
-{"id":17428,"type":"edge","label":"contains","outV":17418,"inVs":[17420]}
-{"id":17429,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/pipeline_orchestrator.py","languageId":"python"}
-{"id":17430,"type":"edge","label":"contains","outV":1,"inVs":[17429]}
-{"id":17431,"type":"vertex","label":"range","start":{"line":66,"character":0},"end":{"line":66,"character":18}}
-{"id":17432,"type":"vertex","label":"resultSet"}
-{"id":17433,"type":"edge","label":"next","outV":17431,"inV":17432}
-{"id":17434,"type":"vertex","label":"definitionResult"}
-{"id":17435,"type":"edge","label":"definition","outV":17432,"inV":17434}
-{"id":17436,"type":"edge","label":"item","outV":17434,"inVs":[17431],"document":17429}
-{"id":17437,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _total_queue_depth()\n```"}}}
-{"id":17438,"type":"edge","label":"hover","outV":17432,"inV":17437}
-{"id":17439,"type":"vertex","label":"range","start":{"line":79,"character":0},"end":{"line":79,"character":19}}
+{"id":17417,"type":"vertex","label":"range","start":{"line":48,"character":0},"end":{"line":48,"character":19}}
+{"id":17418,"type":"vertex","label":"resultSet"}
+{"id":17419,"type":"edge","label":"next","outV":17417,"inV":17418}
+{"id":17420,"type":"vertex","label":"definitionResult"}
+{"id":17421,"type":"edge","label":"definition","outV":17418,"inV":17420}
+{"id":17422,"type":"edge","label":"item","outV":17420,"inVs":[17417],"document":17399}
+{"id":17423,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef daily_health_report()\n```"}}}
+{"id":17424,"type":"edge","label":"hover","outV":17418,"inV":17423}
+{"id":17425,"type":"edge","label":"contains","outV":17399,"inVs":[17401,17409,17417]}
+{"id":17426,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/monitoring_tasks.py","languageId":"python"}
+{"id":17427,"type":"edge","label":"contains","outV":1,"inVs":[17426]}
+{"id":17428,"type":"vertex","label":"range","start":{"line":38,"character":0},"end":{"line":38,"character":19}}
+{"id":17429,"type":"vertex","label":"resultSet"}
+{"id":17430,"type":"edge","label":"next","outV":17428,"inV":17429}
+{"id":17431,"type":"vertex","label":"definitionResult"}
+{"id":17432,"type":"edge","label":"definition","outV":17429,"inV":17431}
+{"id":17433,"type":"edge","label":"item","outV":17431,"inVs":[17428],"document":17426}
+{"id":17434,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef check_worker_memory(self)\n```"}}}
+{"id":17435,"type":"edge","label":"hover","outV":17429,"inV":17434}
+{"id":17436,"type":"edge","label":"contains","outV":17426,"inVs":[17428]}
+{"id":17437,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/pipeline_orchestrator.py","languageId":"python"}
+{"id":17438,"type":"edge","label":"contains","outV":1,"inVs":[17437]}
+{"id":17439,"type":"vertex","label":"range","start":{"line":66,"character":0},"end":{"line":66,"character":18}}
 {"id":17440,"type":"vertex","label":"resultSet"}
 {"id":17441,"type":"edge","label":"next","outV":17439,"inV":17440}
 {"id":17442,"type":"vertex","label":"definitionResult"}
 {"id":17443,"type":"edge","label":"definition","outV":17440,"inV":17442}
-{"id":17444,"type":"edge","label":"item","outV":17442,"inVs":[17439],"document":17429}
-{"id":17445,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _check_backpressure(from_stage)\n```"}}}
+{"id":17444,"type":"edge","label":"item","outV":17442,"inVs":[17439],"document":17437}
+{"id":17445,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _total_queue_depth()\n```"}}}
 {"id":17446,"type":"edge","label":"hover","outV":17440,"inV":17445}
-{"id":17447,"type":"vertex","label":"range","start":{"line":111,"character":0},"end":{"line":111,"character":22}}
+{"id":17447,"type":"vertex","label":"range","start":{"line":79,"character":0},"end":{"line":79,"character":19}}
 {"id":17448,"type":"vertex","label":"resultSet"}
 {"id":17449,"type":"edge","label":"next","outV":17447,"inV":17448}
 {"id":17450,"type":"vertex","label":"definitionResult"}
 {"id":17451,"type":"edge","label":"definition","outV":17448,"inV":17450}
-{"id":17452,"type":"edge","label":"item","outV":17450,"inVs":[17447],"document":17429}
-{"id":17453,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _get_embed_time_limits(chunk_count)\n```"}}}
+{"id":17452,"type":"edge","label":"item","outV":17450,"inVs":[17447],"document":17437}
+{"id":17453,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _check_backpressure(from_stage)\n```"}}}
 {"id":17454,"type":"edge","label":"hover","outV":17448,"inV":17453}
-{"id":17455,"type":"vertex","label":"range","start":{"line":127,"character":0},"end":{"line":127,"character":12}}
+{"id":17455,"type":"vertex","label":"range","start":{"line":111,"character":0},"end":{"line":111,"character":22}}
 {"id":17456,"type":"vertex","label":"resultSet"}
 {"id":17457,"type":"edge","label":"next","outV":17455,"inV":17456}
 {"id":17458,"type":"vertex","label":"definitionResult"}
 {"id":17459,"type":"edge","label":"definition","outV":17456,"inV":17458}
-{"id":17460,"type":"edge","label":"item","outV":17458,"inVs":[17455],"document":17429}
-{"id":17461,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _build_chain(document_id, from_stage)\n```"}}}
+{"id":17460,"type":"edge","label":"item","outV":17458,"inVs":[17455],"document":17437}
+{"id":17461,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _get_embed_time_limits(chunk_count)\n```"}}}
 {"id":17462,"type":"edge","label":"hover","outV":17456,"inV":17461}
-{"id":17463,"type":"vertex","label":"range","start":{"line":176,"character":0},"end":{"line":176,"character":18}}
+{"id":17463,"type":"vertex","label":"range","start":{"line":127,"character":0},"end":{"line":127,"character":12}}
 {"id":17464,"type":"vertex","label":"resultSet"}
 {"id":17465,"type":"edge","label":"next","outV":17463,"inV":17464}
 {"id":17466,"type":"vertex","label":"definitionResult"}
 {"id":17467,"type":"edge","label":"definition","outV":17464,"inV":17466}
-{"id":17468,"type":"edge","label":"item","outV":17466,"inVs":[17463],"document":17429}
-{"id":17469,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _is_stage_inflight(document_id, stage, skip_recent_pending)\n```"}}}
+{"id":17468,"type":"edge","label":"item","outV":17466,"inVs":[17463],"document":17437}
+{"id":17469,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _build_chain(document_id, from_stage)\n```"}}}
 {"id":17470,"type":"edge","label":"hover","outV":17464,"inV":17469}
-{"id":17471,"type":"vertex","label":"range","start":{"line":239,"character":0},"end":{"line":239,"character":17}}
+{"id":17471,"type":"vertex","label":"range","start":{"line":176,"character":0},"end":{"line":176,"character":18}}
 {"id":17472,"type":"vertex","label":"resultSet"}
 {"id":17473,"type":"edge","label":"next","outV":17471,"inV":17472}
 {"id":17474,"type":"vertex","label":"definitionResult"}
 {"id":17475,"type":"edge","label":"definition","outV":17472,"inV":17474}
-{"id":17476,"type":"edge","label":"item","outV":17474,"inVs":[17471],"document":17429}
-{"id":17477,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef dispatch_document(document_id, from_stage, force)\n```"}}}
+{"id":17476,"type":"edge","label":"item","outV":17474,"inVs":[17471],"document":17437}
+{"id":17477,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _is_stage_inflight(document_id, stage, skip_recent_pending)\n```"}}}
 {"id":17478,"type":"edge","label":"hover","outV":17472,"inV":17477}
-{"id":17479,"type":"vertex","label":"range","start":{"line":335,"character":0},"end":{"line":335,"character":14}}
+{"id":17479,"type":"vertex","label":"range","start":{"line":239,"character":0},"end":{"line":239,"character":17}}
 {"id":17480,"type":"vertex","label":"resultSet"}
 {"id":17481,"type":"edge","label":"next","outV":17479,"inV":17480}
 {"id":17482,"type":"vertex","label":"definitionResult"}
 {"id":17483,"type":"edge","label":"definition","outV":17480,"inV":17482}
-{"id":17484,"type":"edge","label":"item","outV":17482,"inVs":[17479],"document":17429}
-{"id":17485,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef dispatch_batch(document_ids)\n```"}}}
+{"id":17484,"type":"edge","label":"item","outV":17482,"inVs":[17479],"document":17437}
+{"id":17485,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef dispatch_document(document_id, from_stage, force)\n```"}}}
 {"id":17486,"type":"edge","label":"hover","outV":17480,"inV":17485}
-{"id":17487,"type":"edge","label":"contains","outV":17429,"inVs":[17431,17439,17447,17455,17463,17471,17479]}
-{"id":17488,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/pipeline_sweeper.py","languageId":"python"}
-{"id":17489,"type":"edge","label":"contains","outV":1,"inVs":[17488]}
-{"id":17490,"type":"vertex","label":"range","start":{"line":60,"character":0},"end":{"line":60,"character":16}}
-{"id":17491,"type":"vertex","label":"resultSet"}
-{"id":17492,"type":"edge","label":"next","outV":17490,"inV":17491}
-{"id":17493,"type":"vertex","label":"definitionResult"}
-{"id":17494,"type":"edge","label":"definition","outV":17491,"inV":17493}
-{"id":17495,"type":"edge","label":"item","outV":17493,"inVs":[17490],"document":17488}
-{"id":17496,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef pipeline_sweeper()\n```"}}}
-{"id":17497,"type":"edge","label":"hover","outV":17491,"inV":17496}
-{"id":17498,"type":"vertex","label":"range","start":{"line":127,"character":8},"end":{"line":127,"character":22}}
+{"id":17487,"type":"vertex","label":"range","start":{"line":335,"character":0},"end":{"line":335,"character":14}}
+{"id":17488,"type":"vertex","label":"resultSet"}
+{"id":17489,"type":"edge","label":"next","outV":17487,"inV":17488}
+{"id":17490,"type":"vertex","label":"definitionResult"}
+{"id":17491,"type":"edge","label":"definition","outV":17488,"inV":17490}
+{"id":17492,"type":"edge","label":"item","outV":17490,"inVs":[17487],"document":17437}
+{"id":17493,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef dispatch_batch(document_ids)\n```"}}}
+{"id":17494,"type":"edge","label":"hover","outV":17488,"inV":17493}
+{"id":17495,"type":"edge","label":"contains","outV":17437,"inVs":[17439,17447,17455,17463,17471,17479,17487]}
+{"id":17496,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/pipeline_sweeper.py","languageId":"python"}
+{"id":17497,"type":"edge","label":"contains","outV":1,"inVs":[17496]}
+{"id":17498,"type":"vertex","label":"range","start":{"line":60,"character":0},"end":{"line":60,"character":16}}
 {"id":17499,"type":"vertex","label":"resultSet"}
 {"id":17500,"type":"edge","label":"next","outV":17498,"inV":17499}
 {"id":17501,"type":"vertex","label":"definitionResult"}
 {"id":17502,"type":"edge","label":"definition","outV":17499,"inV":17501}
-{"id":17503,"type":"edge","label":"item","outV":17501,"inVs":[17498],"document":17488}
-{"id":17504,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _skip_if_error(doc_id)\n```"}}}
+{"id":17503,"type":"edge","label":"item","outV":17501,"inVs":[17498],"document":17496}
+{"id":17504,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef pipeline_sweeper()\n```"}}}
 {"id":17505,"type":"edge","label":"hover","outV":17499,"inV":17504}
-{"id":17506,"type":"edge","label":"contains","outV":17488,"inVs":[17490,17498]}
-{"id":17507,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/pipeline_tasks.py","languageId":"python"}
-{"id":17508,"type":"edge","label":"contains","outV":1,"inVs":[17507]}
-{"id":17509,"type":"vertex","label":"range","start":{"line":29,"character":0},"end":{"line":29,"character":23}}
-{"id":17510,"type":"vertex","label":"resultSet"}
-{"id":17511,"type":"edge","label":"next","outV":17509,"inV":17510}
-{"id":17512,"type":"vertex","label":"definitionResult"}
-{"id":17513,"type":"edge","label":"definition","outV":17510,"inV":17512}
-{"id":17514,"type":"edge","label":"item","outV":17512,"inVs":[17509],"document":17507}
-{"id":17515,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass _PermanentPipelineError\n# methods: \n```"}}}
-{"id":17516,"type":"edge","label":"hover","outV":17510,"inV":17515}
-{"id":17517,"type":"vertex","label":"range","start":{"line":40,"character":0},"end":{"line":40,"character":12}}
+{"id":17506,"type":"vertex","label":"range","start":{"line":127,"character":8},"end":{"line":127,"character":22}}
+{"id":17507,"type":"vertex","label":"resultSet"}
+{"id":17508,"type":"edge","label":"next","outV":17506,"inV":17507}
+{"id":17509,"type":"vertex","label":"definitionResult"}
+{"id":17510,"type":"edge","label":"definition","outV":17507,"inV":17509}
+{"id":17511,"type":"edge","label":"item","outV":17509,"inVs":[17506],"document":17496}
+{"id":17512,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _skip_if_error(doc_id)\n```"}}}
+{"id":17513,"type":"edge","label":"hover","outV":17507,"inV":17512}
+{"id":17514,"type":"edge","label":"contains","outV":17496,"inVs":[17498,17506]}
+{"id":17515,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/pipeline_tasks.py","languageId":"python"}
+{"id":17516,"type":"edge","label":"contains","outV":1,"inVs":[17515]}
+{"id":17517,"type":"vertex","label":"range","start":{"line":29,"character":0},"end":{"line":29,"character":23}}
 {"id":17518,"type":"vertex","label":"resultSet"}
 {"id":17519,"type":"edge","label":"next","outV":17517,"inV":17518}
 {"id":17520,"type":"vertex","label":"definitionResult"}
 {"id":17521,"type":"edge","label":"definition","outV":17518,"inV":17520}
-{"id":17522,"type":"edge","label":"item","outV":17520,"inVs":[17517],"document":17507}
-{"id":17523,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef update_stage(document_id, stage, status, error, worker_id, db)\n```"}}}
+{"id":17522,"type":"edge","label":"item","outV":17520,"inVs":[17517],"document":17515}
+{"id":17523,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass _PermanentPipelineError\n# methods: \n```"}}}
 {"id":17524,"type":"edge","label":"hover","outV":17518,"inV":17523}
-{"id":17525,"type":"vertex","label":"range","start":{"line":145,"character":0},"end":{"line":145,"character":20}}
+{"id":17525,"type":"vertex","label":"range","start":{"line":40,"character":0},"end":{"line":40,"character":12}}
 {"id":17526,"type":"vertex","label":"resultSet"}
 {"id":17527,"type":"edge","label":"next","outV":17525,"inV":17526}
 {"id":17528,"type":"vertex","label":"definitionResult"}
 {"id":17529,"type":"edge","label":"definition","outV":17526,"inV":17528}
-{"id":17530,"type":"edge","label":"item","outV":17528,"inVs":[17525],"document":17507}
-{"id":17531,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _sync_document_stage(document_id, stage_value)\n```"}}}
+{"id":17530,"type":"edge","label":"item","outV":17528,"inVs":[17525],"document":17515}
+{"id":17531,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef update_stage(document_id, stage, status, error, worker_id, db)\n```"}}}
 {"id":17532,"type":"edge","label":"hover","outV":17526,"inV":17531}
-{"id":17533,"type":"vertex","label":"range","start":{"line":163,"character":0},"end":{"line":163,"character":21}}
+{"id":17533,"type":"vertex","label":"range","start":{"line":145,"character":0},"end":{"line":145,"character":20}}
 {"id":17534,"type":"vertex","label":"resultSet"}
 {"id":17535,"type":"edge","label":"next","outV":17533,"inV":17534}
 {"id":17536,"type":"vertex","label":"definitionResult"}
 {"id":17537,"type":"edge","label":"definition","outV":17534,"inV":17536}
-{"id":17538,"type":"edge","label":"item","outV":17536,"inVs":[17533],"document":17507}
-{"id":17539,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _clear_document_error(document_id)\n```"}}}
+{"id":17538,"type":"edge","label":"item","outV":17536,"inVs":[17533],"document":17515}
+{"id":17539,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _sync_document_stage(document_id, stage_value)\n```"}}}
 {"id":17540,"type":"edge","label":"hover","outV":17534,"inV":17539}
-{"id":17541,"type":"vertex","label":"range","start":{"line":187,"character":0},"end":{"line":187,"character":23}}
+{"id":17541,"type":"vertex","label":"range","start":{"line":163,"character":0},"end":{"line":163,"character":21}}
 {"id":17542,"type":"vertex","label":"resultSet"}
 {"id":17543,"type":"edge","label":"next","outV":17541,"inV":17542}
 {"id":17544,"type":"vertex","label":"definitionResult"}
 {"id":17545,"type":"edge","label":"definition","outV":17542,"inV":17544}
-{"id":17546,"type":"edge","label":"item","outV":17544,"inVs":[17541],"document":17507}
-{"id":17547,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _fail_stage_permanently(task, document_id, stage, exc, attempts)\n```"}}}
+{"id":17546,"type":"edge","label":"item","outV":17544,"inVs":[17541],"document":17515}
+{"id":17547,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _clear_document_error(document_id)\n```"}}}
 {"id":17548,"type":"edge","label":"hover","outV":17542,"inV":17547}
-{"id":17549,"type":"vertex","label":"range","start":{"line":240,"character":0},"end":{"line":240,"character":11}}
+{"id":17549,"type":"vertex","label":"range","start":{"line":187,"character":0},"end":{"line":187,"character":23}}
 {"id":17550,"type":"vertex","label":"resultSet"}
 {"id":17551,"type":"edge","label":"next","outV":17549,"inV":17550}
 {"id":17552,"type":"vertex","label":"definitionResult"}
 {"id":17553,"type":"edge","label":"definition","outV":17550,"inV":17552}
-{"id":17554,"type":"edge","label":"item","outV":17552,"inVs":[17549],"document":17507}
-{"id":17555,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _stage_task(self, document_id, stage, work_fn)\n```"}}}
+{"id":17554,"type":"edge","label":"item","outV":17552,"inVs":[17549],"document":17515}
+{"id":17555,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _fail_stage_permanently(task, document_id, stage, exc, attempts)\n```"}}}
 {"id":17556,"type":"edge","label":"hover","outV":17550,"inV":17555}
-{"id":17557,"type":"vertex","label":"range","start":{"line":366,"character":0},"end":{"line":366,"character":8}}
+{"id":17557,"type":"vertex","label":"range","start":{"line":240,"character":0},"end":{"line":240,"character":11}}
 {"id":17558,"type":"vertex","label":"resultSet"}
 {"id":17559,"type":"edge","label":"next","outV":17557,"inV":17558}
 {"id":17560,"type":"vertex","label":"definitionResult"}
 {"id":17561,"type":"edge","label":"definition","outV":17558,"inV":17560}
-{"id":17562,"type":"edge","label":"item","outV":17560,"inVs":[17557],"document":17507}
-{"id":17563,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_ocr(document_id)\n```"}}}
+{"id":17562,"type":"edge","label":"item","outV":17560,"inVs":[17557],"document":17515}
+{"id":17563,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _stage_task(self, document_id, stage, work_fn)\n```"}}}
 {"id":17564,"type":"edge","label":"hover","outV":17558,"inV":17563}
-{"id":17565,"type":"vertex","label":"range","start":{"line":540,"character":0},"end":{"line":540,"character":10}}
+{"id":17565,"type":"vertex","label":"range","start":{"line":366,"character":0},"end":{"line":366,"character":8}}
 {"id":17566,"type":"vertex","label":"resultSet"}
 {"id":17567,"type":"edge","label":"next","outV":17565,"inV":17566}
 {"id":17568,"type":"vertex","label":"definitionResult"}
 {"id":17569,"type":"edge","label":"definition","outV":17566,"inV":17568}
-{"id":17570,"type":"edge","label":"item","outV":17568,"inVs":[17565],"document":17507}
-{"id":17571,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_chunk(document_id)\n```"}}}
+{"id":17570,"type":"edge","label":"item","outV":17568,"inVs":[17565],"document":17515}
+{"id":17571,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_ocr(document_id)\n```"}}}
 {"id":17572,"type":"edge","label":"hover","outV":17566,"inV":17571}
-{"id":17573,"type":"vertex","label":"range","start":{"line":643,"character":0},"end":{"line":643,"character":10}}
+{"id":17573,"type":"vertex","label":"range","start":{"line":540,"character":0},"end":{"line":540,"character":10}}
 {"id":17574,"type":"vertex","label":"resultSet"}
 {"id":17575,"type":"edge","label":"next","outV":17573,"inV":17574}
 {"id":17576,"type":"vertex","label":"definitionResult"}
 {"id":17577,"type":"edge","label":"definition","outV":17574,"inV":17576}
-{"id":17578,"type":"edge","label":"item","outV":17576,"inVs":[17573],"document":17507}
-{"id":17579,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_embed(document_id)\n```"}}}
+{"id":17578,"type":"edge","label":"item","outV":17576,"inVs":[17573],"document":17515}
+{"id":17579,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_chunk(document_id)\n```"}}}
 {"id":17580,"type":"edge","label":"hover","outV":17574,"inV":17579}
-{"id":17581,"type":"vertex","label":"range","start":{"line":768,"character":0},"end":{"line":768,"character":10}}
+{"id":17581,"type":"vertex","label":"range","start":{"line":643,"character":0},"end":{"line":643,"character":10}}
 {"id":17582,"type":"vertex","label":"resultSet"}
 {"id":17583,"type":"edge","label":"next","outV":17581,"inV":17582}
 {"id":17584,"type":"vertex","label":"definitionResult"}
 {"id":17585,"type":"edge","label":"definition","outV":17582,"inV":17584}
-{"id":17586,"type":"edge","label":"item","outV":17584,"inVs":[17581],"document":17507}
-{"id":17587,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_index(document_id)\n```"}}}
+{"id":17586,"type":"edge","label":"item","outV":17584,"inVs":[17581],"document":17515}
+{"id":17587,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_embed(document_id)\n```"}}}
 {"id":17588,"type":"edge","label":"hover","outV":17582,"inV":17587}
-{"id":17589,"type":"vertex","label":"range","start":{"line":800,"character":0},"end":{"line":800,"character":13}}
+{"id":17589,"type":"vertex","label":"range","start":{"line":768,"character":0},"end":{"line":768,"character":10}}
 {"id":17590,"type":"vertex","label":"resultSet"}
 {"id":17591,"type":"edge","label":"next","outV":17589,"inV":17590}
 {"id":17592,"type":"vertex","label":"definitionResult"}
 {"id":17593,"type":"edge","label":"definition","outV":17590,"inV":17592}
-{"id":17594,"type":"edge","label":"item","outV":17592,"inVs":[17589],"document":17507}
-{"id":17595,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_articles(document_id)\n```"}}}
+{"id":17594,"type":"edge","label":"item","outV":17592,"inVs":[17589],"document":17515}
+{"id":17595,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_index(document_id)\n```"}}}
 {"id":17596,"type":"edge","label":"hover","outV":17590,"inV":17595}
-{"id":17597,"type":"vertex","label":"range","start":{"line":813,"character":0},"end":{"line":813,"character":13}}
+{"id":17597,"type":"vertex","label":"range","start":{"line":800,"character":0},"end":{"line":800,"character":13}}
 {"id":17598,"type":"vertex","label":"resultSet"}
 {"id":17599,"type":"edge","label":"next","outV":17597,"inV":17598}
 {"id":17600,"type":"vertex","label":"definitionResult"}
 {"id":17601,"type":"edge","label":"definition","outV":17598,"inV":17600}
-{"id":17602,"type":"edge","label":"item","outV":17600,"inVs":[17597],"document":17507}
-{"id":17603,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_entities(document_id)\n```"}}}
+{"id":17602,"type":"edge","label":"item","outV":17600,"inVs":[17597],"document":17515}
+{"id":17603,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_articles(document_id)\n```"}}}
 {"id":17604,"type":"edge","label":"hover","outV":17598,"inV":17603}
-{"id":17605,"type":"vertex","label":"range","start":{"line":878,"character":0},"end":{"line":878,"character":23}}
+{"id":17605,"type":"vertex","label":"range","start":{"line":813,"character":0},"end":{"line":813,"character":13}}
 {"id":17606,"type":"vertex","label":"resultSet"}
 {"id":17607,"type":"edge","label":"next","outV":17605,"inV":17606}
 {"id":17608,"type":"vertex","label":"definitionResult"}
 {"id":17609,"type":"edge","label":"definition","outV":17606,"inV":17608}
-{"id":17610,"type":"edge","label":"item","outV":17608,"inVs":[17605],"document":17507}
-{"id":17611,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _graph_extract_document(document_id, chunks, bucket)\n```"}}}
+{"id":17610,"type":"edge","label":"item","outV":17608,"inVs":[17605],"document":17515}
+{"id":17611,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_entities(document_id)\n```"}}}
 {"id":17612,"type":"edge","label":"hover","outV":17606,"inV":17611}
-{"id":17613,"type":"vertex","label":"range","start":{"line":942,"character":0},"end":{"line":942,"character":9}}
+{"id":17613,"type":"vertex","label":"range","start":{"line":878,"character":0},"end":{"line":878,"character":23}}
 {"id":17614,"type":"vertex","label":"resultSet"}
 {"id":17615,"type":"edge","label":"next","outV":17613,"inV":17614}
 {"id":17616,"type":"vertex","label":"definitionResult"}
 {"id":17617,"type":"edge","label":"definition","outV":17614,"inV":17616}
-{"id":17618,"type":"edge","label":"item","outV":17616,"inVs":[17613],"document":17507}
-{"id":17619,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef ocr_stage(self, document_id)\n```"}}}
+{"id":17618,"type":"edge","label":"item","outV":17616,"inVs":[17613],"document":17515}
+{"id":17619,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _graph_extract_document(document_id, chunks, bucket)\n```"}}}
 {"id":17620,"type":"edge","label":"hover","outV":17614,"inV":17619}
-{"id":17621,"type":"vertex","label":"range","start":{"line":954,"character":0},"end":{"line":954,"character":11}}
+{"id":17621,"type":"vertex","label":"range","start":{"line":942,"character":0},"end":{"line":942,"character":9}}
 {"id":17622,"type":"vertex","label":"resultSet"}
 {"id":17623,"type":"edge","label":"next","outV":17621,"inV":17622}
 {"id":17624,"type":"vertex","label":"definitionResult"}
 {"id":17625,"type":"edge","label":"definition","outV":17622,"inV":17624}
-{"id":17626,"type":"edge","label":"item","outV":17624,"inVs":[17621],"document":17507}
-{"id":17627,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef chunk_stage(self, document_id)\n```"}}}
+{"id":17626,"type":"edge","label":"item","outV":17624,"inVs":[17621],"document":17515}
+{"id":17627,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef ocr_stage(self, document_id)\n```"}}}
 {"id":17628,"type":"edge","label":"hover","outV":17622,"inV":17627}
-{"id":17629,"type":"vertex","label":"range","start":{"line":966,"character":0},"end":{"line":966,"character":11}}
+{"id":17629,"type":"vertex","label":"range","start":{"line":954,"character":0},"end":{"line":954,"character":11}}
 {"id":17630,"type":"vertex","label":"resultSet"}
 {"id":17631,"type":"edge","label":"next","outV":17629,"inV":17630}
 {"id":17632,"type":"vertex","label":"definitionResult"}
 {"id":17633,"type":"edge","label":"definition","outV":17630,"inV":17632}
-{"id":17634,"type":"edge","label":"item","outV":17632,"inVs":[17629],"document":17507}
-{"id":17635,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef embed_stage(self, document_id)\n```"}}}
+{"id":17634,"type":"edge","label":"item","outV":17632,"inVs":[17629],"document":17515}
+{"id":17635,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef chunk_stage(self, document_id)\n```"}}}
 {"id":17636,"type":"edge","label":"hover","outV":17630,"inV":17635}
-{"id":17637,"type":"vertex","label":"range","start":{"line":978,"character":0},"end":{"line":978,"character":11}}
+{"id":17637,"type":"vertex","label":"range","start":{"line":966,"character":0},"end":{"line":966,"character":11}}
 {"id":17638,"type":"vertex","label":"resultSet"}
 {"id":17639,"type":"edge","label":"next","outV":17637,"inV":17638}
 {"id":17640,"type":"vertex","label":"definitionResult"}
 {"id":17641,"type":"edge","label":"definition","outV":17638,"inV":17640}
-{"id":17642,"type":"edge","label":"item","outV":17640,"inVs":[17637],"document":17507}
-{"id":17643,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef index_stage(self, document_id)\n```"}}}
+{"id":17642,"type":"edge","label":"item","outV":17640,"inVs":[17637],"document":17515}
+{"id":17643,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef embed_stage(self, document_id)\n```"}}}
 {"id":17644,"type":"edge","label":"hover","outV":17638,"inV":17643}
-{"id":17645,"type":"vertex","label":"range","start":{"line":990,"character":0},"end":{"line":990,"character":13}}
+{"id":17645,"type":"vertex","label":"range","start":{"line":978,"character":0},"end":{"line":978,"character":11}}
 {"id":17646,"type":"vertex","label":"resultSet"}
 {"id":17647,"type":"edge","label":"next","outV":17645,"inV":17646}
 {"id":17648,"type":"vertex","label":"definitionResult"}
 {"id":17649,"type":"edge","label":"definition","outV":17646,"inV":17648}
-{"id":17650,"type":"edge","label":"item","outV":17648,"inVs":[17645],"document":17507}
-{"id":17651,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef article_stage(self, document_id)\n```"}}}
+{"id":17650,"type":"edge","label":"item","outV":17648,"inVs":[17645],"document":17515}
+{"id":17651,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef index_stage(self, document_id)\n```"}}}
 {"id":17652,"type":"edge","label":"hover","outV":17646,"inV":17651}
-{"id":17653,"type":"vertex","label":"range","start":{"line":1002,"character":0},"end":{"line":1002,"character":12}}
+{"id":17653,"type":"vertex","label":"range","start":{"line":990,"character":0},"end":{"line":990,"character":13}}
 {"id":17654,"type":"vertex","label":"resultSet"}
 {"id":17655,"type":"edge","label":"next","outV":17653,"inV":17654}
 {"id":17656,"type":"vertex","label":"definitionResult"}
 {"id":17657,"type":"edge","label":"definition","outV":17654,"inV":17656}
-{"id":17658,"type":"edge","label":"item","outV":17656,"inVs":[17653],"document":17507}
-{"id":17659,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef entity_stage(self, document_id)\n```"}}}
+{"id":17658,"type":"edge","label":"item","outV":17656,"inVs":[17653],"document":17515}
+{"id":17659,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef article_stage(self, document_id)\n```"}}}
 {"id":17660,"type":"edge","label":"hover","outV":17654,"inV":17659}
-{"id":17661,"type":"vertex","label":"range","start":{"line":1006,"character":0},"end":{"line":1006,"character":13}}
+{"id":17661,"type":"vertex","label":"range","start":{"line":1002,"character":0},"end":{"line":1002,"character":12}}
 {"id":17662,"type":"vertex","label":"resultSet"}
 {"id":17663,"type":"edge","label":"next","outV":17661,"inV":17662}
 {"id":17664,"type":"vertex","label":"definitionResult"}
 {"id":17665,"type":"edge","label":"definition","outV":17662,"inV":17664}
-{"id":17666,"type":"edge","label":"item","outV":17664,"inVs":[17661],"document":17507}
-{"id":17667,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_finalize(document_id)\n```"}}}
+{"id":17666,"type":"edge","label":"item","outV":17664,"inVs":[17661],"document":17515}
+{"id":17667,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef entity_stage(self, document_id)\n```"}}}
 {"id":17668,"type":"edge","label":"hover","outV":17662,"inV":17667}
-{"id":17669,"type":"vertex","label":"range","start":{"line":1034,"character":0},"end":{"line":1034,"character":14}}
+{"id":17669,"type":"vertex","label":"range","start":{"line":1006,"character":0},"end":{"line":1006,"character":13}}
 {"id":17670,"type":"vertex","label":"resultSet"}
 {"id":17671,"type":"edge","label":"next","outV":17669,"inV":17670}
 {"id":17672,"type":"vertex","label":"definitionResult"}
 {"id":17673,"type":"edge","label":"definition","outV":17670,"inV":17672}
-{"id":17674,"type":"edge","label":"item","outV":17672,"inVs":[17669],"document":17507}
-{"id":17675,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef finalize_stage(self, document_id)\n```"}}}
+{"id":17674,"type":"edge","label":"item","outV":17672,"inVs":[17669],"document":17515}
+{"id":17675,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run_finalize(document_id)\n```"}}}
 {"id":17676,"type":"edge","label":"hover","outV":17670,"inV":17675}
-{"id":17677,"type":"vertex","label":"range","start":{"line":890,"character":4},"end":{"line":890,"character":16}}
+{"id":17677,"type":"vertex","label":"range","start":{"line":1034,"character":0},"end":{"line":1034,"character":14}}
 {"id":17678,"type":"vertex","label":"resultSet"}
 {"id":17679,"type":"edge","label":"next","outV":17677,"inV":17678}
 {"id":17680,"type":"vertex","label":"definitionResult"}
 {"id":17681,"type":"edge","label":"definition","outV":17678,"inV":17680}
-{"id":17682,"type":"edge","label":"item","outV":17680,"inVs":[17677],"document":17507}
-{"id":17683,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef embedding_fn(texts)\n```"}}}
+{"id":17682,"type":"edge","label":"item","outV":17680,"inVs":[17677],"document":17515}
+{"id":17683,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef finalize_stage(self, document_id)\n```"}}}
 {"id":17684,"type":"edge","label":"hover","outV":17678,"inV":17683}
-{"id":17685,"type":"edge","label":"contains","outV":17507,"inVs":[17509,17517,17525,17533,17541,17549,17557,17565,17573,17581,17589,17597,17605,17613,17621,17629,17637,17645,17653,17661,17669,17677]}
-{"id":17686,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/report_tasks.py","languageId":"python"}
-{"id":17687,"type":"edge","label":"contains","outV":1,"inVs":[17686]}
-{"id":17688,"type":"vertex","label":"range","start":{"line":24,"character":0},"end":{"line":24,"character":19}}
-{"id":17689,"type":"vertex","label":"resultSet"}
-{"id":17690,"type":"edge","label":"next","outV":17688,"inV":17689}
-{"id":17691,"type":"vertex","label":"definitionResult"}
-{"id":17692,"type":"edge","label":"definition","outV":17689,"inV":17691}
-{"id":17693,"type":"edge","label":"item","outV":17691,"inVs":[17688],"document":17686}
-{"id":17694,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _ensure_reports_dir()\n```"}}}
-{"id":17695,"type":"edge","label":"hover","outV":17689,"inV":17694}
-{"id":17696,"type":"vertex","label":"range","start":{"line":41,"character":0},"end":{"line":41,"character":19}}
+{"id":17685,"type":"vertex","label":"range","start":{"line":890,"character":4},"end":{"line":890,"character":16}}
+{"id":17686,"type":"vertex","label":"resultSet"}
+{"id":17687,"type":"edge","label":"next","outV":17685,"inV":17686}
+{"id":17688,"type":"vertex","label":"definitionResult"}
+{"id":17689,"type":"edge","label":"definition","outV":17686,"inV":17688}
+{"id":17690,"type":"edge","label":"item","outV":17688,"inVs":[17685],"document":17515}
+{"id":17691,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef embedding_fn(texts)\n```"}}}
+{"id":17692,"type":"edge","label":"hover","outV":17686,"inV":17691}
+{"id":17693,"type":"edge","label":"contains","outV":17515,"inVs":[17517,17525,17533,17541,17549,17557,17565,17573,17581,17589,17597,17605,17613,17621,17629,17637,17645,17653,17661,17669,17677,17685]}
+{"id":17694,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/report_tasks.py","languageId":"python"}
+{"id":17695,"type":"edge","label":"contains","outV":1,"inVs":[17694]}
+{"id":17696,"type":"vertex","label":"range","start":{"line":24,"character":0},"end":{"line":24,"character":19}}
 {"id":17697,"type":"vertex","label":"resultSet"}
 {"id":17698,"type":"edge","label":"next","outV":17696,"inV":17697}
 {"id":17699,"type":"vertex","label":"definitionResult"}
 {"id":17700,"type":"edge","label":"definition","outV":17697,"inV":17699}
-{"id":17701,"type":"edge","label":"item","outV":17699,"inVs":[17696],"document":17686}
-{"id":17702,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_pdf_report(self, report_type, filters, user_id, output_filename)\n```"}}}
+{"id":17701,"type":"edge","label":"item","outV":17699,"inVs":[17696],"document":17694}
+{"id":17702,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _ensure_reports_dir()\n```"}}}
 {"id":17703,"type":"edge","label":"hover","outV":17697,"inV":17702}
-{"id":17704,"type":"vertex","label":"range","start":{"line":100,"character":0},"end":{"line":100,"character":21}}
+{"id":17704,"type":"vertex","label":"range","start":{"line":41,"character":0},"end":{"line":41,"character":19}}
 {"id":17705,"type":"vertex","label":"resultSet"}
 {"id":17706,"type":"edge","label":"next","outV":17704,"inV":17705}
 {"id":17707,"type":"vertex","label":"definitionResult"}
 {"id":17708,"type":"edge","label":"definition","outV":17705,"inV":17707}
-{"id":17709,"type":"edge","label":"item","outV":17707,"inVs":[17704],"document":17686}
-{"id":17710,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _generate_pdf_content(report_type, filters, output_path)\n```"}}}
+{"id":17709,"type":"edge","label":"item","outV":17707,"inVs":[17704],"document":17694}
+{"id":17710,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_pdf_report(self, report_type, filters, user_id, output_filename)\n```"}}}
 {"id":17711,"type":"edge","label":"hover","outV":17705,"inV":17710}
-{"id":17712,"type":"vertex","label":"range","start":{"line":122,"character":0},"end":{"line":122,"character":20}}
+{"id":17712,"type":"vertex","label":"range","start":{"line":100,"character":0},"end":{"line":100,"character":21}}
 {"id":17713,"type":"vertex","label":"resultSet"}
 {"id":17714,"type":"edge","label":"next","outV":17712,"inV":17713}
 {"id":17715,"type":"vertex","label":"definitionResult"}
 {"id":17716,"type":"edge","label":"definition","outV":17713,"inV":17715}
-{"id":17717,"type":"edge","label":"item","outV":17715,"inVs":[17712],"document":17686}
-{"id":17718,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_pdf_with_fpdf(FPDF, report_type, filters, output_path, db)\n```"}}}
+{"id":17717,"type":"edge","label":"item","outV":17715,"inVs":[17712],"document":17694}
+{"id":17718,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _generate_pdf_content(report_type, filters, output_path)\n```"}}}
 {"id":17719,"type":"edge","label":"hover","outV":17713,"inV":17718}
-{"id":17720,"type":"vertex","label":"range","start":{"line":145,"character":0},"end":{"line":145,"character":16}}
+{"id":17720,"type":"vertex","label":"range","start":{"line":122,"character":0},"end":{"line":122,"character":20}}
 {"id":17721,"type":"vertex","label":"resultSet"}
 {"id":17722,"type":"edge","label":"next","outV":17720,"inV":17721}
 {"id":17723,"type":"vertex","label":"definitionResult"}
 {"id":17724,"type":"edge","label":"definition","outV":17721,"inV":17723}
-{"id":17725,"type":"edge","label":"item","outV":17723,"inVs":[17720],"document":17686}
-{"id":17726,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_text_stub(report_type, filters, output_path, db)\n```"}}}
+{"id":17725,"type":"edge","label":"item","outV":17723,"inVs":[17720],"document":17694}
+{"id":17726,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_pdf_with_fpdf(FPDF, report_type, filters, output_path, db)\n```"}}}
 {"id":17727,"type":"edge","label":"hover","outV":17721,"inV":17726}
-{"id":17728,"type":"vertex","label":"range","start":{"line":167,"character":0},"end":{"line":167,"character":21}}
+{"id":17728,"type":"vertex","label":"range","start":{"line":145,"character":0},"end":{"line":145,"character":16}}
 {"id":17729,"type":"vertex","label":"resultSet"}
 {"id":17730,"type":"edge","label":"next","outV":17728,"inV":17729}
 {"id":17731,"type":"vertex","label":"definitionResult"}
 {"id":17732,"type":"edge","label":"definition","outV":17729,"inV":17731}
-{"id":17733,"type":"edge","label":"item","outV":17731,"inVs":[17728],"document":17686}
-{"id":17734,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_excel_export(self, export_type, filters, user_id, output_filename)\n```"}}}
+{"id":17733,"type":"edge","label":"item","outV":17731,"inVs":[17728],"document":17694}
+{"id":17734,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_text_stub(report_type, filters, output_path, db)\n```"}}}
 {"id":17735,"type":"edge","label":"hover","outV":17729,"inV":17734}
-{"id":17736,"type":"vertex","label":"range","start":{"line":229,"character":0},"end":{"line":229,"character":23}}
+{"id":17736,"type":"vertex","label":"range","start":{"line":167,"character":0},"end":{"line":167,"character":21}}
 {"id":17737,"type":"vertex","label":"resultSet"}
 {"id":17738,"type":"edge","label":"next","outV":17736,"inV":17737}
 {"id":17739,"type":"vertex","label":"definitionResult"}
 {"id":17740,"type":"edge","label":"definition","outV":17737,"inV":17739}
-{"id":17741,"type":"edge","label":"item","outV":17739,"inVs":[17736],"document":17686}
-{"id":17742,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _generate_excel_content(export_type, filters, output_path)\n```"}}}
+{"id":17741,"type":"edge","label":"item","outV":17739,"inVs":[17736],"document":17694}
+{"id":17742,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_excel_export(self, export_type, filters, user_id, output_filename)\n```"}}}
 {"id":17743,"type":"edge","label":"hover","outV":17737,"inV":17742}
-{"id":17744,"type":"vertex","label":"range","start":{"line":245,"character":0},"end":{"line":245,"character":26}}
+{"id":17744,"type":"vertex","label":"range","start":{"line":229,"character":0},"end":{"line":229,"character":23}}
 {"id":17745,"type":"vertex","label":"resultSet"}
 {"id":17746,"type":"edge","label":"next","outV":17744,"inV":17745}
 {"id":17747,"type":"vertex","label":"definitionResult"}
 {"id":17748,"type":"edge","label":"definition","outV":17745,"inV":17747}
-{"id":17749,"type":"edge","label":"item","outV":17747,"inVs":[17744],"document":17686}
-{"id":17750,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_excel_with_openpyxl(openpyxl, export_type, filters, output_path, db)\n```"}}}
+{"id":17749,"type":"edge","label":"item","outV":17747,"inVs":[17744],"document":17694}
+{"id":17750,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _generate_excel_content(export_type, filters, output_path)\n```"}}}
 {"id":17751,"type":"edge","label":"hover","outV":17745,"inV":17750}
-{"id":17752,"type":"vertex","label":"range","start":{"line":289,"character":0},"end":{"line":289,"character":17}}
+{"id":17752,"type":"vertex","label":"range","start":{"line":245,"character":0},"end":{"line":245,"character":26}}
 {"id":17753,"type":"vertex","label":"resultSet"}
 {"id":17754,"type":"edge","label":"next","outV":17752,"inV":17753}
 {"id":17755,"type":"vertex","label":"definitionResult"}
 {"id":17756,"type":"edge","label":"definition","outV":17753,"inV":17755}
-{"id":17757,"type":"edge","label":"item","outV":17755,"inVs":[17752],"document":17686}
-{"id":17758,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_excel_stub(export_type, output_path, db)\n```"}}}
+{"id":17757,"type":"edge","label":"item","outV":17755,"inVs":[17752],"document":17694}
+{"id":17758,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_excel_with_openpyxl(openpyxl, export_type, filters, output_path, db)\n```"}}}
 {"id":17759,"type":"edge","label":"hover","outV":17753,"inV":17758}
-{"id":17760,"type":"vertex","label":"range","start":{"line":307,"character":0},"end":{"line":307,"character":19}}
+{"id":17760,"type":"vertex","label":"range","start":{"line":289,"character":0},"end":{"line":289,"character":17}}
 {"id":17761,"type":"vertex","label":"resultSet"}
 {"id":17762,"type":"edge","label":"next","outV":17760,"inV":17761}
 {"id":17763,"type":"vertex","label":"definitionResult"}
 {"id":17764,"type":"edge","label":"definition","outV":17761,"inV":17763}
-{"id":17765,"type":"edge","label":"item","outV":17763,"inVs":[17760],"document":17686}
-{"id":17766,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef cleanup_old_reports(self, days_to_keep)\n```"}}}
+{"id":17765,"type":"edge","label":"item","outV":17763,"inVs":[17760],"document":17694}
+{"id":17766,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _write_excel_stub(export_type, output_path, db)\n```"}}}
 {"id":17767,"type":"edge","label":"hover","outV":17761,"inV":17766}
-{"id":17768,"type":"vertex","label":"range","start":{"line":348,"character":0},"end":{"line":348,"character":30}}
+{"id":17768,"type":"vertex","label":"range","start":{"line":307,"character":0},"end":{"line":307,"character":19}}
 {"id":17769,"type":"vertex","label":"resultSet"}
 {"id":17770,"type":"edge","label":"next","outV":17768,"inV":17769}
 {"id":17771,"type":"vertex","label":"definitionResult"}
 {"id":17772,"type":"edge","label":"definition","outV":17769,"inV":17771}
-{"id":17773,"type":"edge","label":"item","outV":17771,"inVs":[17768],"document":17686}
-{"id":17774,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef on_generate_pdf_report_failure(self, exc, task_id, args, kwargs, einfo)\n```"}}}
+{"id":17773,"type":"edge","label":"item","outV":17771,"inVs":[17768],"document":17694}
+{"id":17774,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef cleanup_old_reports(self, days_to_keep)\n```"}}}
 {"id":17775,"type":"edge","label":"hover","outV":17769,"inV":17774}
-{"id":17776,"type":"edge","label":"contains","outV":17686,"inVs":[17688,17696,17704,17712,17720,17728,17736,17744,17752,17760,17768]}
-{"id":17777,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/smart_folder_tasks.py","languageId":"python"}
-{"id":17778,"type":"edge","label":"contains","outV":1,"inVs":[17777]}
-{"id":17779,"type":"vertex","label":"range","start":{"line":28,"character":0},"end":{"line":28,"character":29}}
-{"id":17780,"type":"vertex","label":"resultSet"}
-{"id":17781,"type":"edge","label":"next","outV":17779,"inV":17780}
-{"id":17782,"type":"vertex","label":"definitionResult"}
-{"id":17783,"type":"edge","label":"definition","outV":17780,"inV":17782}
-{"id":17784,"type":"edge","label":"item","outV":17782,"inVs":[17779],"document":17777}
-{"id":17785,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_smart_folder_v2_task(self, query, include_confidential, user_id, smart_folder_id, refinement_query)\n```"}}}
-{"id":17786,"type":"edge","label":"hover","outV":17780,"inV":17785}
-{"id":17787,"type":"vertex","label":"range","start":{"line":158,"character":0},"end":{"line":158,"character":32}}
+{"id":17776,"type":"vertex","label":"range","start":{"line":348,"character":0},"end":{"line":348,"character":30}}
+{"id":17777,"type":"vertex","label":"resultSet"}
+{"id":17778,"type":"edge","label":"next","outV":17776,"inV":17777}
+{"id":17779,"type":"vertex","label":"definitionResult"}
+{"id":17780,"type":"edge","label":"definition","outV":17777,"inV":17779}
+{"id":17781,"type":"edge","label":"item","outV":17779,"inVs":[17776],"document":17694}
+{"id":17782,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef on_generate_pdf_report_failure(self, exc, task_id, args, kwargs, einfo)\n```"}}}
+{"id":17783,"type":"edge","label":"hover","outV":17777,"inV":17782}
+{"id":17784,"type":"edge","label":"contains","outV":17694,"inVs":[17696,17704,17712,17720,17728,17736,17744,17752,17760,17768,17776]}
+{"id":17785,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/smart_folder_tasks.py","languageId":"python"}
+{"id":17786,"type":"edge","label":"contains","outV":1,"inVs":[17785]}
+{"id":17787,"type":"vertex","label":"range","start":{"line":28,"character":0},"end":{"line":28,"character":29}}
 {"id":17788,"type":"vertex","label":"resultSet"}
 {"id":17789,"type":"edge","label":"next","outV":17787,"inV":17788}
 {"id":17790,"type":"vertex","label":"definitionResult"}
 {"id":17791,"type":"edge","label":"definition","outV":17788,"inV":17790}
-{"id":17792,"type":"edge","label":"item","outV":17790,"inVs":[17787],"document":17777}
-{"id":17793,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef refresh_stale_smart_folders_task(self)\n```"}}}
+{"id":17792,"type":"edge","label":"item","outV":17790,"inVs":[17787],"document":17785}
+{"id":17793,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_smart_folder_v2_task(self, query, include_confidential, user_id, smart_folder_id, refinement_query)\n```"}}}
 {"id":17794,"type":"edge","label":"hover","outV":17788,"inV":17793}
-{"id":17795,"type":"vertex","label":"range","start":{"line":214,"character":0},"end":{"line":214,"character":26}}
+{"id":17795,"type":"vertex","label":"range","start":{"line":158,"character":0},"end":{"line":158,"character":32}}
 {"id":17796,"type":"vertex","label":"resultSet"}
 {"id":17797,"type":"edge","label":"next","outV":17795,"inV":17796}
 {"id":17798,"type":"vertex","label":"definitionResult"}
 {"id":17799,"type":"edge","label":"definition","outV":17796,"inV":17798}
-{"id":17800,"type":"edge","label":"item","outV":17798,"inVs":[17795],"document":17777}
-{"id":17801,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_smart_folder_task(self, topic, style, length, include_confidential, user_id)\n```"}}}
+{"id":17800,"type":"edge","label":"item","outV":17798,"inVs":[17795],"document":17785}
+{"id":17801,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef refresh_stale_smart_folders_task(self)\n```"}}}
 {"id":17802,"type":"edge","label":"hover","outV":17796,"inV":17801}
-{"id":17803,"type":"vertex","label":"range","start":{"line":56,"character":4},"end":{"line":56,"character":8}}
+{"id":17803,"type":"vertex","label":"range","start":{"line":214,"character":0},"end":{"line":214,"character":26}}
 {"id":17804,"type":"vertex","label":"resultSet"}
 {"id":17805,"type":"edge","label":"next","outV":17803,"inV":17804}
 {"id":17806,"type":"vertex","label":"definitionResult"}
 {"id":17807,"type":"edge","label":"definition","outV":17804,"inV":17806}
-{"id":17808,"type":"edge","label":"item","outV":17806,"inVs":[17803],"document":17777}
-{"id":17809,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run()\n```"}}}
+{"id":17808,"type":"edge","label":"item","outV":17806,"inVs":[17803],"document":17785}
+{"id":17809,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef generate_smart_folder_task(self, topic, style, length, include_confidential, user_id)\n```"}}}
 {"id":17810,"type":"edge","label":"hover","outV":17804,"inV":17809}
-{"id":17811,"type":"vertex","label":"range","start":{"line":172,"character":4},"end":{"line":172,"character":8}}
+{"id":17811,"type":"vertex","label":"range","start":{"line":56,"character":4},"end":{"line":56,"character":8}}
 {"id":17812,"type":"vertex","label":"resultSet"}
 {"id":17813,"type":"edge","label":"next","outV":17811,"inV":17812}
 {"id":17814,"type":"vertex","label":"definitionResult"}
 {"id":17815,"type":"edge","label":"definition","outV":17812,"inV":17814}
-{"id":17816,"type":"edge","label":"item","outV":17814,"inVs":[17811],"document":17777}
+{"id":17816,"type":"edge","label":"item","outV":17814,"inVs":[17811],"document":17785}
 {"id":17817,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run()\n```"}}}
 {"id":17818,"type":"edge","label":"hover","outV":17812,"inV":17817}
-{"id":17819,"type":"vertex","label":"range","start":{"line":231,"character":4},"end":{"line":231,"character":8}}
+{"id":17819,"type":"vertex","label":"range","start":{"line":172,"character":4},"end":{"line":172,"character":8}}
 {"id":17820,"type":"vertex","label":"resultSet"}
 {"id":17821,"type":"edge","label":"next","outV":17819,"inV":17820}
 {"id":17822,"type":"vertex","label":"definitionResult"}
 {"id":17823,"type":"edge","label":"definition","outV":17820,"inV":17822}
-{"id":17824,"type":"edge","label":"item","outV":17822,"inVs":[17819],"document":17777}
+{"id":17824,"type":"edge","label":"item","outV":17822,"inVs":[17819],"document":17785}
 {"id":17825,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run()\n```"}}}
 {"id":17826,"type":"edge","label":"hover","outV":17820,"inV":17825}
-{"id":17827,"type":"edge","label":"contains","outV":17777,"inVs":[17779,17787,17795,17803,17811,17819]}
-{"id":17828,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/space_tasks.py","languageId":"python"}
-{"id":17829,"type":"edge","label":"contains","outV":1,"inVs":[17828]}
-{"id":17830,"type":"vertex","label":"range","start":{"line":10,"character":0},"end":{"line":10,"character":21}}
-{"id":17831,"type":"vertex","label":"resultSet"}
-{"id":17832,"type":"edge","label":"next","outV":17830,"inV":17831}
-{"id":17833,"type":"vertex","label":"definitionResult"}
-{"id":17834,"type":"edge","label":"definition","outV":17831,"inV":17833}
-{"id":17835,"type":"edge","label":"item","outV":17833,"inVs":[17830],"document":17828}
-{"id":17836,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef sync_space_rules_task(self, space_id)\n```"}}}
-{"id":17837,"type":"edge","label":"hover","outV":17831,"inV":17836}
-{"id":17838,"type":"vertex","label":"range","start":{"line":22,"character":8},"end":{"line":22,"character":12}}
+{"id":17827,"type":"vertex","label":"range","start":{"line":231,"character":4},"end":{"line":231,"character":8}}
+{"id":17828,"type":"vertex","label":"resultSet"}
+{"id":17829,"type":"edge","label":"next","outV":17827,"inV":17828}
+{"id":17830,"type":"vertex","label":"definitionResult"}
+{"id":17831,"type":"edge","label":"definition","outV":17828,"inV":17830}
+{"id":17832,"type":"edge","label":"item","outV":17830,"inVs":[17827],"document":17785}
+{"id":17833,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run()\n```"}}}
+{"id":17834,"type":"edge","label":"hover","outV":17828,"inV":17833}
+{"id":17835,"type":"edge","label":"contains","outV":17785,"inVs":[17787,17795,17803,17811,17819,17827]}
+{"id":17836,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/space_tasks.py","languageId":"python"}
+{"id":17837,"type":"edge","label":"contains","outV":1,"inVs":[17836]}
+{"id":17838,"type":"vertex","label":"range","start":{"line":10,"character":0},"end":{"line":10,"character":21}}
 {"id":17839,"type":"vertex","label":"resultSet"}
 {"id":17840,"type":"edge","label":"next","outV":17838,"inV":17839}
 {"id":17841,"type":"vertex","label":"definitionResult"}
 {"id":17842,"type":"edge","label":"definition","outV":17839,"inV":17841}
-{"id":17843,"type":"edge","label":"item","outV":17841,"inVs":[17838],"document":17828}
-{"id":17844,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run()\n```"}}}
+{"id":17843,"type":"edge","label":"item","outV":17841,"inVs":[17838],"document":17836}
+{"id":17844,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef sync_space_rules_task(self, space_id)\n```"}}}
 {"id":17845,"type":"edge","label":"hover","outV":17839,"inV":17844}
-{"id":17846,"type":"edge","label":"contains","outV":17828,"inVs":[17830,17838]}
-{"id":17847,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/subscription_tasks.py","languageId":"python"}
-{"id":17848,"type":"edge","label":"contains","outV":1,"inVs":[17847]}
-{"id":17849,"type":"vertex","label":"range","start":{"line":29,"character":0},"end":{"line":29,"character":20}}
-{"id":17850,"type":"vertex","label":"resultSet"}
-{"id":17851,"type":"edge","label":"next","outV":17849,"inV":17850}
-{"id":17852,"type":"vertex","label":"definitionResult"}
-{"id":17853,"type":"edge","label":"definition","outV":17850,"inV":17852}
-{"id":17854,"type":"edge","label":"item","outV":17852,"inVs":[17849],"document":17847}
-{"id":17855,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _telegram_configured()\n```"}}}
-{"id":17856,"type":"edge","label":"hover","outV":17850,"inV":17855}
-{"id":17857,"type":"vertex","label":"range","start":{"line":33,"character":0},"end":{"line":33,"character":14}}
+{"id":17846,"type":"vertex","label":"range","start":{"line":22,"character":8},"end":{"line":22,"character":12}}
+{"id":17847,"type":"vertex","label":"resultSet"}
+{"id":17848,"type":"edge","label":"next","outV":17846,"inV":17847}
+{"id":17849,"type":"vertex","label":"definitionResult"}
+{"id":17850,"type":"edge","label":"definition","outV":17847,"inV":17849}
+{"id":17851,"type":"edge","label":"item","outV":17849,"inVs":[17846],"document":17836}
+{"id":17852,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _run()\n```"}}}
+{"id":17853,"type":"edge","label":"hover","outV":17847,"inV":17852}
+{"id":17854,"type":"edge","label":"contains","outV":17836,"inVs":[17838,17846]}
+{"id":17855,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/subscription_tasks.py","languageId":"python"}
+{"id":17856,"type":"edge","label":"contains","outV":1,"inVs":[17855]}
+{"id":17857,"type":"vertex","label":"range","start":{"line":29,"character":0},"end":{"line":29,"character":20}}
 {"id":17858,"type":"vertex","label":"resultSet"}
 {"id":17859,"type":"edge","label":"next","outV":17857,"inV":17858}
 {"id":17860,"type":"vertex","label":"definitionResult"}
 {"id":17861,"type":"edge","label":"definition","outV":17858,"inV":17860}
-{"id":17862,"type":"edge","label":"item","outV":17860,"inVs":[17857],"document":17847}
-{"id":17863,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _send_telegram(message)\n```"}}}
+{"id":17862,"type":"edge","label":"item","outV":17860,"inVs":[17857],"document":17855}
+{"id":17863,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _telegram_configured()\n```"}}}
 {"id":17864,"type":"edge","label":"hover","outV":17858,"inV":17863}
-{"id":17865,"type":"vertex","label":"range","start":{"line":64,"character":0},"end":{"line":64,"character":16}}
+{"id":17865,"type":"vertex","label":"range","start":{"line":33,"character":0},"end":{"line":33,"character":14}}
 {"id":17866,"type":"vertex","label":"resultSet"}
 {"id":17867,"type":"edge","label":"next","outV":17865,"inV":17866}
 {"id":17868,"type":"vertex","label":"definitionResult"}
 {"id":17869,"type":"edge","label":"definition","outV":17866,"inV":17868}
-{"id":17870,"type":"edge","label":"item","outV":17868,"inVs":[17865],"document":17847}
-{"id":17871,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _smtp_configured()\n```"}}}
+{"id":17870,"type":"edge","label":"item","outV":17868,"inVs":[17865],"document":17855}
+{"id":17871,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _send_telegram(message)\n```"}}}
 {"id":17872,"type":"edge","label":"hover","outV":17866,"inV":17871}
-{"id":17873,"type":"vertex","label":"range","start":{"line":68,"character":0},"end":{"line":68,"character":11}}
+{"id":17873,"type":"vertex","label":"range","start":{"line":64,"character":0},"end":{"line":64,"character":16}}
 {"id":17874,"type":"vertex","label":"resultSet"}
 {"id":17875,"type":"edge","label":"next","outV":17873,"inV":17874}
 {"id":17876,"type":"vertex","label":"definitionResult"}
 {"id":17877,"type":"edge","label":"definition","outV":17874,"inV":17876}
-{"id":17878,"type":"edge","label":"item","outV":17876,"inVs":[17873],"document":17847}
-{"id":17879,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _send_email(to, subject, html_body, text_body)\n```"}}}
+{"id":17878,"type":"edge","label":"item","outV":17876,"inVs":[17873],"document":17855}
+{"id":17879,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _smtp_configured()\n```"}}}
 {"id":17880,"type":"edge","label":"hover","outV":17874,"inV":17879}
-{"id":17881,"type":"vertex","label":"range","start":{"line":92,"character":0},"end":{"line":92,"character":14}}
+{"id":17881,"type":"vertex","label":"range","start":{"line":68,"character":0},"end":{"line":68,"character":11}}
 {"id":17882,"type":"vertex","label":"resultSet"}
 {"id":17883,"type":"edge","label":"next","outV":17881,"inV":17882}
 {"id":17884,"type":"vertex","label":"definitionResult"}
 {"id":17885,"type":"edge","label":"definition","outV":17882,"inV":17884}
-{"id":17886,"type":"edge","label":"item","outV":17884,"inVs":[17881],"document":17847}
-{"id":17887,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _next_due_date(last_payment, billing_cycle)\n```"}}}
+{"id":17886,"type":"edge","label":"item","outV":17884,"inVs":[17881],"document":17855}
+{"id":17887,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _send_email(to, subject, html_body, text_body)\n```"}}}
 {"id":17888,"type":"edge","label":"hover","outV":17882,"inV":17887}
-{"id":17889,"type":"vertex","label":"range","start":{"line":108,"character":0},"end":{"line":108,"character":18}}
+{"id":17889,"type":"vertex","label":"range","start":{"line":92,"character":0},"end":{"line":92,"character":14}}
 {"id":17890,"type":"vertex","label":"resultSet"}
 {"id":17891,"type":"edge","label":"next","outV":17889,"inV":17890}
 {"id":17892,"type":"vertex","label":"definitionResult"}
 {"id":17893,"type":"edge","label":"definition","outV":17890,"inV":17892}
-{"id":17894,"type":"edge","label":"item","outV":17892,"inVs":[17889],"document":17847}
-{"id":17895,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _upcoming_due_date(last_payment, billing_cycle, today)\n```"}}}
+{"id":17894,"type":"edge","label":"item","outV":17892,"inVs":[17889],"document":17855}
+{"id":17895,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _next_due_date(last_payment, billing_cycle)\n```"}}}
 {"id":17896,"type":"edge","label":"hover","outV":17890,"inV":17895}
-{"id":17897,"type":"vertex","label":"range","start":{"line":127,"character":0},"end":{"line":127,"character":22}}
+{"id":17897,"type":"vertex","label":"range","start":{"line":108,"character":0},"end":{"line":108,"character":18}}
 {"id":17898,"type":"vertex","label":"resultSet"}
 {"id":17899,"type":"edge","label":"next","outV":17897,"inV":17898}
 {"id":17900,"type":"vertex","label":"definitionResult"}
 {"id":17901,"type":"edge","label":"definition","outV":17898,"inV":17900}
-{"id":17902,"type":"edge","label":"item","outV":17900,"inVs":[17897],"document":17847}
-{"id":17903,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef send_payment_reminders()\n```"}}}
+{"id":17902,"type":"edge","label":"item","outV":17900,"inVs":[17897],"document":17855}
+{"id":17903,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _upcoming_due_date(last_payment, billing_cycle, today)\n```"}}}
 {"id":17904,"type":"edge","label":"hover","outV":17898,"inV":17903}
-{"id":17905,"type":"edge","label":"contains","outV":17847,"inVs":[17849,17857,17865,17873,17881,17889,17897]}
-{"id":17906,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/task_alarm_tasks.py","languageId":"python"}
-{"id":17907,"type":"edge","label":"contains","outV":1,"inVs":[17906]}
-{"id":17908,"type":"vertex","label":"range","start":{"line":17,"character":0},"end":{"line":17,"character":17}}
-{"id":17909,"type":"vertex","label":"resultSet"}
-{"id":17910,"type":"edge","label":"next","outV":17908,"inV":17909}
-{"id":17911,"type":"vertex","label":"definitionResult"}
-{"id":17912,"type":"edge","label":"definition","outV":17909,"inV":17911}
-{"id":17913,"type":"edge","label":"item","outV":17911,"inVs":[17908],"document":17906}
-{"id":17914,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef check_task_alarms()\n```"}}}
-{"id":17915,"type":"edge","label":"hover","outV":17909,"inV":17914}
-{"id":17916,"type":"edge","label":"contains","outV":17906,"inVs":[17908]}
-{"id":17917,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/voice_tasks.py","languageId":"python"}
-{"id":17918,"type":"edge","label":"contains","outV":1,"inVs":[17917]}
-{"id":17919,"type":"vertex","label":"range","start":{"line":10,"character":0},"end":{"line":10,"character":21}}
-{"id":17920,"type":"vertex","label":"resultSet"}
-{"id":17921,"type":"edge","label":"next","outV":17919,"inV":17920}
-{"id":17922,"type":"vertex","label":"definitionResult"}
-{"id":17923,"type":"edge","label":"definition","outV":17920,"inV":17922}
-{"id":17924,"type":"edge","label":"item","outV":17922,"inVs":[17919],"document":17917}
-{"id":17925,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef transcribe_voice_note(self, audio_file_path, document_id)\n```"}}}
-{"id":17926,"type":"edge","label":"hover","outV":17920,"inV":17925}
-{"id":17927,"type":"edge","label":"contains","outV":17917,"inVs":[17919]}
-{"id":17928,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/circuit_breaker.py","languageId":"python"}
-{"id":17929,"type":"edge","label":"contains","outV":1,"inVs":[17928]}
-{"id":17930,"type":"vertex","label":"range","start":{"line":24,"character":0},"end":{"line":24,"character":19}}
-{"id":17931,"type":"vertex","label":"resultSet"}
-{"id":17932,"type":"edge","label":"next","outV":17930,"inV":17931}
-{"id":17933,"type":"vertex","label":"definitionResult"}
-{"id":17934,"type":"edge","label":"definition","outV":17931,"inV":17933}
-{"id":17935,"type":"edge","label":"item","outV":17933,"inVs":[17930],"document":17928}
-{"id":17936,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass CircuitBreakerState\n# methods: \n```"}}}
-{"id":17937,"type":"edge","label":"hover","outV":17931,"inV":17936}
-{"id":17938,"type":"vertex","label":"range","start":{"line":30,"character":0},"end":{"line":30,"character":14}}
+{"id":17905,"type":"vertex","label":"range","start":{"line":127,"character":0},"end":{"line":127,"character":22}}
+{"id":17906,"type":"vertex","label":"resultSet"}
+{"id":17907,"type":"edge","label":"next","outV":17905,"inV":17906}
+{"id":17908,"type":"vertex","label":"definitionResult"}
+{"id":17909,"type":"edge","label":"definition","outV":17906,"inV":17908}
+{"id":17910,"type":"edge","label":"item","outV":17908,"inVs":[17905],"document":17855}
+{"id":17911,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef send_payment_reminders()\n```"}}}
+{"id":17912,"type":"edge","label":"hover","outV":17906,"inV":17911}
+{"id":17913,"type":"edge","label":"contains","outV":17855,"inVs":[17857,17865,17873,17881,17889,17897,17905]}
+{"id":17914,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/task_alarm_tasks.py","languageId":"python"}
+{"id":17915,"type":"edge","label":"contains","outV":1,"inVs":[17914]}
+{"id":17916,"type":"vertex","label":"range","start":{"line":17,"character":0},"end":{"line":17,"character":17}}
+{"id":17917,"type":"vertex","label":"resultSet"}
+{"id":17918,"type":"edge","label":"next","outV":17916,"inV":17917}
+{"id":17919,"type":"vertex","label":"definitionResult"}
+{"id":17920,"type":"edge","label":"definition","outV":17917,"inV":17919}
+{"id":17921,"type":"edge","label":"item","outV":17919,"inVs":[17916],"document":17914}
+{"id":17922,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef check_task_alarms()\n```"}}}
+{"id":17923,"type":"edge","label":"hover","outV":17917,"inV":17922}
+{"id":17924,"type":"edge","label":"contains","outV":17914,"inVs":[17916]}
+{"id":17925,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/tasks/voice_tasks.py","languageId":"python"}
+{"id":17926,"type":"edge","label":"contains","outV":1,"inVs":[17925]}
+{"id":17927,"type":"vertex","label":"range","start":{"line":10,"character":0},"end":{"line":10,"character":21}}
+{"id":17928,"type":"vertex","label":"resultSet"}
+{"id":17929,"type":"edge","label":"next","outV":17927,"inV":17928}
+{"id":17930,"type":"vertex","label":"definitionResult"}
+{"id":17931,"type":"edge","label":"definition","outV":17928,"inV":17930}
+{"id":17932,"type":"edge","label":"item","outV":17930,"inVs":[17927],"document":17925}
+{"id":17933,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef transcribe_voice_note(self, audio_file_path, document_id)\n```"}}}
+{"id":17934,"type":"edge","label":"hover","outV":17928,"inV":17933}
+{"id":17935,"type":"edge","label":"contains","outV":17925,"inVs":[17927]}
+{"id":17936,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/circuit_breaker.py","languageId":"python"}
+{"id":17937,"type":"edge","label":"contains","outV":1,"inVs":[17936]}
+{"id":17938,"type":"vertex","label":"range","start":{"line":24,"character":0},"end":{"line":24,"character":19}}
 {"id":17939,"type":"vertex","label":"resultSet"}
 {"id":17940,"type":"edge","label":"next","outV":17938,"inV":17939}
 {"id":17941,"type":"vertex","label":"definitionResult"}
 {"id":17942,"type":"edge","label":"definition","outV":17939,"inV":17941}
-{"id":17943,"type":"edge","label":"item","outV":17941,"inVs":[17938],"document":17928}
-{"id":17944,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass CircuitBreaker\n# methods: __init__, state, _should_open, _cooldown_elapsed, record_success, record_failure, can_execute, call, call_async\n```"}}}
+{"id":17943,"type":"edge","label":"item","outV":17941,"inVs":[17938],"document":17936}
+{"id":17944,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass CircuitBreakerState\n# methods: \n```"}}}
 {"id":17945,"type":"edge","label":"hover","outV":17939,"inV":17944}
-{"id":17946,"type":"vertex","label":"range","start":{"line":135,"character":0},"end":{"line":135,"character":23}}
+{"id":17946,"type":"vertex","label":"range","start":{"line":30,"character":0},"end":{"line":30,"character":14}}
 {"id":17947,"type":"vertex","label":"resultSet"}
 {"id":17948,"type":"edge","label":"next","outV":17946,"inV":17947}
 {"id":17949,"type":"vertex","label":"definitionResult"}
 {"id":17950,"type":"edge","label":"definition","outV":17947,"inV":17949}
-{"id":17951,"type":"edge","label":"item","outV":17949,"inVs":[17946],"document":17928}
-{"id":17952,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass CircuitBreakerOpenError\n# methods: \n```"}}}
+{"id":17951,"type":"edge","label":"item","outV":17949,"inVs":[17946],"document":17936}
+{"id":17952,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass CircuitBreaker\n# methods: __init__, state, _should_open, _cooldown_elapsed, record_success, record_failure, can_execute, call, call_async\n```"}}}
 {"id":17953,"type":"edge","label":"hover","outV":17947,"inV":17952}
-{"id":17954,"type":"vertex","label":"range","start":{"line":146,"character":0},"end":{"line":146,"character":11}}
+{"id":17954,"type":"vertex","label":"range","start":{"line":135,"character":0},"end":{"line":135,"character":23}}
 {"id":17955,"type":"vertex","label":"resultSet"}
 {"id":17956,"type":"edge","label":"next","outV":17954,"inV":17955}
 {"id":17957,"type":"vertex","label":"definitionResult"}
 {"id":17958,"type":"edge","label":"definition","outV":17955,"inV":17957}
-{"id":17959,"type":"edge","label":"item","outV":17957,"inVs":[17954],"document":17928}
-{"id":17960,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef get_breaker(name, failure_threshold, cooldown_seconds)\n```"}}}
+{"id":17959,"type":"edge","label":"item","outV":17957,"inVs":[17954],"document":17936}
+{"id":17960,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass CircuitBreakerOpenError\n# methods: \n```"}}}
 {"id":17961,"type":"edge","label":"hover","outV":17955,"inV":17960}
-{"id":17962,"type":"vertex","label":"range","start":{"line":162,"character":0},"end":{"line":162,"character":15}}
+{"id":17962,"type":"vertex","label":"range","start":{"line":146,"character":0},"end":{"line":146,"character":11}}
 {"id":17963,"type":"vertex","label":"resultSet"}
 {"id":17964,"type":"edge","label":"next","outV":17962,"inV":17963}
 {"id":17965,"type":"vertex","label":"definitionResult"}
 {"id":17966,"type":"edge","label":"definition","outV":17963,"inV":17965}
-{"id":17967,"type":"edge","label":"item","outV":17965,"inVs":[17962],"document":17928}
-{"id":17968,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef circuit_breaker(name, failure_threshold, cooldown_seconds)\n```"}}}
+{"id":17967,"type":"edge","label":"item","outV":17965,"inVs":[17962],"document":17936}
+{"id":17968,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef get_breaker(name, failure_threshold, cooldown_seconds)\n```"}}}
 {"id":17969,"type":"edge","label":"hover","outV":17963,"inV":17968}
-{"id":17970,"type":"vertex","label":"range","start":{"line":33,"character":4},"end":{"line":33,"character":12}}
+{"id":17970,"type":"vertex","label":"range","start":{"line":162,"character":0},"end":{"line":162,"character":15}}
 {"id":17971,"type":"vertex","label":"resultSet"}
 {"id":17972,"type":"edge","label":"next","outV":17970,"inV":17971}
 {"id":17973,"type":"vertex","label":"definitionResult"}
 {"id":17974,"type":"edge","label":"definition","outV":17971,"inV":17973}
-{"id":17975,"type":"edge","label":"item","outV":17973,"inVs":[17970],"document":17928}
-{"id":17976,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __init__(self, name, failure_threshold, cooldown_seconds, half_open_max_calls)\n```"}}}
+{"id":17975,"type":"edge","label":"item","outV":17973,"inVs":[17970],"document":17936}
+{"id":17976,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef circuit_breaker(name, failure_threshold, cooldown_seconds)\n```"}}}
 {"id":17977,"type":"edge","label":"hover","outV":17971,"inV":17976}
-{"id":17978,"type":"vertex","label":"range","start":{"line":52,"character":4},"end":{"line":52,"character":9}}
+{"id":17978,"type":"vertex","label":"range","start":{"line":33,"character":4},"end":{"line":33,"character":12}}
 {"id":17979,"type":"vertex","label":"resultSet"}
 {"id":17980,"type":"edge","label":"next","outV":17978,"inV":17979}
 {"id":17981,"type":"vertex","label":"definitionResult"}
 {"id":17982,"type":"edge","label":"definition","outV":17979,"inV":17981}
-{"id":17983,"type":"edge","label":"item","outV":17981,"inVs":[17978],"document":17928}
-{"id":17984,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef state(self)\n```"}}}
+{"id":17983,"type":"edge","label":"item","outV":17981,"inVs":[17978],"document":17936}
+{"id":17984,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __init__(self, name, failure_threshold, cooldown_seconds, half_open_max_calls)\n```"}}}
 {"id":17985,"type":"edge","label":"hover","outV":17979,"inV":17984}
-{"id":17986,"type":"vertex","label":"range","start":{"line":56,"character":4},"end":{"line":56,"character":16}}
+{"id":17986,"type":"vertex","label":"range","start":{"line":52,"character":4},"end":{"line":52,"character":9}}
 {"id":17987,"type":"vertex","label":"resultSet"}
 {"id":17988,"type":"edge","label":"next","outV":17986,"inV":17987}
 {"id":17989,"type":"vertex","label":"definitionResult"}
 {"id":17990,"type":"edge","label":"definition","outV":17987,"inV":17989}
-{"id":17991,"type":"edge","label":"item","outV":17989,"inVs":[17986],"document":17928}
-{"id":17992,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _should_open(self)\n```"}}}
+{"id":17991,"type":"edge","label":"item","outV":17989,"inVs":[17986],"document":17936}
+{"id":17992,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef state(self)\n```"}}}
 {"id":17993,"type":"edge","label":"hover","outV":17987,"inV":17992}
-{"id":17994,"type":"vertex","label":"range","start":{"line":59,"character":4},"end":{"line":59,"character":21}}
+{"id":17994,"type":"vertex","label":"range","start":{"line":56,"character":4},"end":{"line":56,"character":16}}
 {"id":17995,"type":"vertex","label":"resultSet"}
 {"id":17996,"type":"edge","label":"next","outV":17994,"inV":17995}
 {"id":17997,"type":"vertex","label":"definitionResult"}
 {"id":17998,"type":"edge","label":"definition","outV":17995,"inV":17997}
-{"id":17999,"type":"edge","label":"item","outV":17997,"inVs":[17994],"document":17928}
-{"id":18000,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _cooldown_elapsed(self)\n```"}}}
+{"id":17999,"type":"edge","label":"item","outV":17997,"inVs":[17994],"document":17936}
+{"id":18000,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _should_open(self)\n```"}}}
 {"id":18001,"type":"edge","label":"hover","outV":17995,"inV":18000}
-{"id":18002,"type":"vertex","label":"range","start":{"line":64,"character":4},"end":{"line":64,"character":18}}
+{"id":18002,"type":"vertex","label":"range","start":{"line":59,"character":4},"end":{"line":59,"character":21}}
 {"id":18003,"type":"vertex","label":"resultSet"}
 {"id":18004,"type":"edge","label":"next","outV":18002,"inV":18003}
 {"id":18005,"type":"vertex","label":"definitionResult"}
 {"id":18006,"type":"edge","label":"definition","outV":18003,"inV":18005}
-{"id":18007,"type":"edge","label":"item","outV":18005,"inVs":[18002],"document":17928}
-{"id":18008,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef record_success(self)\n```"}}}
+{"id":18007,"type":"edge","label":"item","outV":18005,"inVs":[18002],"document":17936}
+{"id":18008,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _cooldown_elapsed(self)\n```"}}}
 {"id":18009,"type":"edge","label":"hover","outV":18003,"inV":18008}
-{"id":18010,"type":"vertex","label":"range","start":{"line":76,"character":4},"end":{"line":76,"character":18}}
+{"id":18010,"type":"vertex","label":"range","start":{"line":64,"character":4},"end":{"line":64,"character":18}}
 {"id":18011,"type":"vertex","label":"resultSet"}
 {"id":18012,"type":"edge","label":"next","outV":18010,"inV":18011}
 {"id":18013,"type":"vertex","label":"definitionResult"}
 {"id":18014,"type":"edge","label":"definition","outV":18011,"inV":18013}
-{"id":18015,"type":"edge","label":"item","outV":18013,"inVs":[18010],"document":17928}
-{"id":18016,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef record_failure(self)\n```"}}}
+{"id":18015,"type":"edge","label":"item","outV":18013,"inVs":[18010],"document":17936}
+{"id":18016,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef record_success(self)\n```"}}}
 {"id":18017,"type":"edge","label":"hover","outV":18011,"inV":18016}
-{"id":18018,"type":"vertex","label":"range","start":{"line":94,"character":4},"end":{"line":94,"character":15}}
+{"id":18018,"type":"vertex","label":"range","start":{"line":76,"character":4},"end":{"line":76,"character":18}}
 {"id":18019,"type":"vertex","label":"resultSet"}
 {"id":18020,"type":"edge","label":"next","outV":18018,"inV":18019}
 {"id":18021,"type":"vertex","label":"definitionResult"}
 {"id":18022,"type":"edge","label":"definition","outV":18019,"inV":18021}
-{"id":18023,"type":"edge","label":"item","outV":18021,"inVs":[18018],"document":17928}
-{"id":18024,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef can_execute(self)\n```"}}}
+{"id":18023,"type":"edge","label":"item","outV":18021,"inVs":[18018],"document":17936}
+{"id":18024,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef record_failure(self)\n```"}}}
 {"id":18025,"type":"edge","label":"hover","outV":18019,"inV":18024}
-{"id":18026,"type":"vertex","label":"range","start":{"line":108,"character":4},"end":{"line":108,"character":8}}
+{"id":18026,"type":"vertex","label":"range","start":{"line":94,"character":4},"end":{"line":94,"character":15}}
 {"id":18027,"type":"vertex","label":"resultSet"}
 {"id":18028,"type":"edge","label":"next","outV":18026,"inV":18027}
 {"id":18029,"type":"vertex","label":"definitionResult"}
 {"id":18030,"type":"edge","label":"definition","outV":18027,"inV":18029}
-{"id":18031,"type":"edge","label":"item","outV":18029,"inVs":[18026],"document":17928}
-{"id":18032,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef call(self, func)\n```"}}}
+{"id":18031,"type":"edge","label":"item","outV":18029,"inVs":[18026],"document":17936}
+{"id":18032,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef can_execute(self)\n```"}}}
 {"id":18033,"type":"edge","label":"hover","outV":18027,"inV":18032}
-{"id":18034,"type":"vertex","label":"range","start":{"line":121,"character":4},"end":{"line":121,"character":14}}
+{"id":18034,"type":"vertex","label":"range","start":{"line":108,"character":4},"end":{"line":108,"character":8}}
 {"id":18035,"type":"vertex","label":"resultSet"}
 {"id":18036,"type":"edge","label":"next","outV":18034,"inV":18035}
 {"id":18037,"type":"vertex","label":"definitionResult"}
 {"id":18038,"type":"edge","label":"definition","outV":18035,"inV":18037}
-{"id":18039,"type":"edge","label":"item","outV":18037,"inVs":[18034],"document":17928}
-{"id":18040,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef call_async(self, func)\n```"}}}
+{"id":18039,"type":"edge","label":"item","outV":18037,"inVs":[18034],"document":17936}
+{"id":18040,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef call(self, func)\n```"}}}
 {"id":18041,"type":"edge","label":"hover","outV":18035,"inV":18040}
-{"id":18042,"type":"vertex","label":"range","start":{"line":170,"character":4},"end":{"line":170,"character":13}}
+{"id":18042,"type":"vertex","label":"range","start":{"line":121,"character":4},"end":{"line":121,"character":14}}
 {"id":18043,"type":"vertex","label":"resultSet"}
 {"id":18044,"type":"edge","label":"next","outV":18042,"inV":18043}
 {"id":18045,"type":"vertex","label":"definitionResult"}
 {"id":18046,"type":"edge","label":"definition","outV":18043,"inV":18045}
-{"id":18047,"type":"edge","label":"item","outV":18045,"inVs":[18042],"document":17928}
-{"id":18048,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef decorator(func)\n```"}}}
+{"id":18047,"type":"edge","label":"item","outV":18045,"inVs":[18042],"document":17936}
+{"id":18048,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef call_async(self, func)\n```"}}}
 {"id":18049,"type":"edge","label":"hover","outV":18043,"inV":18048}
-{"id":18050,"type":"vertex","label":"range","start":{"line":173,"character":12},"end":{"line":173,"character":25}}
+{"id":18050,"type":"vertex","label":"range","start":{"line":170,"character":4},"end":{"line":170,"character":13}}
 {"id":18051,"type":"vertex","label":"resultSet"}
 {"id":18052,"type":"edge","label":"next","outV":18050,"inV":18051}
 {"id":18053,"type":"vertex","label":"definitionResult"}
 {"id":18054,"type":"edge","label":"definition","outV":18051,"inV":18053}
-{"id":18055,"type":"edge","label":"item","outV":18053,"inVs":[18050],"document":17928}
-{"id":18056,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef async_wrapper()\n```"}}}
+{"id":18055,"type":"edge","label":"item","outV":18053,"inVs":[18050],"document":17936}
+{"id":18056,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef decorator(func)\n```"}}}
 {"id":18057,"type":"edge","label":"hover","outV":18051,"inV":18056}
-{"id":18058,"type":"vertex","label":"range","start":{"line":178,"character":12},"end":{"line":178,"character":24}}
+{"id":18058,"type":"vertex","label":"range","start":{"line":173,"character":12},"end":{"line":173,"character":25}}
 {"id":18059,"type":"vertex","label":"resultSet"}
 {"id":18060,"type":"edge","label":"next","outV":18058,"inV":18059}
 {"id":18061,"type":"vertex","label":"definitionResult"}
 {"id":18062,"type":"edge","label":"definition","outV":18059,"inV":18061}
-{"id":18063,"type":"edge","label":"item","outV":18061,"inVs":[18058],"document":17928}
-{"id":18064,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef sync_wrapper()\n```"}}}
+{"id":18063,"type":"edge","label":"item","outV":18061,"inVs":[18058],"document":17936}
+{"id":18064,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef async_wrapper()\n```"}}}
 {"id":18065,"type":"edge","label":"hover","outV":18059,"inV":18064}
-{"id":18066,"type":"edge","label":"contains","outV":17928,"inVs":[17930,17938,17946,17954,17962,17970,17978,17986,17994,18002,18010,18018,18026,18034,18042,18050,18058]}
-{"id":18067,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/constants.py","languageId":"python"}
-{"id":18068,"type":"edge","label":"contains","outV":1,"inVs":[18067]}
-{"id":18069,"type":"vertex","label":"range","start":{"line":14,"character":0},"end":{"line":14,"character":21}}
-{"id":18070,"type":"vertex","label":"resultSet"}
-{"id":18071,"type":"edge","label":"next","outV":18069,"inV":18070}
-{"id":18072,"type":"vertex","label":"definitionResult"}
-{"id":18073,"type":"edge","label":"definition","outV":18070,"inV":18072}
-{"id":18074,"type":"edge","label":"item","outV":18072,"inVs":[18069],"document":18067}
-{"id":18075,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _prefixed_cookie_name(base, host_prefix)\n```"}}}
-{"id":18076,"type":"edge","label":"hover","outV":18070,"inV":18075}
-{"id":18077,"type":"edge","label":"contains","outV":18067,"inVs":[18069]}
-{"id":18078,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/query_normalizer.py","languageId":"python"}
-{"id":18079,"type":"edge","label":"contains","outV":1,"inVs":[18078]}
-{"id":18080,"type":"vertex","label":"range","start":{"line":13,"character":0},"end":{"line":13,"character":15}}
-{"id":18081,"type":"vertex","label":"resultSet"}
-{"id":18082,"type":"edge","label":"next","outV":18080,"inV":18081}
-{"id":18083,"type":"vertex","label":"definitionResult"}
-{"id":18084,"type":"edge","label":"definition","outV":18081,"inV":18083}
-{"id":18085,"type":"edge","label":"item","outV":18083,"inVs":[18080],"document":18078}
-{"id":18086,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef normalise_query(q)\n```"}}}
-{"id":18087,"type":"edge","label":"hover","outV":18081,"inV":18086}
-{"id":18088,"type":"vertex","label":"range","start":{"line":53,"character":0},"end":{"line":53,"character":31}}
+{"id":18066,"type":"vertex","label":"range","start":{"line":178,"character":12},"end":{"line":178,"character":24}}
+{"id":18067,"type":"vertex","label":"resultSet"}
+{"id":18068,"type":"edge","label":"next","outV":18066,"inV":18067}
+{"id":18069,"type":"vertex","label":"definitionResult"}
+{"id":18070,"type":"edge","label":"definition","outV":18067,"inV":18069}
+{"id":18071,"type":"edge","label":"item","outV":18069,"inVs":[18066],"document":17936}
+{"id":18072,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef sync_wrapper()\n```"}}}
+{"id":18073,"type":"edge","label":"hover","outV":18067,"inV":18072}
+{"id":18074,"type":"edge","label":"contains","outV":17936,"inVs":[17938,17946,17954,17962,17970,17978,17986,17994,18002,18010,18018,18026,18034,18042,18050,18058,18066]}
+{"id":18075,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/constants.py","languageId":"python"}
+{"id":18076,"type":"edge","label":"contains","outV":1,"inVs":[18075]}
+{"id":18077,"type":"vertex","label":"range","start":{"line":14,"character":0},"end":{"line":14,"character":21}}
+{"id":18078,"type":"vertex","label":"resultSet"}
+{"id":18079,"type":"edge","label":"next","outV":18077,"inV":18078}
+{"id":18080,"type":"vertex","label":"definitionResult"}
+{"id":18081,"type":"edge","label":"definition","outV":18078,"inV":18080}
+{"id":18082,"type":"edge","label":"item","outV":18080,"inVs":[18077],"document":18075}
+{"id":18083,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _prefixed_cookie_name(base, host_prefix)\n```"}}}
+{"id":18084,"type":"edge","label":"hover","outV":18078,"inV":18083}
+{"id":18085,"type":"edge","label":"contains","outV":18075,"inVs":[18077]}
+{"id":18086,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/query_normalizer.py","languageId":"python"}
+{"id":18087,"type":"edge","label":"contains","outV":1,"inVs":[18086]}
+{"id":18088,"type":"vertex","label":"range","start":{"line":13,"character":0},"end":{"line":13,"character":15}}
 {"id":18089,"type":"vertex","label":"resultSet"}
 {"id":18090,"type":"edge","label":"next","outV":18088,"inV":18089}
 {"id":18091,"type":"vertex","label":"definitionResult"}
 {"id":18092,"type":"edge","label":"definition","outV":18089,"inV":18091}
-{"id":18093,"type":"edge","label":"item","outV":18091,"inVs":[18088],"document":18078}
-{"id":18094,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef normalise_query_fold_diacritics(q)\n```"}}}
+{"id":18093,"type":"edge","label":"item","outV":18091,"inVs":[18088],"document":18086}
+{"id":18094,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef normalise_query(q)\n```"}}}
 {"id":18095,"type":"edge","label":"hover","outV":18089,"inV":18094}
-{"id":18096,"type":"edge","label":"contains","outV":18078,"inVs":[18080,18088]}
-{"id":18097,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/security.py","languageId":"python"}
-{"id":18098,"type":"edge","label":"contains","outV":1,"inVs":[18097]}
-{"id":18099,"type":"vertex","label":"range","start":{"line":30,"character":0},"end":{"line":30,"character":14}}
-{"id":18100,"type":"vertex","label":"resultSet"}
-{"id":18101,"type":"edge","label":"next","outV":18099,"inV":18100}
-{"id":18102,"type":"vertex","label":"definitionResult"}
-{"id":18103,"type":"edge","label":"definition","outV":18100,"inV":18102}
-{"id":18104,"type":"edge","label":"item","outV":18102,"inVs":[18099],"document":18097}
-{"id":18105,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass _LazySecretKey\n# methods: __str__, __eq__, __hash__, __repr__, encode\n```"}}}
-{"id":18106,"type":"edge","label":"hover","outV":18100,"inV":18105}
-{"id":18107,"type":"vertex","label":"range","start":{"line":72,"character":0},"end":{"line":72,"character":15}}
+{"id":18096,"type":"vertex","label":"range","start":{"line":53,"character":0},"end":{"line":53,"character":31}}
+{"id":18097,"type":"vertex","label":"resultSet"}
+{"id":18098,"type":"edge","label":"next","outV":18096,"inV":18097}
+{"id":18099,"type":"vertex","label":"definitionResult"}
+{"id":18100,"type":"edge","label":"definition","outV":18097,"inV":18099}
+{"id":18101,"type":"edge","label":"item","outV":18099,"inVs":[18096],"document":18086}
+{"id":18102,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef normalise_query_fold_diacritics(q)\n```"}}}
+{"id":18103,"type":"edge","label":"hover","outV":18097,"inV":18102}
+{"id":18104,"type":"edge","label":"contains","outV":18086,"inVs":[18088,18096]}
+{"id":18105,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/utils/security.py","languageId":"python"}
+{"id":18106,"type":"edge","label":"contains","outV":1,"inVs":[18105]}
+{"id":18107,"type":"vertex","label":"range","start":{"line":30,"character":0},"end":{"line":30,"character":14}}
 {"id":18108,"type":"vertex","label":"resultSet"}
 {"id":18109,"type":"edge","label":"next","outV":18107,"inV":18108}
 {"id":18110,"type":"vertex","label":"definitionResult"}
 {"id":18111,"type":"edge","label":"definition","outV":18108,"inV":18110}
-{"id":18112,"type":"edge","label":"item","outV":18110,"inVs":[18107],"document":18097}
-{"id":18113,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _get_secret_key()\n```"}}}
+{"id":18112,"type":"edge","label":"item","outV":18110,"inVs":[18107],"document":18105}
+{"id":18113,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass _LazySecretKey\n# methods: __str__, __eq__, __hash__, __repr__, encode\n```"}}}
 {"id":18114,"type":"edge","label":"hover","outV":18108,"inV":18113}
-{"id":18115,"type":"vertex","label":"range","start":{"line":80,"character":0},"end":{"line":80,"character":17}}
+{"id":18115,"type":"vertex","label":"range","start":{"line":72,"character":0},"end":{"line":72,"character":15}}
 {"id":18116,"type":"vertex","label":"resultSet"}
 {"id":18117,"type":"edge","label":"next","outV":18115,"inV":18116}
 {"id":18118,"type":"vertex","label":"definitionResult"}
 {"id":18119,"type":"edge","label":"definition","outV":18116,"inV":18118}
-{"id":18120,"type":"edge","label":"item","outV":18118,"inVs":[18115],"document":18097}
-{"id":18121,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass TokenExpiredError\n# methods: __init__\n```"}}}
+{"id":18120,"type":"edge","label":"item","outV":18118,"inVs":[18115],"document":18105}
+{"id":18121,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _get_secret_key()\n```"}}}
 {"id":18122,"type":"edge","label":"hover","outV":18116,"inV":18121}
-{"id":18123,"type":"vertex","label":"range","start":{"line":88,"character":0},"end":{"line":88,"character":17}}
+{"id":18123,"type":"vertex","label":"range","start":{"line":80,"character":0},"end":{"line":80,"character":17}}
 {"id":18124,"type":"vertex","label":"resultSet"}
 {"id":18125,"type":"edge","label":"next","outV":18123,"inV":18124}
 {"id":18126,"type":"vertex","label":"definitionResult"}
 {"id":18127,"type":"edge","label":"definition","outV":18124,"inV":18126}
-{"id":18128,"type":"edge","label":"item","outV":18126,"inVs":[18123],"document":18097}
-{"id":18129,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass TokenInvalidError\n# methods: __init__\n```"}}}
+{"id":18128,"type":"edge","label":"item","outV":18126,"inVs":[18123],"document":18105}
+{"id":18129,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass TokenExpiredError\n# methods: __init__\n```"}}}
 {"id":18130,"type":"edge","label":"hover","outV":18124,"inV":18129}
-{"id":18131,"type":"vertex","label":"range","start":{"line":97,"character":0},"end":{"line":97,"character":14}}
+{"id":18131,"type":"vertex","label":"range","start":{"line":88,"character":0},"end":{"line":88,"character":17}}
 {"id":18132,"type":"vertex","label":"resultSet"}
 {"id":18133,"type":"edge","label":"next","outV":18131,"inV":18132}
 {"id":18134,"type":"vertex","label":"definitionResult"}
 {"id":18135,"type":"edge","label":"definition","outV":18132,"inV":18134}
-{"id":18136,"type":"edge","label":"item","outV":18134,"inVs":[18131],"document":18097}
-{"id":18137,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass _BcryptContext\n# methods: verify, hash\n```"}}}
+{"id":18136,"type":"edge","label":"item","outV":18134,"inVs":[18131],"document":18105}
+{"id":18137,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass TokenInvalidError\n# methods: __init__\n```"}}}
 {"id":18138,"type":"edge","label":"hover","outV":18132,"inV":18137}
-{"id":18139,"type":"vertex","label":"range","start":{"line":112,"character":0},"end":{"line":112,"character":15}}
+{"id":18139,"type":"vertex","label":"range","start":{"line":97,"character":0},"end":{"line":97,"character":14}}
 {"id":18140,"type":"vertex","label":"resultSet"}
 {"id":18141,"type":"edge","label":"next","outV":18139,"inV":18140}
 {"id":18142,"type":"vertex","label":"definitionResult"}
 {"id":18143,"type":"edge","label":"definition","outV":18140,"inV":18142}
-{"id":18144,"type":"edge","label":"item","outV":18142,"inVs":[18139],"document":18097}
-{"id":18145,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef verify_password(plain_password, hashed_password)\n```"}}}
+{"id":18144,"type":"edge","label":"item","outV":18142,"inVs":[18139],"document":18105}
+{"id":18145,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass _BcryptContext\n# methods: verify, hash\n```"}}}
 {"id":18146,"type":"edge","label":"hover","outV":18140,"inV":18145}
-{"id":18147,"type":"vertex","label":"range","start":{"line":121,"character":0},"end":{"line":121,"character":17}}
+{"id":18147,"type":"vertex","label":"range","start":{"line":112,"character":0},"end":{"line":112,"character":15}}
 {"id":18148,"type":"vertex","label":"resultSet"}
 {"id":18149,"type":"edge","label":"next","outV":18147,"inV":18148}
 {"id":18150,"type":"vertex","label":"definitionResult"}
 {"id":18151,"type":"edge","label":"definition","outV":18148,"inV":18150}
-{"id":18152,"type":"edge","label":"item","outV":18150,"inVs":[18147],"document":18097}
-{"id":18153,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef get_password_hash(password)\n```"}}}
+{"id":18152,"type":"edge","label":"item","outV":18150,"inVs":[18147],"document":18105}
+{"id":18153,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef verify_password(plain_password, hashed_password)\n```"}}}
 {"id":18154,"type":"edge","label":"hover","outV":18148,"inV":18153}
-{"id":18155,"type":"vertex","label":"range","start":{"line":126,"character":0},"end":{"line":126,"character":13}}
+{"id":18155,"type":"vertex","label":"range","start":{"line":121,"character":0},"end":{"line":121,"character":17}}
 {"id":18156,"type":"vertex","label":"resultSet"}
 {"id":18157,"type":"edge","label":"next","outV":18155,"inV":18156}
 {"id":18158,"type":"vertex","label":"definitionResult"}
 {"id":18159,"type":"edge","label":"definition","outV":18156,"inV":18158}
-{"id":18160,"type":"edge","label":"item","outV":18158,"inVs":[18155],"document":18097}
-{"id":18161,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef hash_password(plain)\n```"}}}
+{"id":18160,"type":"edge","label":"item","outV":18158,"inVs":[18155],"document":18105}
+{"id":18161,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef get_password_hash(password)\n```"}}}
 {"id":18162,"type":"edge","label":"hover","outV":18156,"inV":18161}
-{"id":18163,"type":"vertex","label":"range","start":{"line":131,"character":0},"end":{"line":131,"character":19}}
+{"id":18163,"type":"vertex","label":"range","start":{"line":126,"character":0},"end":{"line":126,"character":13}}
 {"id":18164,"type":"vertex","label":"resultSet"}
 {"id":18165,"type":"edge","label":"next","outV":18163,"inV":18164}
 {"id":18166,"type":"vertex","label":"definitionResult"}
 {"id":18167,"type":"edge","label":"definition","outV":18164,"inV":18166}
-{"id":18168,"type":"edge","label":"item","outV":18166,"inVs":[18163],"document":18097}
-{"id":18169,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef create_access_token(data, expires_delta)\n```"}}}
+{"id":18168,"type":"edge","label":"item","outV":18166,"inVs":[18163],"document":18105}
+{"id":18169,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef hash_password(plain)\n```"}}}
 {"id":18170,"type":"edge","label":"hover","outV":18164,"inV":18169}
-{"id":18171,"type":"vertex","label":"range","start":{"line":145,"character":0},"end":{"line":145,"character":20}}
+{"id":18171,"type":"vertex","label":"range","start":{"line":131,"character":0},"end":{"line":131,"character":19}}
 {"id":18172,"type":"vertex","label":"resultSet"}
 {"id":18173,"type":"edge","label":"next","outV":18171,"inV":18172}
 {"id":18174,"type":"vertex","label":"definitionResult"}
 {"id":18175,"type":"edge","label":"definition","outV":18172,"inV":18174}
-{"id":18176,"type":"edge","label":"item","outV":18174,"inVs":[18171],"document":18097}
-{"id":18177,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef create_refresh_token(data)\n```"}}}
+{"id":18176,"type":"edge","label":"item","outV":18174,"inVs":[18171],"document":18105}
+{"id":18177,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef create_access_token(data, expires_delta)\n```"}}}
 {"id":18178,"type":"edge","label":"hover","outV":18172,"inV":18177}
-{"id":18179,"type":"vertex","label":"range","start":{"line":154,"character":0},"end":{"line":154,"character":12}}
+{"id":18179,"type":"vertex","label":"range","start":{"line":145,"character":0},"end":{"line":145,"character":20}}
 {"id":18180,"type":"vertex","label":"resultSet"}
 {"id":18181,"type":"edge","label":"next","outV":18179,"inV":18180}
 {"id":18182,"type":"vertex","label":"definitionResult"}
 {"id":18183,"type":"edge","label":"definition","outV":18180,"inV":18182}
-{"id":18184,"type":"edge","label":"item","outV":18182,"inVs":[18179],"document":18097}
-{"id":18185,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef decode_token(token, expected_type)\n```"}}}
+{"id":18184,"type":"edge","label":"item","outV":18182,"inVs":[18179],"document":18105}
+{"id":18185,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef create_refresh_token(data)\n```"}}}
 {"id":18186,"type":"edge","label":"hover","outV":18180,"inV":18185}
-{"id":18187,"type":"vertex","label":"range","start":{"line":190,"character":0},"end":{"line":190,"character":16}}
+{"id":18187,"type":"vertex","label":"range","start":{"line":154,"character":0},"end":{"line":154,"character":12}}
 {"id":18188,"type":"vertex","label":"resultSet"}
 {"id":18189,"type":"edge","label":"next","outV":18187,"inV":18188}
 {"id":18190,"type":"vertex","label":"definitionResult"}
 {"id":18191,"type":"edge","label":"definition","outV":18188,"inV":18190}
-{"id":18192,"type":"edge","label":"item","outV":18190,"inVs":[18187],"document":18097}
-{"id":18193,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef get_current_user(token, db)\n```"}}}
+{"id":18192,"type":"edge","label":"item","outV":18190,"inVs":[18187],"document":18105}
+{"id":18193,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef decode_token(token, expected_type)\n```"}}}
 {"id":18194,"type":"edge","label":"hover","outV":18188,"inV":18193}
-{"id":18195,"type":"vertex","label":"range","start":{"line":219,"character":0},"end":{"line":219,"character":13}}
+{"id":18195,"type":"vertex","label":"range","start":{"line":190,"character":0},"end":{"line":190,"character":16}}
 {"id":18196,"type":"vertex","label":"resultSet"}
 {"id":18197,"type":"edge","label":"next","outV":18195,"inV":18196}
 {"id":18198,"type":"vertex","label":"definitionResult"}
 {"id":18199,"type":"edge","label":"definition","outV":18196,"inV":18198}
-{"id":18200,"type":"edge","label":"item","outV":18198,"inVs":[18195],"document":18097}
-{"id":18201,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef require_admin(current_user)\n```"}}}
+{"id":18200,"type":"edge","label":"item","outV":18198,"inVs":[18195],"document":18105}
+{"id":18201,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef get_current_user(token, db)\n```"}}}
 {"id":18202,"type":"edge","label":"hover","outV":18196,"inV":18201}
-{"id":18203,"type":"vertex","label":"range","start":{"line":226,"character":0},"end":{"line":226,"character":18}}
+{"id":18203,"type":"vertex","label":"range","start":{"line":219,"character":0},"end":{"line":219,"character":13}}
 {"id":18204,"type":"vertex","label":"resultSet"}
 {"id":18205,"type":"edge","label":"next","outV":18203,"inV":18204}
 {"id":18206,"type":"vertex","label":"definitionResult"}
 {"id":18207,"type":"edge","label":"definition","outV":18204,"inV":18206}
-{"id":18208,"type":"edge","label":"item","outV":18206,"inVs":[18203],"document":18097}
-{"id":18209,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef require_admin_only(current_user)\n```"}}}
+{"id":18208,"type":"edge","label":"item","outV":18206,"inVs":[18203],"document":18105}
+{"id":18209,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef require_admin(current_user)\n```"}}}
 {"id":18210,"type":"edge","label":"hover","outV":18204,"inV":18209}
-{"id":18211,"type":"vertex","label":"range","start":{"line":33,"character":4},"end":{"line":33,"character":11}}
+{"id":18211,"type":"vertex","label":"range","start":{"line":226,"character":0},"end":{"line":226,"character":18}}
 {"id":18212,"type":"vertex","label":"resultSet"}
 {"id":18213,"type":"edge","label":"next","outV":18211,"inV":18212}
 {"id":18214,"type":"vertex","label":"definitionResult"}
 {"id":18215,"type":"edge","label":"definition","outV":18212,"inV":18214}
-{"id":18216,"type":"edge","label":"item","outV":18214,"inVs":[18211],"document":18097}
-{"id":18217,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __str__(self)\n```"}}}
+{"id":18216,"type":"edge","label":"item","outV":18214,"inVs":[18211],"document":18105}
+{"id":18217,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef require_admin_only(current_user)\n```"}}}
 {"id":18218,"type":"edge","label":"hover","outV":18212,"inV":18217}
-{"id":18219,"type":"vertex","label":"range","start":{"line":38,"character":4},"end":{"line":38,"character":10}}
+{"id":18219,"type":"vertex","label":"range","start":{"line":33,"character":4},"end":{"line":33,"character":11}}
 {"id":18220,"type":"vertex","label":"resultSet"}
 {"id":18221,"type":"edge","label":"next","outV":18219,"inV":18220}
 {"id":18222,"type":"vertex","label":"definitionResult"}
 {"id":18223,"type":"edge","label":"definition","outV":18220,"inV":18222}
-{"id":18224,"type":"edge","label":"item","outV":18222,"inVs":[18219],"document":18097}
-{"id":18225,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __eq__(self, other)\n```"}}}
+{"id":18224,"type":"edge","label":"item","outV":18222,"inVs":[18219],"document":18105}
+{"id":18225,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __str__(self)\n```"}}}
 {"id":18226,"type":"edge","label":"hover","outV":18220,"inV":18225}
-{"id":18227,"type":"vertex","label":"range","start":{"line":41,"character":4},"end":{"line":41,"character":12}}
+{"id":18227,"type":"vertex","label":"range","start":{"line":38,"character":4},"end":{"line":38,"character":10}}
 {"id":18228,"type":"vertex","label":"resultSet"}
 {"id":18229,"type":"edge","label":"next","outV":18227,"inV":18228}
 {"id":18230,"type":"vertex","label":"definitionResult"}
 {"id":18231,"type":"edge","label":"definition","outV":18228,"inV":18230}
-{"id":18232,"type":"edge","label":"item","outV":18230,"inVs":[18227],"document":18097}
-{"id":18233,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __hash__(self)\n```"}}}
+{"id":18232,"type":"edge","label":"item","outV":18230,"inVs":[18227],"document":18105}
+{"id":18233,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __eq__(self, other)\n```"}}}
 {"id":18234,"type":"edge","label":"hover","outV":18228,"inV":18233}
-{"id":18235,"type":"vertex","label":"range","start":{"line":44,"character":4},"end":{"line":44,"character":12}}
+{"id":18235,"type":"vertex","label":"range","start":{"line":41,"character":4},"end":{"line":41,"character":12}}
 {"id":18236,"type":"vertex","label":"resultSet"}
 {"id":18237,"type":"edge","label":"next","outV":18235,"inV":18236}
 {"id":18238,"type":"vertex","label":"definitionResult"}
 {"id":18239,"type":"edge","label":"definition","outV":18236,"inV":18238}
-{"id":18240,"type":"edge","label":"item","outV":18238,"inVs":[18235],"document":18097}
-{"id":18241,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __repr__(self)\n```"}}}
+{"id":18240,"type":"edge","label":"item","outV":18238,"inVs":[18235],"document":18105}
+{"id":18241,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __hash__(self)\n```"}}}
 {"id":18242,"type":"edge","label":"hover","outV":18236,"inV":18241}
-{"id":18243,"type":"vertex","label":"range","start":{"line":47,"character":4},"end":{"line":47,"character":10}}
+{"id":18243,"type":"vertex","label":"range","start":{"line":44,"character":4},"end":{"line":44,"character":12}}
 {"id":18244,"type":"vertex","label":"resultSet"}
 {"id":18245,"type":"edge","label":"next","outV":18243,"inV":18244}
 {"id":18246,"type":"vertex","label":"definitionResult"}
 {"id":18247,"type":"edge","label":"definition","outV":18244,"inV":18246}
-{"id":18248,"type":"edge","label":"item","outV":18246,"inVs":[18243],"document":18097}
-{"id":18249,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef encode(self, encoding)\n```"}}}
+{"id":18248,"type":"edge","label":"item","outV":18246,"inVs":[18243],"document":18105}
+{"id":18249,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __repr__(self)\n```"}}}
 {"id":18250,"type":"edge","label":"hover","outV":18244,"inV":18249}
-{"id":18251,"type":"vertex","label":"range","start":{"line":59,"character":4},"end":{"line":59,"character":22}}
+{"id":18251,"type":"vertex","label":"range","start":{"line":47,"character":4},"end":{"line":47,"character":10}}
 {"id":18252,"type":"vertex","label":"resultSet"}
 {"id":18253,"type":"edge","label":"next","outV":18251,"inV":18252}
 {"id":18254,"type":"vertex","label":"definitionResult"}
 {"id":18255,"type":"edge","label":"definition","outV":18252,"inV":18254}
-{"id":18256,"type":"edge","label":"item","outV":18254,"inVs":[18251],"document":18097}
-{"id":18257,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _patched_hmac_init(self, key, algorithm)\n```"}}}
+{"id":18256,"type":"edge","label":"item","outV":18254,"inVs":[18251],"document":18105}
+{"id":18257,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef encode(self, encoding)\n```"}}}
 {"id":18258,"type":"edge","label":"hover","outV":18252,"inV":18257}
-{"id":18259,"type":"vertex","label":"range","start":{"line":83,"character":4},"end":{"line":83,"character":12}}
+{"id":18259,"type":"vertex","label":"range","start":{"line":59,"character":4},"end":{"line":59,"character":22}}
 {"id":18260,"type":"vertex","label":"resultSet"}
 {"id":18261,"type":"edge","label":"next","outV":18259,"inV":18260}
 {"id":18262,"type":"vertex","label":"definitionResult"}
 {"id":18263,"type":"edge","label":"definition","outV":18260,"inV":18262}
-{"id":18264,"type":"edge","label":"item","outV":18262,"inVs":[18259],"document":18097}
-{"id":18265,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __init__(self, message)\n```"}}}
+{"id":18264,"type":"edge","label":"item","outV":18262,"inVs":[18259],"document":18105}
+{"id":18265,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _patched_hmac_init(self, key, algorithm)\n```"}}}
 {"id":18266,"type":"edge","label":"hover","outV":18260,"inV":18265}
-{"id":18267,"type":"vertex","label":"range","start":{"line":91,"character":4},"end":{"line":91,"character":12}}
+{"id":18267,"type":"vertex","label":"range","start":{"line":83,"character":4},"end":{"line":83,"character":12}}
 {"id":18268,"type":"vertex","label":"resultSet"}
 {"id":18269,"type":"edge","label":"next","outV":18267,"inV":18268}
 {"id":18270,"type":"vertex","label":"definitionResult"}
 {"id":18271,"type":"edge","label":"definition","outV":18268,"inV":18270}
-{"id":18272,"type":"edge","label":"item","outV":18270,"inVs":[18267],"document":18097}
+{"id":18272,"type":"edge","label":"item","outV":18270,"inVs":[18267],"document":18105}
 {"id":18273,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __init__(self, message)\n```"}}}
 {"id":18274,"type":"edge","label":"hover","outV":18268,"inV":18273}
-{"id":18275,"type":"vertex","label":"range","start":{"line":102,"character":4},"end":{"line":102,"character":10}}
+{"id":18275,"type":"vertex","label":"range","start":{"line":91,"character":4},"end":{"line":91,"character":12}}
 {"id":18276,"type":"vertex","label":"resultSet"}
 {"id":18277,"type":"edge","label":"next","outV":18275,"inV":18276}
 {"id":18278,"type":"vertex","label":"definitionResult"}
 {"id":18279,"type":"edge","label":"definition","outV":18276,"inV":18278}
-{"id":18280,"type":"edge","label":"item","outV":18278,"inVs":[18275],"document":18097}
-{"id":18281,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef verify(self, plain, hashed)\n```"}}}
+{"id":18280,"type":"edge","label":"item","outV":18278,"inVs":[18275],"document":18105}
+{"id":18281,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef __init__(self, message)\n```"}}}
 {"id":18282,"type":"edge","label":"hover","outV":18276,"inV":18281}
-{"id":18283,"type":"vertex","label":"range","start":{"line":105,"character":4},"end":{"line":105,"character":8}}
+{"id":18283,"type":"vertex","label":"range","start":{"line":102,"character":4},"end":{"line":102,"character":10}}
 {"id":18284,"type":"vertex","label":"resultSet"}
 {"id":18285,"type":"edge","label":"next","outV":18283,"inV":18284}
 {"id":18286,"type":"vertex","label":"definitionResult"}
 {"id":18287,"type":"edge","label":"definition","outV":18284,"inV":18286}
-{"id":18288,"type":"edge","label":"item","outV":18286,"inVs":[18283],"document":18097}
-{"id":18289,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef hash(self, password)\n```"}}}
+{"id":18288,"type":"edge","label":"item","outV":18286,"inVs":[18283],"document":18105}
+{"id":18289,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef verify(self, plain, hashed)\n```"}}}
 {"id":18290,"type":"edge","label":"hover","outV":18284,"inV":18289}
-{"id":18291,"type":"edge","label":"contains","outV":18097,"inVs":[18099,18107,18115,18123,18131,18139,18147,18155,18163,18171,18179,18187,18195,18203,18211,18219,18227,18235,18243,18251,18259,18267,18275,18283]}
+{"id":18291,"type":"vertex","label":"range","start":{"line":105,"character":4},"end":{"line":105,"character":8}}
+{"id":18292,"type":"vertex","label":"resultSet"}
+{"id":18293,"type":"edge","label":"next","outV":18291,"inV":18292}
+{"id":18294,"type":"vertex","label":"definitionResult"}
+{"id":18295,"type":"edge","label":"definition","outV":18292,"inV":18294}
+{"id":18296,"type":"edge","label":"item","outV":18294,"inVs":[18291],"document":18105}
+{"id":18297,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef hash(self, password)\n```"}}}
+{"id":18298,"type":"edge","label":"hover","outV":18292,"inV":18297}
+{"id":18299,"type":"edge","label":"contains","outV":18105,"inVs":[18107,18115,18123,18131,18139,18147,18155,18163,18171,18179,18187,18195,18203,18211,18219,18227,18235,18243,18251,18259,18267,18275,18283,18291]}

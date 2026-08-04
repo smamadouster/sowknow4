@@ -68,8 +68,10 @@ def run_collection_request_task(
         The PipelineRunner status dict.
     """
     from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
-    from app.database import AsyncSessionLocal
+    from app.database import _async_db_url
     from app.models.smart_folder import CollectionJobState, SmartFolder
     from app.services.collection_orchestrator import audit_logger
     from app.services.collection_orchestrator.pipeline_runner import (
@@ -78,7 +80,17 @@ def run_collection_request_task(
     )
 
     async def _run() -> dict[str, Any]:
-        async with AsyncSessionLocal() as db:
+        engine = create_async_engine(_async_db_url, poolclass=NullPool)
+        session_factory = async_sessionmaker(
+            engine, expire_on_commit=False, class_=AsyncSession
+        )
+        try:
+            return await _run_with_session(session_factory)
+        finally:
+            await engine.dispose()
+
+    async def _run_with_session(session_factory) -> dict[str, Any]:
+        async with session_factory() as db:
             try:
                 return await get_pipeline_runner().run(
                     UUID(smart_folder_id), UUID(user_id), db

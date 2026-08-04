@@ -27,6 +27,13 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - ACL: two buckets (public/confidential). `document_chunks.bucket` is
   denormalized (migration 034, trigger-maintained) — filter ACL on the chunk
   table, never via JOIN (join filter = planner abandons HNSW).
+- Keyword search is MULTI-CONFIG (2026-08-04): `search_vector` is stemmed with
+  the chunk's `search_language` (default 'french'), so matching must OR
+  `french` + `english` + `simple` (plus the caller's regconfig) in the `@@`
+  filter and rank via `GREATEST` across configs. Matching with 'simple' only
+  silently missed every French-stemmed body match (verified live:
+  "vaccination" → 0 vs 1, "contrat de bail" → 159 vs 395). Never drop the
+  multi-config branches.
 - Scores are calibrated: keyword rank is squashed rank/(1+rank), cross-encoder
   logits are sigmoid-squashed, labels are absolute (no relative normalization).
   Do not reintroduce unbounded boosts into final_score.

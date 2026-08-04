@@ -18,6 +18,8 @@ from app.models.user import User, UserRole
 from app.services.input_guard import input_guard
 from app.services.search_agent import (
     _count_unindexed_filename_matches,
+    _fallback_intent,
+    _regconfig_for_language,
     _sanitize_search_query,
     build_citations,
     build_search_queries,
@@ -221,7 +223,26 @@ async def search_stream(
                     return
 
                 yield _sse_event("stage", {"stage": "intent", "message": "Analyse de votre requete..."})
-                intent = await parse_intent(request.query)
+
+                # Fast path for short/simple queries — mirror run_agentic_search
+                # so the stream doesn't pay a ~1s LLM round-trip for the
+                # majority of searches ("contrat de bail", "vaccination", ...).
+                words = request.query.strip().split()
+                is_simple = (
+                    len(words) <= 3
+                    and not any(w in request.query.lower() for w in [
+                        "evolution", "trend", "compare", "difference",
+                        "bilan", "balance sheet", "resume", "synthese",
+                        "synthesis", "summary", "overview",
+                    ])
+                    and request.mode != SearchMode.DEEP
+                )
+                if is_simple:
+                    intent = _fallback_intent(request.query)
+                    intent.confidence = 0.6
+                    logger.info("Stream fast path: skipped LLM intent for simple query '%s'", request.query)
+                else:
+                    intent = await parse_intent(request.query)
                 yield _sse_event("intent", {
                     "intent": intent.intent.value,
                     "confidence": intent.confidence,
@@ -239,13 +260,14 @@ async def search_stream(
                 yield _sse_event("stage", {"stage": "retrieval", "message": f"Recherche dans {len(queries)} requete(s)..."})
 
                 search_service = HybridSearchService()
+                regconfig = _regconfig_for_language(intent.detected_language)
 
                 all_chunks: list[RawChunk] = []
                 for query_text in queries:
                     try:
                         result = await search_service.hybrid_search(
                             query=query_text, limit=request.top_k * 3,
-                            offset=0, db=db, user=current_user,
+                            offset=0, db=db, user=current_user, regconfig=regconfig,
                         )
                         all_chunks.extend(_convert_search_results_to_chunks(result.get("results", [])))
                     except Exception as exc:

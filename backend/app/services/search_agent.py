@@ -46,18 +46,59 @@ RELEVANT_THRESHOLD = 0.65
 PARTIALLY_THRESHOLD = 0.45
 
 
+_REGCONFIG_BY_LANG = {
+    "fr": "french",
+    "en": "english",
+    "de": "german",
+    "es": "spanish",
+    "it": "italian",
+}
+
+
+def _regconfig_for_language(language: str | None) -> str:
+    """Map a detected UI language to a PostgreSQL tsvector regconfig."""
+    if not language:
+        return "simple"
+    return _REGCONFIG_BY_LANG.get(language.lower(), "simple")
+
+
 def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]:
+    """Build the retrieval query list.
+
+    The sanitized original query always runs first. Sub-queries (true
+    expansion) are added next, then LLM keywords that add NEW terms and
+    expanded_keywords (synonyms — previously parsed but never used, which
+    wasted a real recall signal). Keyword tokens that are already part of the
+    original query are NOT re-added: for fallback intents ("contrat de bail"
+    → keywords ["contrat","bail"]) that produced a redundant second hybrid
+    search with identical recall. Capped at 3 queries so deep searches stay
+    bounded.
+    """
     queries = [original_query]
-    queries.extend(intent.sub_queries)
-    if intent.keywords:
-        queries.append(" ".join(intent.keywords[:5]))
-    seen: set[str] = set()
-    result = []
-    for q in queries:
-        if q not in seen:
-            seen.add(q)
-            result.append(q)
-    return result
+    seen: set[str] = {original_query}
+    query_tokens = {t.lower() for t in re.findall(r"\b[\w'-]+\b", original_query)}
+
+    for sq in intent.sub_queries:
+        if sq not in seen and len(queries) < 3:
+            seen.add(sq)
+            queries.append(sq)
+
+    def _new_terms(terms: list[str]) -> list[str]:
+        return [t for t in terms if t.lower() not in query_tokens]
+
+    if intent.keywords and len(queries) < 3:
+        kw_query = " ".join(_new_terms(intent.keywords[:5]))
+        if kw_query and kw_query not in seen:
+            seen.add(kw_query)
+            queries.append(kw_query)
+
+    if intent.expanded_keywords and len(queries) < 3:
+        ex_query = " ".join(_new_terms(intent.expanded_keywords[:5]))
+        if ex_query and ex_query not in seen:
+            seen.add(ex_query)
+            queries.append(ex_query)
+
+    return queries
 
 
 # Conversational filler words that harm embedding quality.
@@ -738,8 +779,11 @@ async def run_agentic_search(
     queries = build_search_queries(intent, search_query)
 
     # Stage 3: Hybrid retrieval (sequential sub-queries to avoid
-    # concurrent use of the same AsyncSession)
+    # concurrent use of the same AsyncSession). The detected language is
+    # mapped to a regconfig so keyword search stems against the stored
+    # (French-default) tsvector index instead of the lossy 'simple' config.
     search_service = HybridSearchService()
+    regconfig = _regconfig_for_language(intent.detected_language)
     all_chunks: list[RawChunk] = []
 
     for query_text in queries:
@@ -750,6 +794,7 @@ async def run_agentic_search(
                 offset=0,
                 db=db,
                 user=user,
+                regconfig=regconfig,
             )
             for sr in result.get("results", []):
                 all_chunks.append(RawChunk(

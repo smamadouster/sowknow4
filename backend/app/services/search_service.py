@@ -292,10 +292,18 @@ class HybridSearchService:
 
         # plainto_tsquery converts free-form text to a tsquery (automatic AND,
         # stemming, stop-word removal) — safe with parameterised input.
-        # Dual-query strategy: match with both the caller-supplied regconfig
-        # (e.g. 'french' for stemming precision) AND 'simple' (language-agnostic
-        # fallback).  Language-specific matches get a 1.2x rank boost so they
-        # surface higher, but simple matches prevent cross-language misses.
+        #
+        # Multi-config strategy (2026-08-04): search_vector is stemmed with the
+        # chunk's search_language (default 'french'), but queries were matched
+        # only with 'simple' — non-stemmed lexemes. A French-stemmed body
+        # ("vaccination" → lexeme 'vaccin') never matched the 'simple' query
+        # lexeme, so keyword-in-body recall collapsed (verified live:
+        # "vaccination" → 0 simple hits vs 1 french hit; "contrat de bail"
+        # → 159 vs 395). Match against the caller regconfig PLUS 'french',
+        # 'english' and 'simple' so the stored stemmed lexemes are hit
+        # regardless of the vault's language mix. Rank uses GREATEST across
+        # configs (monotonic, no double-counting when the caller config is
+        # already french/english) with the phrase boost preserved.
         sql_query = text("""
             SELECT
                 dc.id          AS chunk_id,
@@ -305,25 +313,49 @@ class HybridSearchService:
                 dc.chunk_text,
                 dc.chunk_index,
                 dc.page_number,
-                COALESCE(ts_rank_cd(
-                    dc.search_vector,
-                    plainto_tsquery(CAST(:regconfig AS regconfig), :query),
-                    32
+                COALESCE(GREATEST(
+                    ts_rank_cd(
+                        dc.search_vector,
+                        plainto_tsquery(CAST(:regconfig AS regconfig), :query),
+                        32
+                    ),
+                    ts_rank_cd(
+                        dc.search_vector,
+                        plainto_tsquery('french', :query),
+                        32
+                    ),
+                    ts_rank_cd(
+                        dc.search_vector,
+                        plainto_tsquery('english', :query),
+                        32
+                    ),
+                    ts_rank_cd(
+                        dc.search_vector,
+                        plainto_tsquery('simple', :query),
+                        32
+                    )
                 ), 0) * 1.2
-                + COALESCE(ts_rank_cd(
-                    dc.search_vector,
-                    phraseto_tsquery(CAST(:regconfig AS regconfig), :query),
-                    32
-                ), 0) * 3.6
-                + COALESCE(ts_rank_cd(
-                    dc.search_vector,
-                    plainto_tsquery('simple', :query),
-                    32
-                ), 0)
-                + COALESCE(ts_rank_cd(
-                    dc.search_vector,
-                    phraseto_tsquery('simple', :query),
-                    32
+                + COALESCE(GREATEST(
+                    ts_rank_cd(
+                        dc.search_vector,
+                        phraseto_tsquery(CAST(:regconfig AS regconfig), :query),
+                        32
+                    ),
+                    ts_rank_cd(
+                        dc.search_vector,
+                        phraseto_tsquery('french', :query),
+                        32
+                    ),
+                    ts_rank_cd(
+                        dc.search_vector,
+                        phraseto_tsquery('english', :query),
+                        32
+                    ),
+                    ts_rank_cd(
+                        dc.search_vector,
+                        phraseto_tsquery('simple', :query),
+                        32
+                    )
                 ), 0) * 3.0
                 AS rank
             FROM sowknow.document_chunks dc
@@ -332,6 +364,8 @@ class HybridSearchService:
               AND dc.search_vector IS NOT NULL
               AND (
                   dc.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), :query)
+                  OR dc.search_vector @@ plainto_tsquery('french', :query)
+                  OR dc.search_vector @@ plainto_tsquery('english', :query)
                   OR dc.search_vector @@ plainto_tsquery('simple', :query)
               )
             ORDER BY rank DESC
@@ -634,7 +668,15 @@ class HybridSearchService:
         if not embedding_service.can_embed:
             return []
 
-        query_embedding = await asyncio.to_thread(embedding_service.encode_query, query)
+        # Same embedding cache as semantic_search — the chunk + article vector
+        # legs of hybrid_search run back-to-back on the same query, so caching
+        # avoids a second ~450ms embed-server round-trip per search.
+        cached_embedding = SearchCache.get_embedding(query)
+        if cached_embedding is not None:
+            query_embedding = cached_embedding
+        else:
+            query_embedding = await asyncio.to_thread(embedding_service.encode_query, query)
+            SearchCache.set_embedding(query, query_embedding)
         embedding_array = "[" + ",".join(map(str, query_embedding)) + "]"
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 

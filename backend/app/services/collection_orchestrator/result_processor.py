@@ -272,6 +272,12 @@ class ResultProcessor:
                 "final_score": final,
             }
             item["_final_score"] = final
+            # Relevance signal for the absolute gate + display (2026-08-04):
+            # the cross-encoder rerank score discriminates relevant from
+            # unrelated far better than the blended final score, which
+            # compresses every match into ~0.5-0.6 and let unrelated docs
+            # (e.g. a Salesforce migration report) slip past the gate.
+            item["_gate_score"] = rerank_score
 
         ranked = sorted(items, key=lambda it: it["_final_score"], reverse=True)
         for position, item in enumerate(ranked, start=1):

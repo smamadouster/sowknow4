@@ -824,9 +824,17 @@ class PipelineRunner:
             input_ref=f"items:{len(items)}",
         ) as set_output:
             canonical_items, duplicates_map = self.result_processor.dedup(items)
+            # Rerank against the FOCUSED search query (not the raw request
+            # sentence) so the cross-encoder compares the item to the real
+            # topic, not filler words (2026-08-04).
+            rerank_query = str(
+                confirmed_params.get("search_query")
+                or confirmed_params.get("query_text")
+                or ""
+            )
             ranked_all = await self.result_processor.rank(
                 canonical_items,
-                str(confirmed_params.get("query_text") or ""),
+                rerank_query,
                 db=db,
                 request_id=sf.id,
                 user_id=user.id,
@@ -838,7 +846,10 @@ class PipelineRunner:
             gate = gate_info["threshold"]
             ranked: list[dict] = []
             for it in ranked_all:
-                score = (it.get("ranking_detail") or {}).get("final_score", 0.0)
+                # Gate on the cross-encoder rerank confidence (_gate_score),
+                # not the blended final score — the blend compressed every
+                # match to ~0.5-0.6 and let unrelated docs through (2026-08-04).
+                score = it.get("_gate_score", (it.get("ranking_detail") or {}).get("final_score", 0.0))
                 (ranked if score >= gate else gated_out).append(it)
             gate_info["items_kept"] = len(ranked)
             gate_info["items_gated"] = len(gated_out)
@@ -925,7 +936,10 @@ class PipelineRunner:
             if row is not None:
                 row.rank_position = item.get("rank_position")
                 detail = item.get("ranking_detail") or {}
-                row.relevance_score = detail.get("final_score", row.relevance_score)
+                row.relevance_score = (
+                    item.get("_gate_score")
+                    or detail.get("final_score", row.relevance_score)
+                )
 
         # Annotation persistence.
         for annotation in annotations:

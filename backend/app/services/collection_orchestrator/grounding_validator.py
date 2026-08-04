@@ -50,6 +50,7 @@ class GroundingValidator:
         analyses: list[dict],
         insights: list[dict],
         source_refs: list[dict] | None = None,
+        source_numbers: set[float] | None = None,
     ) -> ValidationReport:
         computed = self._computed_numbers(analyses, insights)
         accepted_strings = self._accepted_strings(computed)
@@ -70,7 +71,7 @@ class GroundingValidator:
 
             bad = [
                 t for t in tokens
-                if not self._token_accepted(t, computed, accepted_strings)
+                if not self._token_accepted(t, computed, accepted_strings, source_numbers)
             ]
             if bad:
                 for token in bad:
@@ -161,6 +162,7 @@ class GroundingValidator:
         request_id: UUID | None = None,
         user_id: UUID | None = None,
         source_refs: list[dict] | None = None,
+        source_numbers: set[float] | None = None,
     ) -> tuple[str | None, ValidationReport, list[str]]:
         """Generate → validate → retry up to ``max_attempts``; on final
         failure strip the ungrounded sentences and return what remains.
@@ -176,7 +178,7 @@ class GroundingValidator:
                 # FR6.1 — nothing validated to narrate; do not fabricate.
                 report = ValidationReport(passed=False, checked_claims=0)
                 return None, report, []
-            report = self.validate(md, analyses, insights, source_refs)
+            report = self.validate(md, analyses, insights, source_refs, source_numbers)
             last_md, last_report = md, report
             await self._audit(
                 db, request_id, user_id,
@@ -296,13 +298,21 @@ class GroundingValidator:
 
     @classmethod
     def _token_accepted(
-        cls, token: str, computed: set[float], accepted_strings: set[str]
+        cls, token: str, computed: set[float], accepted_strings: set[str],
+        source_numbers: set[float] | None = None,
     ) -> bool:
         normalized = token.replace(" ", ",").replace(" ", ",")
         if normalized in accepted_strings:
             return True
         try:
-            return cls._token_float(token) in computed
+            value = cls._token_float(token)
+            if value in computed:
+                return True
+            # Rich-memo (2026-08-04): a number that appears verbatim in a
+            # cited source excerpt is accepted too — it is grounded in the
+            # document, not invented. Anti-fabrication still holds: a number
+            # in neither the computed data nor any source is stripped.
+            return source_numbers is not None and value in source_numbers
         except ValueError:
             return False
 

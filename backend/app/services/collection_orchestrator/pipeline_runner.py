@@ -1308,6 +1308,12 @@ class PipelineRunner:
             for it in ranked
             if it.get("document_id")
         ]
+        # Numbers traceable to a cited source excerpt are grounded (rich memo).
+        source_numbers: set[float] = set()
+        for it in ranked:
+            source_numbers.update(
+                self.grounding_validator._numbers_in(it.get("snippet") or "")
+            )
 
         async def _generate() -> str | None:
             return await self.summary_generator.generate(
@@ -1331,6 +1337,7 @@ class PipelineRunner:
                 request_id=sf.id,
                 user_id=user.id,
                 source_refs=source_refs,
+                source_numbers=source_numbers,
             )
             set_output(
                 validation_passed=report.passed,

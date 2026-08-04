@@ -228,3 +228,35 @@ class TestRichMemo:
         report = GroundingValidator().validate(md, analyses, insights, [])
         assert not report.passed
         assert report.numeric_failures
+
+
+class TestSourceTraceableNumbers:
+    """Rich memo: numbers present in a cited source excerpt are grounded."""
+
+    def test_source_number_accepted_with_citation(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        md = "Le salaire total était de 272532000 XOF ([source: Salaire 2024.pdf])."
+        report = GroundingValidator().validate(
+            md,
+            [{"output": {"total": 100}}],
+            [],
+            source_refs=[{"title": "Salaire 2024.pdf", "document_id": "d1"}],
+            source_numbers={272532000.0},
+        )
+        assert report.passed, report.failed_claims
+
+    def test_uninvented_number_still_stripped(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        # 999 exists in NO source and NO computed data -> stripped.
+        md = "Le montant était de 999 XOF ([source: Salaire 2024.pdf])."
+        report = GroundingValidator().validate(
+            md,
+            [{"output": {"total": 100}}],
+            [],
+            source_refs=[{"title": "Salaire 2024.pdf", "document_id": "d1"}],
+            source_numbers={272532000.0},
+        )
+        assert not report.passed
+        assert report.numeric_failures

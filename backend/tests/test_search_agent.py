@@ -44,6 +44,7 @@ from app.services.search_agent import (
     build_citations,
     build_search_queries,
     rerank_and_build_results,
+    rerank_merged_chunks,
 )
 from app.services.search_models import (
     ParsedIntent,
@@ -308,3 +309,82 @@ class TestFallbackIntent:
         intent = _fallback_intent("les documents de la famille")
         assert "les" not in intent.keywords
         assert "la" not in intent.keywords
+
+
+class TestRerankMergedChunks:
+    """Consolidated cross-encoder rerank over the merged candidate pool."""
+
+    def _chunks(self, n: int, base_score: float = 0.5) -> list[RawChunk]:
+        return [
+            make_chunk(rrf_score=base_score + i * 0.01, text=f"passage numero {i}", doc_id=uuid4())
+            for i in range(n)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_blends_cross_encoder_score(self, monkeypatch):
+        chunks = self._chunks(3)
+        # Cross-encoder returns (index, sigmoid score) sorted descending.
+        async def fake_rerank(query, passages):
+            return [(0, 0.9), (2, 0.4), (1, 0.1)]
+
+        monkeypatch.setattr("app.services.search_agent.rerank_passages", fake_rerank)
+        await rerank_merged_chunks(chunks, "une question")
+        chunk0 = sorted(chunks, key=lambda c: c.rrf_score, reverse=True)[0]
+        assert chunk0.rrf_score == pytest.approx(0.7 * 0.52 + 0.3 * 0.9, abs=1e-9)
+
+    @pytest.mark.asyncio
+    async def test_single_chunk_skips_rerank(self, monkeypatch):
+        chunks = self._chunks(1)
+        called = False
+
+        async def fake_rerank(query, passages):
+            nonlocal called
+            called = True
+            return [(0, 0.9)]
+
+        monkeypatch.setattr("app.services.search_agent.rerank_passages", fake_rerank)
+        await rerank_merged_chunks(chunks, "q")
+        assert not called
+
+    @pytest.mark.asyncio
+    async def test_empty_scores_leaves_chunks_unchanged(self, monkeypatch):
+        chunks = self._chunks(3)
+        before = [c.rrf_score for c in chunks]
+
+        async def fake_rerank(query, passages):
+            return []
+
+        monkeypatch.setattr("app.services.search_agent.rerank_passages", fake_rerank)
+        await rerank_merged_chunks(chunks, "q")
+        assert [c.rrf_score for c in chunks] == before
+
+    @pytest.mark.asyncio
+    async def test_exception_falls_back_to_rrf(self, monkeypatch):
+        chunks = self._chunks(3)
+        before = [c.rrf_score for c in chunks]
+
+        async def fake_rerank(query, passages):
+            raise RuntimeError("rerank server down")
+
+        monkeypatch.setattr("app.services.search_agent.rerank_passages", fake_rerank)
+        await rerank_merged_chunks(chunks, "q")
+        assert [c.rrf_score for c in chunks] == before
+
+    @pytest.mark.asyncio
+    async def test_only_top_n_is_reranked(self, monkeypatch):
+        chunks = self._chunks(5, base_score=0.4)
+        scored_ids = set()
+
+        async def fake_rerank(query, passages):
+            # passages are the top_n (3 here) in pre-rerank score order.
+            assert len(passages) == 3
+            for i in range(len(passages)):
+                scored_ids.add(passages[i])
+            return [(0, 0.9), (1, 0.8), (2, 0.7)]
+
+        monkeypatch.setattr("app.services.search_agent.rerank_passages", fake_rerank)
+        await rerank_merged_chunks(chunks, "q", top_n=3)
+        assert len(scored_ids) == 3
+        # Chunks beyond top_n keep their original RRF score.
+        lowest = sorted(chunks, key=lambda c: c.rrf_score)[0]
+        assert lowest.text not in scored_ids

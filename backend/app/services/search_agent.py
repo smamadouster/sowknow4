@@ -21,6 +21,7 @@ from app.models.user import UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
 from app.services.llm_router import llm_router
+from app.services.rerank_service import rerank_passages
 from app.services.search_cache import SearchCache
 from app.services.search_service import HybridSearchService
 
@@ -60,6 +61,43 @@ def _regconfig_for_language(language: str | None) -> str:
     if not language:
         return "simple"
     return _REGCONFIG_BY_LANG.get(language.lower(), "simple")
+
+
+async def rerank_merged_chunks(
+    chunks: list[RawChunk],
+    query: str,
+    top_n: int = 60,
+) -> list[RawChunk]:
+    """Run ONE cross-encoder pass over the merged candidate pool.
+
+    The agentic pipeline runs hybrid_search per sub-query; each used to
+    trigger its own ~500ms rerank against that sub-query's text, so 2-3
+    sub-queries cost 2-3 sequential cross-encoder calls with incomparable
+    per-query scores. Instead the per-sub-query rerank is skipped
+    (hybrid_search(..., rerank=False)) and the merged, deduped pool is scored
+    ONCE against the original user query. The cross-encoder score is blended
+    into each chunk's rrf_score (0.7 raw/RRF + 0.3 cross-encoder — the same
+    blend hybrid_search uses), so the final ranking is consistent across
+    sub-queries. Reranking only the top-n (60, matching the collection
+    orchestrator) bounds latency; everything below keeps its RRF-only score.
+
+    Returns the same list (chunks are mutated in place).
+    """
+    if len(chunks) <= 1:
+        return chunks
+    top = sorted(chunks, key=lambda c: c.rrf_score, reverse=True)[:top_n]
+    passages = [c.text for c in top]
+    try:
+        rerank_scores = await rerank_passages(query, passages)
+    except Exception as exc:
+        logger.warning("Consolidated rerank failed, using RRF-only: %s", exc)
+        return chunks
+    if not rerank_scores:
+        return chunks
+    for idx, score in rerank_scores:
+        chunk = top[idx]
+        chunk.rrf_score = 0.7 * chunk.rrf_score + 0.3 * score
+    return chunks
 
 
 def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]:
@@ -795,6 +833,10 @@ async def run_agentic_search(
                 db=db,
                 user=user,
                 regconfig=regconfig,
+                # Per-sub-query rerank is skipped; the merged candidate pool is
+                # cross-encoder scored ONCE against the original query below
+                # (option F, 2026-08-04) — cheaper AND a consistent ranking.
+                rerank=False,
             )
             for sr in result.get("results", []):
                 all_chunks.append(RawChunk(
@@ -838,6 +880,10 @@ async def run_agentic_search(
             deduped.append(chunk)
     all_chunks = deduped
     logger.info("Retrieved %d chunks from hybrid search", len(all_chunks))
+
+    # Stage 3c: ONE cross-encoder pass over the merged pool (option F) so the
+    # final relevance ranking is consistent across sub-queries.
+    await rerank_merged_chunks(all_chunks, request.query)
 
     # Stage 4: Re-rank
     results, has_confidential = rerank_and_build_results(

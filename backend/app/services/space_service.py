@@ -253,7 +253,7 @@ class SpaceService:
             select(Document.id).where(
                 Document.id.in_(
                     select(DocumentChunk.document_id).where(
-                        DocumentChunk.search_vector.op("@@")(func.plainto_tsquery("simple", keyword))
+                        DocumentChunk.search_vector.op("@@")(func.plainto_tsquery("simple", func.unaccent(keyword)))
                     )
                 )
             )
@@ -349,7 +349,7 @@ class SpaceService:
             result = await db.execute(
                 select(func.count()).where(
                     DocumentChunk.document_id == target_id,
-                    DocumentChunk.search_vector.op("@@")(func.plainto_tsquery("simple", keyword)),
+                    DocumentChunk.search_vector.op("@@")(func.plainto_tsquery("simple", func.unaccent(keyword))),
                 )
             )
             return (result.scalar() or 0) > 0

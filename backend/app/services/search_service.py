@@ -304,6 +304,16 @@ class HybridSearchService:
         # regardless of the vault's language mix. Rank uses GREATEST across
         # configs (monotonic, no double-counting when the caller config is
         # already french/english) with the phrase boost preserved.
+        #
+        # Accent-folding (migration 036, 2026-08-04): French lexemes keep
+        # accents ('présence' → 'présenc'), so an unaccented query missed every
+        # accented body match (verified live: 'presence' → 0 vs 'présence' →
+        # thousands). Migration 036 re-stems the stored vectors with
+        # sowknow.unaccent() applied; each config is therefore ALSO matched
+        # against sowknow.unaccent(:query). BOTH branch sets are kept so recall
+        # holds across the backfill transition (accented rows, mixed rows,
+        # folded rows). The accented branches match nothing post-backfill and
+        # can be pruned once production has verified the 036 backfill.
         sql_query = text("""
             SELECT
                 dc.id          AS chunk_id,
@@ -314,48 +324,24 @@ class HybridSearchService:
                 dc.chunk_index,
                 dc.page_number,
                 COALESCE(GREATEST(
-                    ts_rank_cd(
-                        dc.search_vector,
-                        plainto_tsquery(CAST(:regconfig AS regconfig), :query),
-                        32
-                    ),
-                    ts_rank_cd(
-                        dc.search_vector,
-                        plainto_tsquery('french', :query),
-                        32
-                    ),
-                    ts_rank_cd(
-                        dc.search_vector,
-                        plainto_tsquery('english', :query),
-                        32
-                    ),
-                    ts_rank_cd(
-                        dc.search_vector,
-                        plainto_tsquery('simple', :query),
-                        32
-                    )
+                    ts_rank_cd(dc.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
+                    ts_rank_cd(dc.search_vector, plainto_tsquery('french', :query), 32),
+                    ts_rank_cd(dc.search_vector, plainto_tsquery('english', :query), 32),
+                    ts_rank_cd(dc.search_vector, plainto_tsquery('simple', :query), 32),
+                    ts_rank_cd(dc.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(dc.search_vector, plainto_tsquery('french', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(dc.search_vector, plainto_tsquery('english', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(dc.search_vector, plainto_tsquery('simple', sowknow.unaccent(:query)), 32)
                 ), 0) * 1.2
                 + COALESCE(GREATEST(
-                    ts_rank_cd(
-                        dc.search_vector,
-                        phraseto_tsquery(CAST(:regconfig AS regconfig), :query),
-                        32
-                    ),
-                    ts_rank_cd(
-                        dc.search_vector,
-                        phraseto_tsquery('french', :query),
-                        32
-                    ),
-                    ts_rank_cd(
-                        dc.search_vector,
-                        phraseto_tsquery('english', :query),
-                        32
-                    ),
-                    ts_rank_cd(
-                        dc.search_vector,
-                        phraseto_tsquery('simple', :query),
-                        32
-                    )
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery('french', :query), 32),
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery('english', :query), 32),
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery('simple', :query), 32),
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery('french', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery('english', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(dc.search_vector, phraseto_tsquery('simple', sowknow.unaccent(:query)), 32)
                 ), 0) * 3.0
                 AS rank
             FROM sowknow.document_chunks dc
@@ -367,6 +353,10 @@ class HybridSearchService:
                   OR dc.search_vector @@ plainto_tsquery('french', :query)
                   OR dc.search_vector @@ plainto_tsquery('english', :query)
                   OR dc.search_vector @@ plainto_tsquery('simple', :query)
+                  OR dc.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query))
+                  OR dc.search_vector @@ plainto_tsquery('french', sowknow.unaccent(:query))
+                  OR dc.search_vector @@ plainto_tsquery('english', sowknow.unaccent(:query))
+                  OR dc.search_vector @@ plainto_tsquery('simple', sowknow.unaccent(:query))
               )
             ORDER BY rank DESC
             LIMIT :limit OFFSET :offset
@@ -528,8 +518,8 @@ class HybridSearchService:
             WHERE d.bucket::text = ANY(:buckets)
               AND d.status != 'error'
               AND (
-                  d.original_filename ILIKE :query_pattern
-                  OR d.filename ILIKE :query_pattern
+                  sowknow.unaccent(COALESCE(d.original_filename, '')) ILIKE :query_pattern
+                  OR sowknow.unaccent(COALESCE(d.filename, '')) ILIKE :query_pattern
               )
             ORDER BY d.created_at DESC
             LIMIT :limit
@@ -618,8 +608,8 @@ class HybridSearchService:
             WHERE d.bucket::text = ANY(:buckets)
               AND d.status != 'error'
               AND (
-                  d.original_filename ILIKE :query_pattern
-                  OR d.filename ILIKE :query_pattern
+                  sowknow.unaccent(COALESCE(d.original_filename, '')) ILIKE :query_pattern
+                  OR sowknow.unaccent(COALESCE(d.filename, '')) ILIKE :query_pattern
               )
             ORDER BY created_at DESC
             LIMIT :limit
@@ -883,6 +873,11 @@ class HybridSearchService:
         """Full-text search over articles using tsvector."""
         bucket_filter = self._get_user_bucket_filter(user) if user else [DocumentBucket.PUBLIC.value]
 
+        # Same multi-config + accent-folding strategy as keyword_search
+        # (2026-08-04): article search_vector is stemmed with search_language
+        # (default 'french'), so match caller regconfig + french + english +
+        # simple against both the raw query and the accent-folded query. Rank
+        # via GREATEST with the phrase boost preserved (chunk version).
         sql_query = text("""
             SELECT
                 a.id as article_id,
@@ -891,16 +886,26 @@ class HybridSearchService:
                 a.bucket as document_bucket,
                 a.title,
                 a.summary,
-                COALESCE(ts_rank_cd(
-                    a.search_vector,
-                    plainto_tsquery(CAST(:regconfig AS regconfig), :query),
-                    32
+                COALESCE(GREATEST(
+                    ts_rank_cd(a.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
+                    ts_rank_cd(a.search_vector, plainto_tsquery('french', :query), 32),
+                    ts_rank_cd(a.search_vector, plainto_tsquery('english', :query), 32),
+                    ts_rank_cd(a.search_vector, plainto_tsquery('simple', :query), 32),
+                    ts_rank_cd(a.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(a.search_vector, plainto_tsquery('french', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(a.search_vector, plainto_tsquery('english', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(a.search_vector, plainto_tsquery('simple', sowknow.unaccent(:query)), 32)
                 ), 0) * 1.2
-                + COALESCE(ts_rank_cd(
-                    a.search_vector,
-                    plainto_tsquery('simple', :query),
-                    32
-                ), 0)
+                + COALESCE(GREATEST(
+                    ts_rank_cd(a.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
+                    ts_rank_cd(a.search_vector, phraseto_tsquery('french', :query), 32),
+                    ts_rank_cd(a.search_vector, phraseto_tsquery('english', :query), 32),
+                    ts_rank_cd(a.search_vector, phraseto_tsquery('simple', :query), 32),
+                    ts_rank_cd(a.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(a.search_vector, phraseto_tsquery('french', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(a.search_vector, phraseto_tsquery('english', sowknow.unaccent(:query)), 32),
+                    ts_rank_cd(a.search_vector, phraseto_tsquery('simple', sowknow.unaccent(:query)), 32)
+                ), 0) * 3.0
                 AS rank
             FROM sowknow.articles a
             JOIN sowknow.documents d ON a.document_id = d.id
@@ -908,7 +913,13 @@ class HybridSearchService:
               AND a.search_vector IS NOT NULL
               AND (
                   a.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), :query)
+                  OR a.search_vector @@ plainto_tsquery('french', :query)
+                  OR a.search_vector @@ plainto_tsquery('english', :query)
                   OR a.search_vector @@ plainto_tsquery('simple', :query)
+                  OR a.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query))
+                  OR a.search_vector @@ plainto_tsquery('french', sowknow.unaccent(:query))
+                  OR a.search_vector @@ plainto_tsquery('english', sowknow.unaccent(:query))
+                  OR a.search_vector @@ plainto_tsquery('simple', sowknow.unaccent(:query))
               )
             ORDER BY rank DESC
             LIMIT :limit
@@ -1314,7 +1325,7 @@ class HybridSearchService:
         if not sanitized_query:
             return []
 
-        tsquery = func.plainto_tsquery(regconfig, sanitized_query)
+        tsquery = func.plainto_tsquery(regconfig, func.unaccent(sanitized_query))
 
         rank_expr = func.ts_rank_cd(
             DocumentChunk.search_vector,
@@ -1365,7 +1376,7 @@ class HybridSearchService:
         if not sanitized_query:
             return []
 
-        tsquery = func.plainto_tsquery(regconfig, sanitized_query)
+        tsquery = func.plainto_tsquery(regconfig, func.unaccent(sanitized_query))
 
         text_rank = func.ts_rank_cd(
             DocumentChunk.search_vector,
@@ -1425,7 +1436,7 @@ class HybridSearchService:
                     SELECT ts_headline(
                         :lang::regconfig,
                         :content,
-                        plainto_tsquery(CAST(:lang AS regconfig), :query),
+                        plainto_tsquery(CAST(:lang AS regconfig), sowknow.unaccent(:query)),
                         'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15'
                     )
                     """

@@ -34,6 +34,31 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   silently missed every French-stemmed body match (verified live:
   "vaccination" → 0 vs 1, "contrat de bail" → 159 vs 395). Never drop the
   multi-config branches.
+- Keyword search is ACCENT-FOLDED (migration 036, 2026-08-04): `search_vector`
+  is re-stemmed with `sowknow.unaccent()` applied (extension installed in the
+  `sowknow` schema — the DB user's search_path puts 'sowknow' first, so a bare
+  `CREATE EXTENSION` lands there too). French lexemes keep accents
+  ('présence'→'présenc'), so an unaccented query missed every accented body
+  match (verified live: 'presence' → 0 vs 'présence' → thousands). Every
+  tsvector branch therefore runs TWICE: against the raw query AND against
+  `sowknow.unaccent(:query)`. Keep BOTH branch sets — they make recall correct
+  across the backfill transition (accented rows / mixed / folded rows); after
+  the 036 backfill the accented branches match nothing and can be pruned, but
+  only once production has verified the backfill. Always qualify the function
+  as `sowknow.unaccent` (never `public.unaccent`). The existing-row backfill is
+  NOT part of migration 036 (it is slow on this table — bloated heap + huge
+  HNSW index thrash shared_buffers): run `scripts/migration036_backfill.py`
+  (resumable, id-ordered batches, each commits). A naive `ORDER BY id LIMIT n`
+  loop without an advancing `WHERE id > :last_id` re-updates the same first
+  rows forever — the id window MUST advance.
+- Agentic rerank is CONSOLIDATED (2026-08-04): the agentic pipeline (stream +
+  non-stream) calls `hybrid_search(..., rerank=False)` per sub-query, then runs
+  ONE cross-encoder pass over the merged, deduped candidate pool via
+  `search_agent.rerank_merged_chunks` (top-60, blend 0.7 RRF / 0.3 cross-encoder)
+  against the ORIGINAL user query. Never re-enable per-sub-query rerank there —
+  it made 2-3 sequential ~500ms rerank calls with incomparable per-query scores.
+  Single-query callers of hybrid_search (collections, smart folders, chat) keep
+  `rerank=True`.
 - Scores are calibrated: keyword rank is squashed rank/(1+rank), cross-encoder
   logits are sigmoid-squashed, labels are absolute (no relative normalization).
   Do not reintroduce unbounded boosts into final_score.

@@ -26,6 +26,7 @@ from app.services.search_agent import (
     generate_suggestions,
     parse_intent,
     rerank_and_build_results,
+    rerank_merged_chunks,
     run_agentic_search,
     synthesize_answer,
 )
@@ -268,12 +269,17 @@ async def search_stream(
                         result = await search_service.hybrid_search(
                             query=query_text, limit=request.top_k * 3,
                             offset=0, db=db, user=current_user, regconfig=regconfig,
+                            # Rerank skipped per sub-query; one consolidated
+                            # cross-encoder pass runs on the merged pool below.
+                            rerank=False,
                         )
                         all_chunks.extend(_convert_search_results_to_chunks(result.get("results", [])))
                     except Exception as exc:
                         logger.warning("Streaming sub-query failed: %s", exc)
 
                 all_chunks = _deduplicate_chunks(all_chunks)
+                # One cross-encoder pass over the merged pool (option F).
+                await rerank_merged_chunks(all_chunks, request.query)
 
                 yield _sse_event("stage", {
                     "stage": "reranking",

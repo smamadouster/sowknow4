@@ -853,6 +853,12 @@ class PipelineRunner:
                 (ranked if score >= gate else gated_out).append(it)
             gate_info["items_kept"] = len(ranked)
             gate_info["items_gated"] = len(gated_out)
+            gate_scores = [it.get("_gate_score", 0.0) for it in ranked_all]
+            gate_info["gate_score_min"] = round(min(gate_scores), 3) if gate_scores else None
+            gate_info["gate_score_max"] = round(max(gate_scores), 3) if gate_scores else None
+            gate_info["gate_score_median"] = (
+                round(sorted(gate_scores)[len(gate_scores) // 2], 3) if gate_scores else None
+            )
             # FR6.3 analysis budget: only the top-N by rank_position are
             # annotated/extracted/analysed; the rest stay listed with
             # status "excluded_budget" (NFR-3 bound on huge jobs).

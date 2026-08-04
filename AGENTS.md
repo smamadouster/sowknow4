@@ -72,6 +72,19 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   results means few relevant docs. semantic_search excludes chunk_text < 30
   chars from the candidate pool. Chunk branches search at limit=150,
   collection cap 120.
+- Collection orchestrator searches the FOCUSED topic, never the raw request
+  sentence (2026-08-04): `build_confirmed_params` derives `search_query` from
+  the parsed focus_aspects / entities ("me réunir tous les dossiers
+  concernants les salaires" → query "salaires"); `query_planner._base_query`
+  prefers it over `query_text`, which stays the original request for memo
+  language/context. Feeding hybrid_search the raw sentence keyword-ANDs filler
+  words and collapsed collection recall.
+- Collection ZIP export (FR6.9, 2026-08-04): `/deliverable/export?format=zip`
+  bundles memo.md + memo.pdf + memo.docx + one source file per document (read
+  from the mounted `/data`, path from `Document.file_path`) + index.json with
+  items and relevance scores. Missing/oversized files are skipped (recorded in
+  the index), never fatal. Bundling many files makes the archive large and slow
+  to stream on this VPS — expected for big collections.
 - LLM stream sentinel: providers yield "\n__USAGE__: {...}" as a trailing
   chunk — `startswith("__USAGE__")` MISSES the leading newline and leaked
   usage JSON into stored summaries (2026-08-02). Match `"__USAGE__" in chunk`

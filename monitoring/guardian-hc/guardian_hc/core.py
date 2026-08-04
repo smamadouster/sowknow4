@@ -158,6 +158,7 @@ class GuardianHC:
         self._shutdown = False
         self._history: list[dict] = []
         self._restart_trackers: dict[str, RestartTracker] = {}
+        self._vps_load_since: dict[str, datetime] = {}
         self.last_patrol_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
         self._load_tracker_state()
 
@@ -697,25 +698,39 @@ class GuardianHC:
                 results["failed"] += 1
 
             vps_load_status = await self.vps_load_checker.check()
+            now = datetime.now(timezone.utc)
+            # 2026-08-04: shared-VPS noisy-neighbour steal/load flaps across
+            # patrols, generating open+resolved incidents every cycle and
+            # spamming Telegram. Only emit a vps_load event once the condition
+            # has been sustained for `sustain_seconds` (default 10 min) so a
+            # brief spike never pages. Once sustained, keep emitting each
+            # patrol so the incident stays open until it actually recovers.
+            sustain_s = float(self.config.vps_load.get("sustain_seconds", 600))
             for vls in vps_load_status:
                 results["checks"].append({"type": "vps_load", **vls})
+                vkey = vls.get("type", "load_average")
                 if vls.get("needs_healing"):
-                    detail = ""
-                    if vls.get("type") == "load_average":
-                        detail = f"Load5={vls.get('load5')}"
-                    elif vls.get("type") == "steal_time":
-                        detail = f"Steal={vls.get('steal_pct')}%"
-                    results["events"].append(AlertEvent(
-                        event_id=f"{level}-vps_load-vps_load_high-{int(datetime.now(timezone.utc).timestamp())}",
-                        severity="WARNING", service="vps_load", container=None,
-                        check_type="vps_load_high", patrol_level=level,
-                        timestamp=datetime.now(timezone.utc),
-                        summary=f"VPS load critical: {detail}",
-                        details=f"{vls['type']} threshold exceeded: {detail}",
-                        heal_attempted=False, heal_success=None, heal_action=None,
-                        restart_attempts=0, restart_suppressed=False,
-                    ))
-                    results["failed"] += 1
+                    if vkey not in self._vps_load_since:
+                        self._vps_load_since[vkey] = now
+                    if (now - self._vps_load_since[vkey]).total_seconds() >= sustain_s:
+                        detail = ""
+                        if vls.get("type") == "load_average":
+                            detail = f"Load5={vls.get('load5')}"
+                        elif vls.get("type") == "steal_time":
+                            detail = f"Steal={vls.get('steal_pct')}%"
+                        results["events"].append(AlertEvent(
+                            event_id=f"{level}-vps_load-vps_load_high-{int(now.timestamp())}",
+                            severity="WARNING", service="vps_load", container=None,
+                            check_type="vps_load_high", patrol_level=level,
+                            timestamp=now,
+                            summary=f"VPS load critical: {detail}",
+                            details=f"{vls['type']} threshold exceeded: {detail}",
+                            heal_attempted=False, heal_success=None, heal_action=None,
+                            restart_attempts=0, restart_suppressed=False,
+                        ))
+                        results["failed"] += 1
+                else:
+                    self._vps_load_since.pop(vkey, None)
 
         if level == "deep":
             ssl_status = await self.ssl_checker.check()

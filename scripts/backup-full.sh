@@ -116,21 +116,30 @@ fi
 mkdir -p "$BACKUP_BASE_DIR"
 
 # ---------------------------------------------------------------------------
-# Restic password file
+# Restic password file + repository sanity gate
 # ---------------------------------------------------------------------------
+# INC-20260804: a missing password file used to trigger auto-regen + re-init,
+# which overwrote the repository and made all historical snapshots
+# undecryptable. A lost password is a CRITICAL failure, never a fresh start.
+# See scripts/backup.sh for the full rationale (shared logic).
 if [ ! -f "$RESTIC_PASSWORD_FILE" ]; then
+    if [ -d "$RESTIC_REPOSITORY" ]; then
+        fail "Restic password file missing ($RESTIC_PASSWORD_FILE) but repository exists at $RESTIC_REPOSITORY. Refusing to generate a new password (it would make every existing snapshot undecryptable). Restore the password from your offsite copy, then re-run."
+    fi
     mkdir -p "$(dirname "$RESTIC_PASSWORD_FILE")"
     openssl rand -base64 48 > "$RESTIC_PASSWORD_FILE"
     chmod 600 "$RESTIC_PASSWORD_FILE"
-    log "Generated Restic password file: $RESTIC_PASSWORD_FILE"
+    log "Generated new Restic password file (first-time setup): $RESTIC_PASSWORD_FILE"
+    log "CRITICAL: copy $RESTIC_PASSWORD_FILE to an offsite location now — losing it makes snapshots undecryptable."
 fi
 
-# ---------------------------------------------------------------------------
-# Initialize repository if needed
-# ---------------------------------------------------------------------------
-if ! restic snapshots >/dev/null 2>&1; then
+if [ -d "$RESTIC_REPOSITORY" ] && [ -f "$RESTIC_REPOSITORY/config" ]; then
+    if ! repo_err="$(restic snapshots 2>&1 >/dev/null)"; then
+        fail "Restic repository exists at $RESTIC_REPOSITORY but cannot be opened: $(echo "$repo_err" | head -2 | tr '\n' ' '). Refusing to re-initialize — that would destroy history. Check the password file or run 'restic unlock'."
+    fi
+else
     log "Initializing Restic repository at $RESTIC_REPOSITORY..."
-    if ! restic init; then
+    if ! restic init 2>>"$BACKUP_LOG_FILE"; then
         fail "Failed to initialize Restic repository"
     fi
     log "Repository initialized"

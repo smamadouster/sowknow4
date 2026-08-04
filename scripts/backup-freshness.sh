@@ -74,6 +74,27 @@ send_alert() {
     fi
 }
 
+# Diagnose root cause instead of one generic "nothing found" message
+# (INC-20260804: the repo itself was replaced — the alert must say WHY).
+if [ ! -f "$RESTIC_PASSWORD_FILE" ]; then
+    send_alert "🔴 SOWKNOW backup freshness: Restic password file is MISSING" \
+        "$RESTIC_PASSWORD_FILE not found on $(hostname -s). No snapshot can be opened. Restore the password from your offsite copy before the next backup run — a new password would make existing snapshots undecryptable."
+    exit 1
+fi
+
+if [ -d "$RESTIC_REPOSITORY" ] && [ ! -f "$RESTIC_REPOSITORY/config" ]; then
+    send_alert "🔴 SOWKNOW backup freshness: Restic repository is EMPTY/uninitialized" \
+        "$RESTIC_REPOSITORY exists but has no config on $(hostname -s). Historical snapshots appear to be gone. Check who removed the repository."
+    exit 1
+fi
+
+if ! restic snapshots --tag daily --json --no-lock >/dev/null 2>&1; then
+    repo_err="$(restic snapshots --tag daily --no-lock 2>&1 >/dev/null | head -3 || true)"
+    send_alert "🔴 SOWKNOW backup freshness: Restic repository unreadable" \
+        "restic could not open the repository on $(hostname -s): $repo_err"
+    exit 1
+fi
+
 latest_epoch="$(restic snapshots --tag daily --json --no-lock 2>/dev/null \
     | python3 -c "import json,sys; s=json.load(sys.stdin); print(int(__import__('datetime').datetime.fromisoformat(max(x['time'] for x in s).replace('Z','+00:00')).timestamp()))" \
     2>/dev/null || echo 0)"

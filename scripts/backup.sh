@@ -120,21 +120,41 @@ fi
 mkdir -p "$BACKUP_BASE_DIR"
 
 # ---------------------------------------------------------------------------
-# Restic password file
+# Restic password file + repository sanity gate
 # ---------------------------------------------------------------------------
+# INC-20260804: /var/backups/sowknow vanished overnight and the old flow
+# auto-regenerated the password file and re-ran `restic init` into the same
+# path, silently discarding 7 daily + weekly snapshots and making the old
+# data undecryptable (new random password). That must never happen again:
+#
+#   * NEVER auto-generate a new password while a repository exists — the
+#     password is the ONLY key to existing snapshots.
+#   * NEVER `restic init` over a directory that already looks like a
+#     repository (has a config file) — re-init replaces the repo ID.
+#   * A repo that cannot be opened is a loud failure, not a fresh start.
 if [ ! -f "$RESTIC_PASSWORD_FILE" ]; then
+    if [ -d "$RESTIC_REPOSITORY" ]; then
+        fail "Restic password file missing ($RESTIC_PASSWORD_FILE) but repository exists at $RESTIC_REPOSITORY. Refusing to generate a new password (it would make every existing snapshot undecryptable). Restore the password from your offsite copy, then re-run."
+    fi
+    # First-ever setup: no repo, no password yet. Generate and tell the
+    # operator to save it offsite immediately.
     mkdir -p "$(dirname "$RESTIC_PASSWORD_FILE")"
     openssl rand -base64 48 > "$RESTIC_PASSWORD_FILE"
     chmod 600 "$RESTIC_PASSWORD_FILE"
-    log "Generated Restic password file: $RESTIC_PASSWORD_FILE"
+    log "Generated new Restic password file (first-time setup): $RESTIC_PASSWORD_FILE"
+    log "CRITICAL: copy $RESTIC_PASSWORD_FILE to an offsite location now — losing it makes snapshots undecryptable."
 fi
 
-# ---------------------------------------------------------------------------
-# Initialize repository if needed
-# ---------------------------------------------------------------------------
-if ! restic snapshots >/dev/null 2>&1; then
+if [ -d "$RESTIC_REPOSITORY" ] && [ -f "$RESTIC_REPOSITORY/config" ]; then
+    # Existing repository — must open with the current password, else abort.
+    # Do NOT re-init: that would replace the repo ID and orphan all history.
+    if ! repo_err="$(restic snapshots 2>&1 >/dev/null)"; then
+        fail "Restic repository exists at $RESTIC_REPOSITORY but cannot be opened: $(echo "$repo_err" | head -2 | tr '\n' ' '). Refusing to re-initialize — that would destroy history. Check the password file or run 'restic unlock'."
+    fi
+else
+    # Brand-new repository (empty dir or never initialized): safe to init.
     log "Initializing Restic repository at $RESTIC_REPOSITORY..."
-    if ! restic init; then
+    if ! restic init 2>>"$BACKUP_LOG_FILE"; then
         fail "Failed to initialize Restic repository"
     fi
     log "Repository initialized"

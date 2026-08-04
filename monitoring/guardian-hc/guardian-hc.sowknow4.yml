@@ -216,6 +216,10 @@ ollama:
 vps_load:
   load_threshold: 6.0
   steal_threshold: 30.0  # was 20.0: shared-VPS steal hovers 17-27% (noisy neighbor, not fixable from inside); 30 still catches pathological cases
+  # 2026-08-04: do not open a vps_load incident (and page Telegram) until the
+  # condition has been sustained this long — steal/load flaps every patrol on
+  # this shared VPS and generated open+resolved incidents all day.
+  sustain_seconds: 600
 
 # Docker network health -- detects stale nftables rules from dead bridges
 network:

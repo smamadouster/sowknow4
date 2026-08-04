@@ -93,6 +93,9 @@ Rules:
    - "bank", "company", "institution", "university" → "institutional"
    - "project", "initiative", "campaign" → "project"
 5. Keep focus_aspects empty if none are specified.
+6. focus_aspects MUST be written in the ORIGINAL LANGUAGE of the user's query
+   (e.g. a French query "concernant les salaires" yields "salaires", NOT
+   "salaries"). The example values above are only illustrative.
 """
 
     async def parse(self, query: str) -> ParsedQuery:

@@ -246,6 +246,13 @@ class ResultProcessor:
             try:
                 for position, score in await rerank_passages(query, passages):
                     rerank_scores[candidates[position]] = score
+                if rerank_scores and max(rerank_scores.values()) < 0.15:
+                    # Degenerate rerank (query/content language mismatch on an
+                    # English cross-encoder scores everything ~0): fall back to
+                    # search scores rather than gating the whole collection
+                    # (2026-08-04).
+                    logger.debug("Collection ranking: degenerate rerank scores, falling back to search")
+                    rerank_scores = {}
             except Exception as exc:  # rerank_passages already swallows; belt+braces
                 logger.debug("Collection ranking: rerank skipped (%s)", exc)
 

@@ -12896,7 +12896,7 @@
 {"id":12896,"type":"edge","label":"contains","outV":12838,"inVs":[12840,12848,12856,12864,12872,12880,12888]}
 {"id":12897,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/services/rerank_service.py","languageId":"python"}
 {"id":12898,"type":"edge","label":"contains","outV":1,"inVs":[12897]}
-{"id":12899,"type":"vertex","label":"range","start":{"line":25,"character":0},"end":{"line":25,"character":11}}
+{"id":12899,"type":"vertex","label":"range","start":{"line":32,"character":0},"end":{"line":32,"character":11}}
 {"id":12900,"type":"vertex","label":"resultSet"}
 {"id":12901,"type":"edge","label":"next","outV":12899,"inV":12900}
 {"id":12902,"type":"vertex","label":"definitionResult"}
@@ -12904,7 +12904,7 @@
 {"id":12904,"type":"edge","label":"item","outV":12902,"inVs":[12899],"document":12897}
 {"id":12905,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _get_client()\n```"}}}
 {"id":12906,"type":"edge","label":"hover","outV":12900,"inV":12905}
-{"id":12907,"type":"vertex","label":"range","start":{"line":39,"character":0},"end":{"line":39,"character":15}}
+{"id":12907,"type":"vertex","label":"range","start":{"line":50,"character":0},"end":{"line":50,"character":15}}
 {"id":12908,"type":"vertex","label":"resultSet"}
 {"id":12909,"type":"edge","label":"next","outV":12907,"inV":12908}
 {"id":12910,"type":"vertex","label":"definitionResult"}
@@ -12912,7 +12912,7 @@
 {"id":12912,"type":"edge","label":"item","outV":12910,"inVs":[12907],"document":12897}
 {"id":12913,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef rerank_passages(query, passages)\n```"}}}
 {"id":12914,"type":"edge","label":"hover","outV":12908,"inV":12913}
-{"id":12915,"type":"vertex","label":"range","start":{"line":69,"character":0},"end":{"line":69,"character":19}}
+{"id":12915,"type":"vertex","label":"range","start":{"line":80,"character":0},"end":{"line":80,"character":19}}
 {"id":12916,"type":"vertex","label":"resultSet"}
 {"id":12917,"type":"edge","label":"next","outV":12915,"inV":12916}
 {"id":12918,"type":"vertex","label":"definitionResult"}

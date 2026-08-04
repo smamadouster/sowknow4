@@ -8,6 +8,7 @@ fall back to RRF-only scoring.
 Model: cross-encoder/ms-marco-MiniLM-L-6-v2 (~20MB, fast on CPU)
 """
 
+import asyncio
 import logging
 import math
 import os
@@ -19,13 +20,22 @@ logger = logging.getLogger(__name__)
 
 RERANK_SERVER_URL = os.getenv("RERANK_SERVER_URL", "http://rerank-server:8000")
 
-# Module-level client for connection reuse
+# Module-level client for connection reuse, scoped to the event loop that
+# created it. Celery collection tasks run under asyncio.run() (a NEW loop per
+# task), so a plain module-level client bound to the first task's loop raised
+# "Future attached to a different loop" on every later task and silently
+# degraded reranking to RRF fallback (2026-08-04 — this was why the collection
+# gate never discriminated: unrelated docs kept passing).
 _client: Optional[httpx.AsyncClient] = None
+_client_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
 def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None:
+    global _client, _client_loop
+    loop = asyncio.get_running_loop()
+    if _client is None or _client_loop is not loop:
+        # The previous client belongs to a dead loop (its task finished) — let
+        # it be GC'd; its pooled connections die with it.
         _client = httpx.AsyncClient(
             base_url=RERANK_SERVER_URL,
             # 5s was too tight for a CPU-throttled rerank-server: every timeout
@@ -34,6 +44,7 @@ def _get_client() -> httpx.AsyncClient:
             timeout=15.0,
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
         )
+        _client_loop = loop
     return _client
 
 

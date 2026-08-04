@@ -220,6 +220,34 @@ async def _analyses_for_request(
 # POST /collection-requests — create + start clarification (FR1.1)
 # ---------------------------------------------------------------------------
 
+@router.get("", response_model=None)
+async def list_collection_requests(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """List the current user's collection requests, newest first."""
+    result = await db.execute(
+        select(SmartFolder)
+        .where(SmartFolder.user_id == current_user.id)
+        .order_by(SmartFolder.created_at.desc())
+    )
+    folders = result.scalars().all()
+    requests = []
+    for sf in folders:
+        deliv = await _latest_deliverable(db, sf.id)
+        requests.append({
+            "request_id": str(sf.id),
+            "query": sf.query_text,
+            "job_state": sf.job_state,
+            "status": sf.status,
+            "created_at": sf.created_at.isoformat() if sf.created_at else None,
+            "error": sf.error_message,
+            "has_deliverable": deliv is not None,
+            "has_summary": bool(deliv and deliv.summary_md),
+        })
+    return {"requests": requests}
+
+
 @router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=None)
 async def create_collection_request(
     body: CollectionRequestCreate,

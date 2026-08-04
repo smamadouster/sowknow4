@@ -52,6 +52,10 @@ function RelatedItems({ items }: { items: CollectionItem["related_items"] }) {
 function ItemCard({ item }: { item: CollectionItem }) {
   const t = useTranslations("collection_requests");
   const locale = useLocale();
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const score =
+    item.relevance_score != null ? Math.round(item.relevance_score * 100) : null;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -64,6 +68,20 @@ function ItemCard({ item }: { item: CollectionItem }) {
             <h4 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
               {item.title || t("untitled")}
             </h4>
+            {score != null && (
+              <span
+                title={t("relevance_score")}
+                className={`text-xs font-mono px-1.5 py-0.5 rounded-full shrink-0 ${
+                  score >= 70
+                    ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                    : score >= 50
+                      ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                }`}
+              >
+                {score}%
+              </span>
+            )}
           </div>
           {item.annotation && (
             <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{item.annotation}</p>
@@ -95,18 +113,73 @@ function ItemCard({ item }: { item: CollectionItem }) {
           </div>
           <RelatedItems items={item.related_items} />
         </div>
-        {item.link && (
-          <IntlLink
-            href={item.link}
-            title={t("view_document")}
-            className="flex-shrink-0 p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </IntlLink>
-        )}
+        <div className="flex flex-col items-end gap-2">
+          {(item.snippet || item.annotation) && (
+            <button
+              onClick={() => setPreviewOpen(true)}
+              className="text-xs px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+            >
+              {t("preview")}
+            </button>
+          )}
+          {item.link && (
+            <IntlLink
+              href={item.link}
+              title={t("view_document")}
+              className="flex-shrink-0 p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </IntlLink>
+          )}
+        </div>
       </div>
+
+      {previewOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-w-2xl w-full max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white truncate pr-4">
+                {item.title || t("untitled")}
+              </h4>
+              <button
+                onClick={() => setPreviewOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-4 py-4 overflow-y-auto space-y-3">
+              {item.annotation && (
+                <p className="text-sm text-gray-700 dark:text-gray-300">{item.annotation}</p>
+              )}
+              {item.snippet && (
+                <pre className="whitespace-pre-wrap text-xs text-gray-600 dark:text-gray-300 font-sans leading-relaxed">
+                  {item.snippet}
+                </pre>
+              )}
+            </div>
+            {item.link && (
+              <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                <IntlLink
+                  href={item.link}
+                  onClick={() => setPreviewOpen(false)}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  {t("view_document")} →
+                </IntlLink>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

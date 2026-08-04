@@ -1279,9 +1279,20 @@ class PipelineRunner:
             for insight in insights
         ]
 
+        # Rich memo (2026-08-04): the summary LLM may read the ranked items'
+        # full snippets (as verified source material) to dig each document,
+        # while every figure still has to come from the computed insights.
+        source_items = ranked[: self.summary_generator.MAX_SOURCE_ITEMS]
+        source_refs = [
+            {"title": it.get("title"), "document_id": it.get("document_id")}
+            for it in ranked
+            if it.get("document_id")
+        ]
+
         async def _generate() -> str | None:
             return await self.summary_generator.generate(
-                insight_payloads, analyses, confirmed_params, user_context
+                insight_payloads, analyses, confirmed_params, user_context,
+                source_items=source_items,
             )
 
         async with audit_logger.audit_stage(
@@ -1299,6 +1310,7 @@ class PipelineRunner:
                 db=db,
                 request_id=sf.id,
                 user_id=user.id,
+                source_refs=source_refs,
             )
             set_output(
                 validation_passed=report.passed,

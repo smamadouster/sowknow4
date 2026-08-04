@@ -9,6 +9,7 @@ import type {
   CollectionConfirmation,
   CollectionDeliverableView,
   CollectionItemsResponse,
+  CollectionRequestSummary,
 } from "@/lib/api";
 import { useCollectionRequestStream } from "@/hooks/useCollectionRequestStream";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -70,6 +71,10 @@ export default function CollectionRequestsPage() {
   const [itemPage, setItemPage] = useState(1);
   const debouncedTag = useDebounce(itemTag, 400);
 
+  // "My requests" list (past collection requests, with delete).
+  const [myRequests, setMyRequests] = useState<CollectionRequestSummary[]>([]);
+  const [myRequestsLoading, setMyRequestsLoading] = useState(false);
+
   // Polling fallback
   const [polling, setPolling] = useState(false);
   const [polledStep, setPolledStep] = useState<string>("queued");
@@ -106,6 +111,31 @@ export default function CollectionRequestsPage() {
     setPolledStep("queued");
     idempotencyKeyRef.current = crypto.randomUUID();
   }, []);
+
+  const loadMyRequests = useCallback(async () => {
+    setMyRequestsLoading(true);
+    try {
+      const res = await api.listCollectionRequests();
+      setMyRequests(res.data?.requests ?? []);
+    } catch {
+      // Non-fatal: the page still works without the request history.
+    } finally {
+      setMyRequestsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMyRequests();
+  }, [loadMyRequests]);
+
+  const handleDeleteRequest = useCallback(
+    async (id: string) => {
+      if (!window.confirm(t("delete_confirm"))) return;
+      await api.deleteCollectionRequest(id);
+      loadMyRequests();
+    },
+    [loadMyRequests, t]
+  );
 
   const loadResult = useCallback(
     async (id: string) => {
@@ -372,6 +402,72 @@ export default function CollectionRequestsPage() {
               loading={submitting}
               placeholder={t("search_placeholder")}
             />
+          </div>
+        )}
+
+        {/* Past collection requests */}
+        {phase === "input" && (
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+              {t("my_requests")}
+            </h2>
+            {myRequestsLoading ? (
+              <p className="text-sm text-gray-400">{t("loading")}</p>
+            ) : myRequests.length === 0 ? (
+              <p className="text-sm text-gray-400">{t("empty_requests")}</p>
+            ) : (
+              <ul className="space-y-2">
+                {myRequests.map((req) => {
+                  const state = req.job_state ?? "draft";
+                  const statusLabel =
+                    state === "completed"
+                      ? t("status_completed")
+                      : state === "failed"
+                        ? t("status_failed")
+                        : state === "cancelled"
+                          ? t("status_draft")
+                          : t("status_running");
+                  const statusColor =
+                    state === "completed"
+                      ? "text-green-600 dark:text-green-400"
+                      : state === "failed"
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-gray-500 dark:text-gray-400";
+                  return (
+                    <li
+                      key={req.request_id}
+                      className="flex items-center justify-between gap-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 dark:text-white truncate">
+                          {req.query || "—"}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {req.created_at ? new Date(req.created_at).toLocaleString(locale) : ""}
+                        </p>
+                        <p className={`text-xs mt-0.5 ${statusColor}`}>{statusLabel}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {state === "completed" && (
+                          <IntlLink
+                            href={`/collection-requests?id=${req.request_id}`}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            {t("view_result")}
+                          </IntlLink>
+                        )}
+                        <button
+                          onClick={() => handleDeleteRequest(req.request_id)}
+                          className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300 transition"
+                        >
+                          {t("delete_request_short")}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         )}
 

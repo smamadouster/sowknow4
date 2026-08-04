@@ -185,3 +185,46 @@ class TestExportZip:
             assert index["source_files"]["included"] == []
             assert any("not found" in s["reason"] for s in index["source_files"]["skipped"])
             assert "memo.md" in zf.namelist()
+
+
+class TestRichMemo:
+    """2026-08-04 rich memo: source items feed the narrative, numbers stay
+    grounded."""
+
+    def test_summary_prompt_includes_source_items(self):
+        from app.services.collection_orchestrator.summary_generator import SummaryGenerator
+
+        gen = SummaryGenerator()
+        messages = gen._build_messages(
+            [{"statement": "total: 100", "source_refs": [{"document_id": "a"}]}],
+            [],
+            {"query_text": "salaires"},
+            {},
+            source_items=[
+                {"title": "Doc A", "document_id": "a", "snippet": "Le total est 100 XOF."}
+            ],
+        )
+        joined = messages[-1]["content"]
+        assert 'kind="source_items"' in joined
+        assert "Doc A" in joined
+
+    def test_validator_accepts_source_cited_number(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        analyses = [{"output": {"total": 100}}]
+        insights = [{"statement": "total 100", "source_refs": []}]
+        source_refs = [{"title": "Salaire 2024.pdf", "document_id": "doc-1"}]
+        md = "Le salaire total est 100 XOF ([source: Salaire 2024.pdf])."
+        report = GroundingValidator().validate(md, analyses, insights, source_refs)
+        assert report.passed, report.failed_claims
+
+    def test_validator_still_strips_ungrounded_number(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        analyses = [{"output": {"total": 100}}]
+        insights = [{"statement": "total 100", "source_refs": []}]
+        # 999 is NOT in the computed set -> numeric failure, stripped.
+        md = "Le montant est 999 XOF ([source: Salaire 2024.pdf])."
+        report = GroundingValidator().validate(md, analyses, insights, [])
+        assert not report.passed
+        assert report.numeric_failures

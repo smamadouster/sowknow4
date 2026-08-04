@@ -135,6 +135,17 @@ export interface CollectionItemsResponse {
   page_size: number;
 }
 
+export interface CollectionRequestSummary {
+  request_id: string;
+  query: string | null;
+  job_state: string | null;
+  status: string | null;
+  created_at: string | null;
+  error: string | null;
+  has_deliverable: boolean;
+  has_summary: boolean;
+}
+
 export interface CollectionAppendixTable {
   title: string;
   columns: string[];
@@ -1435,6 +1446,10 @@ class ApiClient {
 
   async getCollectionDeliverable(requestId: string) {
     return this.request<CollectionDeliverableView>(`/v1/collection-requests/${requestId}/deliverable`);
+  }
+
+  async listCollectionRequests() {
+    return this.request<{ requests: CollectionRequestSummary[] }>('/v1/collection-requests');
   }
 
   async deleteCollectionRequest(requestId: string) {

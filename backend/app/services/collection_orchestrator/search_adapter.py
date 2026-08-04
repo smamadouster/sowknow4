@@ -363,6 +363,10 @@ class SearchAdapter:
     @staticmethod
     def _result_to_item(result: Any) -> dict[str, Any]:
         document_id = getattr(result, "document_id", None)
+        # Full chunk text (not truncated to 800 chars): the extraction pipeline
+        # and the memo summary both read this, and a truncated excerpt starved
+        # the memo of material (2026-08-04 "AI summary very short"). Display
+        # truncation happens in the frontend (line-clamp).
         snippet = getattr(result, "chunk_text", None) or getattr(result, "article_summary", None) or ""
         bucket = getattr(result, "document_bucket", None)
         return {
@@ -375,7 +379,7 @@ class SearchAdapter:
             "author": None,  # filled by enrichment
             "item_date": None,  # filled by enrichment
             "relevance_score": float(getattr(result, "final_score", 0.0) or 0.0),
-            "snippet": snippet[:800],
+            "snippet": snippet,
             "acl_stamp": getattr(bucket, "value", bucket),  # ACL bucket stamped at retrieval time
             "page_number": getattr(result, "page_number", None),
             "match_source": getattr(result, "match_source", None),

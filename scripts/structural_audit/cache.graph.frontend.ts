@@ -170,6 +170,7 @@
 [interface]: CollectionItemRelated { props: [id, document_id, title, link] }
 [interface]: CollectionItem { props: [id, document_id, title, annotation, category_tags, date, source, author, snippet, rank_position, relevance_score, status, page_number, link, related_items] }
 [interface]: CollectionItemsResponse { props: [items, total, page, page_size] }
+[interface]: CollectionRequestSummary { props: [request_id, query, job_state, status, created_at, error, has_deliverable, has_summary] }
 [interface]: CollectionAppendixTable { props: [title, columns, rows] }
 [interface]: CollectionAppendixEntry { props: [analysis_type, tables, charts, messages] }
 [interface]: CollectionDisclosure { props: [type, message] }

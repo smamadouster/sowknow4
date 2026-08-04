@@ -49,10 +49,11 @@ class GroundingValidator:
         summary_md: str,
         analyses: list[dict],
         insights: list[dict],
+        source_refs: list[dict] | None = None,
     ) -> ValidationReport:
         computed = self._computed_numbers(analyses, insights)
         accepted_strings = self._accepted_strings(computed)
-        known_refs = self._known_refs(analyses, insights)
+        known_refs = self._known_refs(analyses, insights, source_refs)
         insight_numbers = [
             self._numbers_in(insight.get("statement", "")) for insight in insights
         ]
@@ -159,6 +160,7 @@ class GroundingValidator:
         db: Any = None,
         request_id: UUID | None = None,
         user_id: UUID | None = None,
+        source_refs: list[dict] | None = None,
     ) -> tuple[str | None, ValidationReport, list[str]]:
         """Generate → validate → retry up to ``max_attempts``; on final
         failure strip the ungrounded sentences and return what remains.
@@ -174,7 +176,7 @@ class GroundingValidator:
                 # FR6.1 — nothing validated to narrate; do not fabricate.
                 report = ValidationReport(passed=False, checked_claims=0)
                 return None, report, []
-            report = self.validate(md, analyses, insights)
+            report = self.validate(md, analyses, insights, source_refs)
             last_md, last_report = md, report
             await self._audit(
                 db, request_id, user_id,
@@ -305,12 +307,19 @@ class GroundingValidator:
             return False
 
     @staticmethod
-    def _known_refs(analyses: list[dict], insights: list[dict]) -> list[dict]:
+    def _known_refs(
+        analyses: list[dict],
+        insights: list[dict],
+        source_refs: list[dict] | None = None,
+    ) -> list[dict]:
         refs: list[dict] = []
         for insight in insights:
             refs.extend(r for r in insight.get("source_refs", []) if isinstance(r, dict))
         for analysis in analyses:
             refs.extend(r for r in analysis.get("provenance", []) if isinstance(r, dict))
+        for ref in source_refs or []:
+            if isinstance(ref, dict) and ref not in refs:
+                refs.append(ref)
         return refs
 
     @staticmethod

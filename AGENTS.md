@@ -50,7 +50,10 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   HNSW index thrash shared_buffers): run `scripts/migration036_backfill.py`
   (resumable, id-ordered batches, each commits). A naive `ORDER BY id LIMIT n`
   loop without an advancing `WHERE id > :last_id` re-updates the same first
-  rows forever — the id window MUST advance.
+  rows forever — the id window MUST advance. The backfill runs INSIDE the
+  backend container (`/tmp/migration036_backfill.state`), so a backend deploy
+  (deploy.sh recreates the container) kills it and its state file — restart it
+  after any deploy, reseeding the state from the last logged last_id.
 - Agentic rerank is CONSOLIDATED (2026-08-04): the agentic pipeline (stream +
   non-stream) calls `hybrid_search(..., rerank=False)` per sub-query, then runs
   ONE cross-encoder pass over the merged, deduped candidate pool via

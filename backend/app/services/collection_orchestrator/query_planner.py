@@ -47,7 +47,17 @@ class SearchCallSpec:
 
 
 def _base_query(confirmed_params: dict[str, Any]) -> str:
-    """Query text for the search calls: original text, else entity names."""
+    """Query text for the search calls.
+
+    Priority: the focused ``search_query`` (parsed topic/keywords, set by
+    conversation_manager.build_confirmed_params) → the original request text →
+    entity names. Searching the RAW request sentence ANDs filler words
+    ("me réunir tous les dossiers concernants les salaires") and destroyed
+    collection recall (2026-08-04).
+    """
+    search_query = (confirmed_params.get("search_query") or "").strip()
+    if search_query:
+        return search_query
     query_text = (confirmed_params.get("query_text") or "").strip()
     if query_text:
         return query_text

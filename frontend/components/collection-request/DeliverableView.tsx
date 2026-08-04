@@ -101,6 +101,30 @@ export default function DeliverableView({ view }: DeliverableViewProps) {
     view.appendix?.outcome === "zero_results" ||
     (!view.summary_md && view.items.length === 0);
 
+  const handleExportZip = async () => {
+    setExporting(true);
+    try {
+      const response = await fetch(
+        `${apiUrl}/v1/collection-requests/${requestId}/deliverable/export?format=zip`,
+        { credentials: "include", headers: { "X-CSRF-Token": getCsrfToken() } }
+      );
+      if (!response.ok) {
+        throw new Error(`Export failed (${response.status})`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `sowknow_collection_${requestId}.zip`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t("export_failed"), "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleExportPdf = async () => {
     setExporting(true);
     try {
@@ -135,6 +159,13 @@ export default function DeliverableView({ view }: DeliverableViewProps) {
           className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
         >
           {exporting ? t("exporting") : t("export_pdf")}
+        </button>
+        <button
+          onClick={handleExportZip}
+          disabled={exporting}
+          className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
+        >
+          {exporting ? t("exporting") : t("export_zip")}
         </button>
         <a
           href={`${apiUrl}/v1/collection-requests/${requestId}/audit?format=json`}

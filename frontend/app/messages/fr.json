@@ -375,6 +375,7 @@
     "export_pdf": "Exporter en PDF",
     "exporting": "Export…",
     "export_failed": "L'export PDF a échoué",
+    "export_zip": "Télécharger le dossier (ZIP)",
     "export_audit_json": "Audit (JSON)",
     "export_audit_csv": "Audit (CSV)",
     "zero_title": "Aucun élément ne correspond à votre requête",

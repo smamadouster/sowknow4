@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_superuser_or_admin
 from app.database import get_db
+from app.models.document import Document
 from app.models.collection_orchestrator import (
     AnalysisResult,
     Annotation,
@@ -680,7 +681,7 @@ async def get_collection_deliverable(
 @router.get("/{request_id}/deliverable/export", response_model=None)
 async def export_collection_deliverable(
     request_id: UUID,
-    format: str = Query("pdf", pattern="^(pdf|docx)$"),
+    format: str = Query("pdf", pattern="^(pdf|docx|zip)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
@@ -695,7 +696,18 @@ async def export_collection_deliverable(
     analyses = await _analyses_for_request(db, request_id)
     view = packaging_service.build_in_app_view(deliverable, items, analyses)
 
-    if format == "docx":
+    if format == "zip":
+        # Bundle the memo with the actual source files (FR6.9).
+        doc_ids = {str(it.get("document_id")) for it in items if it.get("document_id")}
+        documents_by_id: dict[str, Any] = {}
+        if doc_ids:
+            docs_result = await db.execute(
+                select(Document).where(Document.id.in_(list(doc_ids)))
+            )
+            documents_by_id = {str(d.id): d for d in docs_result.scalars().all()}
+        payload = packaging_service.export_zip(deliverable, view, documents_by_id)
+        media_type = "application/zip"
+    elif format == "docx":
         payload = packaging_service.export_docx(deliverable, view)
         media_type = (
             "application/vnd.openxmlformats-officedocument."

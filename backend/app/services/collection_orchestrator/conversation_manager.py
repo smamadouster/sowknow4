@@ -462,6 +462,13 @@ class ConversationManager:
             for e in session.extracted_entities or []
             if e.get("status") != "unresolved"
         ]
+        # Focused retrieval query (2026-08-04): derived from the parsed focus
+        # aspects / entity names, NOT the raw request sentence. Searching the
+        # raw sentence ("me réunir tous les dossiers concernants les salaires")
+        # keyword-ANDs filler words and destroyed collection recall.
+        focus_aspects = list(extraction.get("focus_aspects") or [])
+        entity_names = [e.get("name") for e in entities if e.get("name")]
+        search_query = " ".join(focus_aspects[:3]) or " ".join(entity_names) or None
         return {
             "date_range": {
                 "from": overrides.get("date_from") or extraction.get("time_range_start"),
@@ -475,6 +482,7 @@ class ConversationManager:
             "sources": overrides.get("sources") or [],
             "analysis_types": list(session.analysis_types or []),
             "assumptions": list(session.assumptions or []),
+            "search_query": search_query,
         }
 
 

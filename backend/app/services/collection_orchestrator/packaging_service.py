@@ -19,8 +19,11 @@
 """
 
 import io
+import json
 import logging
+import os
 import re
+import zipfile
 from datetime import datetime, timezone
 from typing import Any
 
@@ -604,6 +607,99 @@ def export_docx(deliverable: Any, view: dict[str, Any]) -> bytes:
 
     buffer = io.BytesIO()
     doc.save(buffer)
+    return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# FR6.9 — ZIP export: memo + the actual source files
+# ---------------------------------------------------------------------------
+
+# Per-file and total caps keep the in-memory archive bounded.
+ZIP_MAX_FILE_BYTES = 50 * 1024 * 1024      # 50 MB per source file
+ZIP_MAX_TOTAL_BYTES = 250 * 1024 * 1024    # 250 MB total archive
+
+
+def export_zip(
+    deliverable: Any,
+    view: dict[str, Any],
+    documents_by_id: dict[str, Any],
+) -> bytes:
+    """FR6.9: bundle the memo (markdown + PDF + DOCX) with the actual source
+    files and an index into one archive.
+
+    ``documents_by_id`` maps ``str(document_id)`` → Document ORM row (its
+    ``file_path`` is read for the source bytes). Source files that are
+    missing, unreadable, or over the caps are skipped and recorded in
+    ``index.json`` — a bad source file never fails the whole export.
+    """
+    buffer = io.BytesIO()
+    total_size = 0
+    included: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    def _skip(name: str, reason: str) -> None:
+        skipped.append({"name": name, "reason": reason})
+
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Memo in three renderings.
+        zf.writestr("memo.md", getattr(deliverable, "summary_md", None) or "(no summary generated)")
+        try:
+            zf.writestr("memo.pdf", export_pdf(deliverable, view))
+        except Exception as exc:  # pragma: no cover - defensive
+            _skip("memo.pdf", str(exc)[:200])
+        try:
+            zf.writestr("memo.docx", export_docx(deliverable, view))
+        except Exception as exc:  # pragma: no cover - defensive
+            _skip("memo.docx", str(exc)[:200])
+
+        # One source file per unique document (chunks from the same doc share
+        # a file). os.path.basename guards the zip entry against traversal.
+        seen: set[str] = set()
+        for item in view.get("items") or []:
+            doc_id = item.get("document_id")
+            if not doc_id or str(doc_id) in seen:
+                continue
+            seen.add(str(doc_id))
+            doc = documents_by_id.get(str(doc_id))
+            path = getattr(doc, "file_path", None) if doc else None
+            if not path or not os.path.isfile(path):
+                _skip(item.get("title") or str(doc_id), "source file not found")
+                continue
+            size = os.path.getsize(path)
+            if size > ZIP_MAX_FILE_BYTES:
+                _skip(item.get("title") or str(doc_id), f"file too large ({size} bytes)")
+                continue
+            if total_size + size > ZIP_MAX_TOTAL_BYTES:
+                _skip(item.get("title") or str(doc_id), "total archive cap reached")
+                continue
+            zip_name = f"source/{len(included):03d}_{os.path.basename(path)}"
+            try:
+                with open(path, "rb") as fh:
+                    zf.writestr(zip_name, fh.read())
+            except Exception as exc:
+                _skip(item.get("title") or str(doc_id), str(exc)[:200])
+                continue
+            total_size += size
+            included.append({
+                "document_id": str(doc_id),
+                "file": zip_name,
+                "title": item.get("title"),
+                "relevance_score": item.get("relevance_score"),
+                "rank_position": item.get("rank_position"),
+            })
+
+        index = {
+            "request_id": view.get("request_id"),
+            "deliverable_id": view.get("deliverable_id"),
+            "version": view.get("version"),
+            # `datetime` here is the class (from datetime import datetime), so
+            # `datetime.UTC` is invalid; timezone.utc matches the rest of the file.
+            "generated_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+            "items": view.get("items") or [],
+            "source_files": {"included": included, "skipped": skipped},
+        }
+        zf.writestr("index.json", json.dumps(index, default=str, indent=2))
+
     return buffer.getvalue()
 
 

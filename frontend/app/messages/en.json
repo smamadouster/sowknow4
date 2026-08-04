@@ -375,6 +375,7 @@
     "export_pdf": "Export PDF",
     "exporting": "Exporting…",
     "export_failed": "PDF export failed",
+    "export_zip": "Download memo + files (ZIP)",
     "export_audit_json": "Audit (JSON)",
     "export_audit_csv": "Audit (CSV)",
     "zero_title": "No items matched your request",

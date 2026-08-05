@@ -1,16 +1,16 @@
 # SOWKNOW Search QA Validation Report
-**Generated:** 2026-08-05 09:23:36 UTC
+**Generated:** 2026-08-05 11:11:46 UTC
 **Overall:** ✅ ALL GATES PASSED
 
 | Phase | Test | Status | Duration |
 |-------|------|--------|----------|
-| General | backend_syntax_check | ✅ | 183ms |
-| General | frontend_typescript_check | ✅ | 3629ms |
-| General | backend_import_check | ✅ | 1620ms |
-| Phase 1 | test_search_phase1_qa | ✅ | 4174ms |
-| Phase 2 | test_search_phase2_qa | ✅ | 3649ms |
-| Phase 3 | test_search_phase3_qa | ✅ | 3832ms |
-| Performance | test_search_performance_qa | ✅ | 3734ms |
+| General | backend_syntax_check | ✅ | 90ms |
+| General | frontend_typescript_check | ✅ | 6145ms |
+| General | backend_import_check | ✅ | 4050ms |
+| Phase 1 | test_search_phase1_qa | ✅ | 6836ms |
+| Phase 2 | test_search_phase2_qa | ✅ | 4946ms |
+| Phase 3 | test_search_phase3_qa | ✅ | 4371ms |
+| Performance | test_search_performance_qa | ✅ | 3770ms |
 
 ## Summary
 - **Passed:** 7
@@ -53,7 +53,7 @@ tests/qa/test_search_phase1_qa.py::TestSuggestEndpoint::test_suggest_limit_bound
 tests/qa/test_search_phase1_qa.py::TestStreamingSearchTime::test_streaming_includes_search_time_ms SKIPPED [ 87%]
 tests/qa/test_search_phase1_qa.py::TestFastPathIntent::test_short_query_uses_fallback_intent PASSED [100%]
 
-========================= 1 passed, 7 skipped in 0.06s =========================
+========================= 1 passed, 7 skipped in 0.12s =========================
 
 ```
 

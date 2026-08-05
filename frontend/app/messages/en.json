@@ -260,6 +260,8 @@
       "bookmarks": "Bookmarks",
       "notes": "Notes",
       "spaces": "Spaces",
+      "memory_atom": "Memory facts",
+      "memory_scenario": "Memory scenarios",
       "otherResults": "Other results"
     }
   },
@@ -784,8 +786,19 @@
     "kind_preference": "Preference",
     "kind_constraint": "Constraint",
     "kind_decision": "Decision",
+    "kind_scenario": "Scenario",
     "status_pending": "Pending",
     "status_reviewed": "Active",
-    "status_rejected": "Rejected"
+    "status_rejected": "Rejected",
+    "scenarios_title": "Scenarios",
+    "profile_title": "Your profile",
+    "profile_subtitle": "Persona and stable patterns distilled from your active memory",
+    "profile_build": "Build profile now",
+    "profile_building": "Building…",
+    "profile_build_error": "Failed to build the profile",
+    "profile_persona": "Persona",
+    "profile_patterns": "Stable patterns",
+    "profile_empty": "No stable patterns yet",
+    "profile_none": "No profile yet — approve a few memory items, then build it."
   }
 }

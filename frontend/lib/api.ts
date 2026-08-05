@@ -1478,6 +1478,22 @@ class ApiClient {
       method: 'POST',
     });
   }
+
+  async getMemoryProfile() {
+    return this.request<MemoryProfileView>('/v1/memory/profile');
+  }
+
+  async buildMemoryProfile() {
+    return this.request<MemoryProfileView>('/v1/memory/profile/build', {
+      method: 'POST',
+    });
+  }
+}
+
+export interface MemoryProfileView {
+  persona: Record<string, unknown>;
+  stable_patterns: string[];
+  version: number;
 }
 
 export interface MemoryAtomView {

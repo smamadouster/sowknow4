@@ -12,7 +12,7 @@ import VoiceRecorder from '@/components/VoiceRecorder';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 type PipelineStage = 'idle' | 'intent' | 'retrieval' | 'reranking' | 'synthesis' | 'done' | 'error';
-type ResultTypeFilter = 'all' | 'document' | 'bookmark' | 'note' | 'space';
+type ResultTypeFilter = 'all' | 'document' | 'bookmark' | 'note' | 'space' | 'memory_atom' | 'memory_scenario';
 
 interface StreamState {
   stage: PipelineStage;
@@ -50,7 +50,7 @@ interface SearchResult {
 }
 
 interface GlobalSearchResult {
-  result_type: 'document' | 'bookmark' | 'note' | 'space';
+  result_type: 'document' | 'bookmark' | 'note' | 'space' | 'memory_atom' | 'memory_scenario';
   id: string;
   title: string;
   description: string;
@@ -97,6 +97,8 @@ const TYPE_BADGE_STYLES: Record<string, { bg: string; text: string; icon: string
   bookmark: { bg: 'bg-purple-500/10 text-purple-400', text: 'text-purple-400', icon: '★' },
   note:     { bg: 'bg-emerald-500/10 text-emerald-400', text: 'text-emerald-400', icon: '✎' },
   space:    { bg: 'bg-amber-500/10 text-amber-400', text: 'text-amber-400', icon: '◈' },
+  memory_atom:     { bg: 'bg-teal-500/10 text-teal-400', text: 'text-teal-400', icon: '🧠' },
+  memory_scenario: { bg: 'bg-cyan-500/10 text-cyan-400', text: 'text-cyan-400', icon: '◉' },
 };
 
 const SUGGESTION_ICONS: Record<string, string> = {
@@ -423,7 +425,7 @@ function CitationsPanel({ citations, open, onClose, sourcesLabel, relevanceLabel
 }
 
 function TypeFilterChips({ active, onChange, counts, labels }: { active: ResultTypeFilter; onChange: (filter: ResultTypeFilter) => void; counts: Record<string, number>; labels: Record<string, string> }) {
-  const filters: ResultTypeFilter[] = ['all', 'document', 'bookmark', 'note', 'space'];
+  const filters: ResultTypeFilter[] = ['all', 'document', 'bookmark', 'note', 'space', 'memory_atom', 'memory_scenario'];
   return (
     <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide md:flex-wrap">
       {filters.map((f) => {
@@ -448,7 +450,7 @@ function TypeFilterChips({ active, onChange, counts, labels }: { active: ResultT
 
 function GlobalResultCard({ result, labels }: { result: GlobalSearchResult; labels: Record<string, string> }) {
   const style = TYPE_BADGE_STYLES[result.result_type] || TYPE_BADGE_STYLES.document;
-  const linkHref = result.result_type === 'document' ? `/documents/${result.id}` : result.result_type === 'bookmark' && result.url ? result.url : result.result_type === 'note' ? `/notes/${result.id}` : result.result_type === 'space' ? `/spaces/${result.id}` : '#';
+  const linkHref = result.result_type === 'document' ? `/documents/${result.id}` : result.result_type === 'bookmark' && result.url ? result.url : result.result_type === 'note' ? `/notes/${result.id}` : result.result_type === 'space' ? `/spaces/${result.id}` : (result.result_type === 'memory_atom' || result.result_type === 'memory_scenario') ? `/memory` : '#';
   const isExternal = result.result_type === 'bookmark' && result.url;
 
   return (
@@ -553,7 +555,7 @@ export default function SearchPage() {
     setShowCitations(false);
     setStream({ stage: 'intent', stageMessage: t('stage.intent'), intent: null, results: [], synthesis: null, citations: [], suggestions: [], hasConfidential: false, totalFound: 0, modelUsed: null, globalResults: [] });
 
-    api.searchGlobal(searchQuery, 'document,bookmark,note,space', abortRef.current.signal)
+    api.searchGlobal(searchQuery, 'document,bookmark,note,space,memory', abortRef.current.signal)
       .then((res) => {
         if (res.data) {
           setStream((prev) => ({ ...prev, globalResults: (res.data?.results || []) as GlobalSearchResult[] }));
@@ -719,7 +721,7 @@ export default function SearchPage() {
   for (const gr of stream.globalResults) { typeCounts[gr.result_type] = (typeCounts[gr.result_type] || 0) + 1; }
   const filteredGlobalResults = typeFilter === 'all' ? stream.globalResults : stream.globalResults.filter((r) => r.result_type === typeFilter);
   const showDocumentResults = typeFilter === 'all' || typeFilter === 'document';
-  const typeLabels: Record<string, string> = { all: t('typeFilter.all' as Parameters<typeof t>[0]), document: t('typeFilter.documents' as Parameters<typeof t>[0]), bookmark: t('typeFilter.bookmarks' as Parameters<typeof t>[0]), note: t('typeFilter.notes' as Parameters<typeof t>[0]), space: t('typeFilter.spaces' as Parameters<typeof t>[0]) };
+  const typeLabels: Record<string, string> = { all: t('typeFilter.all' as Parameters<typeof t>[0]), document: t('typeFilter.documents' as Parameters<typeof t>[0]), bookmark: t('typeFilter.bookmarks' as Parameters<typeof t>[0]), note: t('typeFilter.notes' as Parameters<typeof t>[0]), space: t('typeFilter.spaces' as Parameters<typeof t>[0]), memory_atom: t('typeFilter.memory_atom' as Parameters<typeof t>[0]), memory_scenario: t('typeFilter.memory_scenario' as Parameters<typeof t>[0]) };
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto pb-24 md:pb-20">

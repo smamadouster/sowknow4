@@ -260,6 +260,8 @@
       "bookmarks": "Signets",
       "notes": "Notes",
       "spaces": "Espaces",
+      "memory_atom": "Faits mémoire",
+      "memory_scenario": "Scénarios mémoire",
       "otherResults": "Autres resultats"
     }
   },
@@ -784,8 +786,19 @@
     "kind_preference": "Préférence",
     "kind_constraint": "Contrainte",
     "kind_decision": "Décision",
+    "kind_scenario": "Scénario",
     "status_pending": "En attente",
     "status_reviewed": "Actif",
-    "status_rejected": "Rejeté"
+    "status_rejected": "Rejeté",
+    "scenarios_title": "Scénarios",
+    "profile_title": "Votre profil",
+    "profile_subtitle": "Persona et schémas stables distillés de votre mémoire active",
+    "profile_build": "Construire le profil",
+    "profile_building": "Construction…",
+    "profile_build_error": "Échec de la construction du profil",
+    "profile_persona": "Persona",
+    "profile_patterns": "Schémas stables",
+    "profile_empty": "Pas encore de schémas stables",
+    "profile_none": "Pas encore de profil — approuvez quelques éléments de mémoire, puis construisez-le."
   }
 }

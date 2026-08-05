@@ -196,6 +196,23 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   emits `memory_atom` / `memory_scenario` results (owner-scoped, private-only).
   The full L0→L3 loop is live: chat distillation → backfill → review panel →
   injection + search.
+- **Review done live (2026-08-05)**: 10/33 atoms approved (durable facts:
+  Mansour/Mamadou/Moussa Sow family, BICIS virement pref, Dakar rent, French
+  language), 23 rejected (transient LLM output, search noise, duplicate
+  virement). 2 L2 scenarios reviewed + profile rebuilt to v2 with real
+  priorities/patterns. The review decision was rule-based markers + reject
+  defaults — future review batches should follow the same durable-vs-noise
+  split.
+- **Learned skills (2026-08-05, extension)**: `memory_skills` table (migration
+  038) + `skill_extraction_service` distills runbook skills from completed
+  collection audit traces (`collection_audit_events`, ≥3 stages per job) —
+  weekly beat `skill-extraction` (04:30 UTC Mondays). Skills start `draft`,
+  review via `PATCH /api/v1/memory/skills/{id}` → active/archived. Never
+  injects a skill before review.
+- **Ops (2026-08-05)**: guardian sentinel `memory_backlog` check warns at
+  ≥50 pending atoms (advisory, no auto-heal); memory distillation/profile
+  record Prometheus counters (`sowknow_memory_atoms_distilled_total`,
+  `sowknow_memory_profiles_built_total`).
 
 ## Ops rules (incident-forged)
 

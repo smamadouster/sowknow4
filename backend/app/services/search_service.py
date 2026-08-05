@@ -1739,7 +1739,9 @@ class HybridSearchService:
             return []
 
         results: list[dict] = []
-        pattern = f"%{query}%"
+        # Accent-insensitive match (migration-036 convention): fold both sides
+        # with sowknow.unaccent so "echanges" hits "échanges".
+        atom_folded = func.sowknow.unaccent(MemoryAtom.statement).ilike(func.sowknow.unaccent(f"%{query}%"))
 
         atom_rows = (
             (
@@ -1748,7 +1750,7 @@ class HybridSearchService:
                     .where(
                         MemoryAtom.owner_id == user.id,
                         MemoryAtom.status == MemoryStatus.REVIEWED.value,
-                        MemoryAtom.statement.ilike(pattern),
+                        atom_folded,
                     )
                     .order_by(MemoryAtom.confidence.desc())
                     .limit(limit)
@@ -1777,7 +1779,7 @@ class HybridSearchService:
                     .where(
                         MemoryScenario.owner_id == user.id,
                         MemoryScenario.status == MemoryStatus.REVIEWED.value,
-                        MemoryScenario.title.ilike(pattern),
+                        func.sowknow.unaccent(MemoryScenario.title).ilike(func.sowknow.unaccent(f"%{query}%")),
                     )
                     .order_by(MemoryScenario.created_at.desc())
                     .limit(limit)

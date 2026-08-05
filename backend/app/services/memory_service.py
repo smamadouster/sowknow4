@@ -36,6 +36,19 @@ from app.services.smart_folder.query_parser import extract_first_json
 
 logger = logging.getLogger(__name__)
 
+
+def _record_metric(name: str, value: float, labels: dict | None = None) -> None:
+    """Best-effort Prometheus counter increment — never breaks distilling."""
+    try:
+        from app.services.prometheus_metrics import get_metrics
+
+        get_metrics().counter(name, help_text=f"sowknow memory {name}", labels=list((labels or {}).keys())).inc(
+            delta=value, labels=labels or {}
+        )
+    except Exception:
+        pass
+
+
 _MEMORY_MISSION = (
     "Distill durable, reusable facts from chat conversations so future agents "
     "inherit context instead of re-learning it."
@@ -177,6 +190,7 @@ class MemoryService:
             await db.commit()
             for a in inserted:
                 await db.refresh(a)
+        _record_metric("sowknow_memory_atoms_distilled_total", len(inserted))
         logger.info(
             "memory.distill session=%s: %d candidate(s), %d inserted",
             session_id,
@@ -505,6 +519,7 @@ class MemoryService:
             existing.stable_patterns = patterns or existing.stable_patterns
             existing.version = (existing.version or 1) + 1
         await db.commit()
+        _record_metric("sowknow_memory_profiles_built_total", 1)
         logger.info("memory.profile owner=%s: profile written", owner_id)
         return True
 

@@ -9,7 +9,11 @@ import httpx
 import structlog
 
 from guardian_hc.plugin import (
-    GuardianPlugin, CheckResult, HealResult, CheckContext, Severity,
+    GuardianPlugin,
+    CheckResult,
+    HealResult,
+    CheckContext,
+    Severity,
 )
 from guardian_hc.healers.container_healer import ContainerHealer
 
@@ -38,13 +42,16 @@ class SentinelPlugin(GuardianPlugin):
             self._check_stale_data,
             self._check_queue_drain,
             self._check_frontend_api_bridge,
+            self._check_memory_backlog,
         ]
         for check_fn in checks:
             try:
                 check_results = await check_fn(context)
                 results.extend(check_results)
             except Exception as e:
-                logger.error("sentinel.check.error", check=check_fn.__name__, error=str(e)[:200])
+                logger.error(
+                    "sentinel.check.error", check=check_fn.__name__, error=str(e)[:200]
+                )
         return results
 
     async def heal(self, result: CheckResult) -> HealResult | None:
@@ -53,8 +60,10 @@ class SentinelPlugin(GuardianPlugin):
             healer = ContainerHealer()
             h = await healer.heal("sowknow-backend")
             return HealResult(
-                plugin=self.name, target="sowknow-backend",
-                action="restarted", success=h.get("healed", False),
+                plugin=self.name,
+                target="sowknow-backend",
+                action="restarted",
+                success=h.get("healed", False),
             )
         if hint == "restart_celery_workers":
             healer = ContainerHealer()
@@ -64,8 +73,10 @@ class SentinelPlugin(GuardianPlugin):
                 if not h.get("healed"):
                     success = False
             return HealResult(
-                plugin=self.name, target="celery-workers",
-                action="restarted", success=success,
+                plugin=self.name,
+                target="celery-workers",
+                action="restarted",
+                success=success,
             )
         return None
 
@@ -91,7 +102,9 @@ class SentinelPlugin(GuardianPlugin):
                 if last_dt.tzinfo is None:
                     last_dt = last_dt.replace(tzinfo=timezone.utc)
 
-                age_minutes = (datetime.now(timezone.utc) - last_dt).total_seconds() / 60
+                age_minutes = (
+                    datetime.now(timezone.utc) - last_dt
+                ).total_seconds() / 60
 
                 if age_minutes <= self.STALENESS_THRESHOLD_MINUTES:
                     return []
@@ -99,15 +112,23 @@ class SentinelPlugin(GuardianPlugin):
                 backlog = self._pending_documents()
                 if backlog == 0:
                     return []  # idle installation, not a stuck pipeline
-                return [CheckResult(
-                    plugin=self.name, module="Storage Layer",
-                    check_name="stale_data", status="fail",
-                    severity=Severity.HIGH,
-                    summary=f"Last DB write was {age_minutes:.0f}min ago with {backlog} document(s) pending (threshold: {self.STALENESS_THRESHOLD_MINUTES}min)",
-                    details={"last_write": last_write, "age_minutes": age_minutes,
-                             "pending_documents": backlog},
-                    needs_healing=True, heal_hint="restart_backend",
-                )]
+                return [
+                    CheckResult(
+                        plugin=self.name,
+                        module="Storage Layer",
+                        check_name="stale_data",
+                        status="fail",
+                        severity=Severity.HIGH,
+                        summary=f"Last DB write was {age_minutes:.0f}min ago with {backlog} document(s) pending (threshold: {self.STALENESS_THRESHOLD_MINUTES}min)",
+                        details={
+                            "last_write": last_write,
+                            "age_minutes": age_minutes,
+                            "pending_documents": backlog,
+                        },
+                        needs_healing=True,
+                        heal_hint="restart_backend",
+                    )
+                ]
         except Exception as e:
             logger.warning("sentinel.stale_data.error", error=str(e)[:200])
             return []
@@ -117,11 +138,24 @@ class SentinelPlugin(GuardianPlugin):
         restart — an unverifiable backlog keeps the legacy behaviour)."""
         try:
             proc = subprocess.run(
-                ["docker", "exec", "sowknow-postgres", "psql", "-U", "sowknow",
-                 "-d", "sowknow", "-t", "-A", "-c",
-                 "SELECT count(*) FROM documents WHERE status IN "
-                 "('pending','uploading','processing')"],
-                capture_output=True, text=True, timeout=10,
+                [
+                    "docker",
+                    "exec",
+                    "sowknow-postgres",
+                    "psql",
+                    "-U",
+                    "sowknow",
+                    "-d",
+                    "sowknow",
+                    "-t",
+                    "-A",
+                    "-c",
+                    "SELECT count(*) FROM documents WHERE status IN "
+                    "('pending','uploading','processing')",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if proc.returncode != 0:
                 return -1
@@ -129,6 +163,60 @@ class SentinelPlugin(GuardianPlugin):
         except Exception as e:
             logger.warning("sentinel.pending_documents.error", error=str(e)[:200])
             return -1
+
+    MEMORY_PENDING_REVIEW_THRESHOLD = 50  # atoms awaiting review before alerting
+
+    async def _check_memory_backlog(self, ctx: CheckContext) -> list[CheckResult]:
+        """Alert when agent-memory atoms pile up un-reviewed.
+
+        Pending atoms are normal (review is human/agent-gated), but a growing
+        un-reviewed backlog means the review step is being skipped and the
+        memory pipeline's value is latent. Advisory (HEAL) only — never
+        auto-heals. Returns [] when the memory table is absent or unknown.
+        """
+        try:
+            proc = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    "sowknow-postgres",
+                    "psql",
+                    "-U",
+                    "sowknow",
+                    "-d",
+                    "sowknow",
+                    "-t",
+                    "-A",
+                    "-c",
+                    "SELECT count(*) FROM sowknow.memory_atoms WHERE status = 'pending'",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if proc.returncode != 0:
+                return []
+            pending = int(proc.stdout.strip().split()[-1])
+            if pending < self.MEMORY_PENDING_REVIEW_THRESHOLD:
+                return []
+            return [
+                CheckResult(
+                    plugin=self.name,
+                    module="Agent Memory",
+                    check_name="memory_backlog",
+                    status="warn",
+                    severity=Severity.WARNING,
+                    summary=f"{pending} memory atoms awaiting review (threshold: {self.MEMORY_PENDING_REVIEW_THRESHOLD})",
+                    details={
+                        "pending_atoms": pending,
+                        "threshold": self.MEMORY_PENDING_REVIEW_THRESHOLD,
+                    },
+                    needs_healing=False,
+                )
+            ]
+        except Exception as e:
+            logger.warning("sentinel.memory_backlog.error", error=str(e)[:200])
+            return []
 
     async def _check_queue_drain(self, ctx: CheckContext) -> list[CheckResult]:
         """Detect queues growing but not draining."""
@@ -142,10 +230,19 @@ class SentinelPlugin(GuardianPlugin):
             # list (celery, document_processing, heavy_processing,
             # collection_processing) watched two queues that don't exist and
             # none of the actual stage queues.
-            for queue in ["pipeline.ocr", "pipeline.chunk", "pipeline.embed",
-                          "pipeline.index", "pipeline.articles", "pipeline.entities"]:
+            for queue in [
+                "pipeline.ocr",
+                "pipeline.chunk",
+                "pipeline.embed",
+                "pipeline.index",
+                "pipeline.articles",
+                "pipeline.entities",
+            ]:
                 proc = subprocess.run(
-                    cmd + ["LLEN", queue], capture_output=True, text=True, timeout=5,
+                    cmd + ["LLEN", queue],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 try:
                     total += int(proc.stdout.strip().split()[-1])
@@ -157,17 +254,24 @@ class SentinelPlugin(GuardianPlugin):
                 self._queue_history.pop(0)
 
             if len(self._queue_history) >= self.QUEUE_GROWTH_CHECKS_THRESHOLD:
-                recent = self._queue_history[-self.QUEUE_GROWTH_CHECKS_THRESHOLD:]
-                monotonic_growth = all(recent[i] < recent[i + 1] for i in range(len(recent) - 1))
+                recent = self._queue_history[-self.QUEUE_GROWTH_CHECKS_THRESHOLD :]
+                monotonic_growth = all(
+                    recent[i] < recent[i + 1] for i in range(len(recent) - 1)
+                )
                 if monotonic_growth and recent[-1] > 10:
-                    return [CheckResult(
-                        plugin=self.name, module="Document Pipeline",
-                        check_name="queue_not_draining", status="fail",
-                        severity=Severity.HIGH,
-                        summary=f"Queue depth growing: {recent[0]} -> {recent[-1]} over {len(recent)} checks",
-                        details={"history": recent, "current": total},
-                        needs_healing=True, heal_hint="restart_celery_workers",
-                    )]
+                    return [
+                        CheckResult(
+                            plugin=self.name,
+                            module="Document Pipeline",
+                            check_name="queue_not_draining",
+                            status="fail",
+                            severity=Severity.HIGH,
+                            summary=f"Queue depth growing: {recent[0]} -> {recent[-1]} over {len(recent)} checks",
+                            details={"history": recent, "current": total},
+                            needs_healing=True,
+                            heal_hint="restart_celery_workers",
+                        )
+                    ]
 
             return []
         except Exception as e:
@@ -190,13 +294,18 @@ class SentinelPlugin(GuardianPlugin):
                 try:
                     api_resp = await client.get(f"{self._backend_url}/api/v1/health")
                     if api_resp.status_code in (502, 503):
-                        return [CheckResult(
-                            plugin=self.name, module="Infrastructure",
-                            check_name="frontend_api_bridge", status="fail",
-                            severity=Severity.HIGH,
-                            summary=f"Frontend up but API returning {api_resp.status_code}",
-                            needs_healing=True, heal_hint="restart_backend",
-                        )]
+                        return [
+                            CheckResult(
+                                plugin=self.name,
+                                module="Infrastructure",
+                                check_name="frontend_api_bridge",
+                                status="fail",
+                                severity=Severity.HIGH,
+                                summary=f"Frontend up but API returning {api_resp.status_code}",
+                                needs_healing=True,
+                                heal_hint="restart_backend",
+                            )
+                        ]
                 except Exception:
                     pass
 

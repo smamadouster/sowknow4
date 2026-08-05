@@ -21,12 +21,28 @@ from app.services.collection_orchestrator.summary_generator import format_number
 logger = logging.getLogger(__name__)
 
 # Same regex family as extraction_pipeline (keep in sync).
-_TOKEN_RE = re.compile(
-    r"-?\d{1,3}(?:[ ,]\d{3})+(?:\.\d+)?%?|-?\d+(?:\.\d+)?%?"
-)
+_TOKEN_RE = re.compile(r"-?\d{1,3}(?:[ ,]\d{3})+(?:\.\d+)?%?|-?\d+(?:\.\d+)?%?")
 _ISO_DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-_CITATION_RE = re.compile(r"\(\[source:([^\]]*)\]\)")
+# Lazy up to the closing "])" so bracketed filename suffixes ("...2017 [1].xls")
+# inside a citation don't truncate the match at the inner "]".
+_CITATION_RE = re.compile(r"\(\[source:([^()\n]*?)\]\)")
 _LIST_MARKER_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+
+# Years, day-of-month and page markers are contextual metadata, not figure
+# claims: a memo that says "recorded on January 27, 2026" or cites a document
+# named "...2017 [1].xls" must not be stripped because "27"/"2026"/"2017"/"1"
+# aren't in the computed data (2026-08-04).
+_MONTH_NAMES = (
+    r"jan(?:uary|vier)?|feb(?:ruary|vier)?|mar(?:ch)?|apr(?:il)?|may|mai|"
+    r"jun(?:e)?|juin|jul(?:y)?|juil(?:let)?|aug(?:ust)?|août|aout|"
+    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|déc(?:ember)?|dec(?:ember)?"
+)
+_MONTH_DAY_RE = re.compile(
+    rf"\b(?:{_MONTH_NAMES})\.?\s+\d{{1,2}}(?:\s*,?\s*\d{{4}})?",
+    re.IGNORECASE,
+)
+_YEAR_RE = re.compile(r"(?<!\d)(?:1[0-9]{3}|20[0-9]{2})(?!\d)")
+_PAGE_MARKER_RE = re.compile(r"\[\d+\]")
 
 
 @dataclass
@@ -55,9 +71,7 @@ class GroundingValidator:
         computed = self._computed_numbers(analyses, insights)
         accepted_strings = self._accepted_strings(computed)
         known_refs = self._known_refs(analyses, insights, source_refs)
-        insight_numbers = [
-            self._numbers_in(insight.get("statement", "")) for insight in insights
-        ]
+        insight_numbers = [self._numbers_in(insight.get("statement", "")) for insight in insights]
 
         checked = 0
         failed_claims: list[dict] = []
@@ -69,34 +83,24 @@ class GroundingValidator:
                 continue
             checked += 1
 
-            bad = [
-                t for t in tokens
-                if not self._token_accepted(t, computed, accepted_strings, source_numbers)
-            ]
+            bad = [t for t in tokens if not self._token_accepted(t, computed, accepted_strings, source_numbers)]
             if bad:
                 for token in bad:
                     numeric_failures.append(
                         {
                             "sentence": sentence,
                             "value": token,
-                            "reason": (
-                                f"number '{token}' matches no computed analysis "
-                                "output or validated insight"
-                            ),
+                            "reason": (f"number '{token}' matches no computed analysis output or validated insight"),
                         }
                     )
-                failed_claims.append(
-                    {"sentence": sentence, "reason": "ungrounded numeric value(s)"}
-                )
+                failed_claims.append({"sentence": sentence, "reason": "ungrounded numeric value(s)"})
                 continue
 
             # Claim mapping (FR4.2.5): the sentence must share a number with
             # a validated insight statement or an analysis output, or cite a
             # known source ref.
             sentence_numbers = {self._token_float(t) for t in tokens}
-            mapped = any(
-                sentence_numbers & set(nums) for nums in insight_numbers
-            ) or bool(sentence_numbers & computed)
+            mapped = any(sentence_numbers & set(nums) for nums in insight_numbers) or bool(sentence_numbers & computed)
             citation = _CITATION_RE.search(sentence)
             if citation and not self._citation_known(citation.group(1), known_refs):
                 failed_claims.append(
@@ -124,9 +128,7 @@ class GroundingValidator:
     # strip
     # ------------------------------------------------------------------
 
-    def strip_ungrounded(
-        self, summary_md: str, report: ValidationReport
-    ) -> tuple[str, list[str]]:
+    def strip_ungrounded(self, summary_md: str, report: ValidationReport) -> tuple[str, list[str]]:
         """Remove exactly the failing sentences. The caller appends the
         FR4.2.5 disclosure footer ('N statement(s) removed ...')."""
         removed: list[str] = []
@@ -181,7 +183,9 @@ class GroundingValidator:
             report = self.validate(md, analyses, insights, source_refs, source_numbers)
             last_md, last_report = md, report
             await self._audit(
-                db, request_id, user_id,
+                db,
+                request_id,
+                user_id,
                 action="claims_validated" if report.passed else "claim_rejected",
                 status="success" if report.passed else "failure",
                 detail={
@@ -198,8 +202,14 @@ class GroundingValidator:
         return cleaned, last_report, removed
 
     async def _audit(
-        self, db: Any, request_id: UUID | None, user_id: UUID | None,
-        *, action: str, status: str, detail: dict,
+        self,
+        db: Any,
+        request_id: UUID | None,
+        user_id: UUID | None,
+        *,
+        action: str,
+        status: str,
+        detail: dict,
     ) -> None:
         if db is None or request_id is None:
             return
@@ -247,25 +257,25 @@ class GroundingValidator:
 
     @staticmethod
     def _number_tokens(text: str) -> list[str]:
-        """Numeric tokens, excluding citations and ISO dates."""
+        """Numeric tokens, excluding citations, ISO dates, month-name dates,
+        standalone years and bracketed page markers."""
         scrubbed = _CITATION_RE.sub(" ", text)
         scrubbed = _ISO_DATE_RE.sub(" ", scrubbed)
+        scrubbed = _MONTH_DAY_RE.sub(" ", scrubbed)
+        scrubbed = _YEAR_RE.sub(" ", scrubbed)
+        scrubbed = _PAGE_MARKER_RE.sub(" ", scrubbed)
         return [m.group(0) for m in _TOKEN_RE.finditer(scrubbed)]
 
     @staticmethod
     def _token_float(token: str) -> float:
-        return float(
-            token.rstrip("%").replace(",", "").replace(" ", "").replace(" ", "")
-        )
+        return float(token.rstrip("%").replace(",", "").replace(" ", "").replace(" ", ""))
 
     @classmethod
     def _numbers_in(cls, text: str) -> list[float]:
         return [cls._token_float(t) for t in cls._number_tokens(text)]
 
     @classmethod
-    def _computed_numbers(
-        cls, analyses: list[dict], insights: list[dict]
-    ) -> set[float]:
+    def _computed_numbers(cls, analyses: list[dict], insights: list[dict]) -> set[float]:
         numbers: set[float] = set()
 
         def walk(node: Any) -> None:
@@ -298,7 +308,10 @@ class GroundingValidator:
 
     @classmethod
     def _token_accepted(
-        cls, token: str, computed: set[float], accepted_strings: set[str],
+        cls,
+        token: str,
+        computed: set[float],
+        accepted_strings: set[str],
         source_numbers: set[float] | None = None,
     ) -> bool:
         normalized = token.replace(" ", ",").replace(" ", ",")
@@ -343,8 +356,6 @@ class GroundingValidator:
             if doc_id and doc_id in text:
                 return True
             page = ref.get("page")
-            if page is not None and (
-                f"p. {page}" in text or f"page {page}" in text
-            ):
+            if page is not None and (f"p. {page}" in text or f"page {page}" in text):
                 return True
         return False

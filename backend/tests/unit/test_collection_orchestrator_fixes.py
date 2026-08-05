@@ -200,9 +200,7 @@ class TestRichMemo:
             [],
             {"query_text": "salaires"},
             {},
-            source_items=[
-                {"title": "Doc A", "document_id": "a", "snippet": "Le total est 100 XOF."}
-            ],
+            source_items=[{"title": "Doc A", "document_id": "a", "snippet": "Le total est 100 XOF."}],
         )
         joined = messages[-1]["content"]
         assert 'kind="source_items"' in joined
@@ -258,5 +256,55 @@ class TestSourceTraceableNumbers:
             source_refs=[{"title": "Salaire 2024.pdf", "document_id": "d1"}],
             source_numbers={272532000.0},
         )
+        assert not report.passed
+        assert report.numeric_failures
+
+
+class TestDateYearMetadataNotStripped:
+    """2026-08-04: years, day-of-month and page markers in a memo are
+    contextual metadata, not figure claims — a grounded figure must not be
+    stripped just because the sentence also carries a date or year."""
+
+    def test_grounded_figure_with_month_name_date_kept(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        analyses = [{"output": {"metrics": [{"total": 6132799.0}]}}]
+        insights = []
+        source_refs = [{"document_id": "fe376f06"}]
+        md = (
+            "A total of 6,132,799 XOF has been identified as a salary amount, "
+            "recorded on January 27, 2026 ([source: computed_analyses, fe376f06])."
+        )
+        report = GroundingValidator().validate(md, analyses, insights, source_refs)
+        assert report.passed, report.failed_claims
+        assert report.numeric_failures == []
+
+    def test_year_only_sentence_kept(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        analyses = []
+        insights = []
+        md = "Documents exist across multiple years, including 2017, 2018, and 2019."
+        report = GroundingValidator().validate(md, analyses, insights)
+        assert report.passed, report.failed_claims
+
+    def test_filename_year_and_page_marker_kept(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        analyses = []
+        insights = []
+        source_refs = [{"document_id": "09b8a51f", "title": "Rapprochements salaires employés 2017 [1].xls"}]
+        md = '"Rapprochements salaires employés 2017 [1].xls" ([source: Rapprochements salaires employés 2017 [1].xls, 09b8a51f]).'
+        report = GroundingValidator().validate(md, analyses, insights, source_refs)
+        assert report.passed, report.failed_claims
+
+    def test_invented_figure_still_stripped_alongside_date(self):
+        from app.services.collection_orchestrator.grounding_validator import GroundingValidator
+
+        analyses = [{"output": {"total": 6132799.0}}]
+        insights = []
+        # 999 remains an invented figure even though the date is metadata.
+        md = "Le total était de 999 XOF, recorded on January 27, 2026."
+        report = GroundingValidator().validate(md, analyses, insights)
         assert not report.passed
         assert report.numeric_failures

@@ -56,6 +56,10 @@ class AgentRegistry:
             )
             self._agents[agent.agent_id] = agent
 
+    @property
+    def agents(self) -> list[Agent]:
+        return list(self._agents.values())
+
     def get(self, agent_id: str) -> Optional[Agent]:
         return self._agents.get(agent_id)
 

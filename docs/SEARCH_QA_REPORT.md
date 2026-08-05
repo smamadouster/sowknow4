@@ -1,16 +1,16 @@
 # SOWKNOW Search QA Validation Report
-**Generated:** 2026-04-22 19:40:04 UTC
+**Generated:** 2026-08-05 09:23:36 UTC
 **Overall:** ✅ ALL GATES PASSED
 
 | Phase | Test | Status | Duration |
 |-------|------|--------|----------|
-| General | backend_syntax_check | ✅ | 51ms |
-| General | frontend_typescript_check | ✅ | 1731ms |
-| General | backend_import_check | ✅ | 930ms |
-| Phase 1 | test_search_phase1_qa | ✅ | 1247ms |
-| Phase 2 | test_search_phase2_qa | ✅ | 1223ms |
-| Phase 3 | test_search_phase3_qa | ✅ | 1028ms |
-| Performance | test_search_performance_qa | ✅ | 840ms |
+| General | backend_syntax_check | ✅ | 183ms |
+| General | frontend_typescript_check | ✅ | 3629ms |
+| General | backend_import_check | ✅ | 1620ms |
+| Phase 1 | test_search_phase1_qa | ✅ | 4174ms |
+| Phase 2 | test_search_phase2_qa | ✅ | 3649ms |
+| Phase 3 | test_search_phase3_qa | ✅ | 3832ms |
+| Performance | test_search_performance_qa | ✅ | 3734ms |
 
 ## Summary
 - **Passed:** 7
@@ -53,7 +53,7 @@ tests/qa/test_search_phase1_qa.py::TestSuggestEndpoint::test_suggest_limit_bound
 tests/qa/test_search_phase1_qa.py::TestStreamingSearchTime::test_streaming_includes_search_time_ms SKIPPED [ 87%]
 tests/qa/test_search_phase1_qa.py::TestFastPathIntent::test_short_query_uses_fallback_intent PASSED [100%]
 
-========================= 1 passed, 7 skipped in 0.28s =========================
+========================= 1 passed, 7 skipped in 0.06s =========================
 
 ```
 
@@ -71,14 +71,14 @@ collecting ... collected 9 items
 tests/qa/test_search_phase2_qa.py::TestLanguageAwareSearch::test_english_query_maps_to_english PASSED [ 11%]
 tests/qa/test_search_phase2_qa.py::TestLanguageAwareSearch::test_french_query_maps_to_french PASSED [ 22%]
 tests/qa/test_search_phase2_qa.py::TestLanguageAwareSearch::test_unknown_language_defaults_to_simple PASSED [ 33%]
-tests/qa/test_search_phase2_qa.py::TestLanguageAwareSearch::test_hybrid_search_uses_regconfig_parameter PASSED [ 44%]
+tests/qa/test_search_phase2_qa.py::TestLanguageAwareSearch::test_hybrid_search_passes_regconfig_for_dual_query_strategy PASSED [ 44%]
 tests/qa/test_search_phase2_qa.py::TestTrigramFallback::test_trigram_fallback_activates_on_few_results PASSED [ 55%]
 tests/qa/test_search_phase2_qa.py::TestTrigramFallback::test_trigram_fallback_skipped_when_many_results PASSED [ 66%]
 tests/qa/test_search_phase2_qa.py::TestRerankerGracefulDegradation::test_reranker_unavailable_returns_results PASSED [ 77%]
-tests/qa/test_search_phase2_qa.py::TestDynamicThreshold::test_short_query_filters_weak_matches PASSED [ 88%]
+tests/qa/test_search_phase2_qa.py::TestDynamicThreshold::test_short_query_allows_moderate_matches PASSED [ 88%]
 tests/qa/test_search_phase2_qa.py::TestDynamicThreshold::test_long_query_allows_moderate_matches PASSED [100%]
 
-============================== 9 passed in 0.21s ===============================
+============================== 9 passed in 0.05s ===============================
 
 ```
 

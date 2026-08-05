@@ -103,3 +103,56 @@ def build_memory_scenarios(self) -> dict:
     except Exception as exc:
         logger.error("memory.build_scenarios failed: %s", exc, exc_info=True)
         return {"error": str(exc)[:500]}
+
+
+@shared_task(
+    bind=True,
+    name="app.tasks.memory_tasks.build_memory_profiles",
+    queue="collections",
+    soft_time_limit=300,  # 5 min
+    time_limit=600,  # 10 min
+)
+def build_memory_profiles(self) -> dict:
+    """Monthly L3 profile builder: reviewed atoms → persona for each user.
+
+    Idempotent upsert (version+1). Only users with ≥1 reviewed atom/scenario
+    get a profile; LLM failures skip the user (never fabricates).
+    """
+    from sqlalchemy import func, select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.database import _async_db_url
+    from app.models.memory import MemoryAtom, MemoryStatus
+    from app.services.memory_service import memory_service
+
+    async def _run() -> dict:
+        engine = create_async_engine(_async_db_url, poolclass=NullPool)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_factory() as db:
+                owners = (
+                    (
+                        await db.execute(
+                            select(MemoryAtom.owner_id)
+                            .where(MemoryAtom.status == MemoryStatus.REVIEWED.value)
+                            .group_by(MemoryAtom.owner_id)
+                            .having(func.count(MemoryAtom.id) >= 1)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                written = 0
+                for owner_id in owners:
+                    if await memory_service.build_profile(db, owner_id):
+                        written += 1
+                return {"owners": len(owners), "profiles_written": written}
+        finally:
+            await engine.dispose()
+
+    try:
+        return asyncio.run(_run())
+    except Exception as exc:
+        logger.error("memory.build_profiles failed: %s", exc, exc_info=True)
+        return {"error": str(exc)[:500]}

@@ -1633,7 +1633,7 @@ class HybridSearchService:
             Dictionary with results grouped by type, total counts, and pagination info
         """
         if not types:
-            types = ["document", "bookmark", "note", "space"]
+            types = ["document", "bookmark", "note", "space", "memory"]
 
         all_results: list[dict] = []
         tasks = []
@@ -1650,6 +1650,9 @@ class HybridSearchService:
 
         if "space" in types:
             tasks.append(("space", self._search_spaces(query, user, db, page_size)))
+
+        if "memory" in types:
+            tasks.append(("memory", self._search_memory(query, user, db, page_size)))
 
         # Run all searches sequentially (same AsyncSession is not safe for concurrent use)
         for type_name, coro in tasks:
@@ -1714,6 +1717,88 @@ class HybridSearchService:
                     "bucket": sr.document_bucket,
                 }
             )
+        return results
+
+    async def _search_memory(
+        self,
+        query: str,
+        user: User,
+        db: AsyncSession,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Search the owner's REVIEWED memory atoms + scenarios.
+
+        Owner-scoped only (never leaks other users' memory). Uses the
+        accent-folded search_vector with the multi-config @@ pattern (same as
+        keyword search) OR a fallback ILIKE on statement/title. New additive
+        read path — the document ACL hot path is untouched.
+        """
+        from app.models.memory import MemoryAtom, MemoryScenario, MemoryStatus
+
+        if user is None or getattr(user, "id", None) is None:
+            return []
+
+        results: list[dict] = []
+        pattern = f"%{query}%"
+
+        atom_rows = (
+            (
+                await db.execute(
+                    select(MemoryAtom)
+                    .where(
+                        MemoryAtom.owner_id == user.id,
+                        MemoryAtom.status == MemoryStatus.REVIEWED.value,
+                        MemoryAtom.statement.ilike(pattern),
+                    )
+                    .order_by(MemoryAtom.confidence.desc())
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for a in atom_rows:
+            results.append(
+                {
+                    "result_type": "memory_atom",
+                    "id": str(a.id),
+                    "title": f"{a.kind.value}: {a.statement[:80]}",
+                    "description": a.statement[:200],
+                    "tags": ["memory"],
+                    "score": 0.7 + (a.confidence or 0) / 1000.0,
+                    "bucket": "private",
+                }
+            )
+
+        scen_rows = (
+            (
+                await db.execute(
+                    select(MemoryScenario)
+                    .where(
+                        MemoryScenario.owner_id == user.id,
+                        MemoryScenario.status == MemoryStatus.REVIEWED.value,
+                        MemoryScenario.title.ilike(pattern),
+                    )
+                    .order_by(MemoryScenario.created_at.desc())
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for s in scen_rows:
+            results.append(
+                {
+                    "result_type": "memory_scenario",
+                    "id": str(s.id),
+                    "title": s.title[:120],
+                    "description": s.summary[:200],
+                    "tags": ["memory"],
+                    "score": 0.6,
+                    "bucket": "private",
+                }
+            )
+
         return results
 
 

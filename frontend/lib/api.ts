@@ -568,10 +568,10 @@ class ApiClient {
     return this.request<SuggestResponse>(`/v1/search/suggest?${params.toString()}`);
   }
 
-  async searchGlobal(query: string, types: string = 'bookmark,note,space', signal?: AbortSignal) {
+  async searchGlobal(query: string, types: string = 'bookmark,note,space,memory', signal?: AbortSignal) {
     interface GlobalSearchResponse {
       results: Array<{
-        result_type: 'document' | 'bookmark' | 'note' | 'space';
+        result_type: 'document' | 'bookmark' | 'note' | 'space' | 'memory_atom' | 'memory_scenario';
         id: string;
         title: string;
         description: string;

@@ -2,8 +2,7 @@
 
 Distills chat conversations into persistent L1 memory atoms, deduplicated
 against the owner's existing atoms and grounded (traceable) so no fabricated
-memory is stored. L2 scenario clustering and L3 profile building are stubbed
-for later iterations.
+memory is stored. Also builds L2 scenario clusters and the L3 profile.
 
 Guarding principles (mirroring the Collection Orchestrator doctrine):
 - Nothing is stored unless it is traceable to a source message (grounding).
@@ -74,6 +73,28 @@ Regles :
 - Si aucune information durable, retourne {"atoms": []}.
 - source_message_index doit pointer vers un message reel de la liste fournie.
 - Statement en francais si la conversation est en francais, sinon en anglais.""",
+)
+
+_MEMORY_PROFILE_SYSTEM_PROMPT = build_service_prompt(
+    service_name="SOWKNOW Memory Profile Agent",
+    mission=_MEMORY_MISSION,
+    constraints=_MEMORY_CONSTRAINTS,
+    task_prompt="""Analyse les faits, preferences, contraintes et scenarios revises de l'utilisateur
+et retourne **uniquement** un objet JSON (pas de markdown, pas d'explication) :
+
+{
+  "persona": {
+    "communication_pref": "<langue / ton / style prefere>",
+    "priorities": ["<priorite 1>", "<priorite 2>"],
+    "decision_style": "<style de decision observe>"
+  },
+  "stable_patterns": ["<pattern stable 1>", "<pattern stable 2>"]
+}
+
+Regles :
+- N'invente jamais un trait absent des donnees fournies.
+- Reste concis : 2-4 priorites, 2-5 patterns.
+- Si trop peu de donnees pour un champ, omets-le plutot que de deviner.""",
 )
 
 
@@ -412,6 +433,113 @@ class MemoryService:
             await db.commit()
         logger.info("memory.scenarios owner=%s: %d cluster(s) created", owner_id, created)
         return created
+
+    # ------------------------------------------------------------------
+    # L3 profile building
+    # ------------------------------------------------------------------
+
+    async def build_profile(self, db: AsyncSession, owner_id: uuid.UUID) -> bool:
+        """Build/refresh the owner's L3 profile from reviewed atoms + scenarios.
+
+        One LLM pass over the owner's reviewed atoms (and any ready scenarios)
+        produces a compact persona + stable patterns. The profile is upserted
+        with version+1. Only `status=reviewed` atoms feed the profile — raw
+        pending memory never shapes it. Returns True when a profile was written.
+        """
+        from app.models.memory import MemoryProfile, MemoryScenario
+
+        atoms = (
+            (
+                await db.execute(
+                    select(MemoryAtom)
+                    .where(
+                        MemoryAtom.owner_id == owner_id,
+                        MemoryAtom.status == MemoryStatus.REVIEWED.value,
+                    )
+                    .order_by(MemoryAtom.confidence.desc())
+                    .limit(50)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        scenarios = (
+            (
+                await db.execute(
+                    select(MemoryScenario)
+                    .where(
+                        MemoryScenario.owner_id == owner_id,
+                        MemoryScenario.status == MemoryStatus.REVIEWED.value,
+                    )
+                    .limit(20)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not atoms and not scenarios:
+            logger.info("memory.profile skip owner=%s: no reviewed assets", owner_id)
+            return False
+
+        statements = [a.statement for a in atoms]
+        scenario_lines = [f"{s.title}: {s.summary}" for s in scenarios]
+        source = "\n".join(["[atoms]"] + statements + ["[scenarios]"] + scenario_lines)
+
+        persona, patterns = await self._llm_profile(source)
+        if persona is None and patterns is None:
+            return False
+
+        existing = (await db.execute(select(MemoryProfile).where(MemoryProfile.owner_id == owner_id))).scalars().first()
+        if existing is None:
+            db.add(
+                MemoryProfile(
+                    id=uuid.uuid4(),
+                    owner_id=owner_id,
+                    persona=persona or {},
+                    stable_patterns=patterns or [],
+                    version=1,
+                )
+            )
+        else:
+            existing.persona = persona or existing.persona
+            existing.stable_patterns = patterns or existing.stable_patterns
+            existing.version = (existing.version or 1) + 1
+        await db.commit()
+        logger.info("memory.profile owner=%s: profile written", owner_id)
+        return True
+
+    async def _llm_profile(self, source: str) -> tuple[dict | None, list | None]:
+        """LLM pass: atoms+scenarios → {persona, stable_patterns}. Returns
+        (None, None) on any failure — never fabricates a profile."""
+        user_prompt = "Faits, preferences, contraintes et scenarios revises de l'utilisateur :\n\n" + source[:4000]
+        try:
+            raw = await asyncio.wait_for(
+                llm_gateway.chat_completion_non_stream(
+                    messages=[
+                        {"role": "system", "content": _MEMORY_PROFILE_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.2,
+                    max_tokens=1200,
+                ),
+                timeout=30.0,
+            )
+            data = extract_first_json(raw)
+            if not isinstance(data, dict):
+                return None, None
+            persona = data.get("persona")
+            patterns = data.get("stable_patterns")
+            if not isinstance(persona, dict):
+                persona = None
+            if not isinstance(patterns, list):
+                patterns = None
+            return persona, patterns
+        except asyncio.TimeoutError:
+            logger.warning("memory.profile LLM timeout — skipping")
+            return None, None
+        except Exception as exc:
+            logger.warning("memory.profile LLM failed — skipping: %s", exc)
+            return None, None
 
 
 def _cosine(a: list[float], b: list[float]) -> float:

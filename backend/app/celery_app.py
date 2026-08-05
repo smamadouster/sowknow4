@@ -177,6 +177,11 @@ celery_app.conf.update(
             "schedule": crontab(hour=3, minute=45),  # 03:45 UTC daily, after audit purge
             "args": (),
         },
+        "memory-profile-builder": {
+            "task": "app.tasks.memory_tasks.build_memory_profiles",
+            "schedule": crontab(hour=4, minute=15, day_of_month=1),  # 04:15 UTC on the 1st
+            "args": (),
+        },
     },
 )
 

@@ -74,21 +74,23 @@ def _convert_search_results_to_chunks(search_results) -> list[RawChunk]:
                 sr.document_id,
             )
             continue
-        chunks.append(RawChunk(
-            chunk_id=sr.chunk_id,
-            document_id=sr.document_id,
-            document_title=sr.document_name,
-            document_bucket=bucket,
-            document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
-            chunk_index=sr.chunk_index,
-            page_number=sr.page_number,
-            text=sr.chunk_text,
-            semantic_score=sr.semantic_score,
-            fts_rank=sr.keyword_score,
-            rrf_score=sr.final_score,
-            tags=[],
-            match_source=sr.match_source,
-        ))
+        chunks.append(
+            RawChunk(
+                chunk_id=sr.chunk_id,
+                document_id=sr.document_id,
+                document_title=sr.document_name,
+                document_bucket=bucket,
+                document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
+                chunk_index=sr.chunk_index,
+                page_number=sr.page_number,
+                text=sr.chunk_text,
+                semantic_score=sr.semantic_score,
+                fts_rank=sr.keyword_score,
+                rrf_score=sr.final_score,
+                tags=[],
+                match_source=sr.match_source,
+            )
+        )
     return chunks
 
 
@@ -112,13 +114,15 @@ async def search(
     try:
         guard_result = await input_guard.process(
             query=request.query,
-            user_role=current_user.role.value if hasattr(current_user, 'role') else "user",
+            user_role=current_user.role.value if hasattr(current_user, "role") else "user",
             document_ids=None,
         )
         logger.info(
             "InputGuard: lang=%s intent=%s vault=%s pii=%s",
-            guard_result.language, guard_result.intent,
-            guard_result.vault_hint, guard_result.pii_detected,
+            guard_result.language,
+            guard_result.intent,
+            guard_result.vault_hint,
+            guard_result.pii_detected,
         )
         if guard_result.pii_detected:
             logger.warning("InputGuard: PII detected in search query from user %s", current_user.id)
@@ -150,8 +154,11 @@ async def search(
         user_role = _role_from_user(current_user)
         try:
             response = await run_agentic_search(
-                db=db, request=request, user_role=user_role,
-                user_id=current_user.id, user=current_user,
+                db=db,
+                request=request,
+                user_role=user_role,
+                user_id=current_user.id,
+                user=current_user,
             )
             await _save_search_history(db, current_user.id, response)
             return response
@@ -175,22 +182,29 @@ async def search_stream(
     try:
         guard_result = await input_guard.process(
             query=request.query,
-            user_role=current_user.role.value if hasattr(current_user, 'role') else "user",
+            user_role=current_user.role.value if hasattr(current_user, "role") else "user",
             document_ids=None,
         )
         logger.info(
             "InputGuard[stream]: lang=%s intent=%s vault=%s pii=%s",
-            guard_result.language, guard_result.intent,
-            guard_result.vault_hint, guard_result.pii_detected,
+            guard_result.language,
+            guard_result.intent,
+            guard_result.vault_hint,
+            guard_result.pii_detected,
         )
         if guard_result.pii_detected:
             logger.warning("InputGuard: PII detected in streaming search from user %s", current_user.id)
         if guard_result.is_duplicate:
+
             async def _dup_gen():
-                yield _sse_event("error", {
-                    "message": "Cette requête est en cours de traitement. / This query is already being processed.",
-                    "duplicate": True,
-                })
+                yield _sse_event(
+                    "error",
+                    {
+                        "message": "Cette requête est en cours de traitement. / This query is already being processed.",
+                        "duplicate": True,
+                    },
+                )
+
             return StreamingResponse(
                 _dup_gen(),
                 media_type="text/event-stream",
@@ -200,9 +214,12 @@ async def search_stream(
         logger.exception("InputGuard: guard processing failed for user %s: %s", current_user.id, e)
 
         async def _error_gen():
-            yield _sse_event("error", {
-                "message": "Input safety check failed. Please try again.",
-            })
+            yield _sse_event(
+                "error",
+                {
+                    "message": "Input safety check failed. Please try again.",
+                },
+            )
 
         return StreamingResponse(
             _error_gen(),
@@ -215,6 +232,7 @@ async def search_stream(
         # the generator AFTER FastAPI's dependency scope closes, so the
         # Depends(get_db) session would already be invalid.
         from app.database import AsyncSessionLocal
+
         async with AsyncSessionLocal() as db:
             start = time.monotonic()
             try:
@@ -231,11 +249,22 @@ async def search_stream(
                 words = request.query.strip().split()
                 is_simple = (
                     len(words) <= 3
-                    and not any(w in request.query.lower() for w in [
-                        "evolution", "trend", "compare", "difference",
-                        "bilan", "balance sheet", "resume", "synthese",
-                        "synthesis", "summary", "overview",
-                    ])
+                    and not any(
+                        w in request.query.lower()
+                        for w in [
+                            "evolution",
+                            "trend",
+                            "compare",
+                            "difference",
+                            "bilan",
+                            "balance sheet",
+                            "resume",
+                            "synthese",
+                            "synthesis",
+                            "summary",
+                            "overview",
+                        ]
+                    )
                     and request.mode != SearchMode.DEEP
                 )
                 if is_simple:
@@ -244,13 +273,16 @@ async def search_stream(
                     logger.info("Stream fast path: skipped LLM intent for simple query '%s'", request.query)
                 else:
                     intent = await parse_intent(request.query)
-                yield _sse_event("intent", {
-                    "intent": intent.intent.value,
-                    "confidence": intent.confidence,
-                    "keywords": intent.keywords,
-                    "sub_queries": intent.sub_queries,
-                    "language": intent.detected_language,
-                })
+                yield _sse_event(
+                    "intent",
+                    {
+                        "intent": intent.intent.value,
+                        "confidence": intent.confidence,
+                        "keywords": intent.keywords,
+                        "sub_queries": intent.sub_queries,
+                        "language": intent.detected_language,
+                    },
+                )
 
                 if request.language:
                     intent.detected_language = request.language
@@ -258,7 +290,9 @@ async def search_stream(
                 # Sanitize query to match the non-streaming search path
                 search_query = _sanitize_search_query(request.query)
                 queries = build_search_queries(intent, search_query)
-                yield _sse_event("stage", {"stage": "retrieval", "message": f"Recherche dans {len(queries)} requete(s)..."})
+                yield _sse_event(
+                    "stage", {"stage": "retrieval", "message": f"Recherche dans {len(queries)} requete(s)..."}
+                )
 
                 search_service = HybridSearchService()
                 regconfig = _regconfig_for_language(intent.detected_language)
@@ -267,8 +301,12 @@ async def search_stream(
                 for query_text in queries:
                     try:
                         result = await search_service.hybrid_search(
-                            query=query_text, limit=request.top_k * 3,
-                            offset=0, db=db, user=current_user, regconfig=regconfig,
+                            query=query_text,
+                            limit=request.top_k * 3,
+                            offset=0,
+                            db=db,
+                            user=current_user,
+                            regconfig=regconfig,
                             # Rerank skipped per sub-query; one consolidated
                             # cross-encoder pass runs on the merged pool below.
                             rerank=False,
@@ -281,19 +319,29 @@ async def search_stream(
                 # One cross-encoder pass over the merged pool (option F).
                 await rerank_merged_chunks(all_chunks, request.query)
 
-                yield _sse_event("stage", {
-                    "stage": "reranking",
-                    "message": f"{len(all_chunks)} extraits recuperes, reclassement...",
-                })
+                yield _sse_event(
+                    "stage",
+                    {
+                        "stage": "reranking",
+                        "message": f"{len(all_chunks)} extraits recuperes, reclassement...",
+                    },
+                )
 
                 results, has_confidential = rerank_and_build_results(
-                    all_chunks, request.query, intent, request.top_k, user_role,
+                    all_chunks,
+                    request.query,
+                    intent,
+                    request.top_k,
+                    user_role,
                 )
-                yield _sse_event("results", {
-                    "results": [r.model_dump() for r in results],
-                    "total_found": len(results),
-                    "has_confidential_results": has_confidential,
-                })
+                yield _sse_event(
+                    "results",
+                    {
+                        "results": [r.model_dump() for r in results],
+                        "total_found": len(results),
+                        "has_confidential_results": has_confidential,
+                    },
+                )
 
                 mode = request.mode
                 if mode == SearchMode.AUTO:
@@ -308,30 +356,50 @@ async def search_stream(
                 if results and (
                     mode == SearchMode.DEEP
                     or intent.requires_synthesis
-                    or intent.intent in (QueryIntent.SYNTHESIS, QueryIntent.TEMPORAL, QueryIntent.COMPARATIVE, QueryIntent.FINANCIAL)
+                    or intent.intent
+                    in (QueryIntent.SYNTHESIS, QueryIntent.TEMPORAL, QueryIntent.COMPARATIVE, QueryIntent.FINANCIAL)
                 ):
                     yield _sse_event("stage", {"stage": "synthesis", "message": "Synthese de la reponse..."})
                     try:
                         answer, model_used = await asyncio.wait_for(
                             synthesize_answer(
-                                request.query, results, all_chunks, intent, has_confidential, intent.detected_language,
+                                request.query,
+                                results,
+                                all_chunks,
+                                intent,
+                                has_confidential,
+                                intent.detected_language,
                             ),
                             timeout=30.0,
                         )
-                        yield _sse_event("synthesis", {
-                            "answer": answer, "model": model_used, "language": intent.detected_language,
-                        })
+                        yield _sse_event(
+                            "synthesis",
+                            {
+                                "answer": answer,
+                                "model": model_used,
+                                "language": intent.detected_language,
+                            },
+                        )
                     except asyncio.TimeoutError:
                         logger.warning("Synthesis timed out after 30s")
-                        yield _sse_event("synthesis", {
-                            "answer": "", "model": None, "language": intent.detected_language,
-                        })
+                        yield _sse_event(
+                            "synthesis",
+                            {
+                                "answer": "",
+                                "model": None,
+                                "language": intent.detected_language,
+                            },
+                        )
                     except Exception as exc:
                         logger.warning("Synthesis failed: %s", exc)
-                        yield _sse_event("synthesis", {
-                            "answer": "[Synthèse indisponible — veuillez consulter les documents ci-dessus]",
-                            "model": None, "language": intent.detected_language,
-                        })
+                        yield _sse_event(
+                            "synthesis",
+                            {
+                                "answer": "[Synthèse indisponible — veuillez consulter les documents ci-dessus]",
+                                "model": None,
+                                "language": intent.detected_language,
+                            },
+                        )
 
                 # Backpressure: abort before expensive suggestion generation
                 if http_request is not None and await http_request.is_disconnected():
@@ -360,13 +428,16 @@ async def search_stream(
                     unindexed_count = await _count_unindexed_filename_matches(db, request.query, current_user)
                 except Exception:
                     unindexed_count = 0
-                yield _sse_event("done", {
-                    "total_found": len(results),
-                    "model": model_used,
-                    "has_confidential": has_confidential,
-                    "search_time_ms": elapsed_ms,
-                    "unindexed_matches_count": unindexed_count,
-                })
+                yield _sse_event(
+                    "done",
+                    {
+                        "total_found": len(results),
+                        "model": model_used,
+                        "has_confidential": has_confidential,
+                        "search_time_ms": elapsed_ms,
+                        "unindexed_matches_count": unindexed_count,
+                    },
+                )
 
             except Exception as exc:
                 logger.exception("Streaming search error: %s", exc)
@@ -383,8 +454,8 @@ async def search_stream(
 async def search_global(
     q: str = Query(..., min_length=1, max_length=500, description="Search query"),
     types: str = Query(
-        default="document,bookmark,note,space",
-        description="Comma-separated list of types to search: document,bookmark,note,space",
+        default="document,bookmark,note,space,memory",
+        description="Comma-separated list of types to search: document,bookmark,note,space,memory",
     ),
     page: int = Query(default=1, ge=1, le=100),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -392,11 +463,12 @@ async def search_global(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Multi-type global search across documents, bookmarks, notes, and spaces.
+    Multi-type global search across documents, bookmarks, notes, spaces, and
+    the user's reviewed agent memory (atoms + scenarios).
     Returns unified results with result_type, id, title, description, tags, score.
     """
     type_list = [t.strip() for t in types.split(",") if t.strip()]
-    valid_types = {"document", "bookmark", "note", "space"}
+    valid_types = {"document", "bookmark", "note", "space", "memory"}
     type_list = [t for t in type_list if t in valid_types]
     if not type_list:
         type_list = list(valid_types)
@@ -438,16 +510,22 @@ async def search_history(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = (await db.execute(
-        sql_text("""
+    rows = (
+        (
+            await db.execute(
+                sql_text("""
             SELECT query, parsed_intent, result_count, search_time_ms, performed_at
             FROM sowknow.search_history
             WHERE user_id = :uid
             ORDER BY performed_at DESC
             LIMIT :lim
         """),
-        {"uid": str(current_user.id), "lim": limit},
-    )).mappings().all()
+                {"uid": str(current_user.id), "lim": limit},
+            )
+        )
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 

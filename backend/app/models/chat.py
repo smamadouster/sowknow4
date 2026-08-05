@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -52,6 +52,11 @@ class ChatSession(Base, TimestampMixin):
 
     # Session metadata
     model_preference = Column(String(50))  # User's preferred LLM for this session
+
+    # Agent memory (draft v0.1, docs/agent_memory/SPEC.md): when enabled, this
+    # session's turns are distilled into persistent memory atoms. Default off —
+    # zero behavior change until opted in.
+    memory_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
 
     # Relationships
     messages = relationship(

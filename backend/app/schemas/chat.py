@@ -23,6 +23,9 @@ class ChatSessionCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=512)
     document_scope: list[UUID] | None = None
     model_preference: str | None = None
+    # Agent memory opt-in (draft v0.1): when true, this session's turns are
+    # distilled into persistent memory atoms. Default false — no behavior change.
+    memory_enabled: bool = False
 
 
 class ChatSessionResponse(BaseModel):
@@ -31,6 +34,7 @@ class ChatSessionResponse(BaseModel):
     title: str
     document_scope: list[UUID] = []
     model_preference: str | None = None
+    memory_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 

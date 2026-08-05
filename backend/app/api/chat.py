@@ -32,6 +32,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+def _maybe_enqueue_memory_distill(session: ChatSession, owner_id: UUID) -> None:
+    """Enqueue agent-memory distillation for a session when opted in.
+
+    Off by default (ChatSession.memory_enabled=False) — no enqueue, no
+    behavior change. When enabled, the async distillation is delegated to
+    Celery so the chat request path is never blocked by an LLM call.
+    """
+    if not getattr(session, "memory_enabled", False):
+        return
+    try:
+        from app.tasks.memory_tasks import distill_chat_session
+
+        distill_chat_session.apply_async(args=[str(session.id), str(owner_id)], queue="collections")
+        logger.info("memory.distill enqueued for session=%s", session.id)
+    except Exception as exc:
+        # Distillation is best-effort; never fail the chat response over it.
+        logger.warning("memory.distill enqueue failed: %s", exc)
+
+
 @router.post("/sessions", response_model=ChatSessionResponse)
 @limiter.limit("20/minute")
 async def create_chat_session(
@@ -48,6 +67,7 @@ async def create_chat_session(
             title=session_data.title,
             document_scope=session_data.document_scope or [],
             model_preference=session_data.model_preference,
+            memory_enabled=session_data.memory_enabled,
         )
 
         db.add(session)
@@ -129,13 +149,15 @@ async def send_message(
     try:
         guard_result = await input_guard.process(
             query=message_data.content,
-            user_role=current_user.role.value if hasattr(current_user, 'role') else "user",
+            user_role=current_user.role.value if hasattr(current_user, "role") else "user",
             document_ids=None,
         )
         logger.info(
             "InputGuard: lang=%s intent=%s vault=%s pii=%s",
-            guard_result.language, guard_result.intent,
-            guard_result.vault_hint, guard_result.pii_detected,
+            guard_result.language,
+            guard_result.intent,
+            guard_result.vault_hint,
+            guard_result.pii_detected,
         )
         if guard_result.pii_detected:
             logger.warning("InputGuard: PII detected in chat message from user %s", current_user.id)
@@ -153,6 +175,7 @@ async def send_message(
     await db.commit()
 
     if stream:
+
         async def _stream_with_session():
             full_content_parts: list[str] = []
             llm_used: str | None = None
@@ -201,6 +224,8 @@ async def send_message(
                     )
                     persist_db.add(assistant_message)
                     await persist_db.commit()
+                # Agent memory: distill this turn when the session opted in.
+                _maybe_enqueue_memory_distill(session, current_user.id)
             except Exception as e:
                 logger.exception("Failed to persist streaming assistant message: %s", e)
 
@@ -232,6 +257,9 @@ async def send_message(
             )
             db.add(assistant_message)
             await db.commit()
+
+            # Agent memory: distill this turn when the session opted in.
+            _maybe_enqueue_memory_distill(session, current_user.id)
 
             return ChatMessageResponse.model_validate(assistant_message)
 

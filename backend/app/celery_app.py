@@ -52,6 +52,7 @@ celery_app = Celery(
         "app.tasks.health_report_tasks",
         "app.tasks.space_tasks",
         "app.tasks.backfill_tasks",
+        "app.tasks.memory_tasks",
     ],
 )
 

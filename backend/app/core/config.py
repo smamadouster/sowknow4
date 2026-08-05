@@ -154,6 +154,19 @@ class Settings(BaseSettings):
     COLLECTION_AUDIT_PSEUDONYMISE: bool = False  # FR8.4: hash user_id in audit exports
 
     # ------------------------------------------------------------------
+    # Agent Memory (draft v0.1, docs/agent_memory/SPEC.md)
+    # ------------------------------------------------------------------
+
+    MEMORY_ATOM_MAX: int = 12  # max atoms extracted per distillation run
+    MEMORY_ATOM_SIM_THRESHOLD: float = 0.92  # cosine dedup gate (1.0 = identical)
+    MEMORY_ATOM_MIN_CONFIDENCE: int = 40  # atoms below this are dropped
+    MEMORY_INJECT_MAX_ATOMS: int = 6  # budget cap for chat context injection
+    MEMORY_INJECT_MAX_SCENARIOS: int = 2
+    MEMORY_INJECT_MAX_CHARS: int = 1200
+    MEMORY_DISTILL_MIN_MESSAGES: int = 2  # at least N messages before distilling a session
+    MEMORY_ATOM_RETENTION_DAYS: int = 180  # decay window for reviewed atoms
+
+    # ------------------------------------------------------------------
     # Validators
     # ------------------------------------------------------------------
 
@@ -171,7 +184,9 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX")
+    @field_validator(
+        "OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX"
+    )
     @classmethod
     def validate_no_free_tier_in_production(cls, v: str, info) -> str:  # noqa: N805
         """Reject free-tier models in production."""
@@ -182,7 +197,9 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX")
+    @field_validator(
+        "OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX"
+    )
     @classmethod
     def validate_not_deprecated_model(cls, v: str, info) -> str:  # noqa: N805
         """Reject deprecated model identifiers (from LLM_DEPRECATED_MODELS env var)."""
@@ -191,13 +208,16 @@ class Settings(BaseSettings):
         deprecated = {d.strip() for d in deprecated_raw.split(",") if d.strip()}
         if not deprecated:
             deprecated = {
-                "gpt-4", "gpt-4o", "claude-3-opus", "minimax-01",
-                "llama-3.3-70b-instruct:free", "qwen3-235b-a22b:free",
+                "gpt-4",
+                "gpt-4o",
+                "claude-3-opus",
+                "minimax-01",
+                "llama-3.3-70b-instruct:free",
+                "qwen3-235b-a22b:free",
             }
         if any(d in v for d in deprecated):
             raise ValueError(
-                f"Field '{info.field_name}' uses a deprecated model ('{v}'). "
-                f"Deprecated models: {deprecated}"
+                f"Field '{info.field_name}' uses a deprecated model ('{v}'). Deprecated models: {deprecated}"
             )
         return v
 
@@ -209,6 +229,7 @@ class Settings(BaseSettings):
     def REDIS_URL(self) -> str:
         """Authenticated Redis URL constructed from individual settings."""
         from urllib.parse import quote
+
         return f"redis://:{quote(self.REDIS_PASSWORD, safe='')}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     @property

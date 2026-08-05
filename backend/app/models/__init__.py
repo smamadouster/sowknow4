@@ -33,6 +33,15 @@ from app.models.knowledge_graph import (
     TimelineEvent,
 )
 from app.models.milestone import Milestone
+from app.models.memory import (
+    MemoryAssetBinding,
+    MemoryAtom,
+    MemoryAtomKind,
+    MemoryProfile,
+    MemoryScenario,
+    MemoryStatus,
+    MemoryVisibility,
+)
 from app.models.pattern_insight import PatternInsight, PatternInsightType
 from app.models.smart_folder import (
     CollectionJobState,
@@ -79,6 +88,13 @@ __all__ = [
     "Milestone",
     "PatternInsight",
     "PatternInsightType",
+    "MemoryAtom",
+    "MemoryAtomKind",
+    "MemoryScenario",
+    "MemoryProfile",
+    "MemoryAssetBinding",
+    "MemoryStatus",
+    "MemoryVisibility",
     "SmartFolder",
     "SmartFolderReport",
     "SmartFolderStatus",

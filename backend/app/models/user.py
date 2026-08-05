@@ -34,6 +34,9 @@ class User(Base, TimestampMixin):
     # Relationships
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
     smart_folders = relationship("SmartFolder", back_populates="user", cascade="all, delete-orphan")
+    memory_atoms = relationship("MemoryAtom", back_populates="owner", cascade="all, delete-orphan")
+    memory_scenarios = relationship("MemoryScenario", back_populates="owner", cascade="all, delete-orphan")
+    memory_profile = relationship("MemoryProfile", back_populates="owner", cascade="all, delete-orphan", uselist=False)
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"

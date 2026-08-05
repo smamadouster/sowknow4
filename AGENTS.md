@@ -56,8 +56,17 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   after any deploy, reseeding the state from the last logged last_id.
   COMPLETE as of 2026-08-05: 1,377,663 chunks + 17,971 articles, 0 nulls, 0
   rows differing from the folded expression, state file at max UUIDs. No longer
-  needs restarting after deploys. The accented @@ branches now match nothing
-  and can be pruned (verify once in production, then drop them).
+  needs restarting after deploys. The raw-query @@ branches were PRUNED on
+  2026-08-05 (verified live: accented branch 0 hits vs 1236 folded; raw==folded
+  counts for plain queries) — chunk + article keyword search now match ONLY
+  against `sowknow.unaccent(:query)` across regconfig/french/english/simple.
+  Do not re-add raw `:query` branches. `title_search_vector` (migration 025)
+  is a separate column NOT folded by 036 — its plain `@@` stays.
+- Search stream fast path (`_fallback_intent`, 2026-08-05): short/simple
+  queries skip the LLM intent call; the fallback defaulted bare French nouns
+  ("contrat", "vaccination") to language 'en', failing the 15-min smoke test.
+  It now defaults short queries to 'fr' (French-dominant vault, matching
+  input_guard) unless an English indicator is present.
 - Agentic rerank is CONSOLIDATED (2026-08-04): the agentic pipeline (stream +
   non-stream) calls `hybrid_search(..., rerank=False)` per sub-query, then runs
   ONE cross-encoder pass over the merged, deduped candidate pool via

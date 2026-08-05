@@ -182,6 +182,11 @@ celery_app.conf.update(
             "schedule": crontab(hour=4, minute=15, day_of_month=1),  # 04:15 UTC on the 1st
             "args": (),
         },
+        "skill-extraction": {
+            "task": "app.tasks.memory_tasks.extract_learned_skills",
+            "schedule": crontab(hour=4, minute=30, day_of_week=0),  # 04:30 UTC Mondays
+            "args": (7,),
+        },
     },
 )
 

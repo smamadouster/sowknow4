@@ -175,6 +175,7 @@
 [interface]: CollectionAppendixEntry { props: [analysis_type, tables, charts, messages] }
 [interface]: CollectionDisclosure { props: [type, message] }
 [interface]: CollectionDeliverableView { props: [deliverable_id, request_id, version, summary_md, items, appendix, disclosures, data_as_of, generated_at, links_permission_bound] }
+[interface]: MemoryProfileView { props: [persona, stable_patterns, version] }
 [interface]: MemoryAtomView { props: [id, kind, statement, confidence, status, visibility, source_session_ids, created_at] }
 [interface]: MemoryScenarioView { props: [id, title, summary, scope, status, visibility, created_at] }
 [interface]: MemoryListResponse { props: [atoms, scenarios, total_atoms, total_scenarios] }

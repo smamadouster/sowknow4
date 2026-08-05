@@ -19,9 +19,11 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.memory import (
     MemoryAtom,
+    MemoryProfile,
     MemoryScenario,
     MemoryStatus,
 )
+from app.models.learned_skill import LearnedSkill
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,12 @@ class MemoryListResponse(BaseModel):
     scenarios: list[ScenarioResponse]
     total_atoms: int
     total_scenarios: int
+
+
+class ProfileResponse(BaseModel):
+    persona: dict
+    stable_patterns: list
+    version: int
 
 
 class AtomReviewRequest(BaseModel):
@@ -106,6 +114,46 @@ async def list_memory(
     )
 
 
+@router.get("/profile", response_model=ProfileResponse)
+async def get_memory_profile(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ProfileResponse:
+    """Return the owner's L3 profile (persona + stable patterns), if built."""
+    profile = (
+        (await db.execute(select(MemoryProfile).where(MemoryProfile.owner_id == current_user.id))).scalars().first()
+    )
+    if profile is None:
+        return ProfileResponse(persona={}, stable_patterns=[], version=0)
+    return ProfileResponse(
+        persona=profile.persona or {},
+        stable_patterns=profile.stable_patterns or [],
+        version=profile.version or 0,
+    )
+
+
+@router.post("/profile/build", response_model=ProfileResponse)
+async def build_memory_profile(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ProfileResponse:
+    """Build/refresh the owner's L3 profile now (instead of waiting for the
+    monthly beat). Uses only reviewed atoms/scenarios."""
+    from app.services.memory_service import memory_service
+
+    ok = await memory_service.build_profile(db, current_user.id)
+    if not ok:
+        return ProfileResponse(persona={}, stable_patterns=[], version=0)
+    profile = (
+        (await db.execute(select(MemoryProfile).where(MemoryProfile.owner_id == current_user.id))).scalars().first()
+    )
+    return ProfileResponse(
+        persona=profile.persona or {},
+        stable_patterns=profile.stable_patterns or [],
+        version=profile.version or 0,
+    )
+
+
 @router.patch("/atoms/{atom_id}", response_model=AtomResponse)
 async def review_atom(
     atom_id: UUID,
@@ -138,6 +186,82 @@ async def review_atom(
         body.status,
     )
     return AtomResponse.model_validate(atom)
+
+
+class SkillResponse(BaseModel):
+    id: UUID
+    title: str
+    trigger: str
+    steps: list
+    validation: list
+    source_type: str
+    source_ref: str | None
+    status: str
+    version: int
+
+    class Config:
+        from_attributes = True
+
+
+class SkillListResponse(BaseModel):
+    skills: list[SkillResponse]
+    total: int
+
+
+class SkillReviewRequest(BaseModel):
+    status: str = Field(..., pattern="^(draft|active|archived)$")
+
+
+@router.get("/skills", response_model=SkillListResponse)
+async def list_skills(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SkillListResponse:
+    """List the owner's learned skills (draft first)."""
+    skills = (
+        (
+            await db.execute(
+                select(LearnedSkill)
+                .where(LearnedSkill.owner_id == current_user.id)
+                .order_by(LearnedSkill.created_at.desc())
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return SkillListResponse(
+        skills=[SkillResponse.model_validate(s) for s in skills],
+        total=len(skills),
+    )
+
+
+@router.patch("/skills/{skill_id}", response_model=SkillResponse)
+async def review_skill(
+    skill_id: UUID,
+    body: SkillReviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SkillResponse:
+    """Review one skill: draft → active (eligible) or archived."""
+    skill = (
+        (
+            await db.execute(
+                select(LearnedSkill).where(
+                    LearnedSkill.id == skill_id,
+                    LearnedSkill.owner_id == current_user.id,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if skill is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Skill not found")
+    skill.status = body.status
+    await db.commit()
+    await db.refresh(skill)
+    return SkillResponse.model_validate(skill)
 
 
 @router.post("/atoms/{atom_id}/reject", response_model=AtomResponse)

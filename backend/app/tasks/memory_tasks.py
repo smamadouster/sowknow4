@@ -156,3 +156,35 @@ def build_memory_profiles(self) -> dict:
     except Exception as exc:
         logger.error("memory.build_profiles failed: %s", exc, exc_info=True)
         return {"error": str(exc)[:500]}
+
+
+@shared_task(
+    bind=True,
+    name="app.tasks.memory_tasks.extract_learned_skills",
+    queue="collections",
+    soft_time_limit=300,  # 5 min
+    time_limit=600,  # 10 min
+)
+def extract_learned_skills(self, since_days: int = 7) -> dict:
+    """Distill reusable runbook skills from recent completed collection runs."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.database import _async_db_url
+    from app.services.skill_extraction_service import skill_extraction_service
+
+    async def _run() -> dict:
+        engine = create_async_engine(_async_db_url, poolclass=NullPool)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_factory() as db:
+                created = await skill_extraction_service.extract_from_recent(db, since_days=since_days)
+                return {"skills_created": created, "since_days": since_days}
+        finally:
+            await engine.dispose()
+
+    try:
+        return asyncio.run(_run())
+    except Exception as exc:
+        logger.error("skill.extract failed: %s", exc, exc_info=True)
+        return {"error": str(exc)[:500]}

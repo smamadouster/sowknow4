@@ -43,6 +43,7 @@ from app.models.memory import (
     MemoryVisibility,
 )
 from app.models.pattern_insight import PatternInsight, PatternInsightType
+from app.models.learned_skill import LearnedSkill, SkillStatus
 from app.models.smart_folder import (
     CollectionJobState,
     RelationshipType,
@@ -88,6 +89,8 @@ __all__ = [
     "Milestone",
     "PatternInsight",
     "PatternInsightType",
+    "LearnedSkill",
+    "SkillStatus",
     "MemoryAtom",
     "MemoryAtomKind",
     "MemoryScenario",

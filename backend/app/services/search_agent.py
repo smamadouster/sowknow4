@@ -142,14 +142,37 @@ def build_search_queries(intent: ParsedIntent, original_query: str) -> list[str]
 # Conversational filler words that harm embedding quality.
 # Keep this list MINIMAL — only truly empty words. Stripping too aggressively
 # degrades semantic search for conversational queries (e.g. "How do I get started").
-_FILLER_WORDS_EN = frozenset([
-    "tell", "me", "please", "show", "explain", "describe", "give",
-    "information", "details", "find", "look", "search", "some", "any",
-])
-_FILLER_WORDS_FR = frozenset([
-    "montre", "cherche", "trouve", "donne", "explique", "decris",
-    "recherche", "quelques", "certains",
-])
+_FILLER_WORDS_EN = frozenset(
+    [
+        "tell",
+        "me",
+        "please",
+        "show",
+        "explain",
+        "describe",
+        "give",
+        "information",
+        "details",
+        "find",
+        "look",
+        "search",
+        "some",
+        "any",
+    ]
+)
+_FILLER_WORDS_FR = frozenset(
+    [
+        "montre",
+        "cherche",
+        "trouve",
+        "donne",
+        "explique",
+        "decris",
+        "recherche",
+        "quelques",
+        "certains",
+    ]
+)
 _FILLER_WORDS = _FILLER_WORDS_EN | _FILLER_WORDS_FR
 
 
@@ -201,23 +224,25 @@ def rerank_and_build_results(
         excerpt = _build_excerpt(best.text, intent.keywords)
         highlights = _extract_highlights(doc_chunks, intent.keywords)
 
-        results.append(SearchResult(
-            rank=0,
-            document_id=doc_id,
-            document_title=best.document_title,
-            document_type=best.document_type,
-            bucket=best.document_bucket,
-            relevance_label=label,
-            relevance_score=round(normalized_score, 4),
-            excerpt=excerpt,
-            highlights=highlights,
-            tags=best.tags,
-            page_number=best.page_number,
-            document_date=best.created_at,
-            match_reason=_build_match_reason(best, intent),
-            is_confidential=(best.document_bucket == DocumentBucket.CONFIDENTIAL),
-            match_source=best.match_source,
-        ))
+        results.append(
+            SearchResult(
+                rank=0,
+                document_id=doc_id,
+                document_title=best.document_title,
+                document_type=best.document_type,
+                bucket=best.document_bucket,
+                relevance_label=label,
+                relevance_score=round(normalized_score, 4),
+                excerpt=excerpt,
+                highlights=highlights,
+                tags=best.tags,
+                page_number=best.page_number,
+                document_date=best.created_at,
+                match_reason=_build_match_reason(best, intent),
+                is_confidential=(best.document_bucket == DocumentBucket.CONFIDENTIAL),
+                match_source=best.match_source,
+            )
+        )
 
     results.sort(key=lambda r: r.relevance_score, reverse=True)
     for i, result in enumerate(results[:top_k], start=1):
@@ -239,14 +264,10 @@ def _score_to_label(score: float) -> RelevanceLabel:
 def _build_excerpt(text: str, keywords: list[str]) -> str:
     if not keywords:
         return text[:400]
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = re.split(r"(?<=[.!?])\s+", text)
 
     def _keyword_count(sentence: str) -> int:
-        return sum(
-            1
-            for kw in keywords
-            if re.search(rf"\b{re.escape(kw.lower())}\b", sentence.lower())
-        )
+        return sum(1 for kw in keywords if re.search(rf"\b{re.escape(kw.lower())}\b", sentence.lower()))
 
     best_sent = max(sentences, key=_keyword_count, default=text)
     return best_sent[:400]
@@ -257,13 +278,9 @@ def _extract_highlights(chunks: list[RawChunk], keywords: list[str]) -> list[str
         return []
     candidates = []
     for chunk in chunks:
-        sentences = re.split(r'(?<=[.!?])\s+', chunk.text)
+        sentences = re.split(r"(?<=[.!?])\s+", chunk.text)
         for s in sentences:
-            score = sum(
-                1
-                for kw in keywords
-                if re.search(rf"\b{re.escape(kw.lower())}\b", s.lower())
-            )
+            score = sum(1 for kw in keywords if re.search(rf"\b{re.escape(kw.lower())}\b", s.lower()))
             if score > 0:
                 candidates.append((score, s.strip()))
     candidates.sort(reverse=True, key=lambda x: x[0])
@@ -276,17 +293,11 @@ def _build_match_reason(chunk: RawChunk, intent: ParsedIntent) -> str:
         reasons.append("forte similarite semantique")
     if chunk.fts_rank > 0.3:
         reasons.append("correspondance textuelle exacte")
-    matched_kw = [
-        kw for kw in intent.keywords
-        if re.search(rf"\b{re.escape(kw.lower())}\b", chunk.text.lower())
-    ]
+    matched_kw = [kw for kw in intent.keywords if re.search(rf"\b{re.escape(kw.lower())}\b", chunk.text.lower())]
     if matched_kw:
         reasons.append(f"mots-cles: {', '.join(matched_kw[:3])}")
     if intent.entities:
-        matched_ent = [
-            e for e in intent.entities
-            if re.search(rf"\b{re.escape(e.lower())}\b", chunk.text.lower())
-        ]
+        matched_ent = [e for e in intent.entities if re.search(rf"\b{re.escape(e.lower())}\b", chunk.text.lower())]
         if matched_ent:
             reasons.append(f"entites: {', '.join(matched_ent[:2])}")
     return " | ".join(reasons) if reasons else "correspondance globale"
@@ -295,57 +306,95 @@ def _build_match_reason(chunk: RawChunk, intent: ParsedIntent) -> str:
 def build_citations(results: list[SearchResult], raw_chunks: list[RawChunk]) -> list[Citation]:
     cited_docs: set[UUID] = set()
     citations: list[Citation] = []
-    chunk_by_doc = {
-        c.document_id: c
-        for c in sorted(raw_chunks, key=lambda c: c.rrf_score, reverse=True)
-    }
+    chunk_by_doc = {c.document_id: c for c in sorted(raw_chunks, key=lambda c: c.rrf_score, reverse=True)}
 
     for result in results:
         if result.document_id not in cited_docs:
             cited_docs.add(result.document_id)
             best_chunk = chunk_by_doc.get(result.document_id)
             excerpt = (best_chunk.text[:200] + "...") if best_chunk else result.excerpt[:200]
-            citations.append(Citation(
-                document_id=result.document_id,
-                document_title=result.document_title,
-                document_type=result.document_type,
-                bucket=result.bucket,
-                page_number=result.page_number,
-                chunk_excerpt=excerpt,
-                relevance_score=result.relevance_score,
-            ))
+            citations.append(
+                Citation(
+                    document_id=result.document_id,
+                    document_title=result.document_title,
+                    document_type=result.document_type,
+                    bucket=result.bucket,
+                    page_number=result.page_number,
+                    chunk_excerpt=excerpt,
+                    relevance_score=result.relevance_score,
+                )
+            )
     return citations[:10]
 
 
 def _fallback_intent(query: str) -> ParsedIntent:
     q = query.lower()
-    temporal = any(w in q for w in [
-        "2020", "2021", "2022", "2023", "2024", "2025", "2026",
-        "an dernier", "last year", "evolution", "trend",
-    ])
-    financial = any(w in q for w in [
-        "bilan", "actif", "balance sheet", "financ", "asset", "tresorerie",
-    ])
-    intent = (
-        QueryIntent.TEMPORAL if temporal
-        else QueryIntent.FINANCIAL if financial
-        else QueryIntent.EXPLORATORY
+    temporal = any(
+        w in q
+        for w in [
+            "2020",
+            "2021",
+            "2022",
+            "2023",
+            "2024",
+            "2025",
+            "2026",
+            "an dernier",
+            "last year",
+            "evolution",
+            "trend",
+        ]
     )
+    financial = any(
+        w in q
+        for w in [
+            "bilan",
+            "actif",
+            "balance sheet",
+            "financ",
+            "asset",
+            "tresorerie",
+        ]
+    )
+    intent = QueryIntent.TEMPORAL if temporal else QueryIntent.FINANCIAL if financial else QueryIntent.EXPLORATORY
     stop_words = {
-        "le", "la", "les", "de", "du", "des", "en", "et", "ou",
-        "un", "une", "the", "a", "an", "of", "in",
+        "le",
+        "la",
+        "les",
+        "de",
+        "du",
+        "des",
+        "en",
+        "et",
+        "ou",
+        "un",
+        "une",
+        "the",
+        "a",
+        "an",
+        "of",
+        "in",
     }
-    words = [
-        w for w in re.findall(r'\b\w+\b', query.lower())
-        if w not in stop_words and len(w) > 2
-    ]
+    words = [w for w in re.findall(r"\b\w+\b", query.lower()) if w not in stop_words and len(w) > 2]
     return ParsedIntent(
         intent=intent,
         confidence=0.5,
         keywords=words[:8],
         requires_synthesis=True,
         detected_language=(
-            "fr" if any(re.search(r'\b' + w + r'\b', q) for w in ["le", "la", "les", "des", "est", "sont"])
+            "fr"
+            if any(re.search(r"\b" + w + r"\b", q) for w in ["le", "la", "les", "des", "est", "sont"])
+            # Vault is French-dominant: short queries without strong English
+            # signal (the/a/is/are/when/where/how) default to French, matching
+            # input_guard._detect_language. A bare French noun like "contrat"
+            # must not be classified as "en" (2026-08-05 smoke regression).
+            else "en"
+            if any(
+                re.search(r"\b" + w + r"\b", q)
+                for w in ["the", "a", "an", "is", "are", "when", "where", "how", "of", "to", "for"]
+            )
+            else "fr"
+            if len(words) <= 2
             else "en"
         ),
     )
@@ -417,6 +466,7 @@ Retourne uniquement un tableau JSON :
 
 
 # ---- LLM WRAPPER ----
+
 
 async def _call_llm(
     messages: list[dict],
@@ -556,6 +606,7 @@ async def parse_intent(query: str) -> ParsedIntent:
 
 # ---- STAGE 5: SYNTHESIS AGENT ----
 
+
 async def synthesize_answer(
     query: str,
     results: list[SearchResult],
@@ -600,6 +651,7 @@ async def synthesize_answer(
 
 # ---- STAGE 6: SUGGESTION AGENT ----
 
+
 async def generate_suggestions(
     original_query: str,
     results: list[SearchResult],
@@ -609,7 +661,9 @@ async def generate_suggestions(
 ) -> list[SearchSuggestion]:
     try:
         top_titles = [r.document_title for r in results[:5]]
-        context = f"Requete: {original_query}\nDocuments trouves: {', '.join(top_titles)}\nIntent: {intent.intent.value}"
+        context = (
+            f"Requete: {original_query}\nDocuments trouves: {', '.join(top_titles)}\nIntent: {intent.intent.value}"
+        )
         raw, _ = await _call_llm(
             messages=[{"role": "user", "content": context}],
             system=SUGGESTION_SYSTEM_PROMPT,
@@ -635,22 +689,28 @@ async def generate_suggestions(
 def _fallback_suggestions(query: str, intent: ParsedIntent) -> list[SearchSuggestion]:
     suggestions = []
     if intent.temporal_markers:
-        suggestions.append(SearchSuggestion(
-            suggestion_type="temporal",
-            text=f"Comment a evolue '{query}' au fil du temps ?",
-            rationale="Exploration temporelle de ce sujet",
-        ))
+        suggestions.append(
+            SearchSuggestion(
+                suggestion_type="temporal",
+                text=f"Comment a evolue '{query}' au fil du temps ?",
+                rationale="Exploration temporelle de ce sujet",
+            )
+        )
     if intent.entities:
-        suggestions.append(SearchSuggestion(
-            suggestion_type="entity_search",
-            text=f"Tous les documents mentionnant '{intent.entities[0]}'",
-            rationale="Recherche centree sur cette entite",
-        ))
-    suggestions.append(SearchSuggestion(
-        suggestion_type="expand",
-        text=f"Resume global sur : {query}",
-        rationale="Vue d'ensemble synthetisee",
-    ))
+        suggestions.append(
+            SearchSuggestion(
+                suggestion_type="entity_search",
+                text=f"Tous les documents mentionnant '{intent.entities[0]}'",
+                rationale="Recherche centree sur cette entite",
+            )
+        )
+    suggestions.append(
+        SearchSuggestion(
+            suggestion_type="expand",
+            text=f"Resume global sur : {query}",
+            rationale="Vue d'ensemble synthetisee",
+        )
+    )
     return suggestions
 
 
@@ -663,11 +723,7 @@ async def _strip_confidential_chunks(
     Uses a FRESH session because the search session may be corrupted by
     asyncio.wait task cancellations or failed sub-queries.
     """
-    confidential_doc_ids = [
-        str(c.document_id)
-        for c in chunks
-        if c.document_bucket == DocumentBucket.CONFIDENTIAL
-    ]
+    confidential_doc_ids = [str(c.document_id) for c in chunks if c.document_bucket == DocumentBucket.CONFIDENTIAL]
     if not confidential_doc_ids:
         return chunks
 
@@ -676,9 +732,7 @@ async def _strip_confidential_chunks(
     doc_metadata: dict = {}
     async with AsyncSessionLocal() as meta_db:
         result = await meta_db.execute(
-            sa_select(Document)
-            .options(selectinload(Document.tags))
-            .where(Document.id.in_(confidential_doc_ids))
+            sa_select(Document).options(selectinload(Document.tags)).where(Document.id.in_(confidential_doc_ids))
         )
         doc_metadata = {str(doc.id): doc for doc in result.scalars().all()}
 
@@ -692,11 +746,7 @@ async def _strip_confidential_chunks(
         tags = [t.tag_name for t in doc.tags] if doc and doc.tags else []
         page_count = doc.page_count if doc else None
         mime_type = doc.mime_type if doc else "unknown"
-        created_at = (
-            doc.created_at.strftime("%Y-%m-%d")
-            if doc and doc.created_at
-            else "unknown"
-        )
+        created_at = doc.created_at.strftime("%Y-%m-%d") if doc and doc.created_at else "unknown"
 
         metadata_summary = (
             f"[Confidential document — content not sent to AI] "
@@ -706,9 +756,7 @@ async def _strip_confidential_chunks(
         if tags:
             metadata_summary += f" | tags: {', '.join(tags)}"
 
-        stripped.append(
-            chunk.model_copy(update={"text": metadata_summary})
-        )
+        stripped.append(chunk.model_copy(update={"text": metadata_summary}))
 
     return stripped
 
@@ -746,6 +794,7 @@ async def _count_unindexed_filename_matches(
 
 
 # ---- MAIN ORCHESTRATOR ----
+
 
 async def run_agentic_search(
     db: AsyncSession,
@@ -785,11 +834,22 @@ async def run_agentic_search(
     words = request.query.strip().split()
     is_simple = (
         len(words) <= 3
-        and not any(w in request.query.lower() for w in [
-            "evolution", "trend", "compare", "difference",
-            "bilan", "balance sheet", "resume", "synthese",
-            "synthesis", "summary", "overview",
-        ])
+        and not any(
+            w in request.query.lower()
+            for w in [
+                "evolution",
+                "trend",
+                "compare",
+                "difference",
+                "bilan",
+                "balance sheet",
+                "resume",
+                "synthese",
+                "synthesis",
+                "summary",
+                "overview",
+            ]
+        )
         and request.mode != SearchMode.DEEP
     )
 
@@ -839,21 +899,23 @@ async def run_agentic_search(
                 rerank=False,
             )
             for sr in result.get("results", []):
-                all_chunks.append(RawChunk(
-                    chunk_id=sr.chunk_id,
-                    document_id=sr.document_id,
-                    document_title=sr.document_name,
-                    document_bucket=DocumentBucket(sr.document_bucket),
-                    document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
-                    chunk_index=sr.chunk_index,
-                    page_number=sr.page_number,
-                    text=sr.chunk_text,
-                    semantic_score=sr.semantic_score,
-                    fts_rank=sr.keyword_score,
-                    rrf_score=sr.final_score,
-                    tags=[],
-                    match_source=sr.match_source,
-                ))
+                all_chunks.append(
+                    RawChunk(
+                        chunk_id=sr.chunk_id,
+                        document_id=sr.document_id,
+                        document_title=sr.document_name,
+                        document_bucket=DocumentBucket(sr.document_bucket),
+                        document_type=sr.document_name.rsplit(".", 1)[-1] if "." in sr.document_name else "unknown",
+                        chunk_index=sr.chunk_index,
+                        page_number=sr.page_number,
+                        text=sr.chunk_text,
+                        semantic_score=sr.semantic_score,
+                        fts_rank=sr.keyword_score,
+                        rrf_score=sr.final_score,
+                        tags=[],
+                        match_source=sr.match_source,
+                    )
+                )
         except Exception as exc:
             logger.warning("Sub-query search failed: %s", exc)
 
@@ -887,7 +949,11 @@ async def run_agentic_search(
 
     # Stage 4: Re-rank
     results, has_confidential = rerank_and_build_results(
-        all_chunks, request.query, intent, request.top_k, user_role,
+        all_chunks,
+        request.query,
+        intent,
+        request.top_k,
+        user_role,
     )
     logger.info("Re-ranked to %d results | confidential=%s", len(results), has_confidential)
 
@@ -898,9 +964,12 @@ async def run_agentic_search(
     should_synthesize = (
         mode == SearchMode.DEEP
         or intent.requires_synthesis
-        or intent.intent in (
-            QueryIntent.SYNTHESIS, QueryIntent.TEMPORAL,
-            QueryIntent.COMPARATIVE, QueryIntent.FINANCIAL,
+        or intent.intent
+        in (
+            QueryIntent.SYNTHESIS,
+            QueryIntent.TEMPORAL,
+            QueryIntent.COMPARATIVE,
+            QueryIntent.FINANCIAL,
         )
     ) and len(results) > 0
 
@@ -941,7 +1010,10 @@ async def run_agentic_search(
         try:
             suggestions = await asyncio.wait_for(
                 generate_suggestions(
-                    request.query, results, intent, has_confidential,
+                    request.query,
+                    results,
+                    intent,
+                    has_confidential,
                     context_block=_context_block,
                 ),
                 timeout=5.0,

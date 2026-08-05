@@ -184,9 +184,18 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - **Backfill**: `scripts/memory_backfill.py` (docker-cp into the backend
   container like migration036_backfill) distills existing sessions — resumable
   advancing id window + state file. `--all` distills every session, default
-  only opted-in ones. ~3 sessions ≈ 11s (one LLM call per session).
-- Deferred: L3 profile builder, review panel UI, memory search injection into
-  the global search endpoint (chat injection is live).
+  only opted-in ones. ~3 sessions ≈ 11s (one LLM call per session). The full
+  backfill ran live 2026-08-05: 21 sessions in ~3 min → 33 atoms (20/13 across
+  two owners), all `private`, mostly `pending`.
+- **Spec complete (2026-08-05)**: L3 profile builder
+  (`memory_service.build_profile`, monthly beat `memory-profile-builder`
+  04:15 UTC on the 1st) — one LLM pass over the owner's REVIEWED atoms +
+  scenarios → persona + stable patterns, upserted with version+1. Global
+  search now returns the owner's reviewed atoms/scenarios: `/v1/search/global`
+  accepts type=memory (included by default); `search_all_types` → `_search_memory`
+  emits `memory_atom` / `memory_scenario` results (owner-scoped, private-only).
+  The full L0→L3 loop is live: chat distillation → backfill → review panel →
+  injection + search.
 
 ## Ops rules (incident-forged)
 

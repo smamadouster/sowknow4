@@ -22,6 +22,11 @@ import time
 from pathlib import Path
 from uuid import UUID
 
+# The backend app package lives one directory above this script (inside the
+# backend container it is /app/app). Ensure it is importable regardless of
+# where the script is invoked from.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 STATE_FILE = os.environ.get("MEMORY_BACKFILL_STATE", "/tmp/memory_backfill.state")
 BATCH = 20
 
@@ -96,14 +101,16 @@ async def main() -> int:
         "--all", action="store_true", help="distill every session, not just opted-in"
     )
     parser.add_argument("--batch", type=int, default=BATCH, help="sessions per batch")
-    parser.add_argument("--state", default=STATE_FILE, help="state file path")
+    parser.add_argument("--state", default=None, help="state file path")
     parser.add_argument(
         "--limit", type=int, default=0, help="max sessions to process (0 = all)"
     )
     args = parser.parse_args()
 
     global STATE_FILE
-    STATE_FILE = args.state
+    STATE_FILE = args.state or os.environ.get(
+        "MEMORY_BACKFILL_STATE", "/tmp/memory_backfill.state"
+    )
 
     engine = create_async_engine(_async_db_url, poolclass=NullPool)
     session_factory = async_sessionmaker(

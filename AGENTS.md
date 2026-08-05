@@ -172,8 +172,21 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   fixed.
 - When deploying the memory PoC, deploy BOTH `backend` AND `celery-collections`
   — the worker runs its own copy of the task code and must be recreated too.
-- Deferred: L2 clustering, L3 profile, memory search injection (budget caps
-  defined), review panel, backfill of existing chat sessions.
+  The nightly L2 clustering beat (`memory-scenario-clustering`, 03:45 UTC) also
+  needs `celery-beat` recreated when the schedule changes.
+- **Review + injection live (2026-08-05)**: `/api/v1/memory/atoms` lists the
+  owner's atoms+scenarios; `PATCH /api/v1/memory/atoms/{id}` flips
+  pending→reviewed/rejected. Only `status=reviewed` atoms / `status=reviewed`
+  scenarios are injected into chat context (via `memory_search_service`,
+  budget-capped by `MEMORY_INJECT_*` settings), and only when the session has
+  `memory_enabled=true`. Verified live: reviewing a French-preference atom made
+  a later chat turn recall it across sessions.
+- **Backfill**: `scripts/memory_backfill.py` (docker-cp into the backend
+  container like migration036_backfill) distills existing sessions — resumable
+  advancing id window + state file. `--all` distills every session, default
+  only opted-in ones. ~3 sessions ≈ 11s (one LLM call per session).
+- Deferred: L3 profile builder, review panel UI, memory search injection into
+  the global search endpoint (chat injection is live).
 
 ## Ops rules (incident-forged)
 

@@ -148,6 +148,33 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   embed-server warmup times out, breaks the session (`greenlet_spawn`), and
   refresh then commits the empty result set over the old items.
 
+## Agent Memory (2026-08-05, PoC — spec in docs/agent_memory/SPEC.md)
+
+- Persistent layered memory distilled from chat: L0 = existing `chat_messages`,
+  L1 = `memory_atoms`, L2 = `memory_scenarios`, L3 = `memory_profiles`
+  (migration 037, additive). Inspired by TencentDB Agent-Memory's L0→L3 model.
+- **Off by default**: `chat_sessions.memory_enabled` (default false). Only
+  opted-in sessions enqueue `app.tasks.memory_tasks.distill_chat_session` (on
+  the `collections` queue) after each assistant turn. No behavior change
+  otherwise.
+- Atoms are `status=pending` + `visibility=private` by default — they never
+  enter search/context until reviewed. Grounding: an atom is DROPPED unless
+  its `source_message_index` points at a real message in the transcript
+  (verified live: the extractor produces valid JSON atoms for a French
+  preference/fact conversation).
+- **LLM extraction gotchas (verified live 2026-08-05)**: (1) the memory system
+  prompt MUST be included in the messages sent — a bare transcript yields
+  prose, not atoms; (2) pass a per-session `collection_id` scope to the LLM
+  gateway so a memory extraction never collides with an unrelated
+  conversation's cached response; (3) memory model enum columns use
+  `native_enum=False` (String columns) — the native PG enum type mismatch
+  (`character varying = memorystatus`) broke the worker's dedup query until
+  fixed.
+- When deploying the memory PoC, deploy BOTH `backend` AND `celery-collections`
+  — the worker runs its own copy of the task code and must be recreated too.
+- Deferred: L2 clustering, L3 profile, memory search injection (budget caps
+  defined), review panel, backfill of existing chat sessions.
+
 ## Ops rules (incident-forged)
 
 - Guardian-HC (`monitoring/guardian-hc/`) watches and ALERTS. It must never

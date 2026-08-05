@@ -73,7 +73,11 @@ class MemoryAtom(Base, TimestampMixin):
         index=True,
     )
     kind = Column(
-        Enum(MemoryAtomKind, values_callable=lambda obj: [e.value for e in obj]),
+        Enum(
+            MemoryAtomKind,
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
     )
     statement = Column(Text, nullable=False)
@@ -86,13 +90,21 @@ class MemoryAtom(Base, TimestampMixin):
 
     search_vector = Column(TSVECTOR, nullable=True)
     visibility = Column(
-        Enum(MemoryVisibility, values_callable=lambda obj: [e.value for e in obj]),
+        Enum(
+            MemoryVisibility,
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=MemoryVisibility.PRIVATE,
         server_default="private",
     )
     status = Column(
-        Enum(MemoryStatus, values_callable=lambda obj: [e.value for e in obj]),
+        Enum(
+            MemoryStatus,
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=MemoryStatus.PENDING,
         server_default="pending",
@@ -139,13 +151,21 @@ class MemoryScenario(Base, TimestampMixin):
 
     search_vector = Column(TSVECTOR, nullable=True)
     visibility = Column(
-        Enum(MemoryVisibility, values_callable=lambda obj: [e.value for e in obj]),
+        Enum(
+            MemoryVisibility,
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=MemoryVisibility.PRIVATE,
         server_default="private",
     )
     status = Column(
-        Enum(MemoryStatus, values_callable=lambda obj: [e.value for e in obj]),
+        Enum(
+            MemoryStatus,
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=MemoryStatus.PENDING,
         server_default="pending",

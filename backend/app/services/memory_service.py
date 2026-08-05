@@ -129,7 +129,7 @@ class MemoryService:
         if not transcript:
             return []
 
-        candidates = await self._llm_extract(transcript)
+        candidates = await self._llm_extract(transcript, session_id=session_id)
         if not candidates:
             return []
 
@@ -168,17 +168,30 @@ class MemoryService:
     # LLM extraction
     # ------------------------------------------------------------------
 
-    async def _llm_extract(self, transcript: list[dict[str, str]]) -> list[dict[str, Any]]:
-        """Call the LLM for candidate atoms. Returns [] on any failure."""
+    async def _llm_extract(
+        self, transcript: list[dict[str, str]], *, session_id: uuid.UUID | None = None
+    ) -> list[dict[str, Any]]:
+        """Call the LLM for candidate atoms. Returns [] on any failure.
+
+        The system prompt MUST be part of the messages sent (not dropped) —
+        the bare transcript without JSON instructions yields prose, not atoms.
+        A per-session collection_id scopes the OpenRouter cache so a memory
+        extraction never collides with an unrelated conversation's cached
+        response.
+        """
         user_prompt = "Conversation (index: role — content):\n\n" + "\n".join(
             f"[{i}] {m['role']} — {m['content'][:600]}" for i, m in enumerate(transcript)
         )
         try:
             raw = await asyncio.wait_for(
                 llm_gateway.chat_completion_non_stream(
-                    messages=[{"role": "user", "content": user_prompt}],
+                    messages=[
+                        {"role": "system", "content": _MEMORY_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
                     temperature=0.1,
                     max_tokens=1500,
+                    collection_id=f"memory:{session_id}" if session_id else None,
                 ),
                 timeout=30.0,
             )

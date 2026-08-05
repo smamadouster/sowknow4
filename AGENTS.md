@@ -54,6 +54,10 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   backend container (`/tmp/migration036_backfill.state`), so a backend deploy
   (deploy.sh recreates the container) kills it and its state file — restart it
   after any deploy, reseeding the state from the last logged last_id.
+  COMPLETE as of 2026-08-05: 1,377,663 chunks + 17,971 articles, 0 nulls, 0
+  rows differing from the folded expression, state file at max UUIDs. No longer
+  needs restarting after deploys. The accented @@ branches now match nothing
+  and can be pruned (verify once in production, then drop them).
 - Agentic rerank is CONSOLIDATED (2026-08-04): the agentic pipeline (stream +
   non-stream) calls `hybrid_search(..., rerank=False)` per sub-query, then runs
   ONE cross-encoder pass over the merged, deduped candidate pool via
@@ -140,6 +144,12 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - Guardian-HC (`monitoring/guardian-hc/`) watches and ALERTS. It must never
   auto-restart postgres or backend (config + code-enforced in core.py).
   Container matching is exact-name — keep it that way.
+- Guardian daily report + `/status` Telegram send iterate `AgentRegistry.agents`
+  — that property was missing until 2026-08-05 (only `_agents`/`get`/`summary`
+  existed), so the 06:00 daily report crashed with
+  `'AgentRegistry' object has no attribute 'agents'` and Telegram alerts never
+  sent (email still worked). The property is exposed now — if Telegram alerts
+  go silent again, check this first.
 - A slow query is not a dead database. No watchdog restarts Postgres. Ever.
 - Backups: restic daily (`scripts/backup*.sh`), memo in docs/operations/BACKUP_MEMO.md.
 - Two compose generations once ran mixed (orphan `sowknow4-*` containers from

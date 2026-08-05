@@ -309,11 +309,11 @@ class HybridSearchService:
         # accents ('présence' → 'présenc'), so an unaccented query missed every
         # accented body match (verified live: 'presence' → 0 vs 'présence' →
         # thousands). Migration 036 re-stems the stored vectors with
-        # sowknow.unaccent() applied; each config is therefore ALSO matched
-        # against sowknow.unaccent(:query). BOTH branch sets are kept so recall
-        # holds across the backfill transition (accented rows, mixed rows,
-        # folded rows). The accented branches match nothing post-backfill and
-        # can be pruned once production has verified the 036 backfill.
+        # sowknow.unaccent() applied; every config is matched against
+        # sowknow.unaccent(:query). The raw-query branches matched nothing
+        # post-backfill (verified live 2026-08-05: accented branch 0 vs
+        # unaccented 1236) and were pruned — the unaccented branches subsume
+        # them for both accented and unaccented queries.
         sql_query = text("""
             SELECT
                 dc.id          AS chunk_id,
@@ -324,20 +324,12 @@ class HybridSearchService:
                 dc.chunk_index,
                 dc.page_number,
                 COALESCE(GREATEST(
-                    ts_rank_cd(dc.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
-                    ts_rank_cd(dc.search_vector, plainto_tsquery('french', :query), 32),
-                    ts_rank_cd(dc.search_vector, plainto_tsquery('english', :query), 32),
-                    ts_rank_cd(dc.search_vector, plainto_tsquery('simple', :query), 32),
                     ts_rank_cd(dc.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
                     ts_rank_cd(dc.search_vector, plainto_tsquery('french', sowknow.unaccent(:query)), 32),
                     ts_rank_cd(dc.search_vector, plainto_tsquery('english', sowknow.unaccent(:query)), 32),
                     ts_rank_cd(dc.search_vector, plainto_tsquery('simple', sowknow.unaccent(:query)), 32)
                 ), 0) * 1.2
                 + COALESCE(GREATEST(
-                    ts_rank_cd(dc.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
-                    ts_rank_cd(dc.search_vector, phraseto_tsquery('french', :query), 32),
-                    ts_rank_cd(dc.search_vector, phraseto_tsquery('english', :query), 32),
-                    ts_rank_cd(dc.search_vector, phraseto_tsquery('simple', :query), 32),
                     ts_rank_cd(dc.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
                     ts_rank_cd(dc.search_vector, phraseto_tsquery('french', sowknow.unaccent(:query)), 32),
                     ts_rank_cd(dc.search_vector, phraseto_tsquery('english', sowknow.unaccent(:query)), 32),
@@ -349,11 +341,7 @@ class HybridSearchService:
             WHERE d.bucket::text = ANY(:buckets)
               AND dc.search_vector IS NOT NULL
               AND (
-                  dc.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), :query)
-                  OR dc.search_vector @@ plainto_tsquery('french', :query)
-                  OR dc.search_vector @@ plainto_tsquery('english', :query)
-                  OR dc.search_vector @@ plainto_tsquery('simple', :query)
-                  OR dc.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query))
+                  dc.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query))
                   OR dc.search_vector @@ plainto_tsquery('french', sowknow.unaccent(:query))
                   OR dc.search_vector @@ plainto_tsquery('english', sowknow.unaccent(:query))
                   OR dc.search_vector @@ plainto_tsquery('simple', sowknow.unaccent(:query))
@@ -400,9 +388,7 @@ class HybridSearchService:
 
         # Fallback: filename trigram similarity for typos when tsvector returns <3 results
         if len(search_results) < 3 and len(query.strip()) >= 2:
-            fallback = await self._trigram_fallback_search(
-                query=query, limit=limit, db=db, user=user
-            )
+            fallback = await self._trigram_fallback_search(query=query, limit=limit, db=db, user=user)
             seen = {r.chunk_id for r in search_results}
             for r in fallback:
                 if r.chunk_id not in seen:
@@ -876,8 +862,9 @@ class HybridSearchService:
         # Same multi-config + accent-folding strategy as keyword_search
         # (2026-08-04): article search_vector is stemmed with search_language
         # (default 'french'), so match caller regconfig + french + english +
-        # simple against both the raw query and the accent-folded query. Rank
-        # via GREATEST with the phrase boost preserved (chunk version).
+        # simple against the accent-folded query. Rank via GREATEST with the
+        # phrase boost preserved (chunk version). Raw-query branches were
+        # pruned 2026-08-05 (migration 036 backfill complete).
         sql_query = text("""
             SELECT
                 a.id as article_id,
@@ -887,20 +874,12 @@ class HybridSearchService:
                 a.title,
                 a.summary,
                 COALESCE(GREATEST(
-                    ts_rank_cd(a.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
-                    ts_rank_cd(a.search_vector, plainto_tsquery('french', :query), 32),
-                    ts_rank_cd(a.search_vector, plainto_tsquery('english', :query), 32),
-                    ts_rank_cd(a.search_vector, plainto_tsquery('simple', :query), 32),
                     ts_rank_cd(a.search_vector, plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
                     ts_rank_cd(a.search_vector, plainto_tsquery('french', sowknow.unaccent(:query)), 32),
                     ts_rank_cd(a.search_vector, plainto_tsquery('english', sowknow.unaccent(:query)), 32),
                     ts_rank_cd(a.search_vector, plainto_tsquery('simple', sowknow.unaccent(:query)), 32)
                 ), 0) * 1.2
                 + COALESCE(GREATEST(
-                    ts_rank_cd(a.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), :query), 32),
-                    ts_rank_cd(a.search_vector, phraseto_tsquery('french', :query), 32),
-                    ts_rank_cd(a.search_vector, phraseto_tsquery('english', :query), 32),
-                    ts_rank_cd(a.search_vector, phraseto_tsquery('simple', :query), 32),
                     ts_rank_cd(a.search_vector, phraseto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query)), 32),
                     ts_rank_cd(a.search_vector, phraseto_tsquery('french', sowknow.unaccent(:query)), 32),
                     ts_rank_cd(a.search_vector, phraseto_tsquery('english', sowknow.unaccent(:query)), 32),
@@ -912,11 +891,7 @@ class HybridSearchService:
             WHERE a.bucket = ANY(:buckets)
               AND a.search_vector IS NOT NULL
               AND (
-                  a.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), :query)
-                  OR a.search_vector @@ plainto_tsquery('french', :query)
-                  OR a.search_vector @@ plainto_tsquery('english', :query)
-                  OR a.search_vector @@ plainto_tsquery('simple', :query)
-                  OR a.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query))
+                  a.search_vector @@ plainto_tsquery(CAST(:regconfig AS regconfig), sowknow.unaccent(:query))
                   OR a.search_vector @@ plainto_tsquery('french', sowknow.unaccent(:query))
                   OR a.search_vector @@ plainto_tsquery('english', sowknow.unaccent(:query))
                   OR a.search_vector @@ plainto_tsquery('simple', sowknow.unaccent(:query))
@@ -1029,7 +1004,8 @@ class HybridSearchService:
         # via 'simple' as a fallback, so cross-language misses are prevented
         # without sacrificing stemming precision.
         keyword_results = await _safe_call(
-            "keyword", self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user, regconfig=regconfig)
+            "keyword",
+            self.keyword_search(query=query, limit=limit * 2, offset=0, db=db, user=user, regconfig=regconfig),
         )
         filename_results = await _safe_call(
             "filename", self._filename_search(query=query, limit=limit, db=db, user=user)
@@ -1038,11 +1014,10 @@ class HybridSearchService:
             "article_semantic", self.article_semantic_search(query=query, limit=limit, db=db, user=user)
         )
         article_kw_results = await _safe_call(
-            "article_keyword", self.article_keyword_search(query=query, limit=limit, db=db, user=user, regconfig=regconfig)
+            "article_keyword",
+            self.article_keyword_search(query=query, limit=limit, db=db, user=user, regconfig=regconfig),
         )
-        tag_results = await _safe_call(
-            "tag", self.tag_search(query=query, limit=limit, offset=0, db=db, user=user)
-        )
+        tag_results = await _safe_call("tag", self.tag_search(query=query, limit=limit, offset=0, db=db, user=user))
 
         is_partial = False
 
@@ -1100,9 +1075,7 @@ class HybridSearchService:
                 }
             else:
                 merged_scores[key]["rrf_score"] += score
-                merged_scores[key]["keyword_score"] = max(
-                    merged_scores[key]["keyword_score"], 1.0
-                )
+                merged_scores[key]["keyword_score"] = max(merged_scores[key]["keyword_score"], 1.0)
 
         # Add article results with 1.2x boost (articles are more coherent than raw chunks)
         article_boost = 1.2
@@ -1176,7 +1149,8 @@ class HybridSearchService:
             sem_w, kw_w = 0.0, 1.0
             logger.warning(
                 "Semantic search unavailable (embed server down) — "
-                "using keyword-only search with full weight for query='%s'", query
+                "using keyword-only search with full weight for query='%s'",
+                query,
             )
 
         # Dynamic minimum threshold: lowered from 0.25/0.15 to 0.08/0.05 so that
@@ -1239,9 +1213,7 @@ class HybridSearchService:
         # match (e.g. hyphenated words, numbers, or certain proper nouns).
         if len(filtered) < 3 and len(query.strip()) >= 2:
             try:
-                substring_results = await self._substring_fallback_search(
-                    query=query, limit=limit, db=db, user=user
-                )
+                substring_results = await self._substring_fallback_search(query=query, limit=limit, db=db, user=user)
                 seen = {k for k in filtered}
                 for sr in substring_results:
                     key = f"substring:{sr.document_id}"
@@ -1447,7 +1419,6 @@ class HybridSearchService:
         except Exception:
             return chunk_text
 
-
     # ──────────────────────────────────────────────────────────────────────
     # Multi-type global search (documents + bookmarks + notes + spaces)
     # ──────────────────────────────────────────────────────────────────────
@@ -1492,12 +1463,15 @@ class HybridSearchService:
             LIMIT :limit
         """)
 
-        rows = await db.execute(sql, {
-            "user_id": str(user.id),
-            "buckets": buckets,
-            "pattern": pattern,
-            "limit": limit,
-        })
+        rows = await db.execute(
+            sql,
+            {
+                "user_id": str(user.id),
+                "buckets": buckets,
+                "pattern": pattern,
+                "limit": limit,
+            },
+        )
 
         rows = rows.mappings().all()
         results = []
@@ -1509,16 +1483,18 @@ class HybridSearchService:
             )
             tags = [tr.tag_name for tr in tag_rows]
 
-            results.append({
-                "result_type": "bookmark",
-                "id": str(row["id"]),
-                "title": row["title"],
-                "description": (row["description"] or row["url"] or "")[:200],
-                "tags": tags,
-                "score": 0.8,
-                "bucket": row["bucket"],
-                "url": row["url"],
-            })
+            results.append(
+                {
+                    "result_type": "bookmark",
+                    "id": str(row["id"]),
+                    "title": row["title"],
+                    "description": (row["description"] or row["url"] or "")[:200],
+                    "tags": tags,
+                    "score": 0.8,
+                    "bucket": row["bucket"],
+                    "url": row["url"],
+                }
+            )
         return results
 
     async def _search_notes(
@@ -1551,12 +1527,15 @@ class HybridSearchService:
             LIMIT :limit
         """)
 
-        rows = await db.execute(sql, {
-            "user_id": str(user.id),
-            "buckets": buckets,
-            "pattern": pattern,
-            "limit": limit,
-        })
+        rows = await db.execute(
+            sql,
+            {
+                "user_id": str(user.id),
+                "buckets": buckets,
+                "pattern": pattern,
+                "limit": limit,
+            },
+        )
 
         rows = rows.mappings().all()
         results = []
@@ -1567,15 +1546,17 @@ class HybridSearchService:
             )
             tags = [tr.tag_name for tr in tag_rows]
 
-            results.append({
-                "result_type": "note",
-                "id": str(row["id"]),
-                "title": row["title"],
-                "description": (row["content"] or "")[:200],
-                "tags": tags,
-                "score": 0.8,
-                "bucket": row["bucket"],
-            })
+            results.append(
+                {
+                    "result_type": "note",
+                    "id": str(row["id"]),
+                    "title": row["title"],
+                    "description": (row["content"] or "")[:200],
+                    "tags": tags,
+                    "score": 0.8,
+                    "bucket": row["bucket"],
+                }
+            )
         return results
 
     async def _search_spaces(
@@ -1602,25 +1583,30 @@ class HybridSearchService:
             LIMIT :limit
         """)
 
-        rows = await db.execute(sql, {
-            "user_id": str(user.id),
-            "buckets": buckets,
-            "pattern": pattern,
-            "limit": limit,
-        })
+        rows = await db.execute(
+            sql,
+            {
+                "user_id": str(user.id),
+                "buckets": buckets,
+                "pattern": pattern,
+                "limit": limit,
+            },
+        )
 
         results = []
         for row in rows:
-            results.append({
-                "result_type": "space",
-                "id": str(row.id),
-                "title": row.name,
-                "description": (row.description or "")[:200],
-                "tags": [],
-                "score": 0.7,
-                "bucket": row.bucket,
-                "icon": row.icon,
-            })
+            results.append(
+                {
+                    "result_type": "space",
+                    "id": str(row.id),
+                    "title": row.name,
+                    "description": (row.description or "")[:200],
+                    "tags": [],
+                    "score": 0.7,
+                    "bucket": row.bucket,
+                    "icon": row.icon,
+                }
+            )
         return results
 
     async def search_all_types(
@@ -1699,7 +1685,12 @@ class HybridSearchService:
         """Convert hybrid search results to the unified dict format."""
         try:
             hybrid_result = await self.hybrid_search(
-                query=query, limit=limit, offset=0, db=db, user=user, timeout=5.0,
+                query=query,
+                limit=limit,
+                offset=0,
+                db=db,
+                user=user,
+                timeout=5.0,
             )
         except Exception as e:
             logger.warning("Document search failed in search_all_types: %s", e)
@@ -1712,15 +1703,17 @@ class HybridSearchService:
             if doc_id in seen_docs:
                 continue
             seen_docs.add(doc_id)
-            results.append({
-                "result_type": "document",
-                "id": doc_id,
-                "title": sr.document_name,
-                "description": (sr.chunk_text or "")[:200],
-                "tags": [],
-                "score": sr.final_score,
-                "bucket": sr.document_bucket,
-            })
+            results.append(
+                {
+                    "result_type": "document",
+                    "id": doc_id,
+                    "title": sr.document_name,
+                    "description": (sr.chunk_text or "")[:200],
+                    "tags": [],
+                    "score": sr.final_score,
+                    "bucket": sr.document_bucket,
+                }
+            )
         return results
 
 

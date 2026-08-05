@@ -319,6 +319,100 @@ class MemoryService:
                 best = sim
         return best if best >= settings.MEMORY_ATOM_SIM_THRESHOLD else None
 
+    # ------------------------------------------------------------------
+    # L2 scenario clustering
+    # ------------------------------------------------------------------
+
+    async def build_scenarios(self, db: AsyncSession, owner_id: uuid.UUID) -> int:
+        """Cluster the owner's reviewed atoms into memory_scenarios (L2).
+
+        Deterministic greedy clustering by entity overlap then shared source
+        sessions: atoms sharing an entity id (or a source session) form a
+        cluster. A cluster becomes a scenario when it has ≥ 3 atoms and its
+        atom set differs from every existing scenario's atom set (idempotent).
+        New scenarios start status=pending and are never injected before
+        review.
+        """
+        from app.models.memory import MemoryScenario
+
+        atoms = (
+            (
+                await db.execute(
+                    select(MemoryAtom)
+                    .where(
+                        MemoryAtom.owner_id == owner_id,
+                        MemoryAtom.status == MemoryStatus.REVIEWED.value,
+                    )
+                    .order_by(MemoryAtom.confidence.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if len(atoms) < 3:
+            logger.info("memory.scenarios skip owner=%s: %d reviewed atoms (< 3)", owner_id, len(atoms))
+            return 0
+
+        # Greedy cluster: start a cluster with the highest-confidence atom,
+        # then absorb any atom sharing an entity or a source session with it.
+        remaining = list(atoms)
+        clusters: list[list[MemoryAtom]] = []
+        while remaining:
+            seed = remaining.pop(0)
+            cluster = [seed]
+            seed_entities = set(seed.entity_ids or [])
+            seed_sessions = set(seed.source_session_ids or [])
+            changed = True
+            while changed:
+                changed = False
+                for atom in list(remaining):
+                    a_entities = set(atom.entity_ids or [])
+                    a_sessions = set(atom.source_session_ids or [])
+                    if (seed_entities & a_entities) or (seed_sessions & a_sessions):
+                        cluster.append(atom)
+                        seed_entities |= a_entities
+                        seed_sessions |= a_sessions
+                        remaining.remove(atom)
+                        changed = True
+            clusters.append(cluster)
+
+        # Existing scenario atom sets (idempotency).
+        existing = (await db.execute(select(MemoryScenario).where(MemoryScenario.owner_id == owner_id))).scalars().all()
+        existing_atom_sets = [set(s.atom_ids or []) for s in existing]
+
+        created = 0
+        for cluster in clusters:
+            if len(cluster) < 3:
+                continue
+            atom_ids = {str(a.id) for a in cluster}
+            if any(atom_ids == prev for prev in existing_atom_sets):
+                continue
+            # Title = the highest-confidence atom's kind+statement snippet.
+            top = max(cluster, key=lambda a: a.confidence)
+            title = f"{top.kind.value}: {top.statement[:100]}"
+            summary = "\n".join(f"- {a.statement}" for a in cluster[:8])
+            sessions = sorted({s for a in cluster for s in (a.source_session_ids or [])})
+            entities = sorted({e for a in cluster for e in (a.entity_ids or [])})
+            db.add(
+                MemoryScenario(
+                    id=uuid.uuid4(),
+                    owner_id=owner_id,
+                    title=title,
+                    summary=summary,
+                    scope=",".join(entities) if entities else "auto-cluster",
+                    atom_ids=sorted(atom_ids),
+                    source_session_ids=sessions,
+                    visibility=MemoryVisibility.PRIVATE,
+                    status=MemoryStatus.PENDING,
+                )
+            )
+            created += 1
+
+        if created:
+            await db.commit()
+        logger.info("memory.scenarios owner=%s: %d cluster(s) created", owner_id, created)
+        return created
+
 
 def _cosine(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two vectors."""

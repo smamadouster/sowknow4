@@ -172,6 +172,11 @@ celery_app.conf.update(
             "schedule": crontab(hour=3, minute=30),  # 03:30 UTC daily (FR8.4)
             "args": (),
         },
+        "memory-scenario-clustering": {
+            "task": "app.tasks.memory_tasks.build_memory_scenarios",
+            "schedule": crontab(hour=3, minute=45),  # 03:45 UTC daily, after audit purge
+            "args": (),
+        },
     },
 )
 

@@ -1,0 +1,155 @@
+"""Memory review API (draft v0.1 — docs/agent_memory/SPEC.md).
+
+Owner-scoped endpoints to list distilled atoms/scenarios and review them
+(pending → reviewed / rejected). Reviewed atoms are the only ones eligible
+for chat context injection (memory_search_service filters status=reviewed).
+
+Access: any authenticated user sees ONLY their own memory assets.
+"""
+
+import logging
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.database import get_db
+from app.models.memory import (
+    MemoryAtom,
+    MemoryScenario,
+    MemoryStatus,
+)
+from app.models.user import User
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/memory", tags=["memory"])
+
+
+class AtomResponse(BaseModel):
+    id: UUID
+    kind: str
+    statement: str
+    confidence: int
+    status: str
+    visibility: str
+    source_session_ids: list
+    created_at: object
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioResponse(BaseModel):
+    id: UUID
+    title: str
+    summary: str
+    scope: str | None
+    status: str
+    visibility: str
+    created_at: object
+
+    class Config:
+        from_attributes = True
+
+
+class MemoryListResponse(BaseModel):
+    atoms: list[AtomResponse]
+    scenarios: list[ScenarioResponse]
+    total_atoms: int
+    total_scenarios: int
+
+
+class AtomReviewRequest(BaseModel):
+    status: str = Field(..., pattern="^(pending|reviewed|rejected)$")
+
+
+@router.get("/atoms", response_model=MemoryListResponse)
+async def list_memory(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MemoryListResponse:
+    """List the current user's memory atoms + scenarios (pending first)."""
+    atoms = (
+        (
+            await db.execute(
+                select(MemoryAtom)
+                .where(MemoryAtom.owner_id == current_user.id)
+                .order_by(MemoryAtom.created_at.desc())
+                .limit(200)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    scenarios = (
+        (
+            await db.execute(
+                select(MemoryScenario)
+                .where(MemoryScenario.owner_id == current_user.id)
+                .order_by(MemoryScenario.created_at.desc())
+                .limit(50)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return MemoryListResponse(
+        atoms=[AtomResponse.model_validate(a) for a in atoms],
+        scenarios=[ScenarioResponse.model_validate(s) for s in scenarios],
+        total_atoms=len(atoms),
+        total_scenarios=len(scenarios),
+    )
+
+
+@router.patch("/atoms/{atom_id}", response_model=AtomResponse)
+async def review_atom(
+    atom_id: UUID,
+    body: AtomReviewRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AtomResponse:
+    """Review one atom: pending → reviewed (eligible for injection) or rejected."""
+    atom = (
+        (
+            await db.execute(
+                select(MemoryAtom).where(
+                    MemoryAtom.id == atom_id,
+                    MemoryAtom.owner_id == current_user.id,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if atom is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Atom not found")
+    atom.status = body.status
+    await db.commit()
+    await db.refresh(atom)
+    logger.info(
+        "memory.review user=%s atom=%s → %s",
+        current_user.id,
+        atom_id,
+        body.status,
+    )
+    return AtomResponse.model_validate(atom)
+
+
+@router.post("/atoms/{atom_id}/reject", response_model=AtomResponse)
+async def reject_atom(
+    atom_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AtomResponse:
+    """Reject one atom (shorthand for PATCH status=rejected)."""
+    return await review_atom(
+        atom_id,
+        AtomReviewRequest(status=MemoryStatus.REJECTED.value),
+        current_user=current_user,
+        db=db,
+    )

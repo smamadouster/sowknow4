@@ -41,9 +41,7 @@ class ChatService:
         self.llm = llm_gateway
         self.max_context_messages = 20
 
-    async def get_conversation_history(
-        self, session_id: UUID, db
-    ) -> list[dict[str, str]]:
+    async def get_conversation_history(self, session_id: UUID, db) -> list[dict[str, str]]:
         """Get conversation history for context"""
         messages = (
             (
@@ -81,22 +79,17 @@ class ChatService:
         has_pii = pii_detection_service.detect_pii(query)
         if has_pii:
             pii_summary = pii_detection_service.get_pii_summary(query)
-            logger.warning(
-                f"PII detected in chat query by user {current_user.email}: {pii_summary['detected_types']}"
-            )
+            logger.warning(f"PII detected in chat query by user {current_user.email}: {pii_summary['detected_types']}")
 
         # Get session to check document scope
-        session = (
-            await db.execute(select(ChatSession).where(ChatSession.id == session_id))
-        ).scalar_one_or_none()
+        session = (await db.execute(select(ChatSession).where(ChatSession.id == session_id))).scalar_one_or_none()
 
         # Detect query language so keyword search uses the same PostgreSQL
         # text-search config that was used to index the documents.
         detected_lang = (
             "fr"
             if any(
-                re.search(r"\b" + w + r"\b", query, re.IGNORECASE)
-                for w in ["le", "la", "les", "des", "est", "sont"]
+                re.search(r"\b" + w + r"\b", query, re.IGNORECASE) for w in ["le", "la", "les", "des", "est", "sont"]
             )
             else "en"
         )
@@ -114,9 +107,7 @@ class ChatService:
         # Filter by document scope if specified
         if session and session.document_scope:
             scope_set = {str(doc_id) for doc_id in session.document_scope}
-            search_result["results"] = [
-                r for r in search_result["results"] if str(r.document_id) in scope_set
-            ]
+            search_result["results"] = [r for r in search_result["results"] if str(r.document_id) in scope_set]
 
         top_results = search_result["results"][:10]
 
@@ -141,9 +132,7 @@ class ChatService:
         )
 
         # Check for confidential documents OR PII in query
-        has_confidential = (
-            any(r.document_bucket == "confidential" for r in top_results) or has_pii
-        )
+        has_confidential = any(r.document_bucket == "confidential" for r in top_results) or has_pii
 
         logger.warning(
             "retrieve_relevant_chunks: %d results, has_confidential=%s (admin=%s)",
@@ -155,9 +144,7 @@ class ChatService:
         # Batch-fetch metadata for confidential documents using a FRESH session
         # (only needed when showing metadata summaries to non-admin users)
         confidential_doc_ids = [
-            r.document_id
-            for r in top_results
-            if r.document_bucket == "confidential" and not user_is_admin
+            r.document_id for r in top_results if r.document_bucket == "confidential" and not user_is_admin
         ]
         doc_metadata: dict = {}
         if confidential_doc_ids:
@@ -168,9 +155,7 @@ class ChatService:
 
             async with AsyncSessionLocal() as meta_db:
                 result = await meta_db.execute(
-                    select(Document)
-                    .options(selectinload(Document.tags))
-                    .where(Document.id.in_(confidential_doc_ids))
+                    select(Document).options(selectinload(Document.tags)).where(Document.id.in_(confidential_doc_ids))
                 )
                 for doc in result.scalars().all():
                     doc_metadata[str(doc.id)] = doc
@@ -184,11 +169,7 @@ class ChatService:
                 tags = [t.tag_name for t in doc.tags] if doc and doc.tags else []
                 page_count = doc.page_count if doc else None
                 mime_type = doc.mime_type if doc else "unknown"
-                created_at = (
-                    doc.created_at.strftime("%Y-%m-%d")
-                    if doc and doc.created_at
-                    else "unknown"
-                )
+                created_at = doc.created_at.strftime("%Y-%m-%d") if doc and doc.created_at else "unknown"
 
                 metadata_summary = (
                     f"[Confidential document — content not sent to AI] "
@@ -254,11 +235,7 @@ class ChatService:
                 label = f"[Document {i + 1} \u2014 Public] {source['document_name']}"
             context_parts.append(f"{label}\n{source['chunk_text']}\n")
 
-        context_text = (
-            "\n".join(context_parts)
-            if context_parts
-            else "No relevant documents found."
-        )
+        context_text = "\n".join(context_parts) if context_parts else "No relevant documents found."
 
         task_prompt = """RULE 1 — ALWAYS ACKNOWLEDGE RETRIEVED DOCUMENTS:
 The documents listed in the context below ARE the search results for the user's query. Even if the exact keyword doesn't appear in every chunk, these are the most relevant documents the system found. You MUST acknowledge them and briefly say what they contain. NEVER say "I found nothing", "aucun document", or "no documents" when documents are listed below.
@@ -296,9 +273,7 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
             include_vault_protocol=False,
         )
 
-        messages = [
-            {"role": "system", "content": system_prompt.format(context=context_text)}
-        ]
+        messages = [{"role": "system", "content": system_prompt.format(context=context_text)}]
 
         for msg in conversation_history:
             messages.append({"role": msg["role"], "content": msg["content"]})
@@ -306,6 +281,34 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
         messages.append({"role": "user", "content": query})
 
         return messages
+
+    async def _maybe_inject_memory(
+        self,
+        db,
+        *,
+        session_id: UUID,
+        query: str,
+        owner_id: UUID,
+        messages: list[dict[str, str]],
+    ) -> None:
+        """Inject agent-memory context when the session opted in.
+
+        Off by default (ChatSession.memory_enabled=False) — no change. When
+        enabled, reviewed/ready memory assets are injected as a labeled block
+        in front of the RAG context, budget-capped by MEMORY_INJECT_* settings.
+        Failures are non-fatal: chat continues without memory.
+        """
+        try:
+            session = (await db.execute(select(ChatSession).where(ChatSession.id == session_id))).scalars().first()
+            if session is None or not getattr(session, "memory_enabled", False):
+                return
+            from app.services.memory_search_service import memory_search_service
+
+            block = await memory_search_service.retrieve_for_context(db, owner_id=owner_id, query=query)
+            if block and messages and messages[0]["role"] == "system":
+                messages[0]["content"] = block + "\n\n" + messages[0]["content"]
+        except Exception as exc:
+            logger.warning("memory.inject failed, continuing without memory: %s", exc)
 
     async def generate_chat_response(
         self, session_id: UUID, user_message: str, db, current_user: User
@@ -337,6 +340,15 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
                 messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
         except Exception:
             pass  # Context block is optional — don't break chat
+
+        # Inject agent memory when the session opted in (reviewed assets only)
+        await self._maybe_inject_memory(
+            db,
+            session_id=session_id,
+            query=user_message,
+            owner_id=current_user.id,
+            messages=messages,
+        )
 
         raw_confidential_context = self._has_raw_confidential_context(sources)
 
@@ -378,20 +390,12 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
                     "has_confidential": has_confidential,
                 }
             _elapsed = _time.monotonic() - _start
-            llm_request_duration.observe(
-                _elapsed, labels={"provider": _provider_name, "model": _model_name}
-            )
-            llm_request_total.inc(
-                labels={"provider": _provider_name, "status": "success"}
-            )
+            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
+            llm_request_total.inc(labels={"provider": _provider_name, "status": "success"})
         except TimeoutError:
             _elapsed = _time.monotonic() - _start
-            llm_request_duration.observe(
-                _elapsed, labels={"provider": _provider_name, "model": _model_name}
-            )
-            llm_request_total.inc(
-                labels={"provider": _provider_name, "status": "error"}
-            )
+            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
+            llm_request_total.inc(labels={"provider": _provider_name, "status": "error"})
             logger.error(
                 "LLM call timed out after 60s (provider=%s, model=%s)",
                 _provider_name,
@@ -408,12 +412,8 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
             }
         except Exception:
             _elapsed = _time.monotonic() - _start
-            llm_request_duration.observe(
-                _elapsed, labels={"provider": _provider_name, "model": _model_name}
-            )
-            llm_request_total.inc(
-                labels={"provider": _provider_name, "status": "error"}
-            )
+            llm_request_duration.observe(_elapsed, labels={"provider": _provider_name, "model": _model_name})
+            llm_request_total.inc(labels={"provider": _provider_name, "status": "error"})
             raise
 
         # Format sources for response
@@ -467,6 +467,15 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
                 messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
         except Exception:
             pass
+
+        # Inject agent memory when the session opted in (reviewed assets only)
+        await self._maybe_inject_memory(
+            db,
+            session_id=session_id,
+            query=user_message,
+            owner_id=current_user.id,
+            messages=messages,
+        )
 
         raw_confidential_context = self._has_raw_confidential_context(sources)
 
@@ -523,18 +532,14 @@ Remember: Be accurate, warm, and conversational — like a knowledgeable colleag
                     _stream_elapsed,
                     labels={"provider": _stream_provider, "model": _stream_model},
                 )
-                llm_request_total.inc(
-                    labels={"provider": _stream_provider, "status": "success"}
-                )
+                llm_request_total.inc(labels={"provider": _stream_provider, "status": "success"})
             except Exception as exc:
                 _stream_elapsed = _time.monotonic() - _stream_start
                 llm_request_duration.observe(
                     _stream_elapsed,
                     labels={"provider": _stream_provider, "model": _stream_model},
                 )
-                llm_request_total.inc(
-                    labels={"provider": _stream_provider, "status": "error"}
-                )
+                llm_request_total.inc(labels={"provider": _stream_provider, "status": "error"})
                 logger.exception("Streaming LLM error: %s", exc)
                 yield f"data: {json.dumps({'type': 'error', 'error': 'Le service IA est temporairement indisponible. / The AI service is temporarily unavailable.'})}\n\n"
                 return

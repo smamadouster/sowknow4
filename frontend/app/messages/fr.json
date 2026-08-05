@@ -50,6 +50,7 @@
     "collections": "Collections",
     "smart_folders": "Dossiers Intelligents",
     "collection_requests": "Requêtes de Collection",
+    "memory": "Mémoire",
     "journal": "Mon Journal",
     "settings": "Paramètres",
     "logout": "Déconnexion",
@@ -761,5 +762,30 @@
     "micPermission": "Accès au microphone requis",
     "addVoiceEntry": "Ajouter une note vocale",
     "voiceSearch": "Recherche vocale"
+  },
+  "memory": {
+    "title": "Mémoire Agent",
+    "subtitle": "Revoyez les faits et préférences distillés de vos conversations — les éléments approuvés sont mémorisés entre les sessions",
+    "load_error": "Échec du chargement de la mémoire",
+    "review_error": "Échec de la mise à jour de l'élément",
+    "count_pending": "En attente de revue",
+    "count_reviewed": "Actifs",
+    "count_total": "Total des éléments",
+    "filter_all": "Tous",
+    "filter_pending": "En attente",
+    "filter_reviewed": "Actifs",
+    "filter_rejected": "Rejetés",
+    "empty": "Aucun élément de mémoire ici pour l'instant. Discutez avec la mémoire activée et ils apparaîtront.",
+    "approve": "Approuver",
+    "reject": "Rejeter",
+    "confidence": "Confiance",
+    "source_sessions": "session(s) source(s)",
+    "kind_fact": "Fait",
+    "kind_preference": "Préférence",
+    "kind_constraint": "Contrainte",
+    "kind_decision": "Décision",
+    "status_pending": "En attente",
+    "status_reviewed": "Actif",
+    "status_rejected": "Rejeté"
   }
 }

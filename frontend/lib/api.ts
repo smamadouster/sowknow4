@@ -1456,6 +1456,56 @@ class ApiClient {
     // Idempotent backend: 204 whether freshly deleted or already gone.
     return this.request(`/v1/collection-requests/${requestId}`, { method: 'DELETE' });
   }
+
+  // ── Agent Memory (review panel) ──
+
+  async listMemoryAtoms() {
+    return this.request<MemoryListResponse>('/v1/memory/atoms');
+  }
+
+  async reviewMemoryAtom(atomId: string, status: 'pending' | 'reviewed' | 'rejected') {
+    return this.request<MemoryAtomView>(
+      `/v1/memory/atoms/${atomId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }
+    );
+  }
+
+  async rejectMemoryAtom(atomId: string) {
+    return this.request<MemoryAtomView>(`/v1/memory/atoms/${atomId}/reject`, {
+      method: 'POST',
+    });
+  }
+}
+
+export interface MemoryAtomView {
+  id: string;
+  kind: string;
+  statement: string;
+  confidence: number;
+  status: string;
+  visibility: string;
+  source_session_ids: string[];
+  created_at: string;
+}
+
+export interface MemoryScenarioView {
+  id: string;
+  title: string;
+  summary: string;
+  scope: string | null;
+  status: string;
+  visibility: string;
+  created_at: string;
+}
+
+export interface MemoryListResponse {
+  atoms: MemoryAtomView[];
+  scenarios: MemoryScenarioView[];
+  total_atoms: number;
+  total_scenarios: number;
 }
 
 export const api = new ApiClient(API_BASE);

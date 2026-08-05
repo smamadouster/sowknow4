@@ -50,6 +50,7 @@
     "collections": "Collections",
     "smart_folders": "Smart Folders",
     "collection_requests": "Collection Requests",
+    "memory": "Memory",
     "journal": "My Journal",
     "settings": "Settings",
     "logout": "Logout",
@@ -761,5 +762,30 @@
     "micPermission": "Microphone access required",
     "addVoiceEntry": "Add voice entry",
     "voiceSearch": "Voice search"
+  },
+  "memory": {
+    "title": "Agent Memory",
+    "subtitle": "Review facts and preferences distilled from your conversations — approved items are remembered across sessions",
+    "load_error": "Failed to load memory",
+    "review_error": "Failed to update the item",
+    "count_pending": "Pending review",
+    "count_reviewed": "Active",
+    "count_total": "Total items",
+    "filter_all": "All",
+    "filter_pending": "Pending",
+    "filter_reviewed": "Active",
+    "filter_rejected": "Rejected",
+    "empty": "No memory items here yet. Chat with memory enabled and they will appear.",
+    "approve": "Approve",
+    "reject": "Reject",
+    "confidence": "Confidence",
+    "source_sessions": "source session(s)",
+    "kind_fact": "Fact",
+    "kind_preference": "Preference",
+    "kind_constraint": "Constraint",
+    "kind_decision": "Decision",
+    "status_pending": "Pending",
+    "status_reviewed": "Active",
+    "status_rejected": "Rejected"
   }
 }

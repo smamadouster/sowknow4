@@ -13621,7 +13621,7 @@
 {"id":13621,"type":"edge","label":"item","outV":13619,"inVs":[13616],"document":13462}
 {"id":13622,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef graph_expansion_chunks(db, intent, bucket_filter, limit)\n```"}}}
 {"id":13623,"type":"edge","label":"hover","outV":13617,"inV":13622}
-{"id":13624,"type":"vertex","label":"range","start":{"line":922,"character":0},"end":{"line":922,"character":18}}
+{"id":13624,"type":"vertex","label":"range","start":{"line":956,"character":0},"end":{"line":956,"character":18}}
 {"id":13625,"type":"vertex","label":"resultSet"}
 {"id":13626,"type":"edge","label":"next","outV":13624,"inV":13625}
 {"id":13627,"type":"vertex","label":"definitionResult"}

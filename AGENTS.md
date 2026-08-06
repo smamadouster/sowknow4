@@ -85,9 +85,14 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
   candidate pool BEFORE dedupe + the consolidated rerank — zero-scored
   (`match_source="graph"`), so the cross-encoder does the real ranking (no
   boosts). ACL filters on `document_chunks.bucket`, fail-open on any error.
-  Gated by `SEARCH_GRAPH_EXPANSION_ENABLED` (default false — flip in `.env`
-  after deploy verification). The KG tables are populated (38k entities /
-  343k mentions) but were never wired into the agentic pipeline before this.
+  Enabled live via `SEARCH_GRAPH_EXPANSION_ENABLED=true` in `.env` (2026-08-06).
+  The KG tables are populated (38k entities / 343k mentions) but were never
+  wired into the agentic pipeline before this. IMPORTANT: the extraction
+  pipeline is document-level — `entity_mentions.chunk_id` is NULL for ALL
+  343k mentions, so chunk-linked lookup finds nothing; the function falls back
+  to chunks from the mentioned documents (≤3 chunks/doc so one heavily
+  mentioned doc can't flood the pool). A future chunk-level extraction pass
+  would re-activate the precise path automatically.
 - Collections gather (2026-08-02): reranks top-60 candidates with the
   cross-encoder (blend 0.3 raw / 0.7 rerank) and applies an ABSOLUTE gate
   (0.35). Scores are displayed ABSOLUTE — relative max-normalization was

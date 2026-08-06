@@ -807,7 +807,10 @@ async def graph_expansion_chunks(
 
     Entities named by the parsed intent are matched against the entity table,
     expanded one hop through entity_relationships, and their mentioned chunks
-    are returned as zero-scored candidates (match_source="graph"). They join
+    are returned as zero-scored candidates (match_source="graph"). The current
+    extraction pipeline is document-level (entity_mentions.chunk_id is never
+    populated), so when no chunk-linked mentions exist the function falls back
+    to chunks from the mentioned documents. They join
     the merged pool BEFORE the consolidated cross-encoder pass, which does the
     real scoring — no boosts are applied here. ACL filters on
     document_chunks.bucket (denormalized), never via a documents join filter.
@@ -882,6 +885,37 @@ async def graph_expansion_chunks(
                 .limit(limit * 2)
             )
         ).all()
+
+        if not rows:
+            # Document-level fallback: the extraction pipeline never populates
+            # entity_mentions.chunk_id, so pull chunks from the mentioned
+            # documents instead. Cap chunks per document so one heavily
+            # mentioned doc can't flood the pool; cross-encoder ranks them.
+            doc_rows = (
+                await db.execute(
+                    sa_select(DocumentChunk, Document.original_filename)
+                    .join(EntityMention, EntityMention.document_id == DocumentChunk.document_id)
+                    .join(Document, Document.id == DocumentChunk.document_id)
+                    .where(
+                        EntityMention.entity_id.in_(entity_ids),
+                        DocumentChunk.bucket.in_(bucket_filter),
+                        func.length(DocumentChunk.chunk_text) >= 30,
+                    )
+                    .order_by(EntityMention.confidence_score.desc(), DocumentChunk.chunk_index)
+                    .limit(limit * 4)
+                )
+            ).all()
+            rows = []
+            doc_counts: dict[UUID, int] = {}
+            seen_ids: set[UUID] = set()
+            for chunk, filename in doc_rows:
+                if chunk.id in seen_ids:
+                    continue
+                if doc_counts.get(chunk.document_id, 0) >= 3:
+                    continue
+                seen_ids.add(chunk.id)
+                doc_counts[chunk.document_id] = doc_counts.get(chunk.document_id, 0) + 1
+                rows.append((chunk, filename))
 
         chunks: list[RawChunk] = []
         seen: set[UUID] = set()

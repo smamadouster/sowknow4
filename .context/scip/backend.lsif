@@ -495,7 +495,7 @@
 {"id":495,"type":"edge","label":"item","outV":493,"inVs":[490],"document":400}
 {"id":496,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef login(request, response, form_data, db)\n```"}}}
 {"id":497,"type":"edge","label":"hover","outV":491,"inV":496}
-{"id":498,"type":"vertex","label":"range","start":{"line":505,"character":0},"end":{"line":505,"character":13}}
+{"id":498,"type":"vertex","label":"range","start":{"line":506,"character":0},"end":{"line":506,"character":13}}
 {"id":499,"type":"vertex","label":"resultSet"}
 {"id":500,"type":"edge","label":"next","outV":498,"inV":499}
 {"id":501,"type":"vertex","label":"definitionResult"}
@@ -503,7 +503,7 @@
 {"id":503,"type":"edge","label":"item","outV":501,"inVs":[498],"document":400}
 {"id":504,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef refresh_token(request, response, db)\n```"}}}
 {"id":505,"type":"edge","label":"hover","outV":499,"inV":504}
-{"id":506,"type":"vertex","label":"range","start":{"line":612,"character":0},"end":{"line":612,"character":6}}
+{"id":506,"type":"vertex","label":"range","start":{"line":614,"character":0},"end":{"line":614,"character":6}}
 {"id":507,"type":"vertex","label":"resultSet"}
 {"id":508,"type":"edge","label":"next","outV":506,"inV":507}
 {"id":509,"type":"vertex","label":"definitionResult"}
@@ -511,7 +511,7 @@
 {"id":511,"type":"edge","label":"item","outV":509,"inVs":[506],"document":400}
 {"id":512,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef get_me(current_user)\n```"}}}
 {"id":513,"type":"edge","label":"hover","outV":507,"inV":512}
-{"id":514,"type":"vertex","label":"range","start":{"line":630,"character":0},"end":{"line":630,"character":6}}
+{"id":514,"type":"vertex","label":"range","start":{"line":632,"character":0},"end":{"line":632,"character":6}}
 {"id":515,"type":"vertex","label":"resultSet"}
 {"id":516,"type":"edge","label":"next","outV":514,"inV":515}
 {"id":517,"type":"vertex","label":"definitionResult"}
@@ -519,7 +519,7 @@
 {"id":519,"type":"edge","label":"item","outV":517,"inVs":[514],"document":400}
 {"id":520,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef logout(request, response)\n```"}}}
 {"id":521,"type":"edge","label":"hover","outV":515,"inV":520}
-{"id":522,"type":"vertex","label":"range","start":{"line":669,"character":0},"end":{"line":669,"character":15}}
+{"id":522,"type":"vertex","label":"range","start":{"line":671,"character":0},"end":{"line":671,"character":15}}
 {"id":523,"type":"vertex","label":"resultSet"}
 {"id":524,"type":"edge","label":"next","outV":522,"inV":523}
 {"id":525,"type":"vertex","label":"definitionResult"}
@@ -527,7 +527,7 @@
 {"id":527,"type":"edge","label":"item","outV":525,"inVs":[522],"document":400}
 {"id":528,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef forgot_password(request, payload, db)\n```"}}}
 {"id":529,"type":"edge","label":"hover","outV":523,"inV":528}
-{"id":530,"type":"vertex","label":"range","start":{"line":756,"character":0},"end":{"line":756,"character":12}}
+{"id":530,"type":"vertex","label":"range","start":{"line":758,"character":0},"end":{"line":758,"character":12}}
 {"id":531,"type":"vertex","label":"resultSet"}
 {"id":532,"type":"edge","label":"next","outV":530,"inV":531}
 {"id":533,"type":"vertex","label":"definitionResult"}
@@ -535,7 +535,7 @@
 {"id":535,"type":"edge","label":"item","outV":533,"inVs":[530],"document":400}
 {"id":536,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef verify_email(token, db)\n```"}}}
 {"id":537,"type":"edge","label":"hover","outV":531,"inV":536}
-{"id":538,"type":"vertex","label":"range","start":{"line":818,"character":0},"end":{"line":818,"character":19}}
+{"id":538,"type":"vertex","label":"range","start":{"line":820,"character":0},"end":{"line":820,"character":19}}
 {"id":539,"type":"vertex","label":"resultSet"}
 {"id":540,"type":"edge","label":"next","outV":538,"inV":539}
 {"id":541,"type":"vertex","label":"definitionResult"}
@@ -543,7 +543,7 @@
 {"id":543,"type":"edge","label":"item","outV":541,"inVs":[538],"document":400}
 {"id":544,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef resend_verification(request, payload, db)\n```"}}}
 {"id":545,"type":"edge","label":"hover","outV":539,"inV":544}
-{"id":546,"type":"vertex","label":"range","start":{"line":883,"character":0},"end":{"line":883,"character":13}}
+{"id":546,"type":"vertex","label":"range","start":{"line":885,"character":0},"end":{"line":885,"character":13}}
 {"id":547,"type":"vertex","label":"resultSet"}
 {"id":548,"type":"edge","label":"next","outV":546,"inV":547}
 {"id":549,"type":"vertex","label":"definitionResult"}

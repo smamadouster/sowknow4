@@ -18,5 +18,6 @@ class LoginResponse(BaseModel):
     """Response model for login/telegram auth - returns user info, tokens in httpOnly cookies"""
 
     message: str
+    expires_in: int  # Seconds until the access token expires (for proactive frontend refresh)
     user: dict | None = None  # User info (id, email, full_name, role)
     access_token: str | None = None  # For telegram bot (can't use httpOnly cookies)

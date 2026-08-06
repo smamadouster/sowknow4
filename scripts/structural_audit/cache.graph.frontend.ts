@@ -160,6 +160,7 @@
 
 ---
 ### FILE: frontend/lib/api.ts
+[fn]: recordAuthExpiry(data)
 [fn]: getCsrfToken()
 [interface]: CollectionClarificationQuestion { props: [id, kind, target, text, options, best_guess] }
 [interface]: CollectionClarificationPayload { props: [questions, round, max_rounds, extracted, intent] }
@@ -434,7 +435,7 @@
 
 ---
 ### FILE: frontend/app/[locale]/login/page.tsx
-[ext_deps]: react, next/navigation, next-intl, @/lib/store
+[ext_deps]: react, next/navigation, next-intl, @/lib/store, @/lib/api
 [fn]: default()
 
 ---

@@ -492,6 +492,7 @@ async def login(
     # Return user info (NOT tokens in response body - prevents XSS)
     return LoginResponse(
         message="Login successful",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user={
             "id": str(user.id),
             "email": user.email,
@@ -600,6 +601,7 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
 
     return LoginResponse(
         message="Token refreshed",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user={
             "id": str(user.id),
             "email": user.email,
@@ -657,7 +659,7 @@ async def logout(request: Request, response: Response) -> LoginResponse:
 
     logger.info("User logged out")
 
-    return LoginResponse(message="Logout successful", user=None)
+    return LoginResponse(message="Logout successful", expires_in=0, user=None)
 
 
 # =============================================================================
@@ -1009,6 +1011,7 @@ async def telegram_auth(
     # Return user info AND access_token (for bot use - can't use httpOnly cookies)
     return LoginResponse(
         message="Telegram authentication successful",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user={
             "id": str(user.id),
             "email": user.email,

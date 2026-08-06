@@ -137,6 +137,7 @@ class TestFrontendTokenStorageCompliance:
 
         response = LoginResponse(
             message="Login successful",
+            expires_in=900,
             user={"id": "123", "email": "test@test.com", "full_name": "Test", "role": "user"}
         )
 

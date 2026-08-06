@@ -8,6 +8,47 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+// --- Proactive access-token refresh ---
+// Access tokens live in httpOnly cookies (JS cannot read them), so the backend
+// reports their lifetime via `expires_in` (seconds) on login/refresh responses.
+// The expiry is tracked here (persisted in sessionStorage to survive reloads)
+// so the client can refresh BEFORE a request fails with a 401.
+const TOKEN_EXPIRY_KEY = 'sowknow_access_token_expires_at';
+const DEFAULT_EXPIRES_IN_S = 15 * 60; // fallback when expires_in is missing
+let accessTokenExpiresAt: number | null = null; // epoch ms
+let refreshInFlight: Promise<boolean> | null = null;
+
+function getAccessTokenExpiresAt(): number | null {
+  if (accessTokenExpiresAt === null && typeof window !== 'undefined') {
+    const stored = window.sessionStorage.getItem(TOKEN_EXPIRY_KEY);
+    const parsed = stored ? Number(stored) : NaN;
+    accessTokenExpiresAt = Number.isFinite(parsed) ? parsed : null;
+  }
+  return accessTokenExpiresAt;
+}
+
+function setAccessTokenExpiresAt(expiresAt: number | null): void {
+  accessTokenExpiresAt = expiresAt;
+  if (typeof window !== 'undefined') {
+    if (expiresAt === null) {
+      window.sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+    } else {
+      window.sessionStorage.setItem(TOKEN_EXPIRY_KEY, String(expiresAt));
+    }
+  }
+}
+
+/**
+ * Record the access-token expiry from a login/refresh response body.
+ * Exported so pages that call the auth endpoints via raw fetch (e.g. the
+ * login page) can keep the proactive-refresh clock in sync.
+ */
+export function recordAuthExpiry(data: unknown): void {
+  const expiresIn = (data as { expires_in?: number } | null | undefined)?.expires_in;
+  const seconds = typeof expiresIn === 'number' && expiresIn > 0 ? expiresIn : DEFAULT_EXPIRES_IN_S;
+  setAccessTokenExpiresAt(Date.now() + seconds * 1000);
+}
+
 interface ApiResponse<T> {
   data?: T;
   error?: string;
@@ -234,6 +275,59 @@ class ApiClient {
   }
 
   /**
+   * Refresh the access token, deduped so concurrent callers share a single
+   * in-flight POST /v1/auth/refresh. Returns true when a fresh token is in
+   * place; on failure the tracked expiry is cleared (the reactive 401 path
+   * stays as backstop).
+   */
+  private refreshAccessToken(): Promise<boolean> {
+    if (!refreshInFlight) {
+      refreshInFlight = (async () => {
+        try {
+          const refreshHeaders: Record<string, string> = {};
+          const csrfToken = this.getCsrfToken();
+          if (csrfToken) {
+            refreshHeaders['X-CSRF-Token'] = csrfToken;
+          }
+          const refreshResponse = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
+            method: 'POST',
+            headers: refreshHeaders,
+            credentials: 'include',
+          });
+          if (!refreshResponse.ok) {
+            setAccessTokenExpiresAt(null);
+            return false;
+          }
+          try {
+            recordAuthExpiry(await refreshResponse.json());
+          } catch {
+            recordAuthExpiry(undefined);
+          }
+          return true;
+        } catch {
+          setAccessTokenExpiresAt(null);
+          return false;
+        } finally {
+          refreshInFlight = null;
+        }
+      })();
+    }
+    return refreshInFlight;
+  }
+
+  /**
+   * Proactively refresh the access token when it is expired or within 60s of
+   * expiring, so requests don't pay the 401 -> refresh -> retry cascade.
+   */
+  private async ensureFreshToken(): Promise<void> {
+    const expiresAt = getAccessTokenExpiresAt();
+    if (expiresAt !== null && Date.now() < expiresAt - 60_000) {
+      return;
+    }
+    await this.refreshAccessToken();
+  }
+
+  /**
    * Low-level fetch that handles 401/403 by attempting token refresh
    * and returns the raw Response for streaming or custom parsing.
    */
@@ -243,6 +337,17 @@ class ApiClient {
   ): Promise<Response> {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = this.getRequestHeaders(options);
+    const onLoginPage = typeof window !== 'undefined' && window.location.pathname.includes('/login');
+
+    if (
+      typeof window !== 'undefined' &&
+      !onLoginPage &&
+      endpoint !== '/v1/auth/refresh' &&
+      endpoint !== '/v1/auth/login' &&
+      endpoint !== '/v1/auth/logout'
+    ) {
+      await this.ensureFreshToken();
+    }
 
     const response = await fetch(url, {
       ...options,
@@ -252,19 +357,10 @@ class ApiClient {
 
     const status = response.status;
 
-    if (status === 401 && typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+    if (status === 401 && !onLoginPage && typeof window !== 'undefined') {
       try {
-        const refreshHeaders: Record<string, string> = {};
-        const csrfToken = this.getCsrfToken();
-        if (csrfToken) {
-          refreshHeaders['X-CSRF-Token'] = csrfToken;
-        }
-        const refreshResponse = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
-          method: 'POST',
-          headers: refreshHeaders,
-          credentials: 'include',
-        });
-        if (refreshResponse.ok) {
+        const refreshed = await this.refreshAccessToken();
+        if (refreshed) {
           const retryHeaders = { ...headers };
           const nextCsrfToken = this.getCsrfToken();
           const unsafeMethods = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
@@ -358,7 +454,7 @@ class ApiClient {
     formData.append('username', email);
     formData.append('password', password);
 
-    return this.request('/v1/auth/login', {
+    const res = await this.request('/v1/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -366,6 +462,10 @@ class ApiClient {
       body: formData.toString(),
       credentials: 'include',
     });
+    if (res.status >= 200 && res.status < 300) {
+      recordAuthExpiry(res.data);
+    }
+    return res;
   }
 
   async register(email: string, password: string, full_name: string) {
@@ -376,6 +476,7 @@ class ApiClient {
   }
 
   async logout() {
+    setAccessTokenExpiresAt(null);
     return this.request('/v1/auth/logout', {
       method: 'POST',
     });

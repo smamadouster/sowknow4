@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { useAuthStore } from '@/lib/store';
+import { recordAuthExpiry } from '@/lib/api';
 
 export default function LoginPage() {
   const t = useTranslations('auth');
@@ -44,6 +45,11 @@ export default function LoginPage() {
       });
 
       if (response.ok) {
+        try {
+          recordAuthExpiry(await response.json());
+        } catch {
+          // Body optional — proactive refresh falls back to the reactive path
+        }
         const meResponse = await fetch(`${apiUrl}/v1/auth/me`, {
           credentials: 'include',
         });

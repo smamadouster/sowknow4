@@ -154,6 +154,13 @@ class Settings(BaseSettings):
     COLLECTION_AUDIT_PSEUDONYMISE: bool = False  # FR8.4: hash user_id in audit exports
 
     # ------------------------------------------------------------------
+    # Search — knowledge-graph candidate expansion (2026-08-06)
+    # ------------------------------------------------------------------
+
+    SEARCH_GRAPH_EXPANSION_ENABLED: bool = False  # entity intents pull graph-derived chunks into the pool
+    SEARCH_GRAPH_EXPANSION_MAX_CHUNKS: int = 30  # cap on graph-derived candidates
+
+    # ------------------------------------------------------------------
     # Agent Memory (draft v0.1, docs/agent_memory/SPEC.md)
     # ------------------------------------------------------------------
 

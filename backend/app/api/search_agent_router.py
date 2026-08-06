@@ -12,6 +12,7 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.database import get_db
 from app.models.document import DocumentBucket
 from app.models.user import User, UserRole
@@ -24,6 +25,7 @@ from app.services.search_agent import (
     build_citations,
     build_search_queries,
     generate_suggestions,
+    graph_expansion_chunks,
     parse_intent,
     rerank_and_build_results,
     rerank_merged_chunks,
@@ -314,6 +316,18 @@ async def search_stream(
                         all_chunks.extend(_convert_search_results_to_chunks(result.get("results", [])))
                     except Exception as exc:
                         logger.warning("Streaming sub-query failed: %s", exc)
+
+                # Graph candidate expansion for entity-centric intents —
+                # zero-scored, appended BEFORE dedupe so overlaps collapse;
+                # the consolidated cross-encoder pass below does the scoring.
+                all_chunks.extend(
+                    await graph_expansion_chunks(
+                        db,
+                        intent,
+                        search_service._get_user_bucket_filter(current_user),
+                        settings.SEARCH_GRAPH_EXPANSION_MAX_CHUNKS,
+                    )
+                )
 
                 all_chunks = _deduplicate_chunks(all_chunks)
                 # One cross-encoder pass over the merged pool (option F).

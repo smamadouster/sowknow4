@@ -78,6 +78,16 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - Scores are calibrated: keyword rank is squashed rank/(1+rank), cross-encoder
   logits are sigmoid-squashed, labels are absolute (no relative normalization).
   Do not reintroduce unbounded boosts into final_score.
+- Graph candidate expansion (2026-08-06): for `entity_search`/`cross_reference`
+  intents, `search_agent.graph_expansion_chunks` matches intent entities against
+  the `entities` table, expands one hop via `entity_relationships`, and appends
+  ≤`SEARCH_GRAPH_EXPANSION_MAX_CHUNKS` (30) mention-linked chunks to the
+  candidate pool BEFORE dedupe + the consolidated rerank — zero-scored
+  (`match_source="graph"`), so the cross-encoder does the real ranking (no
+  boosts). ACL filters on `document_chunks.bucket`, fail-open on any error.
+  Gated by `SEARCH_GRAPH_EXPANSION_ENABLED` (default false — flip in `.env`
+  after deploy verification). The KG tables are populated (38k entities /
+  343k mentions) but were never wired into the agentic pipeline before this.
 - Collections gather (2026-08-02): reranks top-60 candidates with the
   cross-encoder (blend 0.3 raw / 0.7 rerank) and applies an ABSOLUTE gate
   (0.35). Scores are displayed ABSOLUTE — relative max-normalization was

@@ -12,11 +12,15 @@ import time
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import func
+from sqlalchemy import or_ as sa_or
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.document import Document, DocumentBucket
+from app.core.config import settings
+from app.models.document import Document, DocumentBucket, DocumentChunk
+from app.models.knowledge_graph import Entity, EntityMention, EntityRelationship
 from app.models.user import UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
@@ -793,6 +797,126 @@ async def _count_unindexed_filename_matches(
         return 0
 
 
+async def graph_expansion_chunks(
+    db: AsyncSession,
+    intent: ParsedIntent,
+    bucket_filter: list[str],
+    limit: int,
+) -> list[RawChunk]:
+    """Knowledge-graph-derived candidate chunks for entity-centric queries.
+
+    Entities named by the parsed intent are matched against the entity table,
+    expanded one hop through entity_relationships, and their mentioned chunks
+    are returned as zero-scored candidates (match_source="graph"). They join
+    the merged pool BEFORE the consolidated cross-encoder pass, which does the
+    real scoring — no boosts are applied here. ACL filters on
+    document_chunks.bucket (denormalized), never via a documents join filter.
+    Fail-open: any error logs a warning and returns [].
+    """
+    if not settings.SEARCH_GRAPH_EXPANSION_ENABLED:
+        return []
+    if intent.intent not in (QueryIntent.ENTITY_SEARCH, QueryIntent.CROSS_REF):
+        return []
+    names = [e.strip() for e in intent.entities if e and e.strip()][:5]
+    if not names:
+        return []
+
+    try:
+        # 1) Match intent entity names against the entity table (cap 5).
+        name_clauses = [func.lower(Entity.name) == n.lower() for n in names]
+        name_clauses += [Entity.name.ilike(f"%{n}%") for n in names]
+        matched = (
+            (
+                await db.execute(
+                    sa_select(Entity)
+                    .where(sa_or(*name_clauses))
+                    .order_by(Entity.document_count.desc())
+                    .limit(5)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not matched:
+            return []
+
+        # 2) One-hop expansion through relationships (cap 10 rels).
+        matched_ids = [e.id for e in matched]
+        rels = (
+            (
+                await db.execute(
+                    sa_select(EntityRelationship)
+                    .where(
+                        sa_or(
+                            EntityRelationship.source_id.in_(matched_ids),
+                            EntityRelationship.target_id.in_(matched_ids),
+                        )
+                    )
+                    .order_by(EntityRelationship.confidence_score.desc())
+                    .limit(10)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        entity_ids = set(matched_ids)
+        for rel in rels:
+            entity_ids.add(rel.source_id)
+            entity_ids.add(rel.target_id)
+
+        # 3) Chunks mentioning any of those entities, ACL-filtered on the
+        # chunk table. Fetch 2x and dedupe in Python — a chunk can be reached
+        # through several mentions.
+        rows = (
+            await db.execute(
+                sa_select(DocumentChunk, Document.original_filename)
+                .join(EntityMention, EntityMention.chunk_id == DocumentChunk.id)
+                .join(Document, Document.id == DocumentChunk.document_id)
+                .where(
+                    EntityMention.entity_id.in_(entity_ids),
+                    EntityMention.chunk_id.isnot(None),
+                    DocumentChunk.bucket.in_(bucket_filter),
+                    func.length(DocumentChunk.chunk_text) >= 30,
+                )
+                .order_by(EntityMention.confidence_score.desc())
+                .limit(limit * 2)
+            )
+        ).all()
+
+        chunks: list[RawChunk] = []
+        seen: set[UUID] = set()
+        for chunk, filename in rows:
+            if chunk.id in seen:
+                continue
+            seen.add(chunk.id)
+            chunks.append(
+                RawChunk(
+                    chunk_id=chunk.id,
+                    document_id=chunk.document_id,
+                    document_title=filename,
+                    document_bucket=DocumentBucket(chunk.bucket),
+                    document_type=filename.rsplit(".", 1)[-1] if "." in filename else "unknown",
+                    chunk_index=chunk.chunk_index,
+                    page_number=chunk.page_number,
+                    text=chunk.chunk_text,
+                    match_source="graph",
+                )
+            )
+            if len(chunks) >= limit:
+                break
+        if chunks:
+            logger.info(
+                "graph_expansion: %d chunks from %d entities (intent=%s)",
+                len(chunks),
+                len(entity_ids),
+                intent.intent.value,
+            )
+        return chunks
+    except Exception as exc:
+        logger.warning("graph_expansion_chunks failed (fail-open): %s", exc)
+        return []
+
+
 # ---- MAIN ORCHESTRATOR ----
 
 
@@ -918,6 +1042,13 @@ async def run_agentic_search(
                 )
         except Exception as exc:
             logger.warning("Sub-query search failed: %s", exc)
+
+    # Stage 3a: knowledge-graph candidate expansion for entity-centric
+    # intents. Zero-scored chunks join the pool BEFORE dedupe and the single
+    # cross-encoder pass — the reranker does the real scoring (no boosts).
+    all_chunks.extend(
+        await graph_expansion_chunks(db, intent, bucket_filter, settings.SEARCH_GRAPH_EXPANSION_MAX_CHUNKS)
+    )
 
     # Stage 3b: Filter to journal entries if requested
     if request.journal_only:

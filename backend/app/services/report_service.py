@@ -305,8 +305,8 @@ Generate the complete report now:"""
             from app.services.monitoring import CostTracker
 
             pricing = CostTracker.OPENROUTER_PRICING.get(
-                "anthropic/claude-3.5-sonnet",
-                {"input": 0.003, "output": 0.015},
+                "deepseek/deepseek-v4-pro",
+                {"input": 0.000435, "output": 0.00087},
             )
             est_cost = (input_tokens / 1000) * pricing["input"] + (est_output / 1000) * pricing["output"]
             if est_cost > 0.30:
@@ -350,8 +350,8 @@ Generate the complete report now:"""
             from app.services.monitoring import CostTracker
 
             pricing = CostTracker.OPENROUTER_PRICING.get(
-                "anthropic/claude-3.5-sonnet",
-                {"input": 0.003, "output": 0.015},
+                "deepseek/deepseek-v4-pro",
+                {"input": 0.000435, "output": 0.00087},
             )
             cost_usd = (input_tokens / 1000) * pricing["input"] + (output_tokens / 1000) * pricing["output"]
             rollback_monitor.record_report_cost(cost_usd)
@@ -359,7 +359,6 @@ Generate the complete report now:"""
             logger.debug("Report cost recording failed: %s", exc)
 
         return report_text
-
 
     async def _generate_pdf_report(self, content: str, metadata: dict[str, Any], collection: Collection) -> str | None:
         """

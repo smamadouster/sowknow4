@@ -118,10 +118,12 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - rerank-server is latency-critical: 0.5 CPU throttled it to ~6s/request and
   the client's 5s timeout silently disabled reranking fleet-wide. Keep its
   2.0 CPU limit and torch thread clamp (RERANK_TORCH_THREADS).
-- LLM tiers via OpenRouter env vars (gemini-2.5-flash simple/standard,
-  claude-sonnet-4 complex). openrouter_service fails over to simple tier on
-  400/404 (dead model IDs are config errors, not retryable). Verify model IDs
-  against https://openrouter.ai/api/v1/models before changing them.
+- LLM tiers via OpenRouter env vars (deepseek/deepseek-v4-flash-0731
+  simple/standard, deepseek/deepseek-v4-pro complex, qwen/qwen3.8-max
+  model-level fallback per tier). openrouter_service fails over to the tier's
+  fallback model (qwen/qwen3.8-max) once on 400/404/429/5xx — dead model IDs
+  are config errors, not retryable. Verify model IDs against
+  https://openrouter.ai/api/v1/models before changing them.
 - Embedding: `intfloat/multilingual-e5-large` via embed-server + embed-server-2
   (HTTP, circuit breaker). Chunk-level backfill: `scripts/backfill_null_chunks.py`.
 

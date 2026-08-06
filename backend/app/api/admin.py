@@ -715,8 +715,7 @@ async def get_pipeline_stats(
         .group_by(PipelineStage.stage)
     )
     hourly_rows = {
-        (row.stage if isinstance(row.stage, str) else row.stage.value): row.cnt
-        for row in hourly_result.all()
+        (row.stage if isinstance(row.stage, str) else row.stage.value): row.cnt for row in hourly_result.all()
     }
 
     # Query 3: throughput — completed in last 10 minutes
@@ -730,8 +729,7 @@ async def get_pipeline_stats(
         .group_by(PipelineStage.stage)
     )
     tenmin_rows = {
-        (row.stage if isinstance(row.stage, str) else row.stage.value): row.cnt
-        for row in tenmin_result.all()
+        (row.stage if isinstance(row.stage, str) else row.stage.value): row.cnt for row in tenmin_result.all()
     }
 
     # Build per-stage counts map
@@ -822,10 +820,7 @@ async def get_uploads_history(
     )
     rows = result.all()
 
-    history = [
-        UploadsHistoryPoint(day=str(row.day), count=row.count)
-        for row in rows
-    ]
+    history = [UploadsHistoryPoint(day=str(row.day), count=row.count) for row in rows]
     return UploadsHistoryResponse(history=history)
 
 
@@ -885,10 +880,7 @@ async def get_articles_history(
     )
     rows = result.all()
 
-    history = [
-        ArticlesHistoryPoint(day=str(row.day), count=row.count)
-        for row in rows
-    ]
+    history = [ArticlesHistoryPoint(day=str(row.day), count=row.count) for row in rows]
     return ArticlesHistoryResponse(history=history)
 
 
@@ -941,11 +933,13 @@ async def get_system_config(
     current_user: User = Depends(require_superuser_or_admin),
 ) -> SystemConfigResponse:
     """Return safe, read-only system configuration for the admin Settings tab."""
+
     def _safe_url(url: str | None) -> str | None:
         if not url:
             return None
         # Strip credentials from URLs like redis://:pass@host/db
         from urllib.parse import urlparse, urlunparse
+
         parsed = urlparse(url)
         if parsed.username is not None or parsed.password is not None:
             netloc = parsed.hostname or ""
@@ -962,9 +956,10 @@ async def get_system_config(
         app_version=os.getenv("APP_VERSION", "1.0.0"),
         llm_provider=os.getenv("OPENROUTER_MODEL", "openrouter"),
         llm_tiers={
-            "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "google/gemini-2.0-flash-001"),
-            "standard": os.getenv("OPENROUTER_TIER_STANDARD", "mistralai/mistral-small-2409"),
-            "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "anthropic/claude-3.5-sonnet"),
+            "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "deepseek/deepseek-v4-flash-0731"),
+            "standard": os.getenv("OPENROUTER_TIER_STANDARD", "deepseek/deepseek-v4-flash-0731"),
+            "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "deepseek/deepseek-v4-pro"),
+            "fallback": os.getenv("OPENROUTER_TIER_FALLBACK_STANDARD", "qwen/qwen3.8-max"),
         },
         ocr_engine=os.getenv("OCR_ENGINE", "paddle"),
         ocr_fallback_enabled=os.getenv("OCR_FALLBACK_ENABLED", "true").lower() == "true",
@@ -1192,6 +1187,7 @@ async def recover_failed_uploads(
 async def get_whisper_model() -> dict[str, Any]:
     """Get current Whisper model size and available options."""
     from app.services.whisper_service import VALID_MODEL_SIZES, whisper_service
+
     return {
         "current_model": whisper_service.current_model_size,
         "available_models": sorted(VALID_MODEL_SIZES),
@@ -1280,18 +1276,11 @@ async def force_reset_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # 1. Delete all pipeline stage rows
-    await db.execute(
-        select(PipelineStage)
-        .where(PipelineStage.document_id == document_id)
-    )
-    await db.execute(
-        PipelineStage.__table__.delete().where(PipelineStage.document_id == document_id)
-    )
+    await db.execute(select(PipelineStage).where(PipelineStage.document_id == document_id))
+    await db.execute(PipelineStage.__table__.delete().where(PipelineStage.document_id == document_id))
 
     # 2. Delete all chunks
-    await db.execute(
-        DocumentChunk.__table__.delete().where(DocumentChunk.document_id == document_id)
-    )
+    await db.execute(DocumentChunk.__table__.delete().where(DocumentChunk.document_id == document_id))
 
     # 3. Delete sidecar .txt if it exists
     txt_path = None
@@ -1323,9 +1312,7 @@ async def force_reset_document(
     # 5. Re-create UPLOADED stage and dispatch
     loop = asyncio.get_running_loop()
     with ThreadPoolExecutor(max_workers=1) as pool:
-        await loop.run_in_executor(
-            pool, update_stage, str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED
-        )
+        await loop.run_in_executor(pool, update_stage, str(document.id), StageEnum.UPLOADED, StageStatus.COMPLETED)
         dispatch_result = await loop.run_in_executor(pool, dispatch_document, str(document.id))
 
     if dispatch_result == "dispatched":
@@ -1363,7 +1350,8 @@ async def force_reset_document(
         "document_id": str(document_id),
         "status": document.status.value,
         "dispatch_result": dispatch_result,
-        "message": "Document force-reset and re-queued" if dispatch_result == "dispatched"
+        "message": "Document force-reset and re-queued"
+        if dispatch_result == "dispatched"
         else "Document force-reset but pipeline is backpressured",
     }
 
@@ -1391,9 +1379,14 @@ async def pipeline_diagnostics(
 
         r = redis.from_url(safe_redis_url())
         for q in [
-            "pipeline.ocr", "pipeline.chunk", "pipeline.embed",
-            "pipeline.index", "pipeline.articles", "pipeline.entities",
-            "celery", "scheduled",
+            "pipeline.ocr",
+            "pipeline.chunk",
+            "pipeline.embed",
+            "pipeline.index",
+            "pipeline.articles",
+            "pipeline.entities",
+            "celery",
+            "scheduled",
         ]:
             try:
                 queues[q] = {"depth": r.llen(q), "max": MAX_QUEUE_DEPTH.get(q)}
@@ -1405,9 +1398,7 @@ async def pipeline_diagnostics(
     # 2. Document status counts
     doc_counts: dict[str, int] = {}
     for status in DocumentStatus:
-        cnt = await db.execute(
-            select(func.count(Document.id)).where(Document.status == status)
-        )
+        cnt = await db.execute(select(func.count(Document.id)).where(Document.status == status))
         doc_counts[status.value] = cnt.scalar_one() or 0
 
     # 3. Stuck documents per stage (RUNNING longer than 2× hard_timeout)
@@ -1474,7 +1465,8 @@ async def pipeline_diagnostics(
                 "id": str(doc.id),
                 "filename": doc.original_filename or doc.filename,
                 "age_hours": round((now - doc.created_at.replace(tzinfo=UTC)).total_seconds() / 3600, 1)
-                if doc.created_at else None,
+                if doc.created_at
+                else None,
             }
     except Exception:
         pass
@@ -1526,14 +1518,10 @@ async def bulk_force_reset_anomalies(
 
         try:
             # 1. Delete pipeline stages
-            await db.execute(
-                PipelineStage.__table__.delete().where(PipelineStage.document_id == doc_id)
-            )
+            await db.execute(PipelineStage.__table__.delete().where(PipelineStage.document_id == doc_id))
 
             # 2. Delete chunks
-            await db.execute(
-                DocumentChunk.__table__.delete().where(DocumentChunk.document_id == doc_id)
-            )
+            await db.execute(DocumentChunk.__table__.delete().where(DocumentChunk.document_id == doc_id))
 
             # 3. Delete sidecar .txt
             if document.file_path:
@@ -1579,12 +1567,14 @@ async def bulk_force_reset_anomalies(
                 document.document_metadata = meta
             await db.commit()
 
-            results.append({
-                "document_id": str(doc_id),
-                "status": document.status.value,
-                "dispatch_result": dispatch_result,
-                "success": True,
-            })
+            results.append(
+                {
+                    "document_id": str(doc_id),
+                    "status": document.status.value,
+                    "dispatch_result": dispatch_result,
+                    "success": True,
+                }
+            )
             success_count += 1
         except Exception as exc:
             logger.exception("Bulk force-reset failed for doc %s", doc_id)
@@ -1678,6 +1668,7 @@ async def resume_uploads(
 
 
 # ── Search Debug / A-B Comparison ──────────────────────────────────────────
+
 
 class SearchDebugParams(BaseModel):
     query: str

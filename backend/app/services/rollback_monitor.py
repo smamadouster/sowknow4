@@ -247,9 +247,7 @@ class RollbackMonitor:
                     }
                 )
                 if tier == "standard":
-                    rollback_actions.append(
-                        "ROLLBACK: Set OPENROUTER_TIER_STANDARD=qwen/qwen3.5-plus-20260420"
-                    )
+                    rollback_actions.append("ROLLBACK: Set OPENROUTER_TIER_STANDARD=qwen/qwen3.8-max")
 
             if lat_p95 > self._thresholds["latency_ms"]:
                 triggers.append(
@@ -262,9 +260,9 @@ class RollbackMonitor:
                 )
                 if tier in ("standard", "simple"):
                     rollback_actions.append(
-                        f"ROLLBACK: Set OPENROUTER_TIER_{tier.upper()}=qwen/qwen3.5-plus-20260420"
+                        f"ROLLBACK: Set OPENROUTER_TIER_{tier.upper()}=qwen/qwen3.8-max"
                         if tier == "standard"
-                        else "ROLLBACK: Set OPENROUTER_TIER_SIMPLE=qwen/qwen3.5-plus-20260420"
+                        else "ROLLBACK: Set OPENROUTER_TIER_SIMPLE=qwen/qwen3.8-max"
                     )
 
             if ttft_p95 > self._thresholds["ttft_ms"] and tier == "complex":
@@ -276,9 +274,7 @@ class RollbackMonitor:
                         "threshold": self._thresholds["ttft_ms"],
                     }
                 )
-                rollback_actions.append(
-                    "ROLLBACK: Set OPENROUTER_TIER_COMPLEX=deepseek/deepseek-v4-pro"
-                )
+                rollback_actions.append("ROLLBACK: Set OPENROUTER_TIER_COMPLEX=anthropic/claude-sonnet-4")
 
         # Report costs
         costs = [float(v) for v in self._zrange("rollback:report_cost", count=100)]
@@ -296,9 +292,7 @@ class RollbackMonitor:
                     "threshold": self._thresholds["report_cost_usd"],
                 }
             )
-            rollback_actions.append(
-                "ROLLBACK: Set OPENROUTER_TIER_COMPLEX=deepseek/deepseek-v4-pro"
-            )
+            rollback_actions.append("ROLLBACK: Set OPENROUTER_TIER_COMPLEX=anthropic/claude-sonnet-4")
 
         # Satisfaction
         satisfaction: dict[str, float] = {}
@@ -315,9 +309,7 @@ class RollbackMonitor:
                             "threshold": self._thresholds["satisfaction_score_min"],
                         }
                     )
-                    rollback_actions.append(
-                        "ROLLBACK: Revert OPENROUTER_MODEL to previous value"
-                    )
+                    rollback_actions.append("ROLLBACK: Revert OPENROUTER_MODEL to previous value")
 
         # Deduplicate rollback actions
         seen: set[str] = set()

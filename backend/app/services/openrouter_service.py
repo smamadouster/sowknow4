@@ -1,9 +1,11 @@
 """
-OpenRouter service for LLM access — Mistral Small primary
+OpenRouter service for LLM access — DeepSeek V4 Flash primary
 OpenRouter provides OpenAI-compatible API access to multiple LLMs.
-Primary model: mistralai/mistral-small-2409 (best FR/EN balance for family narrative).
-Tiered stack: simple=google/gemini-2.0-flash-001, standard=mistralai/mistral-small-2409,
-complex=anthropic/claude-3.5-sonnet.
+Primary model: deepseek/deepseek-v4-flash-0731 (cost-efficient FR/EN balance for family narrative).
+Tiered stack: simple=deepseek/deepseek-v4-flash-0731, standard=deepseek/deepseek-v4-flash-0731,
+complex=deepseek/deepseek-v4-pro.
+Model-level fallback per tier: qwen/qwen3.8-max — tried once when the primary
+tier model fails (400/404 invalid model, 429 rate limit, or 5xx).
 
 CONTEXT CACHING:
 - Redis-backed cache for repeated queries to reduce API costs
@@ -36,13 +38,20 @@ logger = logging.getLogger(__name__)
 # Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash-0731")
 
 # Tiered model configuration for cost/quality optimization
 OPENROUTER_TIER_MODELS = {
-    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "anthropic/claude-sonnet-4"),
-    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "google/gemini-2.5-flash"),
-    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "google/gemini-2.5-flash"),
+    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "deepseek/deepseek-v4-pro"),
+    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "deepseek/deepseek-v4-flash-0731"),
+    "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "deepseek/deepseek-v4-flash-0731"),
+}
+# Model-level fallback per tier — tried once when the primary tier model fails
+# with 400/404 (invalid/deprecated model), 429 (rate limit), or 5xx (server error).
+OPENROUTER_TIER_FALLBACK_MODELS = {
+    "complex": os.getenv("OPENROUTER_TIER_FALLBACK_COMPLEX", "qwen/qwen3.8-max"),
+    "standard": os.getenv("OPENROUTER_TIER_FALLBACK_STANDARD", "qwen/qwen3.8-max"),
+    "simple": os.getenv("OPENROUTER_TIER_FALLBACK_SIMPLE", "qwen/qwen3.8-max"),
 }
 OPENROUTER_TIER_BUDGET_PCT = {
     "complex": 0.5,  # 50% of daily budget reserved for complex tasks
@@ -53,9 +62,11 @@ OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://sowknow.gollamte
 OPENROUTER_SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "SOWKNOW")
 
 # OpenRouter native response caching (beta) — https://openrouter.ai/docs/features/cache
-OPENROUTER_RESPONSE_CACHE_ENABLED = os.getenv(
-    "OPENROUTER_RESPONSE_CACHE_ENABLED", "false"
-).lower() in ("true", "1", "yes")
+OPENROUTER_RESPONSE_CACHE_ENABLED = os.getenv("OPENROUTER_RESPONSE_CACHE_ENABLED", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 OPENROUTER_RESPONSE_CACHE_TTL = int(os.getenv("OPENROUTER_RESPONSE_CACHE_TTL", "300"))
 
 # Redis configuration for context caching
@@ -103,9 +114,7 @@ def _get_redis_client():
             _redis_client.ping()
             logger.info("OpenRouter cache: Redis connection established")
         except Exception as e:
-            logger.warning(
-                f"OpenRouter cache: Redis unavailable, caching disabled: {e}"
-            )
+            logger.warning(f"OpenRouter cache: Redis unavailable, caching disabled: {e}")
             _redis_client = None
     return _redis_client
 
@@ -127,14 +136,13 @@ class OpenRouterService:
         self.site_name = OPENROUTER_SITE_NAME
         self._cache_enabled = False
         self._tier_models = OPENROUTER_TIER_MODELS
+        self._tier_fallback_models = OPENROUTER_TIER_FALLBACK_MODELS
         self._tier_budget_pct = OPENROUTER_TIER_BUDGET_PCT
         self._or_cache_enabled = OPENROUTER_RESPONSE_CACHE_ENABLED
         self._or_cache_ttl = OPENROUTER_RESPONSE_CACHE_TTL
 
         if self.api_key:
-            logger.info(
-                f"OpenRouter service initialized with primary model: {self.model}"
-            )
+            logger.info(f"OpenRouter service initialized with primary model: {self.model}")
             logger.info(
                 f"OpenRouter tier config: complex={self._tier_models['complex']}, "
                 f"standard={self._tier_models['standard']}, simple={self._tier_models['simple']}"
@@ -175,10 +183,7 @@ class OpenRouterService:
             SHA256 hash string prefixed with cache namespace.
         """
         scope = collection_id or "global"
-        cache_content = (
-            f"{model}:{tier}:{scope}:"
-            f"{json.dumps(messages, separators=(',', ':'), ensure_ascii=False)}"
-        )
+        cache_content = f"{model}:{tier}:{scope}:{json.dumps(messages, separators=(',', ':'), ensure_ascii=False)}"
         cache_hash = hashlib.sha256(cache_content.encode("utf-8")).hexdigest()
         return f"{CACHE_KEY_PREFIX}{cache_hash}"
 
@@ -199,9 +204,7 @@ class OpenRouterService:
         """
         if not self._cache_enabled:
             return None
-        cache_key = self._generate_cache_key(
-            self.model, messages, tier=tier, collection_id=collection_id
-        )
+        cache_key = self._generate_cache_key(self.model, messages, tier=tier, collection_id=collection_id)
         redis_client = _get_redis_client()
         if not redis_client:
             return None
@@ -246,9 +249,7 @@ class OpenRouterService:
 
         return truncated_messages
 
-    def _get_headers(
-        self, cache_enabled: bool | None = None, cache_ttl: int | None = None
-    ) -> dict[str, str]:
+    def _get_headers(self, cache_enabled: bool | None = None, cache_ttl: int | None = None) -> dict[str, str]:
         """Get headers for OpenRouter API requests"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -259,9 +260,7 @@ class OpenRouterService:
         if self.site_name:
             headers["X-Title"] = self.site_name
 
-        use_cache = (
-            cache_enabled if cache_enabled is not None else self._or_cache_enabled
-        )
+        use_cache = cache_enabled if cache_enabled is not None else self._or_cache_enabled
         use_ttl = cache_ttl if cache_ttl is not None else self._or_cache_ttl
         if use_cache:
             headers["X-OpenRouter-Cache"] = "true"
@@ -283,6 +282,18 @@ class OpenRouterService:
         model = self._tier_models.get(tier, self.model)
         logger.debug(f"OpenRouter tier routing: {tier} -> {model}")
         return model
+
+    def _fallback_model_for(self, tier: str) -> str | None:
+        """Return the model-level fallback for a tier (e.g. qwen3.8-max).
+
+        Used as the escape hatch when the primary tier model fails with
+        400/404/429/5xx. Returns None if unset or identical to the tier model.
+        """
+        primary = self._tier_models.get(tier, self.model)
+        fallback = self._tier_fallback_models.get(tier)
+        if fallback and fallback != primary:
+            return fallback
+        return None
 
     def _check_cost_ceiling(
         self,
@@ -323,9 +334,7 @@ class OpenRouterService:
 
         Returns the tier to use (may be downgraded to 'simple').
         """
-        COST_ANOMALY_THRESHOLD_USD = float(
-            os.getenv("OPENROUTER_COST_ANOMALY_THRESHOLD", "0.05")
-        )
+        COST_ANOMALY_THRESHOLD_USD = float(os.getenv("OPENROUTER_COST_ANOMALY_THRESHOLD", "0.05"))
         if tier not in ("standard", "complex"):
             return tier
 
@@ -334,13 +343,10 @@ class OpenRouterService:
             from app.services.monitoring import CostTracker
 
             model = self.select_model_for_tier(tier)
-            rates = CostTracker.OPENROUTER_PRICING.get(
-                model, {"input": 0.0002, "output": 0.0006}
-            )
-            est_cost = (
-                (estimated_input_tokens / 1000) * rates["input"]
-                + (estimated_output_tokens / 1000) * rates["output"]
-            )
+            rates = CostTracker.OPENROUTER_PRICING.get(model, {"input": 0.0002, "output": 0.0006})
+            est_cost = (estimated_input_tokens / 1000) * rates["input"] + (estimated_output_tokens / 1000) * rates[
+                "output"
+            ]
             if est_cost > COST_ANOMALY_THRESHOLD_USD:
                 logger.warning(
                     "Cost anomaly detected: $%.4f > $%.2f, downgrading tier %s → simple",
@@ -367,9 +373,7 @@ class OpenRouterService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_random_exponential(multiplier=1, min=1, max=15),
-        retry=retry_if_exception_type(
-            (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)
-        ),
+        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
         reraise=True,
         before_sleep=_before_sleep_on_retry,
     )
@@ -387,6 +391,7 @@ class OpenRouterService:
         use_openrouter_cache: bool | None = None,
         openrouter_cache_ttl: int | None = None,
         _allow_model_failover: bool = True,
+        _model_override: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate chat completion using OpenRouter (OpenAI-compatible API)
@@ -423,12 +428,8 @@ class OpenRouterService:
         truncated_messages = self._truncate_messages(messages)
 
         # Check if truncation occurred
-        original_tokens = sum(
-            self._estimate_tokens(m.get("content", "")) for m in messages
-        )
-        truncated_tokens = sum(
-            self._estimate_tokens(m.get("content", "")) for m in truncated_messages
-        )
+        original_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in messages)
+        truncated_tokens = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
 
         if original_tokens > truncated_tokens:
             logger.warning(
@@ -437,15 +438,9 @@ class OpenRouterService:
 
         # OpenRouter native response caching (beta)
         or_cache_enabled = (
-            use_openrouter_cache
-            if use_openrouter_cache is not None
-            else OPENROUTER_RESPONSE_CACHE_ENABLED
+            use_openrouter_cache if use_openrouter_cache is not None else OPENROUTER_RESPONSE_CACHE_ENABLED
         )
-        or_cache_ttl = (
-            openrouter_cache_ttl
-            if openrouter_cache_ttl is not None
-            else OPENROUTER_RESPONSE_CACHE_TTL
-        )
+        or_cache_ttl = openrouter_cache_ttl if openrouter_cache_ttl is not None else OPENROUTER_RESPONSE_CACHE_TTL
         # PRIVACY: never use provider-side caching for confidential queries
         if is_confidential:
             or_cache_enabled = False
@@ -454,7 +449,7 @@ class OpenRouterService:
         # PRIVACY: confidential/PII queries are NEVER cached
         effective_cache_key = None
         if self._cache_enabled and not stream and not is_confidential:
-            model = self.select_model_for_tier(tier)
+            model = _model_override or self.select_model_for_tier(tier)
             effective_cache_key = cache_key or self._generate_cache_key(
                 model, truncated_messages, tier=tier, collection_id=collection_id
             )
@@ -463,13 +458,9 @@ class OpenRouterService:
             redis_client = _get_redis_client()
             if redis_client and effective_cache_key:
                 try:
-                    cached_response = await asyncio.to_thread(
-                        redis_client.get, effective_cache_key
-                    )
+                    cached_response = await asyncio.to_thread(redis_client.get, effective_cache_key)
                     if cached_response and isinstance(cached_response, str):
-                        logger.info(
-                            f"OpenRouter cache HIT: key={effective_cache_key[:50]}..."
-                        )
+                        logger.info(f"OpenRouter cache HIT: key={effective_cache_key[:50]}...")
                         # Record cache hit metrics
                         try:
                             tokens_saved = self._estimate_tokens(cached_response)
@@ -484,9 +475,7 @@ class OpenRouterService:
                                 labels={"cache_type": "openrouter_exact"}
                             )
                         except Exception as metric_error:
-                            logger.warning(
-                                f"Failed to record cache hit metric: {metric_error}"
-                            )
+                            logger.warning(f"Failed to record cache hit metric: {metric_error}")
 
                         yield str(cached_response)
                         return
@@ -494,9 +483,7 @@ class OpenRouterService:
                     logger.warning(f"Cache read error, proceeding with API call: {e}")
 
             # Record cache miss (we're about to make an API call)
-            logger.debug(
-                f"OpenRouter cache MISS: key={effective_cache_key[:50] if effective_cache_key else 'N/A'}..."
-            )
+            logger.debug(f"OpenRouter cache MISS: key={effective_cache_key[:50] if effective_cache_key else 'N/A'}...")
             try:
                 cache_monitor.record_cache_miss(
                     cache_key=effective_cache_key or "no_key",
@@ -504,16 +491,12 @@ class OpenRouterService:
                 )
                 from app.services.prometheus_metrics import get_metrics
 
-                get_metrics().counter("sowknow_cache_misses_total").inc(
-                    labels={"cache_type": "openrouter_exact"}
-                )
+                get_metrics().counter("sowknow_cache_misses_total").inc(labels={"cache_type": "openrouter_exact"})
             except Exception as metric_error:
                 logger.warning(f"Failed to record cache miss metric: {metric_error}")
 
         # --- Cost ceiling pre-flight check ---
-        est_input = sum(
-            self._estimate_tokens(m.get("content", "")) for m in truncated_messages
-        )
+        est_input = sum(self._estimate_tokens(m.get("content", "")) for m in truncated_messages)
         est_output = max_tokens
         if not self._check_cost_ceiling(est_input, est_output, tier=tier):
             logger.error(
@@ -527,7 +510,7 @@ class OpenRouterService:
         if effective_tier != tier:
             tier = effective_tier
 
-        model = self.select_model_for_tier(tier)
+        model = _model_override or self.select_model_for_tier(tier)
 
         # --- Provider-aware dynamic throttling (blueprint §2.3 Tier C) ---
         from app.services.openrouter_throttle import openrouter_throttle
@@ -557,21 +540,14 @@ class OpenRouterService:
                 async with client.stream(
                     "POST",
                     f"{self.base_url}/chat/completions",
-                    headers=self._get_headers(
-                        cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
-                    ),
+                    headers=self._get_headers(cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl),
                     json=payload,
                 ) as response:
                     response.raise_for_status()
                     # Log OpenRouter native cache status
-                    cache_status = getattr(response, "headers", {}).get(
-                        "X-OpenRouter-Cache-Status"
-                    )
+                    cache_status = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Status")
                     if cache_status:
-                        logger.info(
-                            f"OpenRouter native cache {cache_status}: "
-                            f"tier={tier}, model={model}, stream=True"
-                        )
+                        logger.info(f"OpenRouter native cache {cache_status}: tier={tier}, model={model}, stream=True")
 
                     async for line in response.aiter_lines():
                         if line.strip():
@@ -593,32 +569,18 @@ class OpenRouterService:
             else:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
-                    headers=self._get_headers(
-                        cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl
-                    ),
+                    headers=self._get_headers(cache_enabled=or_cache_enabled, cache_ttl=or_cache_ttl),
                     json=payload,
                 )
                 response.raise_for_status()
                 # Log OpenRouter native cache status
-                cache_status = getattr(response, "headers", {}).get(
-                    "X-OpenRouter-Cache-Status"
-                )
+                cache_status = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Status")
                 if cache_status:
-                    logger.info(
-                        f"OpenRouter native cache {cache_status}: "
-                        f"tier={tier}, model={model}, stream=False"
-                    )
+                    logger.info(f"OpenRouter native cache {cache_status}: tier={tier}, model={model}, stream=False")
                     if cache_status == "HIT":
-                        cache_age = getattr(response, "headers", {}).get(
-                            "X-OpenRouter-Cache-Age"
-                        )
-                        cache_ttl_remaining = getattr(response, "headers", {}).get(
-                            "X-OpenRouter-Cache-TTL"
-                        )
-                        logger.debug(
-                            f"OpenRouter cache age={cache_age}s, "
-                            f"ttl_remaining={cache_ttl_remaining}s"
-                        )
+                        cache_age = getattr(response, "headers", {}).get("X-OpenRouter-Cache-Age")
+                        cache_ttl_remaining = getattr(response, "headers", {}).get("X-OpenRouter-Cache-TTL")
+                        logger.debug(f"OpenRouter cache age={cache_age}s, ttl_remaining={cache_ttl_remaining}s")
                 result = response.json()
 
                 if "choices" in result and len(result["choices"]) > 0:
@@ -643,9 +605,7 @@ class OpenRouterService:
                                 )
                                 # Track key under collection for bulk invalidation
                                 if collection_id:
-                                    tracking_key = (
-                                        f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
-                                    )
+                                    tracking_key = f"{COLLECTION_CACHE_KEYS_PREFIX}{collection_id}"
                                     await asyncio.to_thread(
                                         redis_client.sadd,
                                         tracking_key,
@@ -657,9 +617,7 @@ class OpenRouterService:
                                         CACHE_TTL_SECONDS,
                                     )
                             except Exception as cache_error:
-                                logger.warning(
-                                    f"Failed to cache response: {cache_error}"
-                                )
+                                logger.warning(f"Failed to cache response: {cache_error}")
 
                     # Record successful non-streaming request for throttle accounting
                     openrouter_throttle.record_request(model)
@@ -673,12 +631,8 @@ class OpenRouterService:
                             service="openrouter",
                             operation="chat",
                             model=model,
-                            input_tokens=(
-                                usage.get("prompt_tokens", 0) if usage else est_input
-                            ),
-                            output_tokens=(
-                                usage.get("completion_tokens", 0) if usage else 0
-                            ),
+                            input_tokens=(usage.get("prompt_tokens", 0) if usage else est_input),
+                            output_tokens=(usage.get("completion_tokens", 0) if usage else 0),
                         )
                     except Exception as cost_err:
                         logger.debug(f"Cost tracking failed: {cost_err}")
@@ -699,30 +653,29 @@ class OpenRouterService:
             except (AttributeError, KeyError):
                 pass
 
-            # Handle rate limit (429) errors with specific retry trigger
-            if e.response.status_code == 429:
-                logger.warning(
-                    "OpenRouter rate limit hit (429), will retry with backoff"
-                )
-                # Re-raise to trigger tenacity retry with exponential backoff
-                raise
-
-            # P0 fix (2026-07-28): an invalid/deprecated model ID is a config
-            # error, not a transient failure — tenacity retries can't fix it,
-            # and yielding "Error: API error - 4xx" as content makes callers
-            # parse the error string as LLM output (this silently killed
-            # intent parsing and synthesis when mistral-small-2409 was
-            # deprecated upstream; gemini-2.0-flash-001 then 404'd the same
-            # way). Fail over ONCE to the simple-tier model. OpenRouter uses
-            # 400 for invalid model IDs and 404 for unknown/unavailable ones.
-            if e.response.status_code in (400, 404) and _allow_model_failover:
-                failover_model = OPENROUTER_TIER_MODELS.get("simple")
-                if failover_model and failover_model != model:
+            # Model-level failover (2026-08-05): a single retry on the tier's
+            # fallback model (default qwen/qwen3.8-max) for 400/404 (invalid/
+            # deprecated model), 429 (per-model rate limit), or 5xx (server
+            # error). The tenacity decorator cannot retry an async-generator
+            # body, so this recursion is the real retry path. Yielding a raw
+            # "Error: ..." string would be parsed as LLM output downstream.
+            if _allow_model_failover and e.response.status_code in (
+                400,
+                404,
+                429,
+                500,
+                502,
+                503,
+                504,
+            ):
+                fallback_model = self._fallback_model_for(tier)
+                if fallback_model and fallback_model != model:
                     logger.warning(
-                        "OpenRouter 400 (invalid request, likely deprecated model "
-                        "'%s') — failing over to simple-tier model '%s'",
+                        "OpenRouter %s on model='%s' (tier=%s) — failing over once to fallback model '%s'",
+                        e.response.status_code,
                         model,
-                        failover_model,
+                        tier,
+                        fallback_model,
                     )
                     async for chunk in self.chat_completion(
                         messages=messages,
@@ -733,11 +686,18 @@ class OpenRouterService:
                         user_id=user_id,
                         is_confidential=is_confidential,
                         collection_id=collection_id,
-                        tier="simple",
+                        tier=tier,
                         _allow_model_failover=False,
+                        _model_override=fallback_model,
                     ):
                         yield chunk
                     return
+
+            # 429 with no fallback model available — propagate so the router
+            # can run its own tier fallback / graceful degradation.
+            if e.response.status_code == 429:
+                logger.warning("OpenRouter rate limit hit (429) and no fallback model available — propagating")
+                raise
 
             logger.error(f"OpenRouter API error: {e} - {error_body}")
             yield f"Error: API error - {e.response.status_code if e.response else 'unknown'}"
@@ -771,22 +731,16 @@ class OpenRouterService:
         try:
             cache_keys = redis_client.smembers(tracking_key)
             if not cache_keys:
-                logger.debug(
-                    f"Cache invalidation: no keys tracked for collection {collection_id}"
-                )
+                logger.debug(f"Cache invalidation: no keys tracked for collection {collection_id}")
                 return 0
 
             keys_to_delete = list(cache_keys) + [tracking_key]
             redis_client.delete(*keys_to_delete)
             count = len(cache_keys)
-            logger.info(
-                f"Cache invalidation: removed {count} entries for collection {collection_id}"
-            )
+            logger.info(f"Cache invalidation: removed {count} entries for collection {collection_id}")
             return count
         except Exception as e:
-            logger.warning(
-                f"Cache invalidation error for collection {collection_id}: {e}"
-            )
+            logger.warning(f"Cache invalidation error for collection {collection_id}: {e}")
             return 0
 
     async def health_check(self) -> dict[str, Any]:
@@ -814,9 +768,7 @@ class OpenRouterService:
         try:
             test_messages = [{"role": "user", "content": "test"}]
             response_text = ""
-            async for chunk in self.chat_completion(
-                test_messages, stream=False, max_tokens=10
-            ):
+            async for chunk in self.chat_completion(test_messages, stream=False, max_tokens=10):
                 if not chunk.startswith("__USAGE__"):
                     response_text += chunk
 
@@ -862,9 +814,7 @@ class OpenRouterService:
 
         try:
             client = LLMHTTPClient.get_client()
-            response = await client.get(
-                f"{self.base_url}/models", headers=self._get_headers()
-            )
+            response = await client.get(f"{self.base_url}/models", headers=self._get_headers())
             response.raise_for_status()
             result = response.json()
             return result.get("data", [])

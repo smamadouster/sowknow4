@@ -38,6 +38,8 @@ _PRO_MODELS = {
     "anthropic/claude-3.5-sonnet-20241022",
     "deepseek/deepseek-v4-pro",
     "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-flash-0731",
+    "qwen/qwen3.8-max",
     "moonshotai/kimi-k2.6",
 }
 
@@ -91,9 +93,7 @@ class OpenRouterThrottle:
 
     def _effective_limit(self, tier: str, limit_type: str) -> int:
         """Return the effective limit, accounting for adaptive backoff."""
-        base = OPENROUTER_RATE_LIMITS.get(tier, OPENROUTER_RATE_LIMITS["standard"])[
-            limit_type
-        ]
+        base = OPENROUTER_RATE_LIMITS.get(tier, OPENROUTER_RATE_LIMITS["standard"])[limit_type]
         redis = self._get_redis()
         if redis is None:
             return base

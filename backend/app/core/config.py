@@ -126,10 +126,13 @@ class Settings(BaseSettings):
     # LLM Model Configuration
     # ------------------------------------------------------------------
 
-    OPENROUTER_MODEL: str = Field(default="google/gemini-2.5-flash")
-    OPENROUTER_TIER_SIMPLE: str = Field(default="google/gemini-2.5-flash")
-    OPENROUTER_TIER_STANDARD: str = Field(default="google/gemini-2.5-flash")
-    OPENROUTER_TIER_COMPLEX: str = Field(default="anthropic/claude-sonnet-4")
+    OPENROUTER_MODEL: str = Field(default="deepseek/deepseek-v4-flash-0731")
+    OPENROUTER_TIER_SIMPLE: str = Field(default="deepseek/deepseek-v4-flash-0731")
+    OPENROUTER_TIER_STANDARD: str = Field(default="deepseek/deepseek-v4-flash-0731")
+    OPENROUTER_TIER_COMPLEX: str = Field(default="deepseek/deepseek-v4-pro")
+    OPENROUTER_TIER_FALLBACK_SIMPLE: str = Field(default="qwen/qwen3.8-max")
+    OPENROUTER_TIER_FALLBACK_STANDARD: str = Field(default="qwen/qwen3.8-max")
+    OPENROUTER_TIER_FALLBACK_COMPLEX: str = Field(default="qwen/qwen3.8-max")
     OPENROUTER_BASE_URL: str = Field(default="https://openrouter.ai/api/v1")
     OPENROUTER_SITE_URL: str = Field(default="https://sowknow.gollamtech.com")
     OPENROUTER_SITE_NAME: str = Field(default="SOWKNOW")
@@ -192,7 +195,13 @@ class Settings(BaseSettings):
         return v
 
     @field_validator(
-        "OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX"
+        "OPENROUTER_MODEL",
+        "OPENROUTER_TIER_SIMPLE",
+        "OPENROUTER_TIER_STANDARD",
+        "OPENROUTER_TIER_COMPLEX",
+        "OPENROUTER_TIER_FALLBACK_SIMPLE",
+        "OPENROUTER_TIER_FALLBACK_STANDARD",
+        "OPENROUTER_TIER_FALLBACK_COMPLEX",
     )
     @classmethod
     def validate_no_free_tier_in_production(cls, v: str, info) -> str:  # noqa: N805
@@ -205,7 +214,13 @@ class Settings(BaseSettings):
         return v
 
     @field_validator(
-        "OPENROUTER_MODEL", "OPENROUTER_TIER_SIMPLE", "OPENROUTER_TIER_STANDARD", "OPENROUTER_TIER_COMPLEX"
+        "OPENROUTER_MODEL",
+        "OPENROUTER_TIER_SIMPLE",
+        "OPENROUTER_TIER_STANDARD",
+        "OPENROUTER_TIER_COMPLEX",
+        "OPENROUTER_TIER_FALLBACK_SIMPLE",
+        "OPENROUTER_TIER_FALLBACK_STANDARD",
+        "OPENROUTER_TIER_FALLBACK_COMPLEX",
     )
     @classmethod
     def validate_not_deprecated_model(cls, v: str, info) -> str:  # noqa: N805

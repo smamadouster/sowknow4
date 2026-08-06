@@ -14,9 +14,12 @@ Routing strategy
 
 Tiered model routing (OpenRouter)
 ---------------------------------
-* simple:    google/gemini-2.0-flash-001  (classification, tagging, intent)
-* standard:  mistralai/mistral-small-2409  (chat, synthesis, articles)
-* complex:   anthropic/claude-3.5-sonnet  (reasoning, reports, verification)
+* simple:    deepseek/deepseek-v4-flash-0731  (classification, tagging, intent)
+* standard:  deepseek/deepseek-v4-flash-0731  (chat, synthesis, articles)
+* complex:   deepseek/deepseek-v4-pro         (reasoning, reports, verification)
+
+Model-level fallback (per tier): qwen/qwen3.8-max — tried once inside
+openrouter_service when the primary tier model fails with 400/404/429/5xx.
 """
 
 import logging
@@ -54,9 +57,9 @@ class LLMProvider(StrEnum):
 class TaskTier(StrEnum):
     """Complexity tier for task-aware model selection."""
 
-    SIMPLE = "simple"       # Classification, tagging, intent parsing
-    STANDARD = "standard"   # Chat, synthesis, articles, summaries
-    COMPLEX = "complex"     # Reasoning, coding, verification, reports
+    SIMPLE = "simple"  # Classification, tagging, intent parsing
+    STANDARD = "standard"  # Chat, synthesis, articles, summaries
+    COMPLEX = "complex"  # Reasoning, coding, verification, reports
 
 
 class FallbackTrigger(StrEnum):
@@ -104,15 +107,17 @@ class LLMRouter:
 
     # Fallback chains per routing scenario (§5.2 updated).
     # Ollama and Together.ai are removed from the active chain.
-    # MiniMax is optional; all traffic routes through OpenRouter with tier fallback.
-    # Each chain is an ordered list of provider names tried left-to-right.
+    # MiniMax is optional; all traffic routes through OpenRouter with tier
+    # fallback + per-tier model-level fallback (deepseek → qwen, handled inside
+    # openrouter_service). Each chain is an ordered list of provider names
+    # tried left-to-right.
     fallback_chains: dict[str, list[str]] = {
         "confidential": ["openrouter"],
         "public_docs": ["openrouter"],
         "general_chat": ["openrouter"],
         # §5.2 Smart Collections & Reports: quality-critical tier fallback
-        # Primary: OpenRouter complex (Claude Sonnet)
-        # Secondary: OpenRouter standard (Mistral Small) — tier fallback
+        # Primary: OpenRouter complex (DeepSeek V4 Pro)
+        # Secondary: OpenRouter standard (DeepSeek V4 Flash) — tier fallback
         # Ultimate: Graceful degradation to bullet-point summary
         "smart_collections": ["openrouter"],
         "reports": ["openrouter"],
@@ -203,12 +208,12 @@ class LLMRouter:
                 async for chunk in gen:
                     yield chunk
                 return  # Success — stop trying other providers
-            except (Exception) as exc:
+            except Exception as exc:
                 last_error = str(exc)
                 logger.warning("LLM provider %s (tier=%s) failed: %s", name, tier.value, last_error)
 
                 # §5.2: Tier fallback within OpenRouter.
-                # If standard/complex fails with 429/timeout, try simple tier (Gemini Flash).
+                # If standard/complex fails, try simple tier (DeepSeek V4 Flash).
                 if name == "openrouter" and tier in (TaskTier.STANDARD, TaskTier.COMPLEX):
                     fallback_gen = adapter.call_service(
                         built_messages,
@@ -225,9 +230,7 @@ class LLMRouter:
                         return
                     except Exception as exc2:
                         last_error = str(exc2)
-                        logger.warning(
-                            "OpenRouter simple tier fallback also failed: %s", exc2
-                        )
+                        logger.warning("OpenRouter simple tier fallback also failed: %s", exc2)
                 continue
 
         logger.error("All LLM providers failed. Last error: %s", last_error)
@@ -264,9 +267,7 @@ class LLMRouter:
 
         return False, "public_content"
 
-    def _generate_bullet_summary(
-        self, context_chunks: list[dict[str, Any]] | None
-    ) -> str | None:
+    def _generate_bullet_summary(self, context_chunks: list[dict[str, Any]] | None) -> str | None:
         """
         §5.2 Ultimate fallback: generate a bullet-point summary from retrieved
         documents without any LLM synthesis.
@@ -316,8 +317,8 @@ class LLMRouter:
         §5.2 Smart Collections & Reports: quality-critical tier fallback.
 
         Chain:
-            1. OpenRouter complex (Claude 3.5 Sonnet)
-            2. OpenRouter standard (Mistral Small) — on 429/timeout/JSON failure
+            1. OpenRouter complex (DeepSeek V4 Pro)
+            2. OpenRouter standard (DeepSeek V4 Flash) — on 429/timeout/JSON failure
             3. Graceful degradation — bullet-point summary of retrieved documents
 
         Yields:

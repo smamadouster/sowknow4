@@ -51,10 +51,10 @@ _MODULE_SEMAPHORES: dict[str, asyncio.Semaphore] = {
 # When a consumer omits the *tier* arg (defaults to "standard"), we can
 # infer a more appropriate tier from the *module* name.
 _TASK_TIER_MAP: dict[str, str] = {
-    "knowledge_graph": "simple",   # entity extraction → Gemini Flash (cheap, fast JSON)
-    "chat": "standard",            # conversational RAG → Mistral Small
-    "collections": "complex",      # comprehensive reports → Claude 3.5 Sonnet
-    "smart_folders": "standard",   # articles / summaries → Mistral Small
+    "knowledge_graph": "simple",  # entity extraction → DeepSeek V4 Flash (cheap, fast JSON)
+    "chat": "standard",  # conversational RAG → DeepSeek V4 Flash
+    "collections": "complex",  # comprehensive reports → DeepSeek V4 Pro
+    "smart_folders": "standard",  # articles / summaries → DeepSeek V4 Flash
 }
 
 # Per-user concurrent request tracking (blueprint §2.3 Tier A)
@@ -73,9 +73,11 @@ async def _acquire_user_concurrency_slot(user_id: str, role: str) -> bool:
         current = _USER_ACTIVE_REQUESTS.get(user_id, 0)
         if current >= max_concurrent:
             logger.warning(
-                "Concurrent request limit exceeded for user=%s role=%s "
-                "(%d / %d active)",
-                user_id, role, current, max_concurrent,
+                "Concurrent request limit exceeded for user=%s role=%s (%d / %d active)",
+                user_id,
+                role,
+                current,
+                max_concurrent,
             )
             return False
         _USER_ACTIVE_REQUESTS[user_id] = current + 1
@@ -216,9 +218,7 @@ class LLMGateway:
 
             # 1. Token quota
             try:
-                user_quota_manager.check_and_consume(
-                    resolved_user_id, resolved_user_role, estimated
-                )
+                user_quota_manager.check_and_consume(resolved_user_id, resolved_user_role, estimated)
             except QuotaExceededError as exc:
                 logger.warning("Quota exceeded for user=%s: %s", resolved_user_id, exc)
                 yield f"[QUOTA_EXCEEDED] {exc}"
@@ -229,25 +229,17 @@ class LLMGateway:
                 budget = get_per_user_cost_budget()
                 # Pessimistic cost estimate: assume all tokens are output-priced
                 svc = self._router._openrouter
-                tier_model = (
-                    svc.select_model_for_tier(tier)
-                    if svc
-                    else "mistralai/mistral-small-2409"
-                )
+                tier_model = svc.select_model_for_tier(tier) if svc else "deepseek/deepseek-v4-flash-0731"
                 from app.services.monitoring import CostTracker
 
                 pricing = CostTracker.OPENROUTER_PRICING.get(
                     tier_model,
-                    CostTracker.OPENROUTER_PRICING.get("mistralai/mistral-small-2409"),
+                    CostTracker.OPENROUTER_PRICING.get("deepseek/deepseek-v4-flash-0731"),
                 )
                 estimated_cost = (estimated / 1000) * pricing.get("output", 0.003)
-                budget.check_and_consume(
-                    resolved_user_id, resolved_user_role, estimated_cost
-                )
+                budget.check_and_consume(resolved_user_id, resolved_user_role, estimated_cost)
             except BudgetExceededError as exc:
-                logger.warning(
-                    "Cost budget exceeded for user=%s: %s", resolved_user_id, exc
-                )
+                logger.warning("Cost budget exceeded for user=%s: %s", resolved_user_id, exc)
                 yield f"[QUOTA_EXCEEDED] {exc}"
                 return
 
@@ -262,13 +254,8 @@ class LLMGateway:
 
         # ── Per-user concurrency cap (blueprint §2.3 Tier A) ──
         if resolved_user_id and resolved_user_role:
-            if not await _acquire_user_concurrency_slot(
-                resolved_user_id, resolved_user_role
-            ):
-                yield (
-                    "[QUOTA_EXCEEDED] Too many concurrent requests. "
-                    "Please wait for existing requests to complete."
-                )
+            if not await _acquire_user_concurrency_slot(resolved_user_id, resolved_user_role):
+                yield ("[QUOTA_EXCEEDED] Too many concurrent requests. Please wait for existing requests to complete.")
                 return
 
         # ── Hard prompt ceiling (blueprint §7.4) ──
@@ -289,9 +276,7 @@ class LLMGateway:
             if not stream and query:
                 from app.services.semantic_cache import semantic_cache
 
-                cached = await semantic_cache.get(
-                    query, model="openrouter", tier=tier, collection_id=collection_id
-                )
+                cached = await semantic_cache.get(query, model="openrouter", tier=tier, collection_id=collection_id)
                 if cached is not None:
                     logger.info(
                         "LLMGateway semantic cache hit for query=%s collection=%s",
@@ -482,10 +467,9 @@ class LLMGateway:
         §5.2 Smart Collections & Reports: quality-critical multi-tier fallback.
 
         Delegates to LLMRouter.generate_report_completion which implements:
-            1. OpenRouter complex (Claude 3.5 Sonnet)
-            2. OpenRouter standard (Mistral Small)
-            3. Together.ai Llama 3.1 70B
-            4. Graceful degradation to bullet-point summary
+            1. OpenRouter complex (DeepSeek V4 Pro)
+            2. OpenRouter standard (DeepSeek V4 Flash)
+            3. Graceful degradation to bullet-point summary
         """
         from app.services.llm_router import TaskTier
 

@@ -197,7 +197,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     )
 
     try:
-        if is_token_blacklisted(token):
+        if await is_token_blacklisted(token):
             raise TokenInvalidError("Token has been revoked")
         payload = decode_token(token, expected_type="access")
     except (TokenExpiredError, TokenInvalidError):

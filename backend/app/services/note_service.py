@@ -157,6 +157,21 @@ class NoteService:
         )
         return list(result.scalars().all())
 
+    async def get_tags_for_notes(self, db: AsyncSession, note_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[Tag]]:
+        """Fetch tags for many notes in one query, grouped by note id."""
+        tags_by_note: dict[uuid.UUID, list[Tag]] = {note_id: [] for note_id in note_ids}
+        if not note_ids:
+            return tags_by_note
+        result = await db.execute(
+            select(Tag).where(
+                Tag.target_type == TargetType.NOTE,
+                Tag.target_id.in_(note_ids),
+            )
+        )
+        for tag in result.scalars().all():
+            tags_by_note.setdefault(tag.target_id, []).append(tag)
+        return tags_by_note
+
     def _apply_access_filter(self, query, user: User):
         query = query.where(Note.user_id == user.id)
         if user.role == UserRole.USER:

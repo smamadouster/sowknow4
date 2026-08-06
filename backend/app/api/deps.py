@@ -85,7 +85,7 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     if not token:
         logger.warning("Authentication failed: No token found in cookie or header")
         raise credentials_exception
-    if is_token_blacklisted(token):
+    if await is_token_blacklisted(token):
         logger.warning("Authentication failed: Token has been revoked")
         raise credentials_exception
 

@@ -142,7 +142,7 @@ except Exception as e:
     redis_client = None
 
 
-def blacklist_token(token: str, expires_in_seconds: int) -> bool:
+async def blacklist_token(token: str, expires_in_seconds: int) -> bool:
     """
     Add a token to the blacklist to prevent replay attacks.
 
@@ -153,10 +153,10 @@ def blacklist_token(token: str, expires_in_seconds: int) -> bool:
     Returns:
         True if successfully blacklisted, False otherwise
     """
-    return blacklist_jwt(token, expires_in_seconds)
+    return await blacklist_jwt(token, expires_in_seconds)
 
 
-def is_token_blacklisted(token: str) -> bool:
+async def is_token_blacklisted(token: str) -> bool:
     """
     Check if a token is blacklisted.
 
@@ -166,7 +166,7 @@ def is_token_blacklisted(token: str) -> bool:
     Returns:
         True if token is blacklisted, False otherwise
     """
-    return jwt_is_blacklisted(token)
+    return await jwt_is_blacklisted(token)
 
 
 # =============================================================================
@@ -308,7 +308,7 @@ def get_access_token_from_request(request: Request) -> str | None:
     return None
 
 
-def blacklist_token_until_expiry(token: str, expected_type: str) -> None:
+async def blacklist_token_until_expiry(token: str, expected_type: str) -> None:
     """Best-effort token revocation using the JWT exp claim as Redis TTL."""
     import time
 
@@ -317,7 +317,7 @@ def blacklist_token_until_expiry(token: str, expected_type: str) -> None:
     except Exception:
         return
     ttl = max(0, int(payload.get("exp", int(time.time()))) - int(time.time()))
-    blacklist_token(token, ttl)
+    await blacklist_token(token, ttl)
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | bool:
@@ -535,7 +535,7 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token required")
 
     # Check if token is blacklisted
-    if is_token_blacklisted(refresh_token):
+    if await is_token_blacklisted(refresh_token):
         logger.warning("Blacklisted refresh token used")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
@@ -567,7 +567,7 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
 
     exp_time = payload.get("exp", int(time.time()) + REFRESH_TOKEN_EXPIRE_DAYS * 86400)
     ttl = max(0, exp_time - int(time.time()))
-    blacklist_token(refresh_token, ttl)
+    await blacklist_token(refresh_token, ttl)
 
     # Create NEW access token
     # SECURITY: Use user.role from database, NOT payload.get("role") from old token
@@ -646,11 +646,11 @@ async def logout(request: Request, response: Response) -> LoginResponse:
     # Optionally blacklist the refresh token
     refresh_token = get_refresh_token_from_request(request)
     if refresh_token:
-        blacklist_token_until_expiry(refresh_token, expected_type="refresh")
+        await blacklist_token_until_expiry(refresh_token, expected_type="refresh")
 
     access_token = get_access_token_from_request(request)
     if access_token:
-        blacklist_token_until_expiry(access_token, expected_type="access")
+        await blacklist_token_until_expiry(access_token, expected_type="access")
 
     # Clear httpOnly cookies
     clear_auth_cookies(response)

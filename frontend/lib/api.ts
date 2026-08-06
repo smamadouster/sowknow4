@@ -252,7 +252,7 @@ class ApiClient {
 
     const status = response.status;
 
-    if ((status === 401 || status === 403) && typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+    if (status === 401 && typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
       try {
         const refreshHeaders: Record<string, string> = {};
         const csrfToken = this.getCsrfToken();

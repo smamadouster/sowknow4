@@ -65,9 +65,9 @@ async def list_notes(
         logger.error(f"Failed to list notes: {e}")
         raise HTTPException(status_code=500, detail="Failed to list notes")
     items = []
+    tags_by_note = await note_service.get_tags_for_notes(db, [n.id for n in notes])
     for n in notes:
-        tags = await note_service.get_tags_for_note(db, n.id)
-        items.append(_to_response(n, tags))
+        items.append(_to_response(n, tags_by_note.get(n.id, [])))
     return NoteListResponse(notes=items, total=total, page=page, page_size=page_size)
 
 
@@ -83,9 +83,9 @@ async def search_notes(
         db=db, user=current_user, query_str=q, page=page, page_size=page_size,
     )
     items = []
+    tags_by_note = await note_service.get_tags_for_notes(db, [n.id for n in notes])
     for n in notes:
-        tags = await note_service.get_tags_for_note(db, n.id)
-        items.append(_to_response(n, tags))
+        items.append(_to_response(n, tags_by_note.get(n.id, [])))
     return NoteListResponse(notes=items, total=total, page=page, page_size=page_size)
 
 

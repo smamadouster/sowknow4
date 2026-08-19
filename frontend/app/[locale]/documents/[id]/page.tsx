@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
@@ -129,11 +129,19 @@ function DocumentPreview({ docId, mimeType, apiBase }: { docId: string; mimeType
   const [expanded, setExpanded] = useState(false);
 
   const previewType = getPreviewType(mimeType);
+  const inFlightRef = useRef(false);
 
   const fetchContent = useCallback(async () => {
     if (!previewType) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setPreviewLoading(true);
     setPreviewError(null);
+    setContent(null);
+    setBlobUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     try {
       const res = await fetch(`${apiBase}/v1/documents/${docId}/download`, {
         credentials: 'include',
@@ -156,15 +164,17 @@ function DocumentPreview({ docId, mimeType, apiBase }: { docId: string; mimeType
       setPreviewError('Failed to load preview');
     } finally {
       setPreviewLoading(false);
+      inFlightRef.current = false;
     }
   }, [docId, apiBase, previewType]);
 
-  // Clean up blob URL on unmount
+  const blobUrlRef = useRef<string | null>(null);
+  useEffect(() => { blobUrlRef.current = blobUrl; }, [blobUrl]);
   useEffect(() => {
     return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     };
-  }, [blobUrl]);
+  }, []);
 
   if (!previewType) return null;
 
@@ -172,8 +182,13 @@ function DocumentPreview({ docId, mimeType, apiBase }: { docId: string; mimeType
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
       <button
         onClick={() => {
-          setExpanded(v => !v);
-          if (!expanded && content === null && blobUrl === null) fetchContent();
+          setExpanded((v) => {
+            const next = !v;
+            if (next && content === null && blobUrl === null) {
+              void fetchContent();
+            }
+            return next;
+          });
         }}
         className="flex items-center justify-between w-full"
       >
@@ -223,12 +238,12 @@ function DocumentPreview({ docId, mimeType, apiBase }: { docId: string; mimeType
           )}
           {!previewLoading && !previewError && blobUrl && previewType === 'image' && (
             <div className="flex justify-center border border-gray-200 rounded-lg bg-gray-50 p-4">
-              <img src={blobUrl} alt="Document preview" className="max-h-[500px] max-w-full object-contain" />
+              <img key={blobUrl} src={blobUrl} alt="Document preview" className="max-h-[500px] max-w-full object-contain" />
             </div>
           )}
           {!previewLoading && !previewError && blobUrl && previewType === 'pdf' && (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <iframe src={blobUrl} className="w-full h-[500px]" title="PDF preview" />
+              <iframe key={blobUrl} src={blobUrl} className="w-full h-[500px]" title="PDF preview" />
             </div>
           )}
         </div>
@@ -701,7 +716,7 @@ export default function DocumentDetailPage() {
       </div>
 
       {/* Document preview — CSV table, XML/JSON/TXT code, images, PDF */}
-      <DocumentPreview docId={doc.id} mimeType={doc.mime_type} apiBase={API_BASE} />
+      <DocumentPreview key={doc.id} docId={doc.id} mimeType={doc.mime_type} apiBase={API_BASE} />
 
       {/* Processing metadata section — collapsible */}
       {metaKeys.length > 0 && (

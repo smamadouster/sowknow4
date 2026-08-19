@@ -255,7 +255,7 @@ async def require_confidential_access_or_admin(current_user: User = Depends(get_
     Raises:
         HTTPException 403: If user lacks both confidential access and admin role
     """
-    if not (current_user.can_access_confidential or current_user.role in (UserRole.ADMIN, UserRole.SUPERUSER)):
+    if not (current_user.can_access_confidential or current_user.role == UserRole.ADMIN):
         logger.warning(
             f"Authorization failed: User {current_user.email} "
             f"(role: {current_user.role}) attempted confidential access "

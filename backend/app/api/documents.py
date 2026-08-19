@@ -16,7 +16,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_admin_only, require_confidential_access_or_admin
+from app.api.deps import get_current_user, require_admin_only
 from app.api.documents_common import create_audit_log
 from app.api.documents_journal import router as journal_router
 from app.api.documents_upload import router as upload_router
@@ -90,7 +90,9 @@ async def list_documents(
         t0 = perf_counter()
         try:
             search_svc = HybridSearchService()
-            doc_results = await search_svc.document_search(query=search, limit=100, db=db, user=current_user)
+            doc_results = await search_svc.document_search(
+                query=search, limit=100, db=db, user=current_user
+            )
             for sr in doc_results:
                 try:
                     content_doc_ids.add(uuid.UUID(str(sr.document_id)))
@@ -116,7 +118,10 @@ async def list_documents(
 
         # Match either filename (existing behavior) OR content (new)
         if content_doc_ids:
-            stmt = stmt.where((Document.original_filename.ilike(f"%{search}%")) | (Document.id.in_(content_doc_ids)))
+            stmt = stmt.where(
+                (Document.original_filename.ilike(f"%{search}%"))
+                | (Document.id.in_(content_doc_ids))
+            )
         else:
             stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
 
@@ -235,7 +240,6 @@ async def get_document_status(
 
     if not error_message:
         from app.models.pipeline import PipelineStage, StageStatus
-
         ps_result = await db.execute(
             select(PipelineStage)
             .where(
@@ -278,26 +282,21 @@ async def download_document(
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    if document.bucket == DocumentBucket.CONFIDENTIAL and not (
-        current_user.can_access_confidential or current_user.role in (UserRole.ADMIN, UserRole.SUPERUSER)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Confidential access required",
-        )
+    if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
+        UserRole.ADMIN,
+        UserRole.SUPERUSER,
+    ]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     if document.bucket == DocumentBucket.CONFIDENTIAL:
-        try:
-            await create_audit_log(
-                db=db,
-                user_id=current_user.id,
-                action=AuditAction.CONFIDENTIAL_ACCESSED,
-                resource_type="document",
-                resource_id=str(document.id),
-                details={"filename": document.filename, "action": "download"},
-            )
-        except Exception as audit_err:
-            logger.warning("Confidential download audit log failed (non-fatal): %s", audit_err)
+        await create_audit_log(
+            db=db,
+            user_id=current_user.id,
+            action=AuditAction.CONFIDENTIAL_ACCESSED,
+            resource_type="document",
+            resource_id=str(document.id),
+            details={"filename": document.filename, "action": "download"},
+        )
 
     file_content = storage_service.get_file(filename=document.filename, bucket=document.bucket.value)
 
@@ -475,7 +474,9 @@ async def reprocess_document(
     loop = asyncio.get_running_loop()
     with ThreadPoolExecutor(max_workers=1) as pool:
         # Reset pipeline tracking so the document starts fresh
-        await loop.run_in_executor(pool, update_stage, str(document_id), StageEnum.UPLOADED, StageStatus.COMPLETED)
+        await loop.run_in_executor(
+            pool, update_stage, str(document_id), StageEnum.UPLOADED, StageStatus.COMPLETED
+        )
         dispatch_result = await loop.run_in_executor(pool, dispatch_document, str(document_id))
 
     if dispatch_result == "dispatched":
@@ -492,7 +493,5 @@ async def reprocess_document(
         "document_id": str(document_id),
         "status": document.status.value,
         "task_id": dispatch_result,
-        "message": "Reprocessing queued successfully"
-        if dispatch_result == "dispatched"
-        else f"Pipeline backpressure: {dispatch_result}",
+        "message": "Reprocessing queued successfully" if dispatch_result == "dispatched" else f"Pipeline backpressure: {dispatch_result}",
     }

@@ -124,6 +124,9 @@ class HybridSearchService:
         elif user.role == UserRole.SUPERUSER:
             # Super users see all documents (VIEW-ONLY for confidential)
             return [DocumentBucket.PUBLIC.value, DocumentBucket.CONFIDENTIAL.value]
+        elif bool(user.can_access_confidential):
+            # Users explicitly granted confidential access see confidential docs
+            return [DocumentBucket.PUBLIC.value, DocumentBucket.CONFIDENTIAL.value]
         else:
             # Regular users only see public documents
             return [DocumentBucket.PUBLIC.value]

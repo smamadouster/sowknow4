@@ -304,6 +304,9 @@ function ResultCard({ result, rank, canSeeConfidential, confidentialLabel, relev
         a.href = url; a.download = title;
         document.body.appendChild(a); a.click();
         document.body.removeChild(a); URL.revokeObjectURL(url);
+      } else {
+        const detail = await res.text().catch(() => '');
+        console.error('Download failed:', res.status, detail);
       }
     } catch (err) { console.error('Download failed:', err); }
     finally { setDownloading(false); }

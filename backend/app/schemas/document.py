@@ -69,6 +69,7 @@ class DocumentResponse(BaseModel):
     ocr_processed: bool = False
     embedding_generated: bool = False
     chunk_count: int = 0
+    source_file_available: bool = True
     metadata: dict | None = Field(default=None, alias="document_metadata")
     pipeline_error: str | None = None
     error_message: str | None = None

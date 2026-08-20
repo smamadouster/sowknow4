@@ -98,6 +98,9 @@ class Document(Base, TimestampMixin):
     ocr_processed = Column(Boolean, default=False)
     embedding_generated = Column(Boolean, default=False)
     chunk_count = Column(Integer, default=0)
+    # Whether the source binary still exists on disk. Legacy imports carry
+    # retired storage/documents/... paths; those are flagged false (migration 039).
+    source_file_available = Column(Boolean, nullable=False, default=True)
     article_count = Column(Integer, default=0)
     articles_generated = Column(Boolean, default=False)
 
@@ -235,7 +238,8 @@ class DocumentChunk(Base, TimestampMixin):
             # Uniqueness makes the chunk stage's DELETE-all + INSERT-all safe
             # against concurrent duplicate runs (see migration 033).
             UniqueConstraint(
-                "document_id", "chunk_index",
+                "document_id",
+                "chunk_index",
                 name="uq_document_chunks_doc_index",
             ),
             Index(

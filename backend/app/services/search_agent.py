@@ -245,6 +245,7 @@ def rerank_and_build_results(
                 match_reason=_build_match_reason(best, intent),
                 is_confidential=(best.document_bucket == DocumentBucket.CONFIDENTIAL),
                 match_source=best.match_source,
+                source_file_available=best.source_file_available,
             )
         )
 
@@ -831,10 +832,7 @@ async def graph_expansion_chunks(
         matched = (
             (
                 await db.execute(
-                    sa_select(Entity)
-                    .where(sa_or(*name_clauses))
-                    .order_by(Entity.document_count.desc())
-                    .limit(5)
+                    sa_select(Entity).where(sa_or(*name_clauses)).order_by(Entity.document_count.desc()).limit(5)
                 )
             )
             .scalars()

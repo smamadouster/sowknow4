@@ -86,6 +86,7 @@ class RawChunk(BaseModel):
     created_at: datetime | None = None
     tags: list[str] = Field(default_factory=list)
     match_source: str = "unknown"
+    source_file_available: bool = True
 
 
 class Citation(BaseModel):
@@ -114,6 +115,7 @@ class SearchResult(BaseModel):
     match_reason: str
     is_confidential: bool = False
     match_source: str = "unknown"
+    source_file_available: bool = True
 
 
 class SearchSuggestion(BaseModel):

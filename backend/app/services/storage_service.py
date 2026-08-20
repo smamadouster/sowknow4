@@ -193,6 +193,18 @@ class StorageService:
             raise ValueError("Invalid storage filename")
         return file_path
 
+    def resolve_path(self, filename: str, bucket: str) -> Path | None:
+        """Return the resolved bucket file path if the file exists, else None.
+
+        Used by the streaming download path (FileResponse) where decrypting is
+        not required. Rejects traversal and never raises for a missing file.
+        """
+        try:
+            file_path = self._safe_bucket_file_path(filename, bucket)
+        except (ValueError, OSError):
+            return None
+        return file_path if file_path.exists() else None
+
     def generate_filename(self, original_filename: str) -> str:
         """Generate a unique filename while preserving extension"""
         # Get file extension
@@ -238,10 +250,7 @@ class StorageService:
         # bucket is an INVARIANT, not a preference: without a key we must
         # refuse rather than silently store plaintext.
         if bucket == "confidential" and self._fernet is None:
-            raise EncryptionError(
-                "Confidential bucket requires STORAGE_ENCRYPTION_KEY — "
-                "refusing to store plaintext"
-            )
+            raise EncryptionError("Confidential bucket requires STORAGE_ENCRYPTION_KEY — refusing to store plaintext")
         encrypt = bucket == "confidential" or force_encrypt
 
         if encrypt:
@@ -282,9 +291,7 @@ class StorageService:
         encryption and blocking disk I/O, so it must run off the event loop."""
         import asyncio
 
-        return await asyncio.to_thread(
-            self.save_file, file_content, original_filename, bucket, force_encrypt
-        )
+        return await asyncio.to_thread(self.save_file, file_content, original_filename, bucket, force_encrypt)
 
     def delete_file(self, filename: str, bucket: str = "public") -> bool:
         """

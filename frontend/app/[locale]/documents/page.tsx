@@ -22,6 +22,7 @@ interface Document {
   file_size: number;
   mime_type: string;
   page_count: number;
+  source_file_available?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -889,15 +890,20 @@ export default function DocumentsPage() {
                       </svg>
                       {t('preview')}
                     </Link>
-                    <button
-                      onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
-                      className="flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-400 transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      {tCommon('download')}
-                    </button>
+                    {doc.source_file_available !== false && (
+                      <button
+                        onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
+                        className="flex items-center gap-1 text-xs text-amber-400/80 hover:text-amber-400 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        {tCommon('download')}
+                      </button>
+                    )}
+                    {doc.source_file_available === false && (
+                      <span className="text-xs text-amber-400/60 italic">{t('source_unavailable')}</span>
+                    )}
                     {isAdmin && (doc.status === 'error' || doc.status === 'pending' || doc.status === 'processing') && (
                       <button
                         type="button"
@@ -1027,15 +1033,17 @@ export default function DocumentsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
                           </Link>
-                          <button
-                            onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
-                            className="p-1.5 text-text-muted hover:text-amber-400 hover:bg-amber-500/5 rounded-lg transition-all"
-                            title={tCommon('download')}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                          </button>
+                          {doc.source_file_available !== false && (
+                            <button
+                              onClick={() => handleDownload(doc.id, doc.original_filename || doc.filename)}
+                              className="p-1.5 text-text-muted hover:text-amber-400 hover:bg-amber-500/5 rounded-lg transition-all"
+                              title={tCommon('download')}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                            </button>
+                          )}
                           {isAdmin && (doc.status === 'error' || doc.status === 'pending' || doc.status === 'processing') && (
                             <button
                               type="button"

@@ -154,6 +154,7 @@
     "preview": "Preview",
     "reprocess": "Re-index",
     "reprocess_success": "Document queued for reprocessing",
+    "source_unavailable": "Source unavailable",
     "retry": "Retry",
     "drop_files_here": "Drop files here to upload",
     "drag_drop_hint": "Drag and drop files here or click to select",

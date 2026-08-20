@@ -40,6 +40,7 @@ class SearchResult:
         article_title: str | None = None,
         article_summary: str | None = None,
         match_source: str = "unknown",
+        source_file_available: bool = True,
     ):
         self.chunk_id = chunk_id
         self.document_id = document_id
@@ -56,6 +57,7 @@ class SearchResult:
         self.article_title = article_title
         self.article_summary = article_summary
         self.match_source = match_source
+        self.source_file_available = source_file_available
 
 
 LANGUAGE_MAP = {
@@ -215,6 +217,7 @@ class HybridSearchService:
                 c.id as chunk_id,
                 c.document_id,
                 COALESCE(d.original_filename, d.filename) as document_name,
+                d.source_file_available as source_file_available,
                 c.bucket as document_bucket,
                 c.chunk_text,
                 c.chunk_index,
@@ -256,6 +259,7 @@ class HybridSearchService:
                     keyword_score=0.0,
                     final_score=float(row.similarity),  # Will be recalculated
                     match_source="semantic",
+                    source_file_available=bool(row.source_file_available),
                 )
             )
 
@@ -319,6 +323,7 @@ class HybridSearchService:
                 dc.id          AS chunk_id,
                 dc.document_id,
                 COALESCE(d.original_filename, d.filename) AS document_name,
+                d.source_file_available AS source_file_available,
                 d.bucket       AS document_bucket,
                 dc.chunk_text,
                 dc.chunk_index,
@@ -383,6 +388,7 @@ class HybridSearchService:
                     keyword_score=kw_score,
                     final_score=kw_score,  # Will be recalculated by hybrid_search
                     match_source="keyword",
+                    source_file_available=bool(row.source_file_available),
                 )
             )
 

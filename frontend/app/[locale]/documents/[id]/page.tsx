@@ -254,6 +254,7 @@ interface Document {
   chunk_count: number | null;
   ocr_processed: boolean;
   embedding_generated: boolean;
+  source_file_available: boolean;
   language: string | null;
   created_at: string;
   updated_at: string;
@@ -590,15 +591,21 @@ export default function DocumentDetailPage() {
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2 flex-shrink-0">
-            <button
-              onClick={handleDownload}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              {tCommon('download')}
-            </button>
+            {doc.source_file_available ? (
+              <button
+                onClick={handleDownload}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {tCommon('download')}
+              </button>
+            ) : (
+              <span className="flex items-center justify-center gap-2 px-4 py-2.5 border border-amber-300 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium">
+                {t('source_unavailable')}
+              </span>
+            )}
             {isAdmin && (
               <button
                 onClick={openEditModal}
@@ -701,7 +708,9 @@ export default function DocumentDetailPage() {
       </div>
 
       {/* Document preview — CSV table, XML/JSON/TXT code, images, PDF */}
-      <DocumentPreview docId={doc.id} mimeType={doc.mime_type} apiBase={API_BASE} />
+      {doc.source_file_available && (
+        <DocumentPreview docId={doc.id} mimeType={doc.mime_type} apiBase={API_BASE} />
+      )}
 
       {/* Processing metadata section — collapsible */}
       {metaKeys.length > 0 && (

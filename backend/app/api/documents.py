@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,9 +90,7 @@ async def list_documents(
         t0 = perf_counter()
         try:
             search_svc = HybridSearchService()
-            doc_results = await search_svc.document_search(
-                query=search, limit=100, db=db, user=current_user
-            )
+            doc_results = await search_svc.document_search(query=search, limit=100, db=db, user=current_user)
             for sr in doc_results:
                 try:
                     content_doc_ids.add(uuid.UUID(str(sr.document_id)))
@@ -118,10 +116,7 @@ async def list_documents(
 
         # Match either filename (existing behavior) OR content (new)
         if content_doc_ids:
-            stmt = stmt.where(
-                (Document.original_filename.ilike(f"%{search}%"))
-                | (Document.id.in_(content_doc_ids))
-            )
+            stmt = stmt.where((Document.original_filename.ilike(f"%{search}%")) | (Document.id.in_(content_doc_ids)))
         else:
             stmt = stmt.where(Document.original_filename.ilike(f"%{search}%"))
 
@@ -240,6 +235,7 @@ async def get_document_status(
 
     if not error_message:
         from app.models.pipeline import PipelineStage, StageStatus
+
         ps_result = await db.execute(
             select(PipelineStage)
             .where(
@@ -298,15 +294,36 @@ async def download_document(
             details={"filename": document.filename, "action": "download"},
         )
 
-    file_content = storage_service.get_file(filename=document.filename, bucket=document.bucket.value)
+    if not document.source_file_available:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Source file unavailable",
+        )
 
-    if not file_content:
+    # Confidential files are encrypted at rest (Fernet); stream only plaintext
+    # files and keep the decrypt-in-memory path for encrypted ones.
+    needs_decrypt = (
+        document.bucket == DocumentBucket.CONFIDENTIAL or document.filename.endswith(".encrypted")
+    ) and storage_service.encryption_enabled
+
+    if needs_decrypt:
+        file_content = storage_service.get_file(filename=document.filename, bucket=document.bucket.value)
+        if not file_content:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        return Response(
+            content=file_content,
+            media_type=document.mime_type,
+            headers={"Content-Disposition": f'attachment; filename="{document.original_filename}"'},
+        )
+
+    file_path = storage_service.resolve_path(document.filename, document.bucket.value)
+    if file_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    return Response(
-        content=file_content,
+    return FileResponse(
+        path=str(file_path),
         media_type=document.mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{document.original_filename}"'},
+        filename=document.original_filename,
     )
 
 
@@ -474,9 +491,7 @@ async def reprocess_document(
     loop = asyncio.get_running_loop()
     with ThreadPoolExecutor(max_workers=1) as pool:
         # Reset pipeline tracking so the document starts fresh
-        await loop.run_in_executor(
-            pool, update_stage, str(document_id), StageEnum.UPLOADED, StageStatus.COMPLETED
-        )
+        await loop.run_in_executor(pool, update_stage, str(document_id), StageEnum.UPLOADED, StageStatus.COMPLETED)
         dispatch_result = await loop.run_in_executor(pool, dispatch_document, str(document_id))
 
     if dispatch_result == "dispatched":
@@ -493,5 +508,7 @@ async def reprocess_document(
         "document_id": str(document_id),
         "status": document.status.value,
         "task_id": dispatch_result,
-        "message": "Reprocessing queued successfully" if dispatch_result == "dispatched" else f"Pipeline backpressure: {dispatch_result}",
+        "message": "Reprocessing queued successfully"
+        if dispatch_result == "dispatched"
+        else f"Pipeline backpressure: {dispatch_result}",
     }

@@ -154,6 +154,7 @@
     "preview": "Aperçu",
     "reprocess": "Réindexer",
     "reprocess_success": "Document remis en file d'attente",
+    "source_unavailable": "Source indisponible",
     "retry": "Réessayer",
     "drop_files_here": "Déposez les fichiers ici pour télécharger",
     "drag_drop_hint": "Glissez-déposez les fichiers ici ou cliquez pour sélectionner",

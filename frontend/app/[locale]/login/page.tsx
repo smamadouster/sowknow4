@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import { useAuthStore } from '@/lib/store';
@@ -16,6 +16,8 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showTimeout, setShowTimeout] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -32,8 +34,8 @@ export default function LoginPage() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const formData = new URLSearchParams();
-      formData.append('username', email);
-      formData.append('password', password);
+      formData.append('username', (emailRef.current?.value ?? email).trim());
+      formData.append('password', passwordRef.current?.value ?? password);
       
       const response = await fetch(`${apiUrl}/v1/auth/login`, {
         method: 'POST',
@@ -119,9 +121,13 @@ export default function LoginPage() {
               <input
                 id="login-email"
                 type="email"
+                ref={emailRef}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 aria-describedby={error ? 'login-error' : undefined}
                 className="w-full px-4 py-3 bg-vault-800/50 border border-white/[0.08] rounded-xl text-text-primary placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all"
                 placeholder="email@example.com"
@@ -136,9 +142,13 @@ export default function LoginPage() {
               <input
                 id="login-password"
                 type="password"
+                ref={passwordRef}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 aria-describedby={error ? 'login-error' : undefined}
                 className="w-full px-4 py-3 bg-vault-800/50 border border-white/[0.08] rounded-xl text-text-primary placeholder-text-muted/50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500/50 transition-all"
                 placeholder="••••••••"

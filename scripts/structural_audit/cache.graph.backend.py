@@ -17,8 +17,8 @@
 """
 
 ### FILE: backend/app/api/admin.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.schemas.user, app.models.failed_task, app.services.storage_service, app.models.processing, app.models.article, app.api.documents_common, app.models.user, app.core.redis_url, app.models.chat, app.celery_app, app.schemas.admin, app.utils.security, app.tasks.pipeline_tasks, app.api.deps, app.services.embed_client, app.models.document, app.services.search_service, app.models.pipeline, app.models.audit, app.services.whisper_service, app.database, app.services.alert_service
-[ext_deps]: urllib, concurrent, logging, time, datetime, sqlalchemy, redis, asyncio, pydantic, json, os, fastapi, typing, uuid
+[local_deps]: app.models.failed_task, app.services.storage_service, app.models.document, app.celery_app, app.utils.security, app.models.audit, app.tasks.pipeline_tasks, app.tasks.pipeline_orchestrator, app.services.alert_service, app.services.embed_client, app.models.user, app.models.article, app.models.chat, app.schemas.admin, app.models.pipeline, app.api.deps, app.schemas.user, app.services.whisper_service, app.database, app.models.processing, app.core.redis_url, app.api.documents_common, app.services.search_service
+[ext_deps]: asyncio, typing, os, fastapi, json, urllib, time, logging, redis, pydantic, uuid, sqlalchemy, concurrent, datetime
 [async_fn]: create_audit_log(db, user_id, action, resource_type, resource_id, details, request)
 [async_fn]: list_users(page, page_size, search, role, is_active, current_user, db, request)
 [async_fn]: get_user_details(user_id, current_user, db, request)
@@ -58,8 +58,8 @@
 
 ---
 ### FILE: backend/app/api/articles.py
-[local_deps]: app.models.document, app.api.deps, app.schemas.article, app.tasks.article_tasks, app.models.article, app.models.user
-[ext_deps]: logging, uuid, sqlalchemy, fastapi
+[local_deps]: app.api.deps, app.models.user, app.models.document, app.models.article, app.tasks.article_tasks, app.schemas.article
+[ext_deps]: sqlalchemy, logging, uuid, fastapi
 [fn]: _bucket_filter(user)
 [async_fn]: list_articles(document_id, limit, offset, db, current_user)
 [async_fn]: get_article(article_id, db, current_user)
@@ -69,8 +69,8 @@
 
 ---
 ### FILE: backend/app/api/auth.py
-[local_deps]: app.schemas.user, app.services.token_blacklist, app.middleware.csrf, app.utils.security, app.core.redis_url, app.api.deps, app.limiter, app.utils.constants, app.schemas.auth, app.models.user, app.database, app.schemas.token
-[ext_deps]: secrets, logging, hmac, datetime, redis, dotenv, sqlalchemy, asyncio, time, hashlib, os, fastapi, httpx, uuid
+[local_deps]: app.limiter, app.api.deps, app.schemas.user, app.models.user, app.middleware.csrf, app.schemas.token, app.database, app.schemas.auth, app.services.token_blacklist, app.utils.security, app.core.redis_url, app.utils.constants
+[ext_deps]: asyncio, os, fastapi, time, logging, hmac, redis, hashlib, uuid, sqlalchemy, secrets, dotenv, datetime, httpx
 [async_fn]: verify_telegram_user(telegram_user_id, bot_token)
 [async_fn]: blacklist_token(token, expires_in_seconds)
 [async_fn]: is_token_blacklisted(token)
@@ -93,8 +93,8 @@
 
 ---
 ### FILE: backend/app/api/bookmarks.py
-[local_deps]: app.schemas.tag, app.schemas.bookmark, app.api.deps, app.services.space_service, app.services.bookmark_service, app.models.user, app.database
-[ext_deps]: logging, uuid, sqlalchemy, fastapi
+[local_deps]: app.services.space_service, app.schemas.bookmark, app.api.deps, app.models.user, app.database, app.schemas.tag, app.services.bookmark_service
+[ext_deps]: sqlalchemy, logging, uuid, fastapi
 [async_fn]: create_bookmark(data, current_user, db)
 [async_fn]: list_bookmarks(page, page_size, tag, current_user, db)
 [async_fn]: search_bookmarks(q, page, page_size, current_user, db)
@@ -105,8 +105,8 @@
 
 ---
 ### FILE: backend/app/api/chat.py
-[local_deps]: app.api.deps, app.limiter, app.schemas.chat, app.tasks.memory_tasks, app.models.chat, app.services.input_guard, app.models.user, app.database, app.services.chat_service
-[ext_deps]: logging, sqlalchemy, json, fastapi, uuid
+[local_deps]: app.limiter, app.tasks.memory_tasks, app.services.input_guard, app.api.deps, app.models.user, app.database, app.services.chat_service, app.models.chat, app.schemas.chat
+[ext_deps]: fastapi, json, logging, sqlalchemy, uuid
 [fn]: _maybe_enqueue_memory_distill(session, owner_id)
 [async_fn]: create_chat_session(request, session_data, current_user, db)
 [async_fn]: list_chat_sessions(limit, offset, current_user, db)
@@ -117,8 +117,8 @@
 
 ---
 ### FILE: backend/app/api/collection_requests.py
-[local_deps]: app.tasks.collection_request_tasks, app.core.config, app.models.document, app.services.collection_orchestrator.conversation_manager, app.schemas.collection_orchestrator, app.models.smart_folder, app.api.deps, app.services.collection_orchestrator.metrics, app.celery_app, app.models.collection_orchestrator, app.services.collection_orchestrator.reproducibility, app.models.user, app.database, app.services.collection_orchestrator
-[ext_deps]: csv, logging, datetime, sqlalchemy, asyncio, io, json, fastapi, typing, uuid
+[local_deps]: app.tasks.collection_request_tasks, app.schemas.collection_orchestrator, app.models.smart_folder, app.api.deps, app.models.user, app.models.document, app.services.collection_orchestrator, app.database, app.models.collection_orchestrator, app.services.collection_orchestrator.conversation_manager, app.services.collection_orchestrator.metrics, app.services.collection_orchestrator.reproducibility, app.core.config, app.celery_app
+[ext_deps]: asyncio, typing, csv, fastapi, json, logging, uuid, sqlalchemy, io, datetime
 [async_fn]: _get_owned_folder(db, request_id, user)
 [async_fn]: _get_session(db, request_id)
 [fn]: _clarification_payload(session)
@@ -146,8 +146,8 @@
 
 ---
 ### FILE: backend/app/api/collections.py
-[local_deps]: app.models.collection, app.schemas.collection, app.services.llm_gateway, app.tasks.document_tasks, app.services.collection_service, app.api.deps, app.models.audit, app.models.article, app.services.input_guard, app.models.user, app.database, app.services.collection_chat_service
-[ext_deps]: logging, reportlab, sqlalchemy, datetime, io, json, fastapi, typing, uuid
+[local_deps]: app.tasks.document_tasks, app.models.collection, app.services.input_guard, app.api.deps, app.models.user, app.services.collection_chat_service, app.models.article, app.database, app.services.collection_service, app.schemas.collection, app.models.audit, app.services.llm_gateway
+[ext_deps]: typing, fastapi, json, logging, reportlab, uuid, sqlalchemy, io, datetime
 [fn]: _invalidate_collection_cache(collection_id)
 [async_fn]: create_audit_log(db, user_id, action, resource_type, resource_id, details)
 [async_fn]: create_collection(collection_data, current_user, db)
@@ -170,8 +170,8 @@
 
 ---
 ### FILE: backend/app/api/deps.py
-[local_deps]: app.services.token_blacklist, app.utils.security, app.utils.constants, app.models.user, app.database
-[ext_deps]: logging, sqlalchemy, fastapi
+[local_deps]: app.models.user, app.database, app.services.token_blacklist, app.utils.security, app.utils.constants
+[ext_deps]: sqlalchemy, logging, fastapi
 [async_fn]: get_token_from_request(request)
 [async_fn]: get_current_user(request, db)
 [async_fn]: require_admin(current_user)
@@ -184,8 +184,8 @@
 
 ---
 ### FILE: backend/app/api/documents.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.services.storage_service, app.models.processing, app.api.documents_common, app.models.user, app.services.semantic_cache, app.api.documents_journal, app.tasks.pipeline_tasks, app.tasks.embedding_tasks, app.api.deps, app.schemas.document, app.api.documents_upload, app.services.similarity_service, app.models.document, app.services.search_service, app.models.pipeline, app.models.audit, app.database, app.tasks.document_tasks
-[ext_deps]: concurrent, logging, time, datetime, sqlalchemy, asyncio, fastapi, typing, uuid
+[local_deps]: app.tasks.document_tasks, app.services.storage_service, app.models.document, app.tasks.embedding_tasks, app.models.audit, app.services.similarity_service, app.services.semantic_cache, app.tasks.pipeline_tasks, app.tasks.pipeline_orchestrator, app.schemas.document, app.models.user, app.models.pipeline, app.api.documents_journal, app.api.deps, app.api.documents_upload, app.database, app.models.processing, app.api.documents_common, app.services.search_service
+[ext_deps]: typing, asyncio, fastapi, time, logging, uuid, sqlalchemy, concurrent, datetime
 [async_fn]: list_documents(page, page_size, bucket, status, search, document_type, tag, current_user, db)
 [async_fn]: get_document(document_id, current_user, db)
 [async_fn]: get_document_status(document_id, current_user, db)
@@ -197,8 +197,8 @@
 
 ---
 ### FILE: backend/app/api/documents_common.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.tasks.pipeline_tasks, app.models.document, app.core.redis_url, app.models.pipeline, app.schemas.document, app.models.audit, app.models.user, app.services.document_orchestrator
-[ext_deps]: concurrent, logging, datetime, sqlalchemy, redis, asyncio, pydantic, json, os, fastapi, typing, uuid
+[local_deps]: app.models.pipeline, app.schemas.document, app.tasks.pipeline_tasks, app.models.user, app.models.document, app.tasks.pipeline_orchestrator, app.core.redis_url, app.models.audit, app.services.document_orchestrator
+[ext_deps]: asyncio, typing, os, fastapi, json, logging, redis, pydantic, uuid, sqlalchemy, concurrent, datetime
 [fn]: _get_redis_client()
 [fn]: is_upload_paused()
 [async_fn]: is_upload_paused_async()
@@ -209,15 +209,15 @@
 
 ---
 ### FILE: backend/app/api/documents_journal.py
-[local_deps]: app.models.document, app.api.deps, app.schemas.document, app.models.audit, app.services.storage_service, app.services.whisper_service, app.api.documents_common, app.models.user, app.database
-[ext_deps]: logging, hmac, datetime, sqlalchemy, tempfile, os, fastapi
+[local_deps]: app.schemas.document, app.api.deps, app.services.storage_service, app.models.user, app.models.document, app.services.whisper_service, app.database, app.api.documents_common, app.models.audit
+[ext_deps]: tempfile, os, fastapi, logging, hmac, sqlalchemy, datetime
 [async_fn]: create_journal_entry(entry, x_bot_api_key, current_user, db)
 [async_fn]: create_journal_entry_from_voice(file, language, x_bot_api_key, current_user, db)
 
 ---
 ### FILE: backend/app/api/documents_upload.py
-[local_deps]: app.services.semantic_cache, app.models.document, app.api.deps, app.limiter, app.schemas.document, app.models.audit, app.services.storage_service, app.services.deduplication_service, app.api.documents_common, app.models.user, app.database, app.services.document_orchestrator
-[ext_deps]: hmac, logging, sqlalchemy, fastapi, typing, uuid
+[local_deps]: app.limiter, app.services.semantic_cache, app.schemas.document, app.api.deps, app.services.storage_service, app.models.user, app.models.document, app.database, app.services.deduplication_service, app.api.documents_common, app.models.audit, app.services.document_orchestrator
+[ext_deps]: typing, fastapi, logging, hmac, uuid, sqlalchemy
 [async_fn]: upload_document(request, file, bucket, title, tags, document_type, transcript, x_bot_api_key, current_user, db)
 [async_fn]: _do_upload_document(file, bucket, title, tags, document_type, transcript, x_bot_api_key, current_user, db)
 [async_fn]: process_single_file_upload(file, bucket, current_user, db, batch_id)
@@ -226,8 +226,8 @@
 
 ---
 ### FILE: backend/app/api/graph_rag.py
-[local_deps]: app.services.progressive_revelation_service, app.models.document, app.services.synthesis_service, app.services.search_service, app.api.deps, app.services.temporal_reasoning_service, app.models.audit, app.models.user, app.database, app.services.graph_rag_service
-[ext_deps]: logging, sqlalchemy, json, fastapi, typing, uuid
+[local_deps]: app.services.progressive_revelation_service, app.services.graph_rag_service, app.api.deps, app.models.user, app.models.document, app.database, app.services.synthesis_service, app.services.temporal_reasoning_service, app.models.audit, app.services.search_service
+[ext_deps]: typing, fastapi, json, logging, uuid, sqlalchemy
 [fn]: _search_results_to_dicts(results)
 [async_fn]: create_audit_log(db, user_id, action, resource_type, resource_id, details)
 [async_fn]: graph_augmented_search(query, document_ids, top_k, expansion_depth, current_user, db)
@@ -244,8 +244,8 @@
 
 ---
 ### FILE: backend/app/api/health.py
-[local_deps]: app.celery_app, app.database, app.utils.security, app.core.redis_url
-[ext_deps]: logging, datetime, sqlalchemy, redis, nats, asyncio, os, httpx, fastapi, typing
+[local_deps]: app.celery_app, app.utils.security, app.core.redis_url, app.database
+[ext_deps]: asyncio, typing, os, fastapi, logging, redis, sqlalchemy, datetime, httpx, nats
 [async_fn]: _check_database()
 [async_fn]: _check_redis()
 [async_fn]: _check_vault()
@@ -257,16 +257,16 @@
 
 ---
 ### FILE: backend/app/api/internal.py
-[local_deps]: app.limiter, app.schemas.document, app.api.documents_common, app.models.user, app.database, app.api.documents_upload
-[ext_deps]: hmac, logging, sqlalchemy, os, fastapi
+[local_deps]: app.limiter, app.schemas.document, app.models.user, app.api.documents_upload, app.database, app.api.documents_common
+[ext_deps]: os, fastapi, logging, hmac, sqlalchemy
 [async_fn]: _get_bot_user(db)
 [fn]: _validate_api_key(key)
 [async_fn]: internal_upload(request, file, bucket, title, tags, document_type, x_bot_api_key, db)
 
 ---
 ### FILE: backend/app/api/knowledge_graph.py
-[local_deps]: app.services.timeline_service, app.models.document, app.services.relationship_service, app.api.deps, app.models.knowledge_graph, app.services.entity_extraction_service, app.models.user, app.database
-[ext_deps]: logging, sqlalchemy, datetime, fastapi, typing, uuid
+[local_deps]: app.api.deps, app.models.user, app.models.document, app.database, app.models.knowledge_graph, app.services.timeline_service, app.services.entity_extraction_service, app.services.relationship_service
+[ext_deps]: typing, fastapi, logging, sqlalchemy, uuid, datetime
 [async_fn]: extract_entities_from_document(document_id, current_user, db)
 [async_fn]: list_entities(entity_type, page, page_size, search, current_user, db)
 [async_fn]: get_entity_details(entity_id, current_user, db)
@@ -282,8 +282,8 @@
 
 ---
 ### FILE: backend/app/api/memory.py
-[local_deps]: app.models.memory, app.api.deps, app.services.memory_service, app.models.learned_skill, app.models.user, app.database
-[ext_deps]: logging, sqlalchemy, pydantic, fastapi, uuid
+[local_deps]: app.api.deps, app.models.learned_skill, app.models.user, app.database, app.services.memory_service, app.models.memory
+[ext_deps]: fastapi, logging, pydantic, sqlalchemy, uuid
 [class]: AtomResponse { methods: [] }
 [class]: ScenarioResponse { methods: [] }
 [class]: MemoryListResponse { methods: [] }
@@ -302,8 +302,8 @@
 
 ---
 ### FILE: backend/app/api/monitoring.py
-[local_deps]: app.services.monitoring, app.services.prometheus_metrics, app.core.redis_url, app.services.embedding_service, app.services.cache_monitor, app.main
-[ext_deps]: logging, time, datetime, redis, os, fastapi, typing
+[local_deps]: app.services.embedding_service, app.services.cache_monitor, app.services.monitoring, app.core.redis_url, app.main, app.services.prometheus_metrics
+[ext_deps]: typing, os, fastapi, time, logging, redis, datetime
 [fn]: _get_redis_info()
 [async_fn]: embedding_health()
 [async_fn]: health_detailed()
@@ -315,8 +315,8 @@
 
 ---
 ### FILE: backend/app/api/notes.py
-[local_deps]: app.models.note_audio, app.services.note_service, app.schemas.tag, app.models.note, app.api.deps, app.services.space_service, app.schemas.note, app.models.user, app.database
-[ext_deps]: logging, sqlalchemy, datetime, asyncio, os, fastapi, uuid
+[local_deps]: app.services.note_service, app.services.space_service, app.api.deps, app.models.user, app.schemas.note, app.database, app.schemas.tag, app.models.note_audio, app.models.note
+[ext_deps]: asyncio, os, fastapi, logging, sqlalchemy, uuid, datetime
 [async_fn]: create_note(data, current_user, db)
 [async_fn]: list_notes(page, page_size, tag, current_user, db)
 [async_fn]: search_notes(q, page, page_size, current_user, db)
@@ -328,30 +328,30 @@
 
 ---
 ### FILE: backend/app/api/pipeline_admin.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.models.document, app.core.redis_url, app.models.pipeline, app.api.deps, app.celery_app, app.database
-[ext_deps]: sqlalchemy, redis, asyncio, fastapi
+[local_deps]: app.models.pipeline, app.api.deps, app.models.document, app.database, app.tasks.pipeline_orchestrator, app.celery_app, app.core.redis_url
+[ext_deps]: asyncio, sqlalchemy, redis, fastapi
 [async_fn]: pipeline_status(db)
 [async_fn]: retry_failed_pipeline_stages(stage, limit, db)
 
 ---
 ### FILE: backend/app/api/push.py
-[local_deps]: app.api.deps, app.schemas.push, app.models.push_subscription, app.models.user, app.database
-[ext_deps]: logging, sqlalchemy, os, fastapi, uuid
+[local_deps]: app.api.deps, app.models.user, app.models.push_subscription, app.database, app.schemas.push
+[ext_deps]: os, fastapi, logging, sqlalchemy, uuid
 [async_fn]: get_vapid_public_key()
 [async_fn]: subscribe_push(data, current_user, db)
 [async_fn]: unsubscribe_push(data, current_user, db)
 
 ---
 ### FILE: backend/app/api/reports.py
-[local_deps]: app.api.deps, app.schemas.reports, app.models.user, app.celery_app, app.tasks.report_tasks
-[ext_deps]: logging, celery, fastapi, typing
+[local_deps]: app.tasks.report_tasks, app.api.deps, app.models.user, app.celery_app, app.schemas.reports
+[ext_deps]: typing, logging, celery, fastapi
 [async_fn]: generate_report(request, current_user)
 [async_fn]: get_report_status(task_id, current_user)
 
 ---
 ### FILE: backend/app/api/search_agent_router.py
-[local_deps]: app.services.embed_client, app.core.config, app.models.document, app.services.search_service, app.api.deps, app.services.search_agent, app.services.agents.agent_orchestrator, app.services.input_guard, app.models.user, app.database, app.services.search_models
-[ext_deps]: logging, time, sqlalchemy, asyncio, json, fastapi, uuid
+[local_deps]: app.services.embed_client, app.services.input_guard, app.api.deps, app.models.user, app.models.document, app.database, app.services.search_agent, app.services.agents.agent_orchestrator, app.core.config, app.services.search_models, app.services.search_service
+[ext_deps]: asyncio, fastapi, json, time, logging, uuid, sqlalchemy
 [fn]: _role_from_user(user)
 [fn]: _sse_event(event, data)
 [fn]: _convert_search_results_to_chunks(search_results)
@@ -367,23 +367,23 @@
 
 ---
 ### FILE: backend/app/api/search_feedback.py
-[local_deps]: app.models.user, app.api.deps, app.database
-[ext_deps]: logging, sqlalchemy, pydantic, hashlib, fastapi, uuid
+[local_deps]: app.models.user, app.database, app.api.deps
+[ext_deps]: fastapi, logging, hashlib, pydantic, uuid, sqlalchemy
 [class]: FeedbackRequest { methods: [] }
 [async_fn]: submit_feedback(request, current_user, db)
 [async_fn]: get_feedback_stats(document_id, current_user, db)
 
 ---
 ### FILE: backend/app/api/search_suggest.py
-[local_deps]: app.models.user, app.api.deps, app.database, app.models.document
-[ext_deps]: logging, sqlalchemy, fastapi
+[local_deps]: app.models.user, app.database, app.models.document, app.api.deps
+[ext_deps]: sqlalchemy, logging, fastapi
 [fn]: _get_user_bucket_filter(user)
 [async_fn]: search_suggest(q, limit, current_user, db)
 
 ---
 ### FILE: backend/app/api/smart_folders.py
-[local_deps]: app.schemas.collection, app.models.note, app.models.smart_folder, app.api.deps, app.celery_app, app.models.audit, app.tasks.collection_report_tasks, app.schemas.smart_folder, app.models.user, app.database, app.tasks.smart_folder_tasks
-[ext_deps]: logging, celery, sqlalchemy, asyncio, json, fastapi, typing, uuid
+[local_deps]: app.models.smart_folder, app.api.deps, app.models.user, app.database, app.tasks.smart_folder_tasks, app.celery_app, app.schemas.collection, app.schemas.smart_folder, app.tasks.collection_report_tasks, app.models.audit, app.models.note
+[ext_deps]: typing, asyncio, fastapi, json, logging, uuid, sqlalchemy, celery
 [async_fn]: _create_audit_log(db, user_id, action, resource_type, resource_id, details)
 [fn]: _report_to_response(report)
 [async_fn]: create_smart_folder(request, current_user)
@@ -403,8 +403,8 @@
 
 ---
 ### FILE: backend/app/api/spaces.py
-[local_deps]: app.schemas.space, app.schemas.tag, app.api.deps, app.services.space_service, app.models.user, app.database, app.tasks.space_tasks
-[ext_deps]: logging, uuid, sqlalchemy, fastapi
+[local_deps]: app.services.space_service, app.api.deps, app.models.user, app.database, app.schemas.tag, app.tasks.space_tasks, app.schemas.space
+[ext_deps]: sqlalchemy, logging, uuid, fastapi
 [async_fn]: create_space(data, current_user, db)
 [async_fn]: list_spaces(page, page_size, search, current_user, db)
 [async_fn]: get_space(space_id, item_type, current_user, db)
@@ -420,7 +420,7 @@
 
 ---
 ### FILE: backend/app/api/status.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.services.llm_gateway, app.core.redis_url, app.services.rollback_monitor, app.api.deps, app.models.user
+[local_deps]: app.api.deps, app.models.user, app.tasks.pipeline_orchestrator, app.core.redis_url, app.services.rollback_monitor, app.services.llm_gateway
 [ext_deps]: typing, redis, fastapi
 [async_fn]: pipeline_health(current_user)
 [async_fn]: api_status()
@@ -428,8 +428,8 @@
 
 ---
 ### FILE: backend/app/api/subscriptions.py
-[local_deps]: app.models.subscription, app.api.deps, app.schemas.subscription, app.models.user, app.database, app.tasks.subscription_tasks
-[ext_deps]: logging, uuid, sqlalchemy, fastapi
+[local_deps]: app.api.deps, app.models.user, app.models.subscription, app.tasks.subscription_tasks, app.database, app.schemas.subscription
+[ext_deps]: sqlalchemy, logging, uuid, fastapi
 [fn]: _parse_uuid(s)
 [async_fn]: list_subscriptions(current_user, db)
 [async_fn]: test_email(current_user)
@@ -443,8 +443,8 @@
 
 ---
 ### FILE: backend/app/api/tasks.py
-[local_deps]: app.services.task_service, app.schemas.tag, app.api.deps, app.schemas.task, app.services.space_service, app.models.user, app.database
-[ext_deps]: logging, uuid, sqlalchemy, fastapi
+[local_deps]: app.services.space_service, app.api.deps, app.models.user, app.services.task_service, app.database, app.schemas.tag, app.schemas.task
+[ext_deps]: sqlalchemy, logging, uuid, fastapi
 [async_fn]: create_task(data, current_user, db)
 [async_fn]: list_tasks(page, page_size, tag, current_user, db)
 [async_fn]: search_tasks(q, page, page_size, current_user, db)
@@ -455,8 +455,8 @@
 
 ---
 ### FILE: backend/app/api/voice.py
-[local_deps]: app.models.note_audio, app.models.document, app.models.note, app.api.deps, app.services.storage_service, app.services.whisper_service, app.models.user
-[ext_deps]: logging, sqlalchemy, asyncio, io, tempfile, os, fastapi, uuid
+[local_deps]: app.api.deps, app.services.storage_service, app.models.user, app.models.document, app.services.whisper_service, app.models.note_audio, app.models.note
+[ext_deps]: asyncio, tempfile, os, fastapi, logging, uuid, sqlalchemy, io
 [fn]: _is_safari(user_agent)
 [async_fn]: _transcode_ogg_to_mp3(audio_bytes)
 [async_fn]: _stream_audio_file(file_path, user_agent)
@@ -466,14 +466,14 @@
 ---
 ### FILE: backend/app/celery_app.py
 [local_deps]: app.core.config, app.core.redis_url
-[ext_deps]: celery, dotenv, os
+[ext_deps]: celery, os, dotenv
 
 ---
 ### FILE: backend/app/core/__init__.py
 
 ---
 ### FILE: backend/app/core/config.py
-[ext_deps]: pydantic_settings, urllib, logging, pydantic, pathlib, os
+[ext_deps]: os, urllib, logging, pydantic, pathlib, pydantic_settings
 [fn]: load_secret(env_key)
 [class]: Settings { methods: [validate_not_placeholder, validate_no_free_tier_in_production, validate_not_deprecated_model, REDIS_URL, ASYNC_DATABASE_URL, SYNC_DATABASE_URL] }
 
@@ -483,7 +483,7 @@
 
 ---
 ### FILE: backend/app/core/push.py
-[ext_deps]: base64, urllib, logging, time, cryptography, struct, json, os, httpx
+[ext_deps]: cryptography, os, urllib, json, base64, time, logging, struct, httpx
 [fn]: _b64url_encode(data)
 [fn]: _b64url_decode(data)
 [class]: VAPIDHelper { methods: [__init__, is_configured, public_key, _sign_jwt, send_push, _encrypt_payload] }
@@ -491,13 +491,13 @@
 
 ---
 ### FILE: backend/app/core/redis_url.py
-[ext_deps]: urllib, os
+[ext_deps]: os, urllib
 [fn]: safe_redis_url(default_host)
 
 ---
 ### FILE: backend/app/database.py
 [local_deps]: app.models.base, app.middleware.rls
-[ext_deps]: pgvector, sqlalchemy, collections, dotenv, os, fastapi, typing
+[ext_deps]: typing, os, fastapi, collections, sqlalchemy, pgvector, dotenv
 [async_fn]: get_db(request)
 [async_fn]: init_pgvector()
 [async_fn]: create_all_tables()
@@ -505,14 +505,14 @@
 
 ---
 ### FILE: backend/app/limiter.py
-[ext_deps]: slowapi, urllib, starlette, os
+[ext_deps]: slowapi, starlette, os, urllib
 [fn]: _limiter_redis_url()
 [fn]: _get_client_ip(request)
 
 ---
 ### FILE: backend/app/main.py
-[local_deps]: app.middleware.rls, app.middleware.transaction, app.services.monitoring, app.middleware.csrf, app.core.config, app.services.prometheus_metrics, app.core.redis_url, app.limiter, app.services.search_cache, app.services.collection_orchestrator.pipeline_runner, app.database, app.api, app.services.openrouter_service, app.services.llm_http_client
-[ext_deps]: uvicorn, slowapi, logging, time, sqlalchemy, redis, collections, threading, dotenv, starlette, contextlib, os, fastapi, typing, uuid
+[local_deps]: app.limiter, app.services.openrouter_service, app.middleware.transaction, app.api, app.middleware.csrf, app.database, app.services.monitoring, app.services.search_cache, app.core.config, app.core.redis_url, app.services.collection_orchestrator.pipeline_runner, app.services.prometheus_metrics, app.middleware.rls, app.services.llm_http_client
+[ext_deps]: typing, os, fastapi, threading, time, collections, logging, contextlib, starlette, redis, uvicorn, slowapi, uuid, sqlalchemy, dotenv
 [class]: ErrorRateTracker { methods: [__init__, record_request, get_error_rate, get_request_count] }
 [class]: RequestIDMiddleware { methods: [dispatch] }
 [class]: ErrorRateMiddleware { methods: [dispatch] }
@@ -530,14 +530,14 @@
 ---
 ### FILE: backend/app/middleware/csrf.py
 [local_deps]: app.utils.constants
-[ext_deps]: hmac, secrets, logging, starlette
+[ext_deps]: logging, hmac, starlette, secrets
 [fn]: generate_csrf_token()
 [class]: CSRFMiddleware { methods: [dispatch] }
 
 ---
 ### FILE: backend/app/middleware/rls.py
 [local_deps]: app.utils.security, app.core.context
-[ext_deps]: logging, dataclasses, sqlalchemy, starlette, jose
+[ext_deps]: dataclasses, logging, starlette, sqlalchemy, jose
 [class]: RLSContext { methods: [] }
 [fn]: extract_rls_context(request)
 [async_fn]: apply_rls_context(session, context)
@@ -551,12 +551,12 @@
 
 ---
 ### FILE: backend/app/models/__init__.py
-[local_deps]: app.models.failed_task, app.models.milestone, app.models.note, app.models.task, app.models.processing, app.models.article, app.models.bookmark, app.models.user, app.models.smart_folder, app.models.subscription, app.models.learned_skill, app.models.chat, app.models.collection, app.models.collection_orchestrator, app.models.pattern_insight, app.models.base, app.models.memory, app.models.note_audio, app.models.document, app.models.pipeline, app.models.knowledge_graph, app.models.audit, app.models.push_subscription, app.models.tag, app.models.space
+[local_deps]: app.models.failed_task, app.models.task, app.models.document, app.models.push_subscription, app.models.collection_orchestrator, app.models.space, app.models.audit, app.models.note_audio, app.models.pattern_insight, app.models.bookmark, app.models.subscription, app.models.memory, app.models.milestone, app.models.smart_folder, app.models.user, app.models.article, app.models.chat, app.models.tag, app.models.knowledge_graph, app.models.note, app.models.pipeline, app.models.collection, app.models.base, app.models.learned_skill, app.models.processing
 
 ---
 ### FILE: backend/app/models/article.py
 [local_deps]: app.models.base, app.models.document
-[ext_deps]: uuid, sqlalchemy, enum, pgvector
+[ext_deps]: enum, uuid, sqlalchemy, pgvector
 [class]: ArticleStatus { methods: [] }
 [class]: Article { methods: [__repr__] }
 [fn]: _article_init(target, args, kwargs)
@@ -564,7 +564,7 @@
 ---
 ### FILE: backend/app/models/audit.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: AuditAction { methods: [] }
 [class]: AuditLog { methods: [__repr__] }
 
@@ -574,21 +574,21 @@
 
 ---
 ### FILE: backend/app/models/base.py
-[ext_deps]: typing, uuid, sqlalchemy
+[ext_deps]: typing, sqlalchemy, uuid
 [class]: GUID { methods: [__init__, load_dialect_impl, process_bind_param, process_result_value] }
 [class]: TimestampMixin { methods: [__init__] }
 
 ---
 ### FILE: backend/app/models/bookmark.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: BookmarkBucket { methods: [] }
 [class]: Bookmark { methods: [] }
 
 ---
 ### FILE: backend/app/models/chat.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: LLMProvider { methods: [] }
 [class]: MessageRole { methods: [] }
 [class]: ChatSession { methods: [__repr__] }
@@ -597,7 +597,7 @@
 ---
 ### FILE: backend/app/models/collection.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: CollectionVisibility { methods: [] }
 [class]: CollectionType { methods: [] }
 [class]: CollectionStatus { methods: [] }
@@ -609,7 +609,7 @@
 ---
 ### FILE: backend/app/models/collection_orchestrator.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy
+[ext_deps]: sqlalchemy, uuid
 [class]: ClarificationSession { methods: [__repr__] }
 [class]: QueryExecution { methods: [__repr__] }
 [class]: SourceItem { methods: [__repr__] }
@@ -623,14 +623,14 @@
 ---
 ### FILE: backend/app/models/deferred_query.py
 [local_deps]: app.models.base
-[ext_deps]: sqlalchemy, uuid, datetime, enum
+[ext_deps]: enum, uuid, datetime, sqlalchemy
 [class]: QueryStatus { methods: [] }
 [class]: DeferredQuery { methods: [__repr__] }
 
 ---
 ### FILE: backend/app/models/document.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum, pgvector
+[ext_deps]: enum, sqlalchemy, uuid, pgvector
 [class]: DocumentBucket { methods: [] }
 [class]: DocumentStatus { methods: [] }
 [class]: DocumentLanguage { methods: [] }
@@ -643,13 +643,13 @@
 ---
 ### FILE: backend/app/models/failed_task.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy
+[ext_deps]: sqlalchemy, uuid
 [class]: FailedCeleryTask { methods: [] }
 
 ---
 ### FILE: backend/app/models/knowledge_graph.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: EntityType { methods: [] }
 [class]: RelationType { methods: [] }
 [class]: Entity { methods: [__repr__] }
@@ -660,14 +660,14 @@
 ---
 ### FILE: backend/app/models/learned_skill.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: SkillStatus { methods: [] }
 [class]: LearnedSkill { methods: [__repr__] }
 
 ---
 ### FILE: backend/app/models/memory.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: MemoryVisibility { methods: [] }
 [class]: MemoryStatus { methods: [] }
 [class]: MemoryAtomKind { methods: [] }
@@ -679,33 +679,33 @@
 ---
 ### FILE: backend/app/models/milestone.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy
+[ext_deps]: sqlalchemy, uuid
 [class]: Milestone { methods: [__repr__] }
 
 ---
 ### FILE: backend/app/models/note.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: NoteBucket { methods: [] }
 [class]: Note { methods: [] }
 
 ---
 ### FILE: backend/app/models/note_audio.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy
+[ext_deps]: sqlalchemy, uuid
 [class]: NoteAudio { methods: [] }
 
 ---
 ### FILE: backend/app/models/pattern_insight.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: PatternInsightType { methods: [] }
 [class]: PatternInsight { methods: [__repr__] }
 
 ---
 ### FILE: backend/app/models/pipeline.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: StageEnum { methods: [next_stage] }
 [class]: StageStatus { methods: [] }
 [class]: PipelineStage { methods: [__init__, __repr__] }
@@ -713,7 +713,7 @@
 ---
 ### FILE: backend/app/models/processing.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: TaskType { methods: [] }
 [class]: TaskStatus { methods: [] }
 [class]: ProcessingQueue { methods: [__repr__, update_progress] }
@@ -721,13 +721,13 @@
 ---
 ### FILE: backend/app/models/push_subscription.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy
+[ext_deps]: sqlalchemy, uuid
 [class]: PushSubscription { methods: [] }
 
 ---
 ### FILE: backend/app/models/smart_folder.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: SmartFolderStatus { methods: [] }
 [class]: RelationshipType { methods: [] }
 [class]: CollectionJobState { methods: [] }
@@ -737,7 +737,7 @@
 ---
 ### FILE: backend/app/models/space.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: SpaceBucket { methods: [] }
 [class]: SpaceItemType { methods: [] }
 [class]: SpaceRuleType { methods: [] }
@@ -748,7 +748,7 @@
 ---
 ### FILE: backend/app/models/subscription.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: BillingCycle { methods: [] }
 [class]: SubscriptionStatus { methods: [] }
 [class]: Subscription { methods: [] }
@@ -756,7 +756,7 @@
 ---
 ### FILE: backend/app/models/tag.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: TagType { methods: [] }
 [class]: TargetType { methods: [] }
 [class]: Tag { methods: [] }
@@ -764,7 +764,7 @@
 ---
 ### FILE: backend/app/models/task.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: TaskStatus { methods: [] }
 [class]: TaskPriority { methods: [] }
 [class]: TaskBucket { methods: [] }
@@ -773,13 +773,13 @@
 ---
 ### FILE: backend/app/models/user.py
 [local_deps]: app.models.base
-[ext_deps]: uuid, sqlalchemy, enum
+[ext_deps]: enum, uuid, sqlalchemy
 [class]: UserRole { methods: [] }
 [class]: User { methods: [__repr__] }
 
 ---
 ### FILE: backend/app/network_utils.py
-[ext_deps]: functools, logging, time, tenacity, collections, asyncio, httpx, typing
+[ext_deps]: asyncio, typing, time, logging, collections, tenacity, httpx, functools
 [fn]: with_retry(max_attempts, min_wait, max_wait, retry_exceptions)
 [class]: CircuitBreaker { methods: [__init__, _can_execute, _record_success, _record_failure, status] }
 [class]: ResilientAsyncClient { methods: [__init__, _get_client, close, request, get, post, put, delete, get_circuit_breaker_status] }
@@ -788,12 +788,12 @@
 
 ---
 ### FILE: backend/app/schemas/__init__.py
-[local_deps]: app.schemas.user, app.schemas.admin, app.schemas.collection, app.schemas.pagination, app.schemas.search, app.schemas.chat, app.schemas.document, app.schemas.smart_folder, app.schemas.token
+[local_deps]: app.schemas.document, app.schemas.user, app.schemas.search, app.schemas.token, app.schemas.collection, app.schemas.smart_folder, app.schemas.admin, app.schemas.pagination, app.schemas.chat
 
 ---
 ### FILE: backend/app/schemas/admin.py
 [local_deps]: app.schemas.user
-[ext_deps]: re, uuid, datetime, pydantic
+[ext_deps]: uuid, re, datetime, pydantic
 [class]: SystemStats { methods: [] }
 [class]: SystemConfigResponse { methods: [] }
 [class]: QueueStats { methods: [] }
@@ -818,7 +818,7 @@
 
 ---
 ### FILE: backend/app/schemas/article.py
-[ext_deps]: uuid, datetime, pydantic
+[ext_deps]: pydantic, uuid, datetime
 [class]: ArticleResponse { methods: [] }
 [class]: ArticleListResponse { methods: [] }
 [class]: ArticleGenerateRequest { methods: [] }
@@ -835,7 +835,7 @@
 ---
 ### FILE: backend/app/schemas/bookmark.py
 [local_deps]: app.schemas.tag
-[ext_deps]: uuid, datetime, enum, pydantic
+[ext_deps]: pydantic, enum, uuid, datetime
 [class]: BookmarkBucket { methods: [] }
 [class]: BookmarkCreate { methods: [] }
 [class]: BookmarkUpdate { methods: [] }
@@ -844,7 +844,7 @@
 
 ---
 ### FILE: backend/app/schemas/chat.py
-[ext_deps]: uuid, datetime, enum, pydantic
+[ext_deps]: pydantic, enum, uuid, datetime
 [class]: LLMProvider { methods: [] }
 [class]: MessageRole { methods: [] }
 [class]: ChatSessionCreate { methods: [] }
@@ -858,7 +858,7 @@
 
 ---
 ### FILE: backend/app/schemas/collection.py
-[ext_deps]: datetime, pydantic, enum, typing, uuid
+[ext_deps]: typing, enum, pydantic, uuid, datetime
 [class]: CollectionVisibility { methods: [] }
 [class]: CollectionType { methods: [] }
 [class]: ParsedIntentResponse { methods: [] }
@@ -908,7 +908,7 @@
 
 ---
 ### FILE: backend/app/schemas/document.py
-[ext_deps]: uuid, datetime, enum, pydantic
+[ext_deps]: pydantic, enum, uuid, datetime
 [class]: DocumentBucket { methods: [] }
 [class]: DocumentStatus { methods: [] }
 [class]: DocumentLanguage { methods: [] }
@@ -929,7 +929,7 @@
 ---
 ### FILE: backend/app/schemas/note.py
 [local_deps]: app.schemas.tag
-[ext_deps]: uuid, datetime, enum, pydantic
+[ext_deps]: pydantic, enum, uuid, datetime
 [class]: NoteBucket { methods: [] }
 [class]: NoteCreate { methods: [] }
 [class]: NoteUpdate { methods: [] }
@@ -938,7 +938,7 @@
 
 ---
 ### FILE: backend/app/schemas/pagination.py
-[ext_deps]: typing, base64, json, pydantic
+[ext_deps]: base64, pydantic, typing, json
 [class]: PaginationParams { methods: [offset] }
 [class]: PaginatedResponse { methods: [create] }
 [class]: CursorPaginationParams { methods: [] }
@@ -948,7 +948,7 @@
 
 ---
 ### FILE: backend/app/schemas/push.py
-[ext_deps]: uuid, datetime, pydantic
+[ext_deps]: pydantic, uuid, datetime
 [class]: PushSubscriptionCreate { methods: [] }
 [class]: PushSubscriptionResponse { methods: [] }
 
@@ -960,7 +960,7 @@
 
 ---
 ### FILE: backend/app/schemas/search.py
-[ext_deps]: uuid, pydantic
+[ext_deps]: pydantic, uuid
 [class]: SearchRequest { methods: [] }
 [class]: SearchResultChunk { methods: [] }
 [class]: SearchResponse { methods: [] }
@@ -993,7 +993,7 @@
 ---
 ### FILE: backend/app/schemas/space.py
 [local_deps]: app.schemas.tag
-[ext_deps]: uuid, datetime, enum, pydantic
+[ext_deps]: pydantic, enum, uuid, datetime
 [class]: SpaceBucket { methods: [] }
 [class]: SpaceItemType { methods: [] }
 [class]: SpaceRuleType { methods: [] }
@@ -1010,14 +1010,14 @@
 
 ---
 ### FILE: backend/app/schemas/subscription.py
-[ext_deps]: uuid, datetime, pydantic
+[ext_deps]: pydantic, uuid, datetime
 [class]: SubscriptionSyncItem { methods: [] }
 [class]: SubscriptionResponse { methods: [] }
 [class]: SubscriptionListResponse { methods: [] }
 
 ---
 ### FILE: backend/app/schemas/tag.py
-[ext_deps]: uuid, datetime, enum, pydantic
+[ext_deps]: pydantic, enum, uuid, datetime
 [class]: TagType { methods: [] }
 [class]: TargetType { methods: [] }
 [class]: TagCreate { methods: [] }
@@ -1027,7 +1027,7 @@
 ---
 ### FILE: backend/app/schemas/task.py
 [local_deps]: app.schemas.tag
-[ext_deps]: uuid, datetime, enum, pydantic
+[ext_deps]: pydantic, enum, uuid, datetime
 [class]: TaskStatus { methods: [] }
 [class]: TaskPriority { methods: [] }
 [class]: TaskBucket { methods: [] }
@@ -1045,7 +1045,7 @@
 
 ---
 ### FILE: backend/app/schemas/user.py
-[ext_deps]: datetime, pydantic, re, enum, typing, uuid
+[ext_deps]: typing, enum, re, pydantic, uuid, datetime
 [class]: UserRole { methods: [] }
 [class]: UserBase { methods: [] }
 [class]: UserCreate { methods: [validate_password] }
@@ -1055,7 +1055,7 @@
 
 ---
 ### FILE: backend/app/services/_spreadsheet_extractor.py
-[ext_deps]: json, xlrd, sys, openpyxl
+[ext_deps]: sys, openpyxl, xlrd, json
 [fn]: extract_xlsx(file_path)
 [fn]: extract_xls(file_path)
 
@@ -1066,12 +1066,12 @@
 
 ---
 ### FILE: backend/app/services/agents/__init__.py
-[local_deps]: app.services.agents.answer_agent, app.services.agents.clarification_agent, app.services.agents.agent_orchestrator, app.services.agents.researcher_agent, app.services.agents.verification_agent
+[local_deps]: app.services.agents.verification_agent, app.services.agents.researcher_agent, app.services.agents.agent_orchestrator, app.services.agents.clarification_agent, app.services.agents.answer_agent
 
 ---
 ### FILE: backend/app/services/agents/agent_orchestrator.py
-[local_deps]: app.services.agents.clarification_agent, app.services.agents.answer_agent, app.services.agents.verification_agent, app.services.agents.researcher_agent
-[ext_deps]: logging, time, datetime, dataclasses, collections, enum, typing
+[local_deps]: app.services.agents.researcher_agent, app.services.agents.clarification_agent, app.services.agents.verification_agent, app.services.agents.answer_agent
+[ext_deps]: dataclasses, typing, enum, collections, logging, time, datetime
 [class]: OrchestratorState { methods: [] }
 [class]: AgentResult { methods: [] }
 [class]: OrchestratorRequest { methods: [] }
@@ -1080,32 +1080,32 @@
 
 ---
 ### FILE: backend/app/services/agents/answer_agent.py
-[local_deps]: app.services.llm_gateway, app.services.agent_identity
-[ext_deps]: logging, dataclasses, re, json, typing
+[local_deps]: app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: dataclasses, typing, json, re, logging
 [class]: AnswerRequest { methods: [] }
 [class]: AnswerResult { methods: [__post_init__] }
 [class]: AnswerAgent { methods: [__init__, generate_answer, _determine_answer_type, _build_generation_context, _generate_answer_content, _extract_key_points, _prepare_sources, _generate_caveats, _suggest_followup_questions, _calculate_answer_confidence] }
 
 ---
 ### FILE: backend/app/services/agents/clarification_agent.py
-[local_deps]: app.services.llm_gateway, app.services.agent_identity
-[ext_deps]: logging, dataclasses, json, typing
+[local_deps]: app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: dataclasses, logging, json, typing
 [class]: ClarificationRequest { methods: [] }
 [class]: ClarificationResult { methods: [__post_init__] }
 [class]: ClarificationAgent { methods: [__init__, _has_confidential_documents, clarify, _fallback_clarification, _extract_json, suggest_search_improvements] }
 
 ---
 ### FILE: backend/app/services/agents/researcher_agent.py
-[local_deps]: app.services.llm_gateway, app.services.embed_client, app.services.search_service, app.services.agent_identity, app.services.knowledge_graph.pool, app.services.knowledge_graph.traversal, app.services.knowledge_graph.models, app.services.graph_rag_service
-[ext_deps]: logging, dataclasses, collections, re, json, typing
+[local_deps]: app.services.embed_client, app.services.graph_rag_service, app.services.knowledge_graph.pool, app.services.knowledge_graph.traversal, app.services.knowledge_graph.models, app.services.agent_identity, app.services.search_service, app.services.llm_gateway
+[ext_deps]: dataclasses, typing, json, collections, re, logging
 [class]: ResearchQuery { methods: [] }
 [class]: ResearchResult { methods: [__post_init__] }
 [class]: ResearcherAgent { methods: [__init__, _is_graph_traversal_query, _extract_traversal_pair, _run_graph_traversal, _has_confidential_documents, _get_llm_service, research, _gather_context, _extract_themes, _find_related_topics, _identify_information_gaps, _suggest_followup_queries, _prepare_sources, _calculate_research_confidence, explore_entity_connections] }
 
 ---
 ### FILE: backend/app/services/agents/verification_agent.py
-[local_deps]: app.services.llm_gateway, app.services.agent_identity
-[ext_deps]: logging, dataclasses, json, typing
+[local_deps]: app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: dataclasses, logging, json, typing
 [class]: VerificationRequest { methods: [] }
 [class]: VerificationResult { methods: [__post_init__] }
 [class]: VerificationAgent { methods: [__init__, verify, verify_batch, _analyze_claim, _check_source_for_claim, _generate_verification_notes, detect_inconsistencies, _find_conflicts, assess_source_reliability] }
@@ -1119,44 +1119,44 @@
 ---
 ### FILE: backend/app/services/article_generation_service.py
 [local_deps]: app.services.llm_gateway
-[ext_deps]: logging, asyncio, hashlib, json, httpx, typing
+[ext_deps]: asyncio, typing, json, logging, hashlib, httpx
 [fn]: _content_hash(title, body)
 [fn]: _title_similarity(a, b)
 [class]: ArticleGenerationService { methods: [__init__, create_chunk_windows, _create_windows, extract_articles_from_window, _parse_articles_json, deduplicate_articles, generate_articles_for_document] }
 
 ---
 ### FILE: backend/app/services/auto_tagging_service.py
-[local_deps]: app.models.tag, app.services.llm_gateway, app.services.agent_identity, app.models.document
-[ext_deps]: logging, datetime, sqlalchemy, json, warnings, typing, uuid
+[local_deps]: app.services.agent_identity, app.models.tag, app.models.document, app.services.llm_gateway
+[ext_deps]: typing, warnings, json, logging, uuid, sqlalchemy, datetime
 [class]: AutoTaggingService { methods: [__init__, tag_document, _prepare_text_for_analysis, _build_tagging_system_prompt, _extract_tags_with_llm, _extract_json, detect_language, suggest_similar_documents] }
 
 ---
 ### FILE: backend/app/services/base_llm_service.py
-[ext_deps]: typing, abc, collections
+[ext_deps]: typing, collections, abc
 [class]: BaseLLMService { methods: [chat_completion, health_check] }
 
 ---
 ### FILE: backend/app/services/bookmark_service.py
-[local_deps]: app.models.bookmark, app.models.tag, app.models.user
-[ext_deps]: logging, uuid, urllib, sqlalchemy
+[local_deps]: app.models.tag, app.models.user, app.models.bookmark
+[ext_deps]: sqlalchemy, logging, uuid, urllib
 [fn]: _escape_like(value)
 [class]: BookmarkService { methods: [create_bookmark, get_bookmark, list_bookmarks, update_bookmark, delete_bookmark, search_bookmarks, get_tags_for_bookmark, _apply_access_filter, _extract_domain] }
 
 ---
 ### FILE: backend/app/services/cache_monitor.py
-[ext_deps]: logging, datetime, threading, json, typing
+[ext_deps]: typing, threading, json, logging, datetime
 [class]: DailyCacheStats { methods: [__init__, record_hit, record_miss, record_query, hits, misses, tokens_saved, queries, hit_rate, to_dict] }
 [class]: CacheMonitor { methods: [__init__, _get_or_create_today_stats, _cleanup_old_stats, record_cache_hit, record_cache_miss, get_hit_rate, get_stats_summary, get_today_stats, get_tokens_saved_today, get_total_tokens_saved, reset_today_stats, get_all_dates, export_stats_json, get_retention_days, set_retention_days] }
 
 ---
 ### FILE: backend/app/services/chat_service.py
-[local_deps]: app.services.llm_gateway, app.models.document, app.services.prometheus_metrics, app.services.search_service, app.services.agent_identity, app.database, app.models.chat, app.services.pii_detection_service, app.services.cache_monitor, app.models.user, app.services.context_block_service, app.services.memory_search_service
-[ext_deps]: logging, time, sqlalchemy, collections, asyncio, re, json, typing, uuid
+[local_deps]: app.services.cache_monitor, app.services.search_service, app.models.user, app.services.pii_detection_service, app.models.document, app.services.context_block_service, app.database, app.models.chat, app.services.memory_search_service, app.services.agent_identity, app.services.prometheus_metrics, app.services.llm_gateway
+[ext_deps]: asyncio, typing, json, time, re, logging, collections, uuid, sqlalchemy
 [class]: ChatService { methods: [__init__, get_conversation_history, retrieve_relevant_chunks, build_rag_context, _maybe_inject_memory, generate_chat_response, generate_chat_response_stream, _has_raw_confidential_context] }
 
 ---
 ### FILE: backend/app/services/chunking_service.py
-[ext_deps]: logging, transformers
+[ext_deps]: transformers, logging
 [fn]: _get_tokenizer()
 [fn]: _count_tokens(text)
 [fn]: _truncate_to_max_tokens(text, max_tokens)
@@ -1164,8 +1164,8 @@
 
 ---
 ### FILE: backend/app/services/collection_chat_service.py
-[local_deps]: app.models.collection, app.services.llm_gateway, app.models.document, app.services.agent_identity, app.models.audit, app.models.chat, app.models.user, app.services.context_block_service
-[ext_deps]: logging, sqlalchemy, json, typing, uuid
+[local_deps]: app.models.collection, app.models.user, app.models.document, app.services.context_block_service, app.models.chat, app.models.audit, app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: typing, json, logging, sqlalchemy, uuid
 [async_fn]: create_audit_log(db, user_id, action, resource_type, resource_id, details)
 [class]: CollectionChatService { methods: [__init__, get_or_create_chat_session, chat_with_collection, _build_document_context, _chat_with_llm, _chat_with_ollama] }
 
@@ -1174,7 +1174,7 @@
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/analysis_engine.py
-[ext_deps]: logging, typing, math, statistics
+[ext_deps]: typing, logging, math, statistics
 [fn]: _refs(fact)
 [fn]: _period_sort_key(period)
 [fn]: _year_of(period)
@@ -1183,7 +1183,7 @@
 ---
 ### FILE: backend/app/services/collection_orchestrator/audit_logger.py
 [local_deps]: app.core.config, app.models.collection_orchestrator
-[ext_deps]: logging, time, hmac, datetime, collections, sqlalchemy, hashlib, contextlib, typing, uuid
+[ext_deps]: typing, time, collections, logging, hmac, contextlib, hashlib, uuid, sqlalchemy, datetime
 [async_fn]: log_event(db)
 [async_fn]: audit_stage(db)
 [fn]: pseudonymise_user_id(user_id)
@@ -1191,8 +1191,8 @@
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/conversation_manager.py
-[local_deps]: app.services.smart_folder.query_parser, app.core.config, app.services.smart_folder.entity_resolver, app.models.collection_orchestrator, app.services.collection_orchestrator
-[ext_deps]: logging, datetime, sqlalchemy, re, json, typing, uuid
+[local_deps]: app.services.collection_orchestrator, app.models.collection_orchestrator, app.core.config, app.services.smart_folder.entity_resolver, app.services.smart_folder.query_parser
+[ext_deps]: typing, json, re, logging, uuid, sqlalchemy, datetime
 [fn]: _default_max_rounds()
 [fn]: classify_intent(query_text)
 [fn]: _entity_option_label(entity)
@@ -1202,7 +1202,7 @@
 ---
 ### FILE: backend/app/services/collection_orchestrator/extraction_pipeline.py
 [local_deps]: app.services.smart_folder.tools.table_extractor, app.core.config
-[ext_deps]: logging, re, datetime, typing
+[ext_deps]: typing, re, logging, datetime
 [fn]: _get(item, key, default)
 [fn]: _parse_number(raw)
 [fn]: _iso_date(value)
@@ -1211,14 +1211,14 @@
 ---
 ### FILE: backend/app/services/collection_orchestrator/grounding_validator.py
 [local_deps]: app.services.collection_orchestrator.audit_logger, app.services.collection_orchestrator.summary_generator
-[ext_deps]: logging, dataclasses, re, typing, uuid
+[ext_deps]: dataclasses, typing, re, logging, uuid
 [class]: ValidationReport { methods: [] }
 [class]: GroundingValidator { methods: [validate, strip_ungrounded, validate_with_regeneration, _audit, _sentences, _number_tokens, _token_float, _numbers_in, _computed_numbers, _accepted_strings, _token_accepted, _known_refs, _citation_known] }
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/metrics.py
 [local_deps]: app.models.collection_orchestrator
-[ext_deps]: logging, datetime, sqlalchemy, math, typing
+[ext_deps]: typing, math, logging, sqlalchemy, datetime
 [fn]: _percentile(values, pct)
 [fn]: _stage_stats(durations)
 [async_fn]: compute_metrics(db, since_days)
@@ -1226,8 +1226,8 @@
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/packaging_service.py
-[local_deps]: app.services.collection_orchestrator.summary_generator, app.services.collection_orchestrator.sanitise, app.services.smart_folder.tools.chart_generator
-[ext_deps]: logging, reportlab, datetime, difflib, re, io, json, docx, os, zipfile, typing
+[local_deps]: app.services.collection_orchestrator.sanitise, app.services.smart_folder.tools.chart_generator, app.services.collection_orchestrator.summary_generator
+[ext_deps]: zipfile, typing, docx, os, json, re, logging, reportlab, difflib, io, datetime
 [fn]: _item_view(item)
 [fn]: _iso(value)
 [fn]: _analysis_appendix(analyses)
@@ -1244,8 +1244,8 @@
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/pipeline_runner.py
-[local_deps]: app.services.collection_orchestrator.grounding_validator, app.services.collection_orchestrator.summary_generator, app.core.config, app.models.smart_folder, app.services.collection_orchestrator.query_planner, app.models.collection_orchestrator, app.services.collection_orchestrator.search_adapter, app.services.collection_orchestrator.extraction_pipeline, app.models.user, app.services.collection_orchestrator.analysis_engine, app.services.collection_orchestrator, app.services.collection_orchestrator.result_processor
-[ext_deps]: logging, datetime, sqlalchemy, typing, uuid
+[local_deps]: app.services.collection_orchestrator.analysis_engine, app.models.smart_folder, app.services.collection_orchestrator.search_adapter, app.models.user, app.services.collection_orchestrator.extraction_pipeline, app.services.collection_orchestrator, app.models.collection_orchestrator, app.services.collection_orchestrator.result_processor, app.core.config, app.services.collection_orchestrator.summary_generator, app.services.collection_orchestrator.query_planner, app.services.collection_orchestrator.grounding_validator
+[ext_deps]: typing, logging, sqlalchemy, uuid, datetime
 [class]: TooManyJobsError { methods: [] }
 [async_fn]: _next_deliverable_version(db, request_id)
 [fn]: _max_concurrent_jobs()
@@ -1261,7 +1261,7 @@
 ---
 ### FILE: backend/app/services/collection_orchestrator/query_planner.py
 [local_deps]: app.core.config
-[ext_deps]: typing, dataclasses
+[ext_deps]: dataclasses, typing
 [fn]: _default_max_items()
 [class]: SearchCallSpec { methods: [filter_signature] }
 [fn]: _base_query(confirmed_params)
@@ -1270,15 +1270,15 @@
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/reproducibility.py
-[local_deps]: app.models.smart_folder, app.services.collection_orchestrator.analysis_engine, app.core.config, app.models.collection_orchestrator
-[ext_deps]: logging, uuid, sqlalchemy, typing
+[local_deps]: app.services.collection_orchestrator.analysis_engine, app.core.config, app.models.smart_folder, app.models.collection_orchestrator
+[ext_deps]: typing, sqlalchemy, logging, uuid
 [async_fn]: reproduce_analysis(db, request_id)
 [fn]: compare_reproduction(reproduction)
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/result_processor.py
-[local_deps]: app.services.smart_folder.query_parser, app.services.llm_router, app.services.collection_orchestrator, app.services.rerank_service
-[ext_deps]: logging, datetime, hashlib, re, json, typing
+[local_deps]: app.services.llm_router, app.services.rerank_service, app.services.smart_folder.query_parser, app.services.collection_orchestrator
+[ext_deps]: typing, json, re, logging, hashlib, datetime
 [fn]: normalize_text(text)
 [fn]: content_hash(text)
 [fn]: _token_shingles(tokens, n)
@@ -1292,7 +1292,7 @@
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/sanitise.py
-[ext_deps]: re, typing, html
+[ext_deps]: typing, re, html
 [fn]: _neutralised_scheme(uri)
 [fn]: _strip_event_handlers(match)
 [fn]: _collapse_dangerous_link(match)
@@ -1302,8 +1302,8 @@
 
 ---
 ### FILE: backend/app/services/collection_orchestrator/search_adapter.py
-[local_deps]: app.core.config, app.models.document, app.core.redis_url, app.services.search_service, app.services.collection_orchestrator.query_planner, app.services.collection_orchestrator
-[ext_deps]: logging, time, dataclasses, datetime, redis, sqlalchemy, asyncio, hashlib, json, typing
+[local_deps]: app.models.document, app.services.collection_orchestrator, app.core.config, app.core.redis_url, app.services.search_service, app.services.collection_orchestrator.query_planner
+[ext_deps]: asyncio, dataclasses, typing, json, time, logging, redis, hashlib, sqlalchemy, datetime
 [fn]: _default_max_items()
 [fn]: _default_cache_ttl()
 [fn]: _get_redis()
@@ -1313,22 +1313,22 @@
 ---
 ### FILE: backend/app/services/collection_orchestrator/summary_generator.py
 [local_deps]: app.services.llm_router
-[ext_deps]: logging, json, datetime, typing
+[ext_deps]: typing, logging, datetime, json
 [fn]: format_number(value, unit)
 [fn]: _format_value(value, unit)
 [class]: SummaryGenerator { methods: [generate, _build_messages, _ref_label] }
 
 ---
 ### FILE: backend/app/services/collection_service.py
-[local_deps]: app.models.collection, app.schemas.collection, app.services.llm_gateway, app.services.rerank_service, app.models.document, app.services.intent_parser, app.services.search_service, app.services.agent_identity, app.services.search_cache, app.models.user
-[ext_deps]: logging, datetime, sqlalchemy, asyncio, typing, uuid
+[local_deps]: app.models.collection, app.services.rerank_service, app.models.user, app.models.document, app.services.intent_parser, app.services.search_cache, app.schemas.collection, app.services.agent_identity, app.services.search_service, app.services.llm_gateway
+[ext_deps]: typing, asyncio, logging, sqlalchemy, uuid, datetime
 [fn]: gather_query_text(intent)
 [class]: CollectionService { methods: [__init__, _get_user_visibility_filter, create_collection, create_collection_shell, build_collection_pipeline, preview_collection, refresh_collection, _understand_query, _gather_and_verify, _gather_documents_for_intent, _calculate_relevance, _invalidate_cache, _synthesize_summary, _generate_collection_summary, get_collection_stats] }
 
 ---
 ### FILE: backend/app/services/context_block_service.py
 [local_deps]: app.models.document, app.core.redis_url
-[ext_deps]: logging, datetime, redis, sqlalchemy
+[ext_deps]: sqlalchemy, logging, datetime, redis
 [fn]: _get_redis()
 [async_fn]: generate_context_block(db)
 [async_fn]: get_cached_context_block(db)
@@ -1344,27 +1344,27 @@
 ---
 ### FILE: backend/app/services/deduplication_service.py
 [local_deps]: app.models.document
-[ext_deps]: logging, datetime, sqlalchemy, difflib, hashlib
+[ext_deps]: logging, hashlib, sqlalchemy, difflib, datetime
 [class]: FileHash { methods: [__init__] }
 [class]: DeduplicationService { methods: [__init__, calculate_hash, calculate_hash_from_chunks, is_duplicate, register_upload, _add_to_cache, find_similar_files, scan_for_duplicates, cleanup_duplicates] }
 
 ---
 ### FILE: backend/app/services/deferred_query_service.py
 [local_deps]: app.services.llm_gateway
-[ext_deps]: logging, datetime, os, typing, uuid
+[ext_deps]: typing, os, logging, uuid, datetime
 [class]: _InMemoryStore { methods: [__init__, add, get, list_pending, update, expire_old] }
 [class]: DeferredQueryService { methods: [__init__, enqueue, process_pending, get_status, _call_ollama] }
 
 ---
 ### FILE: backend/app/services/dlq_service.py
-[local_deps]: app.database, app.models.failed_task, app.services.alert_service
-[ext_deps]: traceback, logging, sqlalchemy, threading, asyncio, json, typing
+[local_deps]: app.models.failed_task, app.services.alert_service, app.database
+[ext_deps]: typing, asyncio, json, threading, logging, sqlalchemy, traceback
 [class]: DeadLetterQueueService { methods: [store_failed_task, list_failed_tasks] }
 
 ---
 ### FILE: backend/app/services/document_orchestrator.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.tasks.pipeline_tasks, app.models.document, app.tasks.voice_tasks, app.models.pipeline, app.schemas.document, app.models.audit, app.services.storage_service, app.services.deduplication_service, app.models.user
-[ext_deps]: concurrent, logging, datetime, sqlalchemy, asyncio, json, fastapi, typing
+[local_deps]: app.models.pipeline, app.schemas.document, app.tasks.pipeline_tasks, app.services.storage_service, app.models.user, app.models.document, app.services.deduplication_service, app.tasks.pipeline_orchestrator, app.models.audit, app.tasks.voice_tasks
+[ext_deps]: typing, asyncio, fastapi, json, logging, sqlalchemy, concurrent, datetime
 [fn]: get_file_extension(filename)
 [fn]: get_mime_type(filename, content)
 [fn]: validate_magic_bytes(filename, content)
@@ -1378,48 +1378,48 @@
 
 ---
 ### FILE: backend/app/services/embed_client.py
-[ext_deps]: random, logging, time, asyncio, atexit, os, httpx
+[ext_deps]: atexit, asyncio, os, random, logging, time, httpx
 [fn]: _base_urls()
 [fn]: _is_retryable(exc)
 [class]: EmbedClient { methods: [__init__, embedding_dim, _update_server_health, _pick_url, can_embed, _clear_health_cache, health_check, _circuit_breaker_check, _adaptive_failure_threshold, _record_failure, _record_success, _post_with_retry, encode, encode_single, encode_query, encode_async, close] }
 
 ---
 ### FILE: backend/app/services/embedding_service.py
-[local_deps]: app.utils.circuit_breaker, app.services.token_utils
-[ext_deps]: sentence_transformers, logging, threading, asyncio, psutil, gc, os, typing, torch, numpy
+[local_deps]: app.services.token_utils, app.utils.circuit_breaker
+[ext_deps]: typing, sentence_transformers, asyncio, psutil, os, numpy, threading, logging, gc, torch
 [class]: EmbeddingService { methods: [__new__, __init__, model, is_loaded, can_embed, _load_model, get_memory_stats, health_check, encode, encode_single, encode_query, encode_async, calculate_similarity, get_average_embedding] }
 [class]: ChunkingService { methods: [__init__, count_tokens, chunk_text, chunk_document] }
 
 ---
 ### FILE: backend/app/services/embedding_service_onnx.py
-[ext_deps]: transformers, logging, pathlib, onnxruntime, os, numpy
+[ext_deps]: os, numpy, logging, onnxruntime, transformers, pathlib
 [class]: EmbeddingServiceONNX { methods: [__init__, embedding_dim, model, is_loaded, can_embed, encode, encode_query, health_check, _ensure_loaded, _encode_raw] }
 
 ---
 ### FILE: backend/app/services/entity_extraction_service.py
-[local_deps]: app.services.llm_gateway, app.models.document, app.services.rollback_monitor, app.services.agent_identity, app.models.knowledge_graph
-[ext_deps]: logging, datetime, sqlalchemy, asyncio, json, warnings, typing
+[local_deps]: app.models.document, app.models.knowledge_graph, app.services.rollback_monitor, app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: typing, asyncio, warnings, json, logging, sqlalchemy, datetime
 [class]: ExtractedEntity { methods: [__init__] }
 [class]: ExtractedRelationship { methods: [__init__] }
 [class]: EntityExtractionService { methods: [__init__, extract_entities_from_document, extract_entities_from_document_sync, _get_or_create_entity_sync, _create_relationship_sync, _create_timeline_event_sync, _prepare_document_text, _extract_with_llm, _extract_json, _extract_entities_rule_based, _get_or_create_entity, _create_relationship, _create_timeline_event, get_entity_graph, _get_color_for_type] }
 
 ---
 ### FILE: backend/app/services/graph_rag_service.py
-[local_deps]: app.services.llm_gateway, app.models.document, app.services.agent_identity, app.models.knowledge_graph, app.services.context_block_service
-[ext_deps]: logging, sqlalchemy, collections, re, typing
+[local_deps]: app.models.document, app.services.context_block_service, app.models.knowledge_graph, app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: typing, collections, logging, re, sqlalchemy
 [class]: GraphRAGService { methods: [__init__, _strip_sensitive_content, _extract_bucket_from_results, enhance_search_with_graph, _extract_query_entities, _find_entities_in_results, _expand_entities, _build_graph_context, _rank_results_with_graph, generate_graph_aware_answer, find_entity_paths, get_entity_neighborhood] }
 
 ---
 ### FILE: backend/app/services/input_guard.py
 [local_deps]: app.services.pii_detection_service, app.core.redis_url
-[ext_deps]: logging, dataclasses, redis, hashlib, re
+[ext_deps]: dataclasses, re, logging, redis, hashlib
 [class]: GuardResult { methods: [] }
 [class]: InputGuard { methods: [__init__, _get_redis, process, _detect_language, _scan_pii, _classify_intent, _determine_vault, _check_duplicate, _enforce_token_budget] }
 
 ---
 ### FILE: backend/app/services/intent_parser.py
-[local_deps]: app.services.llm_gateway, app.services.agent_identity, app.services.rollback_monitor
-[ext_deps]: logging, datetime, re, json, warnings, enum, typing
+[local_deps]: app.services.agent_identity, app.services.llm_gateway, app.services.rollback_monitor
+[ext_deps]: typing, warnings, json, enum, re, logging, datetime
 [class]: DocumentType { methods: [] }
 [class]: DateRange { methods: [] }
 [class]: ParsedIntent { methods: [__init__, to_dict, to_search_filter, _resolve_date_range] }
@@ -1427,23 +1427,23 @@
 
 ---
 ### FILE: backend/app/services/kimi_service.py
-[local_deps]: app.services.base_llm_service, app.services.token_utils, app.services.llm_http_client
-[ext_deps]: tenacity, logging, datetime, collections, json, os, httpx, typing
+[local_deps]: app.services.token_utils, app.services.llm_http_client, app.services.base_llm_service
+[ext_deps]: typing, os, json, collections, logging, tenacity, datetime, httpx
 [class]: KimiService { methods: [__init__, _estimate_tokens, _truncate_messages, _get_headers, chat_completion, health_check, get_usage_stats] }
 
 ---
 ### FILE: backend/app/services/knowledge_graph/__init__.py
-[ext_deps]: models, extraction, traversal
+[ext_deps]: traversal, models, extraction
 
 ---
 ### FILE: backend/app/services/knowledge_graph/extraction.py
-[ext_deps]: logging, models, spacy, json, asyncpg, itertools, __future__
+[ext_deps]: spacy, itertools, json, asyncpg, logging, __future__, models
 [fn]: _vec_to_str(vec)
 [class]: EntityExtractor { methods: [__init__, process_chunk, _extract_entities, _financial_keyword_scan, _ensure_document_node, _resolve_or_create, _create_edge, _apply_financial_rules, _llm_relationship_extraction] }
 
 ---
 ### FILE: backend/app/services/knowledge_graph/models.py
-[ext_deps]: datetime, pydantic, enum, uuid, __future__
+[ext_deps]: enum, pydantic, __future__, uuid, datetime
 [class]: NodeType { methods: [] }
 [class]: EdgeType { methods: [] }
 [class]: ExtractionMethod { methods: [] }
@@ -1454,14 +1454,14 @@
 
 ---
 ### FILE: backend/app/services/knowledge_graph/pool.py
-[ext_deps]: os, asyncpg, __future__
+[ext_deps]: asyncpg, __future__, os
 [fn]: _build_dsn()
 [async_fn]: get_graph_pool(min_size, max_size)
 [async_fn]: close_graph_pool()
 
 ---
 ### FILE: backend/app/services/knowledge_graph/traversal.py
-[ext_deps]: extraction, logging, models, json, asyncpg, __future__
+[ext_deps]: json, asyncpg, logging, extraction, __future__, models
 [class]: GraphTraversalService { methods: [__init__, resolve_entity, find_connections, get_neighbours] }
 [fn]: _parse_jsonb(value)
 [fn]: _row_to_node(row)
@@ -1469,21 +1469,21 @@
 
 ---
 ### FILE: backend/app/services/llm_gateway.py
-[local_deps]: app.services.semantic_cache, app.services.monitoring, app.services.user_quota, app.core.context, app.services.token_utils, app.services.rollback_monitor, app.services.llm_router
-[ext_deps]: logging, time, collections, asyncio, typing
+[local_deps]: app.services.semantic_cache, app.core.context, app.services.user_quota, app.services.token_utils, app.services.llm_router, app.services.monitoring, app.services.rollback_monitor
+[ext_deps]: asyncio, typing, time, logging, collections
 [async_fn]: _acquire_user_concurrency_slot(user_id, role)
 [async_fn]: _release_user_concurrency_slot(user_id)
 [class]: LLMGateway { methods: [__init__, _timed_generate, chat_completion, model, check_cache, invalidate_collection_cache, get_usage_stats, chat_completion_non_stream, generate_report_completion, health_check] }
 
 ---
 ### FILE: backend/app/services/llm_http_client.py
-[ext_deps]: logging, httpx, typing
+[ext_deps]: typing, logging, httpx
 [class]: LLMHTTPClient { methods: [get_client, close] }
 
 ---
 ### FILE: backend/app/services/llm_router.py
-[local_deps]: app.services.openrouter_service, app.services.pii_detection_service, app.services.kimi_service, app.services.minimax_service
-[ext_deps]: logging, dataclasses, collections, enum, typing
+[local_deps]: app.services.minimax_service, app.services.pii_detection_service, app.services.kimi_service, app.services.openrouter_service
+[ext_deps]: dataclasses, typing, enum, collections, logging
 [class]: RoutingReason { methods: [] }
 [class]: LLMProvider { methods: [] }
 [class]: TaskTier { methods: [] }
@@ -1495,14 +1495,14 @@
 
 ---
 ### FILE: backend/app/services/memory_search_service.py
-[local_deps]: app.models.memory, app.core.config
-[ext_deps]: logging, uuid, sqlalchemy, typing
+[local_deps]: app.core.config, app.models.memory
+[ext_deps]: typing, sqlalchemy, logging, uuid
 [class]: MemorySearchService { methods: [retrieve_for_context] }
 
 ---
 ### FILE: backend/app/services/memory_service.py
-[local_deps]: app.models.memory, app.services.smart_folder.query_parser, app.services.llm_gateway, app.services.embed_client, app.core.config, app.services.prometheus_metrics, app.services.agent_identity, app.models.chat
-[ext_deps]: logging, datetime, sqlalchemy, asyncio, typing, uuid
+[local_deps]: app.models.chat, app.core.config, app.models.memory, app.services.prometheus_metrics, app.services.agent_identity, app.services.smart_folder.query_parser, app.services.embed_client, app.services.llm_gateway
+[ext_deps]: asyncio, typing, logging, uuid, sqlalchemy, datetime
 [fn]: _record_metric(name, value, labels)
 [fn]: _message_index(message, messages)
 [class]: MemoryService { methods: [distill_session, _llm_extract, _existing_statements, _build_atom, _most_similar, build_scenarios, build_profile, _llm_profile] }
@@ -1510,21 +1510,21 @@
 
 ---
 ### FILE: backend/app/services/messaging/__init__.py
-[ext_deps]: logging, nats, collections, asyncio, os, typing
+[ext_deps]: asyncio, typing, os, logging, collections, nats
 [class]: MessagingClient { methods: [__init__, nc, js, connect, close, ensure_stream, subscribe, publish, request] }
 [async_fn]: get_messaging_client()
 [async_fn]: close_messaging_client()
 
 ---
 ### FILE: backend/app/services/minimax_service.py
-[local_deps]: app.services.base_llm_service, app.services.token_utils, app.services.llm_http_client, app.services.monitoring
-[ext_deps]: logging, collections, json, os, httpx, typing
+[local_deps]: app.services.token_utils, app.services.monitoring, app.services.llm_http_client, app.services.base_llm_service
+[ext_deps]: typing, os, json, collections, logging, httpx
 [class]: MiniMaxService { methods: [__init__, _estimate_tokens, _truncate_messages, _get_headers, _check_cost_ceiling, chat_completion, chat_completion_non_stream, health_check] }
 
 ---
 ### FILE: backend/app/services/monitoring.py
 [local_deps]: app.core.redis_url
-[ext_deps]: shutil, subprocess, logging, prometheus_client, datetime, dataclasses, collections, threading, redis, re, psutil, os, typing
+[ext_deps]: typing, psutil, dataclasses, subprocess, os, threading, logging, collections, redis, re, datetime, prometheus_client, shutil
 [class]: APICostRecord { methods: [] }
 [class]: AlertConfig { methods: [] }
 [class]: AlertState { methods: [] }
@@ -1544,29 +1544,29 @@
 
 ---
 ### FILE: backend/app/services/note_service.py
-[local_deps]: app.models.tag, app.models.user, app.models.note
-[ext_deps]: logging, uuid, sqlalchemy
+[local_deps]: app.models.tag, app.models.note, app.models.user
+[ext_deps]: sqlalchemy, logging, uuid
 [fn]: _escape_like(value)
 [class]: NoteService { methods: [create_note, get_note, list_notes, update_note, delete_note, search_notes, get_tags_for_note, get_tags_for_notes, _apply_access_filter] }
 
 ---
 ### FILE: backend/app/services/ocr_service.py
 [local_deps]: app.utils.circuit_breaker, app.services.monitoring
-[ext_deps]: paddleocr, PIL, logging, time, PyPDF2, io, cv2, enum, os, typing, pytesseract, numpy
+[ext_deps]: typing, PyPDF2, os, numpy, time, logging, enum, pytesseract, PIL, io, cv2, paddleocr
 [class]: OCRMode { methods: [] }
 [class]: OCREngine { methods: [] }
 [class]: OCRService { methods: [__init__, _get_paddle_model, _get_language_for_ocr, _resize_image, _preprocess_image, _auto_select_mode, _count_pages, _extract_full, extract_text, _extract_with_paddle, _gundam_mode_paddle, _merge_ocr_results, _parse_paddle_result, _extract_with_tesseract, should_use_ocr, extract_from_pdf_page, get_available_modes, get_default_mode] }
 
 ---
 ### FILE: backend/app/services/ollama_service.py
-[local_deps]: app.services.base_llm_service, app.services.llm_http_client
-[ext_deps]: tenacity, logging, collections, json, os, httpx, typing
+[local_deps]: app.services.llm_http_client, app.services.base_llm_service
+[ext_deps]: typing, os, json, collections, logging, tenacity, httpx
 [class]: OllamaService { methods: [__init__, chat_completion, generate, health_check] }
 
 ---
 ### FILE: backend/app/services/openrouter_service.py
-[local_deps]: app.services.monitoring, app.services.openrouter_throttle, app.services.token_utils, app.core.redis_url, app.services.prometheus_metrics, app.services.cache_monitor, app.services.llm_http_client
-[ext_deps]: tenacity, logging, datetime, redis, collections, asyncio, hashlib, json, os, httpx, typing
+[local_deps]: app.services.cache_monitor, app.services.token_utils, app.services.monitoring, app.services.openrouter_throttle, app.core.redis_url, app.services.prometheus_metrics, app.services.llm_http_client
+[ext_deps]: asyncio, typing, os, json, logging, collections, redis, hashlib, tenacity, datetime, httpx
 [fn]: close_redis_client()
 [fn]: _get_redis_client()
 [class]: OpenRouterService { methods: [__init__, _generate_cache_key, check_cache, _estimate_tokens, _truncate_messages, _get_headers, select_model_for_tier, _fallback_model_for, _check_cost_ceiling, _check_cost_anomaly, _before_sleep_on_retry, chat_completion, invalidate_collection_cache, health_check, get_usage_stats, list_models] }
@@ -1574,33 +1574,33 @@
 ---
 ### FILE: backend/app/services/openrouter_throttle.py
 [local_deps]: app.services.openrouter_service
-[ext_deps]: logging, time, datetime, typing, __future__
+[ext_deps]: typing, time, logging, __future__, datetime
 [fn]: _detect_tier(model)
 [class]: OpenRouterThrottle { methods: [__init__, _get_redis, _rpm_key, _rpd_key, _backoff_key, _current_buckets, _effective_limit, check_allowed, record_request, record_429, get_status] }
 
 ---
 ### FILE: backend/app/services/performance_service.py
-[local_deps]: app.models.collection, app.services.cache_monitor, app.models.document
-[ext_deps]: sentence_transformers, logging, datetime, sqlalchemy, psutil, typing
+[local_deps]: app.models.collection, app.models.document, app.services.cache_monitor
+[ext_deps]: typing, psutil, sentence_transformers, logging, sqlalchemy, datetime
 [class]: PerformanceMetrics { methods: [__init__] }
 [class]: PerformanceTuningService { methods: [__init__, get_system_metrics, _get_embedding_stats, _get_cache_stats, _get_minimax_stats, _generate_recommendations, optimize_embedding_batch_size, optimize_minimax_cache, profile_embedding_memory, get_cost_analysis] }
 
 ---
 ### FILE: backend/app/services/pii_detection_service.py
-[ext_deps]: logging, re, typing
+[ext_deps]: typing, re, logging
 [class]: PIIDetectionService { methods: [__init__, detect_pii, redact_pii, get_pii_summary, detect_pii_in_chunks, _is_valid_credit_card] }
 
 ---
 ### FILE: backend/app/services/progressive_revelation_service.py
-[local_deps]: app.services.llm_gateway, app.models.document, app.models.knowledge_graph, app.services.agent_identity, app.models.user
-[ext_deps]: logging, sqlalchemy, typing
+[local_deps]: app.models.user, app.models.document, app.models.knowledge_graph, app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: typing, sqlalchemy, logging
 [class]: RevelationLayer { methods: [] }
 [class]: FamilyContext { methods: [__init__] }
 [class]: ProgressiveRevelationService { methods: [__init__, reveal_entity_info, generate_family_context, _generate_family_narrative, suggest_revelation_layer, get_progressive_search_results] }
 
 ---
 ### FILE: backend/app/services/prometheus_metrics.py
-[ext_deps]: functools, logging, time, collections, typing
+[ext_deps]: typing, time, collections, logging, functools
 [class]: Metric { methods: [__init__, _key, set, inc, observe, format] }
 [class]: Counter { methods: [__init__, format] }
 [class]: Histogram { methods: [__init__, observe, format] }
@@ -1611,21 +1611,21 @@
 
 ---
 ### FILE: backend/app/services/relationship_service.py
-[local_deps]: app.models.knowledge_graph, app.services.entity_extraction_service
-[ext_deps]: logging, sqlalchemy, collections, typing
+[local_deps]: app.services.entity_extraction_service, app.models.knowledge_graph
+[ext_deps]: collections, sqlalchemy, logging, typing
 [class]: RelationshipMapper { methods: [__init__, infer_relationships, _infer_single_relationship, find_entity_connections, build_entity_clusters] }
 [class]: RelationshipService { methods: [__init__, update_entity_connections, get_entity_neighbors, get_shortest_path] }
 
 ---
 ### FILE: backend/app/services/report_service.py
-[local_deps]: app.models.collection, app.services.llm_gateway, app.services.monitoring, app.models.document, app.services.rollback_monitor, app.services.agent_identity, app.models.user, app.services.context_block_service
-[ext_deps]: logging, reportlab, datetime, sqlalchemy, io, os, typing, uuid
+[local_deps]: app.models.collection, app.models.user, app.models.document, app.services.context_block_service, app.services.monitoring, app.services.rollback_monitor, app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: typing, os, logging, reportlab, uuid, sqlalchemy, io, datetime
 [class]: ReportFormat { methods: [] }
 [class]: ReportService { methods: [__init__, generate_report, _build_document_context, _generate_report_with_fallback, _generate_pdf_report] }
 
 ---
 ### FILE: backend/app/services/rerank_service.py
-[ext_deps]: logging, math, asyncio, os, httpx, typing
+[ext_deps]: asyncio, typing, os, math, logging, httpx
 [fn]: _get_client()
 [async_fn]: rerank_passages(query, passages)
 [async_fn]: close_rerank_client()
@@ -1633,14 +1633,14 @@
 ---
 ### FILE: backend/app/services/rollback_monitor.py
 [local_deps]: app.core.redis_url
-[ext_deps]: logging, time, datetime, redis, collections, os, typing
+[ext_deps]: typing, os, time, collections, logging, redis, datetime
 [fn]: _get_redis()
 [class]: RollbackMonitor { methods: [__init__, _zadd, _zcount, _zrange, record_latency, record_ttft, record_json_parse, record_report_cost, record_satisfaction, _json_failure_rate, _percentile, _average, get_status, get_rollback_recommendations] }
 
 ---
 ### FILE: backend/app/services/search_agent.py
-[local_deps]: app.services.rerank_service, app.core.config, app.models.document, app.services.search_service, app.services.llm_router, app.services.agent_identity, app.models.knowledge_graph, app.services.search_cache, app.database, app.models.user, app.services.context_block_service
-[ext_deps]: logging, time, sqlalchemy, search_models, asyncio, re, json, typing, uuid
+[local_deps]: app.services.rerank_service, app.models.user, app.models.document, app.services.context_block_service, app.services.llm_router, app.database, app.services.search_cache, app.core.config, app.models.knowledge_graph, app.services.agent_identity, app.services.search_service
+[ext_deps]: asyncio, typing, json, time, re, logging, search_models, uuid, sqlalchemy
 [fn]: _regconfig_for_language(language)
 [async_fn]: rerank_merged_chunks(chunks, query, top_n)
 [fn]: build_search_queries(intent, original_query)
@@ -1665,8 +1665,8 @@
 
 ---
 ### FILE: backend/app/services/search_cache.py
-[local_deps]: app.services.prometheus_metrics, app.core.redis_url, app.utils.query_normalizer
-[ext_deps]: logging, redis, hashlib, json, typing
+[local_deps]: app.services.prometheus_metrics, app.utils.query_normalizer, app.core.redis_url
+[ext_deps]: typing, json, logging, redis, hashlib
 [fn]: close_redis_client()
 [fn]: _get_redis()
 [fn]: _record_cache_metric(cache_type, hit)
@@ -1675,7 +1675,7 @@
 ---
 ### FILE: backend/app/services/search_models.py
 [local_deps]: app.models.document
-[ext_deps]: datetime, pydantic, enum, typing, uuid
+[ext_deps]: typing, enum, pydantic, uuid, datetime
 [class]: QueryIntent { methods: [] }
 [class]: RelevanceLabel { methods: [] }
 [class]: SearchMode { methods: [] }
@@ -1690,16 +1690,16 @@
 
 ---
 ### FILE: backend/app/services/search_service.py
-[local_deps]: app.models.memory, app.services.rerank_service, app.services.embed_client, app.models.document, app.services.search_cache, app.services.pii_detection_service, app.models.user
-[ext_deps]: logging, sqlalchemy, asyncio, re, typing
+[local_deps]: app.services.rerank_service, app.models.user, app.models.document, app.services.pii_detection_service, app.services.search_cache, app.models.memory, app.services.embed_client
+[ext_deps]: asyncio, typing, re, logging, sqlalchemy
 [class]: SearchResult { methods: [__init__] }
 [fn]: _get_regconfig(language_code)
 [class]: HybridSearchService { methods: [__init__, _get_user_bucket_filter, semantic_search, keyword_search, tag_search, _filename_search, document_search, article_semantic_search, _trigram_fallback_search, _substring_fallback_search, article_keyword_search, hybrid_search, _sanitize_tsquery, _keyword_search, _keyword_search_with_metadata, _get_highlighted_text, _get_bucket_filter_for_role, _search_bookmarks, _search_notes, _search_spaces, search_all_types, _search_documents_simple, _search_memory] }
 
 ---
 ### FILE: backend/app/services/semantic_cache.py
-[local_deps]: app.services.embed_client, app.services.prometheus_metrics, app.utils.query_normalizer, app.services.search_cache, app.services.openrouter_service
-[ext_deps]: logging, time, hashlib, json, os, typing, __future__, numpy
+[local_deps]: app.services.openrouter_service, app.utils.query_normalizer, app.services.search_cache, app.services.prometheus_metrics, app.services.embed_client
+[ext_deps]: typing, os, numpy, json, time, logging, hashlib, __future__
 [fn]: _index_key(collection_id)
 [fn]: _entry_key(model, tier, emb_hash, collection_id)
 [class]: SemanticCache { methods: [__init__, _get_redis, _embedding_key, _compute_similarity, get, set, invalidate_for_collection] }
@@ -1707,7 +1707,7 @@
 
 ---
 ### FILE: backend/app/services/silent_agent_loop.py
-[ext_deps]: logging, dataclasses, collections, json, typing
+[ext_deps]: typing, dataclasses, json, collections, logging
 [class]: IterationRecord { methods: [] }
 [class]: SilentLoopResult { methods: [] }
 [class]: SilentAgentLoop { methods: [__init__, _build_messages, _call_llm, run, run_simple] }
@@ -1716,77 +1716,77 @@
 ---
 ### FILE: backend/app/services/similarity_service.py
 [local_deps]: app.models.user, app.models.document
-[ext_deps]: logging, sqlalchemy, re, typing, numpy
+[ext_deps]: typing, numpy, logging, re, sqlalchemy
 [class]: SimilarityGroup { methods: [__init__, to_dict] }
 [class]: SimilarityGroupingService { methods: [__init__, find_similar_groups, _cluster_by_similarity, _analyze_group, _extract_common_patterns, _generate_group_name, find_similar_to_document] }
 
 ---
 ### FILE: backend/app/services/skill_extraction_service.py
-[local_deps]: app.services.smart_folder.query_parser, app.services.llm_gateway, app.core.config, app.services.agent_identity, app.models.learned_skill, app.models.collection_orchestrator
-[ext_deps]: logging, datetime, sqlalchemy, asyncio, uuid
+[local_deps]: app.models.learned_skill, app.models.collection_orchestrator, app.core.config, app.services.agent_identity, app.services.smart_folder.query_parser, app.services.llm_gateway
+[ext_deps]: asyncio, logging, sqlalchemy, uuid, datetime
 [class]: SkillExtractionService { methods: [extract_from_recent, _distill] }
 
 ---
 ### FILE: backend/app/services/smart_folder/__init__.py
-[local_deps]: app.services.smart_folder.query_parser, app.services.smart_folder.report_generator, app.services.smart_folder.analysis, app.services.smart_folder.entity_resolver, app.services.smart_folder.retrieval
+[local_deps]: app.services.smart_folder.report_generator, app.services.smart_folder.retrieval, app.services.smart_folder.analysis, app.services.smart_folder.entity_resolver, app.services.smart_folder.query_parser
 
 ---
 ### FILE: backend/app/services/smart_folder/agent/__init__.py
-[local_deps]: app.services.smart_folder.agent.executor, app.services.smart_folder.agent.planner, app.services.smart_folder.agent.synthesizer
+[local_deps]: app.services.smart_folder.agent.synthesizer, app.services.smart_folder.agent.executor, app.services.smart_folder.agent.planner
 
 ---
 ### FILE: backend/app/services/smart_folder/agent/executor.py
-[local_deps]: app.services.smart_folder.agent.planner, app.services.smart_folder.skills, app.services.smart_folder.skills.base
-[ext_deps]: logging, json, typing
+[local_deps]: app.services.smart_folder.skills.base, app.services.smart_folder.agent.planner, app.services.smart_folder.skills
+[ext_deps]: typing, logging, json
 [class]: SkillExecutor { methods: [__init__, execute, _execute_step, clear_cache] }
 
 ---
 ### FILE: backend/app/services/smart_folder/agent/planner.py
 [local_deps]: app.services.llm_router, app.services.smart_folder.skills
-[ext_deps]: logging, json, dataclasses, typing
+[ext_deps]: dataclasses, logging, typing, json
 [class]: PlanStep { methods: [] }
 [class]: Plan { methods: [] }
 [class]: Planner { methods: [plan] }
 
 ---
 ### FILE: backend/app/services/smart_folder/agent/synthesizer.py
-[local_deps]: app.services.smart_folder.skills.base, app.services.llm_router, app.services.smart_folder.report_generator
-[ext_deps]: logging, json, typing
+[local_deps]: app.services.smart_folder.skills.base, app.services.smart_folder.report_generator, app.services.llm_router
+[ext_deps]: typing, logging, json
 [class]: Synthesizer { methods: [synthesize] }
 
 ---
 ### FILE: backend/app/services/smart_folder/agent_runner.py
-[local_deps]: app.services.smart_folder.query_parser, app.services.smart_folder.report_generator, app.models.smart_folder, app.services.smart_folder.entity_resolver, app.services.smart_folder.agent.executor, app.services.smart_folder.agent.synthesizer, app.services.smart_folder.agent.planner, app.models.user
-[ext_deps]: logging, sqlalchemy, re, typing, uuid
+[local_deps]: app.services.smart_folder.agent.synthesizer, app.services.smart_folder.report_generator, app.models.smart_folder, app.models.user, app.services.smart_folder.entity_resolver, app.services.smart_folder.agent.executor, app.services.smart_folder.query_parser, app.services.smart_folder.agent.planner
+[ext_deps]: typing, re, logging, uuid, sqlalchemy
 [fn]: _extract_entity_from_query(query)
 [class]: SmartFolderAgentRunner { methods: [__init__, run] }
 
 ---
 ### FILE: backend/app/services/smart_folder/analysis.py
 [local_deps]: app.models.pattern_insight, app.models.milestone
-[ext_deps]: logging, dataclasses, datetime, sqlalchemy, typing, uuid
+[ext_deps]: dataclasses, typing, logging, uuid, sqlalchemy, datetime
 [class]: AnalysisResult { methods: [] }
 [class]: AnalysisService { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/entity_resolver.py
 [local_deps]: app.models.knowledge_graph
-[ext_deps]: logging, dataclasses, difflib, sqlalchemy, typing
+[ext_deps]: dataclasses, typing, logging, sqlalchemy, difflib
 [class]: ResolutionResult { methods: [] }
 [class]: EntityResolverService { methods: [resolve, search_candidates] }
 
 ---
 ### FILE: backend/app/services/smart_folder/query_parser.py
 [local_deps]: app.services.llm_router
-[ext_deps]: logging, datetime, dataclasses, re, json, typing
+[ext_deps]: dataclasses, typing, json, re, logging, datetime
 [fn]: extract_first_json(raw)
 [class]: ParsedQuery { methods: [] }
 [class]: QueryParserService { methods: [parse] }
 
 ---
 ### FILE: backend/app/services/smart_folder/report_generator.py
-[local_deps]: app.services.smart_folder.retrieval, app.services.llm_router, app.services.smart_folder.analysis, app.services.token_utils
-[ext_deps]: logging, dataclasses, re, json, typing, uuid
+[local_deps]: app.services.smart_folder.analysis, app.services.smart_folder.retrieval, app.services.token_utils, app.services.llm_router
+[ext_deps]: dataclasses, typing, json, re, logging, uuid
 [fn]: _estimate_tokens(text)
 [fn]: _allocate_doc_text(docs, budget_tokens, max_chars_per_doc)
 [class]: GeneratedReport { methods: [] }
@@ -1794,126 +1794,126 @@
 
 ---
 ### FILE: backend/app/services/smart_folder/retrieval.py
-[local_deps]: app.models.knowledge_graph, app.models.document, app.services.search_service
-[ext_deps]: logging, dataclasses, datetime, sqlalchemy, typing, uuid
+[local_deps]: app.models.document, app.services.search_service, app.models.knowledge_graph
+[ext_deps]: dataclasses, typing, logging, uuid, sqlalchemy, datetime
 [class]: RetrievedAsset { methods: [] }
 [class]: RetrievalContext { methods: [] }
 [class]: RetrievalService { methods: [__init__, _get_allowed_buckets, retrieve, _clean_search_query, _build_search_query, _retrieve_by_entity_mentions, _retrieve_by_graph_traversal, _retrieve_by_cooccurrence, _retrieve_related_org_docs, _apply_temporal_filter] }
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/__init__.py
-[local_deps]: app.services.smart_folder.skills.financial_analysis, app.services.smart_folder.skills.sentiment_tracker, app.services.smart_folder.skills.base, app.services.smart_folder.skills.custom_query, app.services.smart_folder.skills.project_postmortem, app.services.smart_folder.skills.legal_review, app.services.smart_folder.skills.general_narrative
+[local_deps]: app.services.smart_folder.skills.financial_analysis, app.services.smart_folder.skills.project_postmortem, app.services.smart_folder.skills.base, app.services.smart_folder.skills.general_narrative, app.services.smart_folder.skills.sentiment_tracker, app.services.smart_folder.skills.custom_query, app.services.smart_folder.skills.legal_review
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/base.py
-[ext_deps]: logging, dataclasses, typing
+[ext_deps]: dataclasses, logging, typing
 [class]: SkillResult { methods: [] }
 [class]: BaseSkill { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/custom_query.py
-[local_deps]: app.services.smart_folder.skills.base, app.services.smart_folder.tools.vault_search
-[ext_deps]: logging, typing
+[local_deps]: app.services.smart_folder.tools.vault_search, app.services.smart_folder.skills.base
+[ext_deps]: typing, logging
 [class]: CustomQuerySkill { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/financial_analysis.py
-[local_deps]: app.services.smart_folder.tools.asset_reader, app.services.smart_folder.skills.base, app.services.smart_folder.tools.ratio_calculator, app.services.smart_folder.tools.table_extractor, app.services.smart_folder.tools.chart_generator, app.services.smart_folder.tools.vault_search, app.services.smart_folder.tools.trend_analyzer
-[ext_deps]: logging, typing
+[local_deps]: app.services.smart_folder.tools.trend_analyzer, app.services.smart_folder.tools.chart_generator, app.services.smart_folder.tools.asset_reader, app.services.smart_folder.tools.vault_search, app.services.smart_folder.tools.table_extractor, app.services.smart_folder.tools.ratio_calculator, app.services.smart_folder.skills.base
+[ext_deps]: typing, logging
 [class]: FinancialAnalysisSkill { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/general_narrative.py
-[local_deps]: app.services.smart_folder.report_generator, app.services.smart_folder.analysis, app.services.smart_folder.skills.base, app.services.smart_folder.retrieval, app.services.smart_folder.tools.document_reader
-[ext_deps]: logging, uuid, typing
+[local_deps]: app.services.smart_folder.report_generator, app.services.smart_folder.retrieval, app.services.smart_folder.analysis, app.services.smart_folder.tools.document_reader, app.services.smart_folder.skills.base
+[ext_deps]: typing, logging, uuid
 [class]: GeneralNarrativeSkill { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/legal_review.py
-[local_deps]: app.services.smart_folder.skills.base, app.services.smart_folder.tools.vault_search
-[ext_deps]: logging, re, typing
+[local_deps]: app.services.smart_folder.tools.vault_search, app.services.smart_folder.skills.base
+[ext_deps]: typing, re, logging
 [class]: LegalReviewSkill { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/project_postmortem.py
-[local_deps]: app.services.smart_folder.skills.base, app.services.smart_folder.tools.vault_search, app.models.milestone
-[ext_deps]: logging, sqlalchemy, typing
+[local_deps]: app.services.smart_folder.tools.vault_search, app.models.milestone, app.services.smart_folder.skills.base
+[ext_deps]: typing, sqlalchemy, logging
 [class]: ProjectPostmortemSkill { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/skills/sentiment_tracker.py
-[local_deps]: app.services.smart_folder.skills.base, app.services.smart_folder.tools.vault_search
-[ext_deps]: logging, re, typing
+[local_deps]: app.services.smart_folder.tools.vault_search, app.services.smart_folder.skills.base
+[ext_deps]: typing, re, logging
 [class]: SentimentTrackerSkill { methods: [_score_text, analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/__init__.py
-[local_deps]: app.services.smart_folder.tools.asset_reader, app.services.smart_folder.tools.ratio_calculator, app.services.smart_folder.tools.table_extractor, app.services.smart_folder.tools.citation_marker, app.services.smart_folder.tools.chart_generator, app.services.smart_folder.tools.refinement_parser, app.services.smart_folder.tools.vault_search, app.services.smart_folder.tools.trend_analyzer
+[local_deps]: app.services.smart_folder.tools.refinement_parser, app.services.smart_folder.tools.trend_analyzer, app.services.smart_folder.tools.chart_generator, app.services.smart_folder.tools.asset_reader, app.services.smart_folder.tools.vault_search, app.services.smart_folder.tools.table_extractor, app.services.smart_folder.tools.ratio_calculator, app.services.smart_folder.tools.citation_marker
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/asset_reader.py
 [local_deps]: app.models.document
-[ext_deps]: logging, uuid, sqlalchemy, typing
+[ext_deps]: typing, sqlalchemy, logging, uuid
 [class]: AssetReaderTool { methods: [read] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/chart_generator.py
-[ext_deps]: logging, typing
+[ext_deps]: typing, logging
 [class]: ChartGeneratorTool { methods: [line_chart, bar_chart, pie_chart, waterfall_chart] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/citation_marker.py
-[ext_deps]: logging, uuid, typing
+[ext_deps]: typing, logging, uuid
 [class]: CitationMarkerTool { methods: [tag, bulk_tag] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/document_reader.py
 [local_deps]: app.models.document
-[ext_deps]: logging, uuid, sqlalchemy, typing
+[ext_deps]: typing, sqlalchemy, logging, uuid
 [class]: DocumentReaderTool { methods: [read_document, read_documents, _detect_doc_type] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/ratio_calculator.py
-[ext_deps]: logging, typing
+[ext_deps]: typing, logging
 [class]: RatioCalculatorTool { methods: [_to_float, _find_value, compute_ratios] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/refinement_parser.py
-[ext_deps]: logging, typing
+[ext_deps]: typing, logging
 [class]: RefinementParserTool { methods: [merge] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/table_extractor.py
-[ext_deps]: csv, logging, re, io, json, typing
+[ext_deps]: typing, csv, json, re, logging, io
 [class]: TableExtractorTool { methods: [extract_from_markdown, extract_from_csv, extract] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/trend_analyzer.py
-[ext_deps]: logging, statistics, typing
+[ext_deps]: typing, logging, statistics
 [class]: TrendAnalyzerTool { methods: [analyze] }
 
 ---
 ### FILE: backend/app/services/smart_folder/tools/vault_search.py
 [local_deps]: app.services.search_service
-[ext_deps]: logging, typing
+[ext_deps]: typing, logging
 [class]: VaultSearchTool { methods: [search] }
 
 ---
 ### FILE: backend/app/services/smart_folder_service.py
-[local_deps]: app.models.collection, app.services.llm_gateway, app.models.document, app.services.search_service, app.models.user
-[ext_deps]: logging, datetime, sqlalchemy, re, typing, uuid
+[local_deps]: app.models.collection, app.models.user, app.models.document, app.services.search_service, app.services.llm_gateway
+[ext_deps]: typing, re, logging, uuid, sqlalchemy, datetime
 [class]: SmartFolderService { methods: [__init__, generate_smart_folder, _classify_intent, _extract_subject, _handle_gather_intent, _handle_generate_intent, _search_documents_for_topic, _build_document_context, _generate_constrained_summary, _generate_with_llm_fallback] }
 
 ---
 ### FILE: backend/app/services/space_service.py
-[local_deps]: app.models.tag, app.models.document, app.models.note, app.models.user, app.models.bookmark, app.models.space
-[ext_deps]: logging, uuid, sqlalchemy
+[local_deps]: app.models.user, app.models.document, app.models.bookmark, app.models.tag, app.models.space, app.models.note
+[ext_deps]: sqlalchemy, logging, uuid
 [fn]: _escape_like(value)
 [class]: SpaceService { methods: [create_space, get_space, list_spaces, update_space, delete_space, get_item_count, add_item, remove_item, get_space_item, get_space_items, enrich_space_item, add_rule, update_rule, delete_rule, get_rule, get_rules, get_rule_match_count, sync_space_rules, _sync_tag_rule, _sync_keyword_rule, _is_accessible, search_space_items, check_rules_for_new_item, _keyword_matches_item, _apply_access_filter] }
 
 ---
 ### FILE: backend/app/services/spell_service.py
-[ext_deps]: logging, os, typing, symspellpy
+[ext_deps]: typing, logging, os, symspellpy
 [fn]: _get_symspell()
 [fn]: load_dictionary_from_terms(terms)
 [fn]: correct_query(query)
@@ -1921,7 +1921,7 @@
 
 ---
 ### FILE: backend/app/services/storage_service.py
-[ext_deps]: base64, logging, datetime, cryptography, pathlib, asyncio, os, uuid
+[ext_deps]: cryptography, asyncio, os, base64, logging, uuid, datetime, pathlib
 [class]: EncryptionError { methods: [] }
 [fn]: _base64_encode(data)
 [fn]: get_encryption_key()
@@ -1929,7 +1929,7 @@
 
 ---
 ### FILE: backend/app/services/structured_logging.py
-[ext_deps]: logging, time, datetime, collections, pathlib, json, contextlib, os, typing, sys
+[ext_deps]: sys, typing, os, json, time, logging, collections, contextlib, datetime, pathlib
 [class]: StructuredFormatter { methods: [__init__, format] }
 [class]: RequestContext { methods: [set, get, clear, __init__, __enter__, __exit__] }
 [class]: RequestContextFilter { methods: [filter] }
@@ -1945,12 +1945,12 @@
 
 ---
 ### FILE: backend/app/services/swarm/v2/__init__.py
-[ext_deps]: hitl_bridge, flock_alerter, registry, base_agent
+[ext_deps]: registry, hitl_bridge, base_agent, flock_alerter
 
 ---
 ### FILE: backend/app/services/swarm/v2/base_agent.py
 [local_deps]: app.services.messaging
-[ext_deps]: abc, logging, datetime, nats, asyncio, json, enum, typing, uuid
+[ext_deps]: asyncio, typing, json, enum, logging, uuid, abc, datetime, nats
 [class]: AgentStatus { methods: [] }
 [class]: AgentCapability { methods: [] }
 [class]: BaseAgent { methods: [__init__, messaging, info, start, stop, _on_message, _on_broadcast, handle_message, handle_broadcast, _heartbeat_loop] }
@@ -1958,7 +1958,7 @@
 ---
 ### FILE: backend/app/services/swarm/v2/flock_alerter.py
 [local_deps]: app.services.messaging
-[ext_deps]: logging, time, dataclasses, datetime, nats, hashlib, json, enum, typing
+[ext_deps]: dataclasses, typing, json, time, logging, enum, hashlib, datetime, nats
 [class]: AlertLevel { methods: [] }
 [class]: AlertEvent { methods: [to_bytes, from_bytes, dedup_key] }
 [class]: FlockAlerter { methods: [__init__, messaging, connect, close, _is_rate_limited, alert, subscribe, info, warning, error, critical] }
@@ -1966,7 +1966,7 @@
 ---
 ### FILE: backend/app/services/swarm/v2/hitl_bridge.py
 [local_deps]: app.services.messaging
-[ext_deps]: logging, dataclasses, datetime, nats, asyncio, json, enum, typing, uuid
+[ext_deps]: asyncio, dataclasses, typing, json, enum, logging, uuid, datetime, nats
 [class]: HITLStatus { methods: [] }
 [class]: HITLRequest { methods: [to_bytes, from_bytes] }
 [class]: HITLResponse { methods: [to_bytes, from_bytes] }
@@ -1975,59 +1975,59 @@
 ---
 ### FILE: backend/app/services/swarm/v2/registry.py
 [local_deps]: app.services.messaging
-[ext_deps]: logging, datetime, json, typing, nats
+[ext_deps]: typing, json, logging, datetime, nats
 [class]: AgentRegistry { methods: [__init__, messaging, _ensure_kv, connect, register, deregister, get, discover, health_check] }
 
 ---
 ### FILE: backend/app/services/synthesis_service.py
-[local_deps]: app.services.llm_gateway, app.models.document, app.services.rollback_monitor, app.services.agent_identity, app.models.knowledge_graph, app.services.context_block_service
-[ext_deps]: logging, datetime, sqlalchemy, collections, json, typing
+[local_deps]: app.models.document, app.services.context_block_service, app.models.knowledge_graph, app.services.rollback_monitor, app.services.agent_identity, app.services.llm_gateway
+[ext_deps]: typing, json, collections, logging, sqlalchemy, datetime
 [class]: SynthesisRequest { methods: [__init__] }
 [class]: SynthesisResult { methods: [__init__] }
 [class]: SynthesisPipelineService { methods: [__init__, synthesize, _fetch_documents, _map_documents, _map_single_document, _gather_entities, _build_timeline, _reduce_synthesis, _extract_key_points, _prepare_sources, _calculate_confidence, _extract_json, batch_synthesize] }
 
 ---
 ### FILE: backend/app/services/task_service.py
-[local_deps]: app.models.tag, app.models.task, app.models.user
-[ext_deps]: logging, uuid, sqlalchemy
+[local_deps]: app.models.tag, app.models.user, app.models.task
+[ext_deps]: sqlalchemy, logging, uuid
 [fn]: _escape_like(value)
 [class]: TaskService { methods: [create_task, get_task, list_tasks, update_task, delete_task, search_tasks, get_tags_for_task, get_tasks_with_pending_alarms, mark_alarm_triggered, _apply_access_filter] }
 
 ---
 ### FILE: backend/app/services/telegram_notifier.py
-[ext_deps]: logging, datetime, json, os, httpx
+[ext_deps]: os, json, logging, datetime, httpx
 [class]: TelegramNotifier { methods: [__init__, is_configured, send_alert] }
 [fn]: _escape_md(text)
 
 ---
 ### FILE: backend/app/services/temporal_reasoning_service.py
 [local_deps]: app.models.knowledge_graph
-[ext_deps]: logging, datetime, sqlalchemy, collections, typing
+[ext_deps]: typing, collections, logging, sqlalchemy, datetime
 [class]: TemporalRelation { methods: [] }
 [class]: TemporalReasoningService { methods: [__init__, reason_about_temporal_relationships, _determine_relation, _infer_causal_relationships, _get_entity_temporal_context, analyze_evolution, _identify_evolution_stages, _detect_evolution_trends, find_temporal_patterns] }
 
 ---
 ### FILE: backend/app/services/text_extractor.py
-[ext_deps]: subprocess, csv, logging, PyPDF2, xml, pathlib, pptx, docx, json, re, os, ebooklib, zipfile, typing, sys, html
+[ext_deps]: typing, sys, subprocess, PyPDF2, os, docx, csv, json, pptx, xml, logging, ebooklib, re, pathlib, zipfile, html
 [class]: TextExtractor { methods: [__init__, get_file_extension, extract_text, _extract_from_pdf, _extract_from_docx, _extract_from_doc, _extract_from_pptx, _extract_from_ppt, _extract_from_xlsx, _extract_from_xls, _extract_spreadsheet, _extract_from_txt, _extract_from_json, _extract_from_csv, _extract_from_xml, _extract_from_epub, _extract_from_html, _extract_from_rtf, _extract_from_zip, _extract_from_msg, extract_images_from_pdf] }
 
 ---
 ### FILE: backend/app/services/timeline_service.py
-[local_deps]: app.models.knowledge_graph, app.models.document
-[ext_deps]: logging, datetime, sqlalchemy, collections, typing
+[local_deps]: app.models.document, app.models.knowledge_graph
+[ext_deps]: typing, collections, logging, sqlalchemy, datetime
 [class]: TimelineEventType { methods: [] }
 [class]: TimelineConstructionService { methods: [build_document_timeline, build_entity_timeline, detect_evolution_patterns, _identify_evolution_stages, get_timeline_for_period, suggest_timeline_insights] }
 
 ---
 ### FILE: backend/app/services/together_service.py
-[local_deps]: app.services.base_llm_service, app.services.token_utils, app.services.llm_http_client
-[ext_deps]: logging, datetime, collections, json, os, httpx, typing
+[local_deps]: app.services.token_utils, app.services.llm_http_client, app.services.base_llm_service
+[ext_deps]: typing, os, json, collections, logging, datetime, httpx
 [class]: TogetherService { methods: [__init__, _estimate_tokens, _truncate_messages, _get_headers, chat_completion, health_check, get_usage_stats] }
 
 ---
 ### FILE: backend/app/services/token_blacklist.py
 [local_deps]: app.core.redis_url
-[ext_deps]: hashlib, redis, logging
+[ext_deps]: logging, redis, hashlib
 [async_fn]: _client()
 [fn]: _key(token)
 [async_fn]: blacklist_token(token, expires_in_seconds)
@@ -2035,13 +2035,13 @@
 
 ---
 ### FILE: backend/app/services/token_utils.py
-[ext_deps]: logging, tiktoken, typing
+[ext_deps]: typing, logging, tiktoken
 [fn]: estimate_tokens(text, language)
 [fn]: enforce_prompt_ceiling(messages, tier)
 
 ---
 ### FILE: backend/app/services/tool_registry.py
-[ext_deps]: typing, datetime, pydantic
+[ext_deps]: typing, pydantic, datetime
 [class]: DocumentSearchTool { methods: [] }
 [class]: VaultClassifyTool { methods: [] }
 [class]: EntityExtractTool { methods: [] }
@@ -2050,14 +2050,14 @@
 ---
 ### FILE: backend/app/services/user_quota.py
 [local_deps]: app.core.config, app.services.openrouter_service
-[ext_deps]: logging, datetime, __future__, typing
+[ext_deps]: typing, __future__, datetime, logging
 [class]: QuotaExceededError { methods: [__init__] }
 [class]: UserQuotaManager { methods: [__init__, _key, _get_redis, get_quota, check_and_consume, get_usage] }
 
 ---
 ### FILE: backend/app/services/whisper_service.py
 [local_deps]: app.utils.circuit_breaker
-[ext_deps]: logging, faster_whisper, os, asyncio
+[ext_deps]: asyncio, logging, os, faster_whisper
 [class]: WhisperService { methods: [current_model_size, reload_model, _get_model, _transcribe_sync, transcribe] }
 
 ---
@@ -2066,8 +2066,8 @@
 
 ---
 ### FILE: backend/app/tasks/anomaly_tasks.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.services.monitoring, app.models.document, app.core.redis_url, app.celery_app, app.models.processing, app.services.cache_monitor, app.database, app.tasks.base, app.services.alert_service
-[ext_deps]: logging, celery, datetime, redis, asyncio, os
+[local_deps]: app.services.cache_monitor, app.models.document, app.services.monitoring, app.database, app.models.processing, app.tasks.pipeline_orchestrator, app.tasks.base, app.celery_app, app.services.alert_service, app.core.redis_url
+[ext_deps]: asyncio, os, logging, redis, celery, datetime
 [fn]: daily_anomaly_report()
 [fn]: system_health_check()
 [fn]: check_api_costs(daily_budget_threshold)
@@ -2078,8 +2078,8 @@
 
 ---
 ### FILE: backend/app/tasks/article_tasks.py
-[local_deps]: app.services.embed_client, app.models.document, app.models.article, app.services.article_generation_service, app.database, app.tasks.base
-[ext_deps]: logging, celery, asyncio, httpx, uuid
+[local_deps]: app.models.document, app.models.article, app.database, app.tasks.base, app.services.article_generation_service, app.services.embed_client
+[ext_deps]: asyncio, logging, uuid, celery, httpx
 [fn]: run_article_generation(document_id, force)
 [fn]: generate_articles_for_document(self, document_id, force)
 [fn]: generate_article_embeddings(self, article_ids)
@@ -2087,8 +2087,8 @@
 
 ---
 ### FILE: backend/app/tasks/backfill_tasks.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.models.document, app.tasks.embedding_tasks, app.tasks.article_tasks, app.models.article, app.database
-[ext_deps]: logging, celery, datetime
+[local_deps]: app.models.document, app.tasks.embedding_tasks, app.database, app.models.article, app.tasks.pipeline_orchestrator, app.tasks.article_tasks
+[ext_deps]: logging, datetime, celery
 [fn]: classify_and_recover_errors(batch_size, delay_seconds, dry_run)
 [fn]: reprocess_failed_documents(date_from, date_to, batch_size, delay_seconds)
 [fn]: backfill_missing_embeddings(batch_size, delay_seconds)
@@ -2097,22 +2097,22 @@
 
 ---
 ### FILE: backend/app/tasks/base.py
-[local_deps]: app.services.dlq_service, app.services.alert_service
-[ext_deps]: traceback, logging, asyncio, psutil, os
+[local_deps]: app.services.alert_service, app.services.dlq_service
+[ext_deps]: psutil, asyncio, os, logging, traceback
 [fn]: log_task_memory(task_name, stage)
 [fn]: base_task_failure_handler(task_self, exception, task_id, args, kwargs, traceback, is_critical, extra_metadata)
 [fn]: store_dlq_on_max_retries(task_self, exception, extra_metadata)
 
 ---
 ### FILE: backend/app/tasks/collection_report_tasks.py
-[local_deps]: app.models.audit, app.services.report_service, app.models.user, app.database, app.tasks.base
-[ext_deps]: logging, celery, sqlalchemy, asyncio, json, typing, uuid
+[local_deps]: app.services.report_service, app.models.user, app.database, app.tasks.base, app.models.audit
+[ext_deps]: asyncio, typing, json, logging, uuid, sqlalchemy, celery
 [fn]: generate_collection_report_task(self, collection_id, report_format, include_citations, language, user_id)
 
 ---
 ### FILE: backend/app/tasks/collection_request_tasks.py
-[local_deps]: app.services.collection_orchestrator.audit_logger, app.models.smart_folder, app.services.collection_orchestrator.pipeline_runner, app.database, app.services.collection_orchestrator
-[ext_deps]: logging, celery, sqlalchemy, asyncio, typing, uuid
+[local_deps]: app.services.collection_orchestrator.audit_logger, app.models.smart_folder, app.services.collection_orchestrator, app.database, app.services.collection_orchestrator.pipeline_runner
+[ext_deps]: asyncio, typing, logging, uuid, sqlalchemy, celery
 [fn]: is_search_unavailable(error)
 [fn]: retry_countdown(retries_so_far)
 [fn]: run_collection_request_task(self, smart_folder_id, user_id)
@@ -2121,8 +2121,8 @@
 
 ---
 ### FILE: backend/app/tasks/document_tasks.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.services.embed_client, app.services.ocr_service, app.models.document, app.services.collection_service, app.services.prometheus_metrics, app.services.context_block_service, app.tasks.embedding_tasks, app.services.dlq_service, app.services.chunking_service, app.models.processing, app.tasks.article_tasks, app.services.entity_extraction_service, app.services.auto_tagging_service, app.database, app.tasks.base, app.services.text_extractor
-[ext_deps]: traceback, logging, celery, datetime, sqlalchemy, asyncio, tempfile, os, uuid, langdetect
+[local_deps]: app.services.auto_tagging_service, app.services.ocr_service, app.models.document, app.services.text_extractor, app.database, app.models.processing, app.services.collection_service, app.tasks.base, app.tasks.pipeline_orchestrator, app.tasks.embedding_tasks, app.tasks.article_tasks, app.services.context_block_service, app.services.chunking_service, app.services.dlq_service, app.services.prometheus_metrics, app.services.entity_extraction_service, app.services.embed_client
+[ext_deps]: asyncio, tempfile, os, logging, uuid, sqlalchemy, langdetect, celery, datetime, traceback
 [fn]: detect_text_language(text, fallback)
 [fn]: process_document(self, document_id, task_type)
 [fn]: process_batch_documents(document_ids)
@@ -2138,8 +2138,8 @@
 
 ---
 ### FILE: backend/app/tasks/embedding_tasks.py
-[local_deps]: app.services.embed_client, app.models.document, app.database, app.celery_app, app.tasks.base
-[ext_deps]: logging, time, uuid, sentence_transformers
+[local_deps]: app.models.document, app.database, app.tasks.base, app.celery_app, app.services.embed_client
+[ext_deps]: time, logging, uuid, sentence_transformers
 [fn]: generate_embeddings_batch(self, chunk_ids, model_name)
 [fn]: recompute_embeddings_for_document(self, document_id)
 [fn]: upgrade_embeddings_model(self, from_model, to_model, batch_size)
@@ -2151,16 +2151,16 @@
 
 ---
 ### FILE: backend/app/tasks/health_report_tasks.py
-[local_deps]: app.models.document, app.core.redis_url, app.models.pipeline, app.database, app.celery_app
-[ext_deps]: smtplib, logging, datetime, sqlalchemy, redis, email, os
+[local_deps]: app.models.pipeline, app.models.document, app.database, app.celery_app, app.core.redis_url
+[ext_deps]: os, logging, redis, smtplib, sqlalchemy, email, datetime
 [fn]: _smtp_configured()
 [fn]: _send_email(subject, html_body, text_body)
 [fn]: daily_health_report()
 
 ---
 ### FILE: backend/app/tasks/memory_tasks.py
-[local_deps]: app.models.memory, app.database, app.services.skill_extraction_service, app.services.memory_service
-[ext_deps]: logging, celery, sqlalchemy, asyncio, uuid
+[local_deps]: app.services.skill_extraction_service, app.services.memory_service, app.models.memory, app.database
+[ext_deps]: asyncio, logging, sqlalchemy, uuid, celery
 [fn]: distill_chat_session(self, session_id, owner_id)
 [fn]: build_memory_scenarios(self)
 [fn]: build_memory_profiles(self)
@@ -2169,13 +2169,13 @@
 ---
 ### FILE: backend/app/tasks/monitoring_tasks.py
 [local_deps]: app.celery_app, app.services.alert_service
-[ext_deps]: logging, psutil, os, asyncio
+[ext_deps]: asyncio, logging, os, psutil
 [fn]: check_worker_memory(self)
 
 ---
 ### FILE: backend/app/tasks/pipeline_orchestrator.py
-[local_deps]: app.tasks.pipeline_tasks, app.models.document, app.core.redis_url, app.models.pipeline, app.database
-[ext_deps]: logging, celery, datetime, redis, uuid
+[local_deps]: app.models.pipeline, app.tasks.pipeline_tasks, app.models.document, app.database, app.core.redis_url
+[ext_deps]: logging, redis, uuid, celery, datetime
 [fn]: _total_queue_depth()
 [fn]: _check_backpressure(from_stage)
 [fn]: _get_embed_time_limits(chunk_count)
@@ -2186,14 +2186,14 @@
 
 ---
 ### FILE: backend/app/tasks/pipeline_sweeper.py
-[local_deps]: app.tasks.pipeline_orchestrator, app.models.document, app.core.redis_url, app.models.pipeline, app.database, app.celery_app
-[ext_deps]: logging, datetime, redis, sqlalchemy, os
+[local_deps]: app.models.pipeline, app.models.document, app.database, app.celery_app, app.tasks.pipeline_orchestrator, app.core.redis_url
+[ext_deps]: os, logging, redis, sqlalchemy, datetime
 [fn]: pipeline_sweeper()
 
 ---
 ### FILE: backend/app/tasks/pipeline_tasks.py
-[local_deps]: app.services.embed_client, app.services.ocr_service, app.models.document, app.tasks.document_tasks, app.services.dlq_service, app.models.pipeline, app.services.chunking_service, app.services.storage_service, app.services.knowledge_graph.pool, app.tasks.article_tasks, app.services.knowledge_graph.extraction, app.database, app.services.entity_extraction_service, app.celery_app, app.services.text_extractor
-[ext_deps]: traceback, logging, time, datetime, celery, sqlalchemy, asyncio, tempfile, os, gc, uuid
+[local_deps]: app.tasks.document_tasks, app.models.pipeline, app.services.storage_service, app.services.ocr_service, app.models.document, app.services.knowledge_graph.extraction, app.services.text_extractor, app.database, app.services.knowledge_graph.pool, app.celery_app, app.tasks.article_tasks, app.services.dlq_service, app.services.chunking_service, app.services.entity_extraction_service, app.services.embed_client
+[ext_deps]: asyncio, tempfile, os, time, logging, gc, uuid, sqlalchemy, celery, datetime, traceback
 [class]: _PermanentPipelineError { methods: [] }
 [fn]: update_stage(document_id, stage, status, error, worker_id, db)
 [fn]: _sync_document_stage(document_id, stage_value)
@@ -2218,8 +2218,8 @@
 
 ---
 ### FILE: backend/app/tasks/report_tasks.py
-[local_deps]: app.models.document, app.database, app.tasks.base, app.models.audit
-[ext_deps]: fpdf, openpyxl, logging, time, datetime, celery, sqlalchemy, os
+[local_deps]: app.models.audit, app.tasks.base, app.models.document, app.database
+[ext_deps]: openpyxl, os, time, logging, fpdf, sqlalchemy, celery, datetime
 [fn]: _ensure_reports_dir()
 [fn]: generate_pdf_report(self, report_type, filters, user_id, output_filename)
 [fn]: _generate_pdf_content(report_type, filters, output_path)
@@ -2234,22 +2234,22 @@
 
 ---
 ### FILE: backend/app/tasks/smart_folder_tasks.py
-[local_deps]: app.models.document, app.models.smart_folder, app.services.smart_folder.agent_runner, app.models.audit, app.services.smart_folder_service, app.models.user, app.database, app.tasks.base
-[ext_deps]: logging, celery, sqlalchemy, datetime, asyncio, json, typing, uuid
+[local_deps]: app.models.smart_folder, app.models.user, app.services.smart_folder.agent_runner, app.models.document, app.database, app.services.smart_folder_service, app.tasks.base, app.models.audit
+[ext_deps]: asyncio, typing, json, logging, uuid, sqlalchemy, celery, datetime
 [fn]: generate_smart_folder_v2_task(self, query, include_confidential, user_id, smart_folder_id, refinement_query)
 [fn]: refresh_stale_smart_folders_task(self)
 [fn]: generate_smart_folder_task(self, topic, style, length, include_confidential, user_id)
 
 ---
 ### FILE: backend/app/tasks/space_tasks.py
-[local_deps]: app.database, app.tasks.base, app.models.space, app.services.space_service
-[ext_deps]: logging, celery, sqlalchemy, asyncio
+[local_deps]: app.tasks.base, app.models.space, app.services.space_service, app.database
+[ext_deps]: asyncio, sqlalchemy, logging, celery
 [fn]: sync_space_rules_task(self, space_id)
 
 ---
 ### FILE: backend/app/tasks/subscription_tasks.py
-[local_deps]: app.models.subscription, app.celery_app, app.database, app.models.user
-[ext_deps]: calendar, smtplib, logging, datetime, sqlalchemy, email, os, httpx
+[local_deps]: app.celery_app, app.models.user, app.models.subscription, app.database
+[ext_deps]: os, calendar, logging, smtplib, sqlalchemy, email, datetime, httpx
 [fn]: _telegram_configured()
 [fn]: _send_telegram(message)
 [fn]: _smtp_configured()
@@ -2260,19 +2260,19 @@
 
 ---
 ### FILE: backend/app/tasks/task_alarm_tasks.py
-[local_deps]: app.services.task_service, app.core.push, app.models.task, app.database, app.models.push_subscription, app.celery_app
-[ext_deps]: logging, sqlalchemy
+[local_deps]: app.models.task, app.services.task_service, app.models.push_subscription, app.database, app.core.push, app.celery_app
+[ext_deps]: sqlalchemy, logging
 [fn]: check_task_alarms()
 
 ---
 ### FILE: backend/app/tasks/voice_tasks.py
-[local_deps]: app.celery_app, app.database, app.services.whisper_service, app.services.storage_service
-[ext_deps]: logging, sqlalchemy, asyncio, tempfile, os
+[local_deps]: app.celery_app, app.services.whisper_service, app.database, app.services.storage_service
+[ext_deps]: asyncio, tempfile, os, logging, sqlalchemy
 [fn]: transcribe_voice_note(self, audio_file_path, document_id)
 
 ---
 ### FILE: backend/app/utils/circuit_breaker.py
-[ext_deps]: functools, logging, time, collections, threading, asyncio, typing
+[ext_deps]: typing, asyncio, threading, time, collections, logging, functools
 [class]: CircuitBreakerState { methods: [] }
 [class]: CircuitBreaker { methods: [__init__, state, _should_open, _cooldown_elapsed, record_success, record_failure, can_execute, call, call_async] }
 [class]: CircuitBreakerOpenError { methods: [] }
@@ -2286,14 +2286,14 @@
 
 ---
 ### FILE: backend/app/utils/query_normalizer.py
-[ext_deps]: re, unicodedata, __future__
+[ext_deps]: re, __future__, unicodedata
 [fn]: normalise_query(q)
 [fn]: normalise_query_fold_diacritics(q)
 
 ---
 ### FILE: backend/app/utils/security.py
-[local_deps]: app.models.user, app.database, app.services.token_blacklist
-[ext_deps]: logging, datetime, sqlalchemy, dotenv, os, fastapi, typing, bcrypt, jose
+[local_deps]: app.services.token_blacklist, app.models.user, app.database
+[ext_deps]: typing, os, bcrypt, fastapi, logging, sqlalchemy, dotenv, jose, datetime
 [class]: _LazySecretKey { methods: [__str__, __eq__, __hash__, __repr__, encode] }
 [fn]: _get_secret_key()
 [class]: TokenExpiredError { methods: [__init__] }

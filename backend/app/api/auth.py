@@ -87,9 +87,7 @@ SAMESITE_VALUE = "lax"
 # =============================================================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
-TELEGRAM_ADMIN_USER_IDS = {
-    int(x.strip()) for x in os.getenv("TELEGRAM_ADMIN_USER_IDS", "").split(",") if x.strip()
-}
+TELEGRAM_ADMIN_USER_IDS = {int(x.strip()) for x in os.getenv("TELEGRAM_ADMIN_USER_IDS", "").split(",") if x.strip()}
 
 # Email verification token TTL (seconds)
 EMAIL_VERIFY_TTL = 86400  # 24 hours
@@ -335,7 +333,7 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     Returns:
         User object if authenticated, False otherwise
     """
-    result = await db.execute(select(User).where(func.lower(User.email) == email.lower()))
+    result = await db.execute(select(User).where(func.lower(User.email) == email.strip().lower()))
     user = result.scalar_one_or_none()
     if not user:
         return False
@@ -421,10 +419,7 @@ async def register(request: Request, user_data: UserCreate, db: AsyncSession = D
         except Exception as e:
             logger.error(f"Failed to store verification token for {db_user.email}: {e}")
 
-    logger.info(
-        f"New user registered: {db_user.email} (verification token generated, "
-        f"admin delivery required)"
-    )
+    logger.info(f"New user registered: {db_user.email} (verification token generated, admin delivery required)")
     return UserPublic.from_orm(db_user)
 
 

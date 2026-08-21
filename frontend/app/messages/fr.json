@@ -70,7 +70,8 @@
     "notes": "Notes",
     "spaces": "Espaces",
     "subscriptions": "Abonnements",
-    "tasks": "Tâches"
+    "tasks": "Tâches",
+    "search_debug": "Débogage Recherche"
   },
   "auth": {
     "login_title": "Connexion à SOWKNOW",

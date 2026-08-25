@@ -1592,4 +1592,6 @@
 | 19:30 | Alert flood control | guardian_hc/alerts.py | 30min per-fingerprint throttle with suppressed-count summary; deployed 1872e1e |
 | 19:35 | Guardian MetricsDB reconnect | guardian_hc/db.py | _ensure_pg() at 10 sites — Postgres bounce no longer kills metrics writes |
 
+| 2026-08-06 12:14 | Graph expansion enabled + fixed | search_agent.graph_expansion_chunks, .env, AGENTS.md | SEARCH_GRAPH_EXPANSION_ENABLED=true live; entity_mentions.chunk_id is NULL for ALL 343k mentions (extraction is document-level) so chunk-linked lookup always returned [] — added document-level fallback (≤3 chunks/doc); verified live: "Mamadou SOW" → 30 graph candidates; commits 79a55ca, d823a67, 3279372 |
+
 **Lessons recorded:** (1) Guardian healing code needs live-fire testing — three separate probe layers were dead while reporting healthy. (2) Env vars in .env do NOT reach containers unless compose wires them — the crypto key gap was a wiring gap, not a missing key. (3) Always diff live config against repo with exact file pairs before deploying — glob diffs lie. (4) Test artifacts and requeues verified against live DB before/after every phase.

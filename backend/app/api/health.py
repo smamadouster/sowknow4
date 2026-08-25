@@ -188,13 +188,26 @@ async def deep_health(db=None) -> JSONResponse:
     except Exception:
         pass
 
-    # Celery ping (non-blocking, 5s timeout)
+    # Celery ping — hard 10s cap. celery control.inspect().ping() is a blocking
+    # call that normally takes ~7s on this broker but can stall to 14s under
+    # load (observed 2026-08-25), which pushed /health/deep past the Guardian
+    # sentinel's 15s probe timeout and produced sentinel.stale_data.error
+    # warnings. Run it in a thread and bound the wait so the health endpoint
+    # always answers within the probe window while still reporting the true
+    # celery_ping result (10s is comfortably above the ~7s normal ping time).
     try:
         from app.celery_app import celery_app
 
-        inspect = celery_app.control.inspect(timeout=5)
-        workers = inspect.ping()
-        result["celery_ping"] = bool(workers)
+        def _celery_ping() -> bool:
+            inspect = celery_app.control.inspect(timeout=5)
+            return bool(inspect.ping())
+
+        try:
+            result["celery_ping"] = await asyncio.wait_for(
+                asyncio.to_thread(_celery_ping), timeout=10
+            )
+        except (asyncio.TimeoutError, Exception):
+            result["celery_ping"] = False
     except Exception:
         pass
 

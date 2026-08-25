@@ -244,6 +244,9 @@ plugins:
     service_account:
       username: "guardian-probe@sowknow.local"
       password: "${GUARDIAN_PROBE_PASSWORD}"
+    admin_account:
+      username: "admin@sowknow.local"
+      password: "${ADMIN_PASSWORD}"
   sentinel:
     enabled: true
   trends:
@@ -259,7 +262,7 @@ plugins:
 modules:
   - name: "Authentication Service"
     services: [backend]
-    probes: [jwt_validity, auth_flow]
+    probes: [jwt_validity, auth_flow, admin_auth_flow]
   - name: "Document Pipeline"
     services: [celery-heavy, celery-light, embed-server, backend]
     probes: [embedding_pipeline, celery_completion]

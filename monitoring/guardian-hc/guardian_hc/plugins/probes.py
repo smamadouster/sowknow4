@@ -36,16 +36,16 @@ class ProbesPlugin(GuardianPlugin):
     # "restart:sowknow-nginx", which never existed. Host nginx is health-
     # checked by the external host watchdog and Cloudflare instead.
     PROBE_LEVELS: dict[str, list[str]] = {
-        "critical": ["jwt", "redis_deep", "celery_completion", "pipeline_orphaned", "embed_server_cascade"],
+        "critical": ["jwt", "redis_deep", "celery_completion", "pipeline_orphaned", "embed_server_cascade", "admin_auth_flow"],
         "standard": [
             "jwt", "redis_deep", "celery_completion",
             "postgres_deep", "deep_health", "pipeline", "pipeline_orphaned",
-            "embed_server_deep", "embed_server_cascade",
+            "embed_server_deep", "embed_server_cascade", "admin_auth_flow",
         ],
         "deep": [
             "jwt", "redis_deep", "celery_completion",
             "postgres_deep", "deep_health", "pipeline", "pipeline_orphaned",
-            "embed_server_deep", "embed_server_cascade", "auth_flow",
+            "embed_server_deep", "embed_server_cascade", "auth_flow", "admin_auth_flow",
         ],
     }
 
@@ -68,6 +68,15 @@ class ProbesPlugin(GuardianPlugin):
         sa = config.get("service_account", {})
         self._service_account: dict = (
             {k: _resolve_env(str(v)) for k, v in sa.items()} if isinstance(sa, dict) else {}
+        )
+        # Optional legacy admin account for real-user auth checks. The primary
+        # service account is verified and always passes, which hid the SEC-07
+        # email_verified lockout of pre-existing accounts (2026-08-25 INC).
+        # When configured, admin_auth_flow logs in as this account so real-user
+        # login failures surface in the dashboard instead of staying invisible.
+        aa = config.get("admin_account", {})
+        self._admin_account: dict = (
+            {k: _resolve_env(str(v)) for k, v in aa.items()} if isinstance(aa, dict) else {}
         )
         # Per-check consecutive failure streaks (retry-before-restart gating)
         self._fail_streaks: dict[str, int] = {}
@@ -105,6 +114,7 @@ class ProbesPlugin(GuardianPlugin):
             "embed_server_cascade": self._check_embed_server_cascade,
             "nginx": self._check_nginx,
             "auth_flow": self._check_auth_flow,
+            "admin_auth_flow": self._check_admin_auth_flow,
         }
 
         results: list[CheckResult] = []
@@ -903,6 +913,69 @@ class ProbesPlugin(GuardianPlugin):
             plugin=self.name,
             module="Authentication Service",
             check_name="auth_flow",
+            status="fail",
+            severity=Severity.CRITICAL,
+            summary=summary,
+            details=details or {},
+            needs_healing=may_heal,
+            heal_hint="restart:sowknow-backend" if may_heal else None,
+        )
+
+    async def _check_admin_auth_flow(self, ctx: CheckContext) -> CheckResult:
+        """Real-user auth probe: POST /api/v1/auth/login as the legacy admin.
+
+        Guards against the SEC-07 blind spot where the service account is
+        verified and passes while real (pre-existing) accounts are locked out
+        by email_verified=false. Skips (passes) when no admin_account is
+        configured or its credentials are absent.
+        """
+        url = f"{self._backend_url}/api/v1/auth/login"
+        username = self._admin_account.get("username", "")
+        password = self._admin_account.get("password", "")
+        if not username or not password:
+            return CheckResult(
+                plugin=self.name,
+                module="Authentication Service",
+                check_name="admin_auth_flow",
+                status="pass",
+                severity=Severity.INFO,
+                summary="Admin auth probe skipped (no admin_account configured)",
+            )
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(url, data={"username": username, "password": password})
+            if resp.status_code == 200:
+                self._note_probe_result("admin_auth_flow", ok=True)
+                return CheckResult(
+                    plugin=self.name,
+                    module="Authentication Service",
+                    check_name="admin_auth_flow",
+                    status="pass",
+                    severity=Severity.INFO,
+                    summary="Admin login flow succeeded",
+                )
+            return self._admin_auth_flow_failure(
+                summary=f"Admin login flow returned HTTP {resp.status_code}: {str(resp.text)[:120]}",
+                details={"status_code": resp.status_code, "user": username},
+            )
+        except Exception as exc:
+            return self._admin_auth_flow_failure(
+                summary=f"Admin auth flow unreachable: {exc!s:.200}",
+                details={"user": username},
+            )
+
+    def _admin_auth_flow_failure(self, summary: str, details: dict | None = None) -> CheckResult:
+        may_heal = self._note_probe_result("admin_auth_flow", ok=False)
+        streak = self._fail_streaks["admin_auth_flow"]
+        if not may_heal:
+            summary += (
+                f" (failure {streak}/{self.HEAL_AFTER_CONSECUTIVE_FAILURES}"
+                " — will heal only if it repeats)"
+            )
+        return CheckResult(
+            plugin=self.name,
+            module="Authentication Service",
+            check_name="admin_auth_flow",
             status="fail",
             severity=Severity.CRITICAL,
             summary=summary,

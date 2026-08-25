@@ -805,10 +805,11 @@ class GuardianHC:
             from guardian_hc.plugins.probes import ProbesPlugin
             self.register_plugin(ProbesPlugin({
                 "service_account": plugin_cfg["probes"].get("service_account", "guardian-probe"),
+                "admin_account": plugin_cfg["probes"].get("admin_account", {}),
                 "backend_url": "http://backend:8000",
                 "redis_host": v2.celery.get("redis_host", "redis"),
                 "redis_port": v2.celery.get("redis_port", 6379),
-                "redis_password": v2.celery.get("redis_password", ""),
+                "redis_password": _resolve_env(v2.celery.get("redis_password", "")),
                 "nginx_url": "http://localhost",
             }))
 
@@ -818,7 +819,7 @@ class GuardianHC:
                 "backend_url": "http://backend:8000",
                 "redis_host": v2.celery.get("redis_host", "redis"),
                 "redis_port": v2.celery.get("redis_port", 6379),
-                "redis_password": v2.celery.get("redis_password", ""),
+                "redis_password": _resolve_env(v2.celery.get("redis_password", "")),
             }))
 
         if plugin_cfg.get("trends", {}).get("enabled", False):

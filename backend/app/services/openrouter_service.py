@@ -531,6 +531,13 @@ class OpenRouterService:
             "max_tokens": max_tokens,
             "stream": stream,
         }
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "").rstrip("/")
+        if ollama_base_url and self.base_url.rstrip("/").startswith(ollama_base_url):
+            # Qwen3 reasons by default. SowKnow's local operational calls favor
+            # predictable latency and memory use over hidden reasoning tokens.
+            payload["reasoning_effort"] = os.getenv(
+                "OLLAMA_REASONING_EFFORT", "none"
+            )
 
         from app.services.llm_http_client import LLMHTTPClient
 

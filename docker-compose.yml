@@ -863,14 +863,20 @@ services:
     image: ollama/ollama:latest
     container_name: sowknow4-ollama
     restart: unless-stopped
+    mem_limit: 8g
+    memswap_limit: 10g
     profiles:
       - local-llm
     logging: *default-logging
     environment:
       - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=5m
+      - OLLAMA_CONTEXT_LENGTH=4096
     volumes:
-      - sowknow-ollama-models:/root/.ollama
-    # Exposed only on host loopback for security; backend accesses via host.docker.internal
+      - ollama_data:/root/.ollama
+    # Exposed only on host loopback; backend uses the private Docker service name.
     ports:
       - "127.0.0.1:11434:11434"
     healthcheck:
@@ -882,8 +888,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4096M
-          cpus: '2.0'
+          memory: 8192M
     networks:
       - sowknow-net
 
@@ -905,7 +910,7 @@ volumes:
   sowknow-model-cache:
   sowknow-audio-data:
   sowknow-prometheus-data:
-  sowknow-ollama-models:
-    driver: local
-
-  # sowknow-ollama-models: re-enabled 2026-04-27 with local-llm profile
+  # Shared with MasterSRE's host-routed local LLM and preserved across deploys.
+  ollama_data:
+    external: true
+    name: ollama_data

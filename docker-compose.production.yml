@@ -75,6 +75,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-sowknow}
       POSTGRES_INITDB_ARGS: "-E UTF8"
+    # Stable host-only endpoint for the systemd-hosted MasterSRE scanner.
+    # Never expose PostgreSQL publicly; Docker container IPs are ephemeral.
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - sowknow-postgres-data:/var/lib/postgresql/data
     networks:

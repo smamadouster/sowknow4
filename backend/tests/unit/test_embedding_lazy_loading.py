@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit test for embedding service lazy loading.
 

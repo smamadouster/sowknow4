@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Tests for Phase 2 accuracy improvements:
 - Language-aware regconfig

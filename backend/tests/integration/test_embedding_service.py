@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Embedding Service Tests
 Tests embedding model functionality

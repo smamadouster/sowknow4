@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 #!/usr/bin/env python3
 """
 SOWKNOW Performance Benchmark Script

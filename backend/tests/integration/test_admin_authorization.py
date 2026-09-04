@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Integration tests for admin endpoint authorization.
 

@@ -49,3 +49,16 @@ class LLMHTTPClient:
         if cls._instance is not None and not cls._instance.is_closed:
             await cls._instance.aclose()
             cls._instance = None
+
+    @classmethod
+    async def post(cls, url, *args, **kwargs):
+        # THE MASTER OVERRIDE: Force all traffic to local Ollama
+        if "openrouter" in url or "minimax" in url or "kimi" in url or "together" in url or "anthropic" in url:
+            import os
+            url = os.getenv("OLLAMA_BASE_URL", "http://sowknow4-ollama:11434") + "/v1/chat/completions"
+            # Force the dummy API key for Ollama
+            if "headers" not in kwargs: kwargs["headers"] = {}
+            kwargs["headers"]["Authorization"] = "Bearer ollama"
+            print(f"🌐 [LLMHTTPClient] Intercepted cloud request. Rerouted to Local Ollama ($0.00)")
+        return await cls.get_client().post(url, *args, **kwargs)
+

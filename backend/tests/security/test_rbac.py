@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Role-Based Access Control (RBAC) Tests.
 

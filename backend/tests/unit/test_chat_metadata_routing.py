@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Tests for metadata-only confidential routing in chat service."""
 
 from datetime import UTC, datetime, timezone

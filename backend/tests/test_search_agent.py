@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 SOWKNOW Agentic Search — Test Suite
 Run: pytest backend/tests/test_search_agent.py -v

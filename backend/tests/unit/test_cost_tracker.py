@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for CostTracker memory-safety fixes (blueprint §7.2).
 

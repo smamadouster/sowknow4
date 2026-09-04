@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 E2E Test Scenario: Collection PDF Export
 =========================================

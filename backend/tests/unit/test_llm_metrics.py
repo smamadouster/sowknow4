@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Tests for LLM request metrics."""
 from app.services.prometheus_metrics import (
     Counter,

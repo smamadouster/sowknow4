@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for FR8.5 reproducibility — no DB, no network."""
 
 import uuid

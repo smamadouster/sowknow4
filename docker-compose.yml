@@ -860,11 +860,11 @@ services:
       - sowknow-net
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.33.1
     container_name: sowknow4-ollama
     restart: unless-stopped
-    mem_limit: 8g
-    memswap_limit: 10g
+    mem_limit: 12g
+    memswap_limit: 12g
     profiles:
       - local-llm
     logging: *default-logging
@@ -888,7 +888,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8192M
+          memory: 12288M
     networks:
       - sowknow-net
 

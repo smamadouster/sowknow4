@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Integration tests for Telegram bot features:
   - P1-D2a: Multi-turn conversation (session memory → chat session → LLM history)

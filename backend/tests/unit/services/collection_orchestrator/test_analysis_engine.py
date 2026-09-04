@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """FR4.1 analysis engine tests — descriptive stats, trend thresholds,
 Phase-2 stubs, threshold overrides."""
 

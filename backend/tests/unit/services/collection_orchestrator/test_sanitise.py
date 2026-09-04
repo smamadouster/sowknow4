@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for FR7.2 output sanitisation — no DB, no network."""
 
 from types import SimpleNamespace

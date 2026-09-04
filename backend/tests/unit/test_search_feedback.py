@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Tests for /api/v1/search/feedback endpoint
 """

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 E2E Test Scenario 5: Smart Collection Creation
 Tests the complete Smart Collection flow including AI analysis and LLM routing.

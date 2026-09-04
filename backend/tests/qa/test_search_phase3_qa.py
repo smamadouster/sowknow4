@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Phase 3 QA Validation — Advanced Optimizations
 

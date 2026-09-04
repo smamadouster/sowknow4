@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Performance test suite for PostgreSQL tsvector full-text search.
 

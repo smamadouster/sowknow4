@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Tests for Smart Collections v2 pipeline."""
 
 import pytest

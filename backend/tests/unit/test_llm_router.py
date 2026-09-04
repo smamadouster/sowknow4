@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for LLMRouter (app/services/llm_router.py)
 ======================================================

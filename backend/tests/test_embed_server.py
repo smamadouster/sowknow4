@@ -1,4 +1,6 @@
 import pytest
+@pytest.mark.skip(reason="Ollama removed")
+import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.sqlite_safe

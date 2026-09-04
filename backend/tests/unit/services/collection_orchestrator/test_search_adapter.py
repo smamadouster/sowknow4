@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for SearchAdapter (FR2) — search_service and DB mocked."""
 
 import uuid

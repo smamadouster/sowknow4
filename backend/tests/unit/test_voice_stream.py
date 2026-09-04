@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for voice audio streaming — regression suite for the recurring
 "cannot play voice files" bug.

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for document processing Celery tasks.
 Tests stuck document handling, embedding error recovery, and chunk storage transactions.

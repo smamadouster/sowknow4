@@ -181,6 +181,21 @@ class LLMRouter:
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
         # §5.2: All traffic routes through OpenRouter.
+        # --- LOCAL $0.00 INTERCEPTOR FOR SIMPLE TIER ---
+        if tier in (TaskTier.SIMPLE, TaskTier.STANDARD):
+            local_ollama = OllamaService()
+            if local_ollama.available:
+                logger.info(f"Routing {tier.value} tier to local Ollama ($0.00 - Offline Mode)")
+                async for chunk in local_ollama.chat_completion(
+                    messages=messages,
+                    stream=True,
+                    temperature=temperature,
+                    max_tokens=max_tokens or 2048,
+                ):
+                    yield chunk
+                return
+        # -------------------------------------------------
+
         # Ollama and Together.ai are intentionally removed from the active fallback chain.
         # Confidential data relies on metadata-only stripping (PRD §1.3).
         if self._openrouter is not None:

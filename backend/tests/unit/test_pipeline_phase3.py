@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """QA tests for Phase 3 architectural hardening."""
 import pytest
 

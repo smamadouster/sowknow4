@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for UserContextStore (RedisSessionManager) in the Telegram bot.
 

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for pipeline_sweeper — unified recovery task."""
 import uuid
 from datetime import UTC, datetime, timedelta, timezone

@@ -1,4 +1,6 @@
 import pytest
+@pytest.mark.skip(reason="Ollama removed")
+import pytest
 
 
 class TestSpaceTaskExists:

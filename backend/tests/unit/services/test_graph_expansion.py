@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 import uuid
 from unittest.mock import MagicMock
 

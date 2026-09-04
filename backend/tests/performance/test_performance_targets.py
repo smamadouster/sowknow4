@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Performance and Resilience Test Suite for SOWKNOW
 

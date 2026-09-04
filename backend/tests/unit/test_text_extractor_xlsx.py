@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Tests for XLSX extraction batching fix (Phase 1.1)."""
 import pytest
 

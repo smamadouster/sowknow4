@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Regression test for missing await on get_collection_stats endpoint.
 

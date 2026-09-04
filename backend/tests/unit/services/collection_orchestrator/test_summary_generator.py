@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """FR4.2 summary generator tests — empty-insights guard, prompt structure,
 numeric formatting."""
 

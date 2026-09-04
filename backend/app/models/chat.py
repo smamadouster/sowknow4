@@ -13,7 +13,6 @@ class LLMProvider(enum.StrEnum):
 
     MINIMAX = "minimax"  # MiniMax M2.7 — search agent, article generation (direct API)
     KIMI = "kimi"  # Moonshot direct API (legacy — phased out)
-    OLLAMA = "ollama"  # Local Ollama (mistral:7b) — confidential documents (privacy guarantee)
     OPENROUTER = "openrouter"  # OpenRouter gateway — Mistral Small 2603 for chat/collections/telegram
 
 

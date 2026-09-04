@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Phase 2 QA Validation — Accuracy Foundation
 

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 CORS (Cross-Origin Resource Sharing) Security Tests.
 

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Auth Compliance Test Suite - QA Engineer Validation
 

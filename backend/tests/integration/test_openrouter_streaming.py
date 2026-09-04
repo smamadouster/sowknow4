@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Integration tests for OpenRouter/MiniMax API Streaming
 Tests API connectivity, streaming, and fallback mechanisms

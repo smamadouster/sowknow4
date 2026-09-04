@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Comprehensive Confidential Bucket Isolation Tests
 

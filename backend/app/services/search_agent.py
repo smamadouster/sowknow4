@@ -24,7 +24,7 @@ from app.models.knowledge_graph import Entity, EntityMention, EntityRelationship
 from app.models.user import UserRole
 from app.services.agent_identity import build_service_prompt
 from app.services.context_block_service import get_cached_context_block
-from app.services.llm_router import llm_router
+from app.services.llm_router import llm_router, TaskTier
 from app.services.rerank_service import rerank_passages
 from app.services.search_cache import SearchCache
 from app.services.search_service import HybridSearchService
@@ -480,6 +480,7 @@ async def _call_llm(
     temperature: float = 0.1,
     max_tokens: int = 2048,
     context_block: str | None = None,
+    tier: str = "standard",
 ) -> tuple[str, str]:
     """Call LLM via existing LLMRouter. Returns (response_text, provider_name)."""
     query_text = messages[0].get("content", "") if messages else ""
@@ -497,12 +498,16 @@ async def _call_llm(
 
     full_messages = [{"role": "system", "content": effective_system}] + messages
     chunks = []
+    # Convert string tier to TaskTier enum for the router
+    tier_enum = TaskTier(tier) if isinstance(tier, str) else tier
+    
     async for chunk in llm_router.generate_completion(
         messages=full_messages,
         query=query_text,
         has_confidential=has_confidential,
         temperature=temperature,
         max_tokens=max_tokens,
+        tier=tier_enum,
     ):
         chunks.append(chunk)
 
@@ -580,6 +585,7 @@ async def parse_intent(query: str) -> ParsedIntent:
                 has_confidential=False,
                 temperature=0.0,
                 max_tokens=512,
+                tier="simple",  # <--- FORCED TO CHEAPEST TIER
             ),
             timeout=6.0,
         )

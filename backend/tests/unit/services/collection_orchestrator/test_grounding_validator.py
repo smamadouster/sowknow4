@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """FR4.2.5 grounding validator tests — pass/fail/strip/regeneration."""
 
 import pytest

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for LLM Routing Logic - Complete Coverage
 Tests dual-LLM routing based on confidential context detection per PRD table

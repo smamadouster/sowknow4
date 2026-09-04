@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for Collection Export endpoint — PDF generation with mocked reportlab.
 

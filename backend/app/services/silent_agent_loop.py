@@ -169,6 +169,7 @@ class SilentAgentLoop:
         custom_critique_prompt: str | None = None,
         custom_refine_prompt: str | None = None,
         custom_validate_prompt: str | None = None,
+        fast_mode: bool = False,
     ) -> SilentLoopResult:
         """
         Execute the silent agent loop.
@@ -220,11 +221,12 @@ class SilentAgentLoop:
                 total_tokens=total_tokens,
             )
 
-        if max_iter == 0:
+        if max_iter == 0 or fast_mode:
+            logger.info(f"SilentAgentLoop: Fast mode enabled, skipping critique/refine loop (saved 3 LLM calls).")
             return SilentLoopResult(
                 final_output=output,
                 iterations=iterations,
-                stopped_reason="max_iterations",
+                stopped_reason="fast_mode" if fast_mode else "max_iterations",
                 total_tokens=total_tokens,
                 quality_score=0.5,
             )

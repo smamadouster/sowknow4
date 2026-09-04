@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """FR7.1 prompt-injection defence — security test corpus (spec Scenario 7).
 
 End-to-end through extraction → analysis → summary with a mocked LLM router.

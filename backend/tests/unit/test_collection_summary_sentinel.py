@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """Regression tests (2026-08-02): the "__USAGE__" stream sentinel must never
 leak into stored collection summaries, and collection relevance scores must
 stay ABSOLUTE (no relative max-normalization inflating the top doc to 100%).

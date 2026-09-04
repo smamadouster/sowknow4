@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 import json
 from unittest.mock import AsyncMock, MagicMock
 

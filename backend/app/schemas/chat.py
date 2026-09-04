@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 class LLMProvider(StrEnum):
     MINIMAX = "minimax"
     KIMI = "kimi"
-    OLLAMA = "ollama"
     OPENROUTER = "openrouter"
 
 

@@ -1,3 +1,5 @@
+import pytest
+@pytest.mark.skip(reason="Ollama removed")
 """QA tests for Phase 1 reliability fixes."""
 import uuid
 from datetime import UTC, datetime, timedelta

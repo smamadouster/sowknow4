@@ -89,10 +89,7 @@ The system is well-architected with comprehensive RBAC, LLM routing, and monitor
 | ✅ PASS | Structured JSON logging |
 
 **LLM Routing Verified:**
-- Confidential docs → Ollama (local, privacy)
 - Public docs → MiniMax/OpenRouter
-- PII detected → Ollama
-- Fallback chain: MiniMax → OpenRouter → Ollama
 
 ---
 
@@ -349,7 +346,6 @@ The system is well-architected with comprehensive RBAC, LLM routing, and monitor
 
 **System Strengths:**
 - Comprehensive RBAC with proper confidential document isolation
-- LLM routing correctly sends confidential data only to local Ollama
 - Strong security test coverage (~180 tests)
 - Good monitoring with health checks and alerting
 - Well-documented API and deployment procedures

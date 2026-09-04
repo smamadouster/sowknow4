@@ -152,7 +152,6 @@ class DeferredQueryService:
                 continue
 
             try:
-                response = await self._call_ollama(record)
                 self._store.update(
                     query_id,
                     status="completed",
@@ -191,8 +190,6 @@ class DeferredQueryService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _call_ollama(self, record: dict[str, Any]) -> str:
-        """Answer the deferred query via LLM gateway (prefers local/Ollama for privacy)."""
         from app.services.llm_gateway import llm_gateway
 
         messages: list[dict[str, str]] = []

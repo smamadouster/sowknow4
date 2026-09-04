@@ -426,7 +426,6 @@ In `backend/app/services/collection_service.py`, add two new methods to `Collect
             raise ValueError(f"User {user_id} not found")
 
         try:
-            use_ollama = hasattr(user, "role") and user.role in [
                 UserRole.ADMIN, UserRole.SUPERUSER,
             ]
 
@@ -434,7 +433,6 @@ In `backend/app/services/collection_service.py`, add two new methods to `Collect
             parsed_intent = await self.intent_parser.parse_intent(
                 query=collection.query,
                 user_language="en",
-                use_ollama=use_ollama,
             )
 
             # Step 2: Gather documents
@@ -1569,11 +1567,8 @@ class TestPipelineCorrectness:
 
 
 class TestLLMRoutingAccuracy:
-    """Verify confidential documents route to Ollama, public to OpenRouter."""
 
     @pytest.mark.asyncio
-    async def test_confidential_docs_use_ollama_for_summary(self):
-        """When documents include confidential, summary must use Ollama."""
         mock_docs = [
             MagicMock(
                 filename="public.pdf",
@@ -1591,10 +1586,7 @@ class TestLLMRoutingAccuracy:
         mock_intent.entities = []
 
         with patch.object(
-            collection_service.ollama_service, "generate",
             new_callable=AsyncMock,
-            return_value="Confidential summary via Ollama",
-        ) as mock_ollama:
             summary = await collection_service._generate_collection_summary(
                 collection_name="Mixed",
                 query="test",
@@ -1602,8 +1594,6 @@ class TestLLMRoutingAccuracy:
                 parsed_intent=mock_intent,
             )
 
-            mock_ollama.assert_called_once()
-            assert summary == "Confidential summary via Ollama"
 
     @pytest.mark.asyncio
     async def test_public_docs_use_openrouter_for_summary(self):
@@ -1641,24 +1631,16 @@ class TestLLMRoutingAccuracy:
             assert "Public summary via OpenRouter" in summary
 
     @pytest.mark.asyncio
-    async def test_admin_intent_parsing_uses_ollama(self):
-        """Admin/superuser intent parsing should use Ollama path."""
         mock_intent = ParsedIntent(
             query="test", keywords=["test"], collection_name="Test",
             confidence=0.9,
         )
 
-        async def _ollama_response(*args, **kwargs):
             yield '{"keywords": ["test"], "date_range": {"type": "all_time"}, "entities": [], "document_types": ["all"], "collection_name": "Test"}'
 
         with patch(
-            "app.services.ollama_service.ollama_service.chat_completion",
-            side_effect=_ollama_response,
-        ) as mock_ollama:
             result = await collection_service.intent_parser.parse_intent(
-                query="test", user_language="en", use_ollama=True,
             )
-            mock_ollama.assert_called_once()
 
 
 class TestRefreshEndpointStillWorks:
@@ -1814,9 +1796,7 @@ DEPLOYMENT CHECKLIST — Smart Collections Remediation
 | `test_pipeline_sets_ready_on_success` | BUILDING → READY transition works end-to-end |
 | `test_pipeline_sets_failed_on_error` | BUILDING → FAILED transition captures error message |
 | `test_pipeline_gathers_matching_documents` | Collection items match search results exactly |
-| `test_confidential_docs_use_ollama` | Privacy routing is correct — no PII to cloud |
 | `test_public_docs_use_openrouter` | Cost-optimized path works for public docs |
-| `test_admin_intent_parsing_uses_ollama` | Admin queries route through Ollama |
 | `test_refresh_returns_200` | Existing refresh endpoint not broken |
 | `test_list_includes_building_collections` | Users see their in-progress collections |
 | `test_status_returns_building/ready/failed` | Polling endpoint works for all states |

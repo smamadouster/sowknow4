@@ -25,7 +25,6 @@ SOWKNOW is a Multi-Generational Legacy Knowledge System that transforms your sca
    - **Max file size**: 100MB
 3. Choose a bucket:
    - **Public**: Can be searched with Gemini Flash (cloud API)
-   - **Confidential**: Only processed with local Ollama (private)
 4. Click "Upload"
 
 Your document will be processed and added to your knowledge base.
@@ -172,7 +171,6 @@ Every AI answer includes:
 
 ### Confidential Documents
 Documents marked as **Confidential**:
-- Are processed with local Ollama only
 - Never sent to cloud APIs
 - Only visible to you (and admins)
 - Stored encrypted

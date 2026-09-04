@@ -36,13 +36,11 @@ After a comprehensive audit and extensive fixes, the SOWKNOW system has been sig
 | Client-Side RBAC | ✅ Complete | Store helper functions added |
 | CORS Configuration | ✅ Complete | Origins restricted in backend and nginx |
 | RBAC Standardization | ✅ Complete | SUPERUSER included in all checks |
-| Ollama Container | ✅ Complete | Added to docker-compose.production.yml |
 
 ### 2. Privacy Compliance
 
 | Requirement | Status | Implementation |
 |-------------|--------|----------------|
-| Zero PII to Cloud APIs | ✅ Complete | PII detection routes to Ollama |
 | Confidential Auto-Routing | ✅ Complete | Bucket-based routing implemented |
 | PII Redaction | ✅ Complete | Redaction before external API calls |
 | Audit Logging | ✅ Complete | All confidential access logged |
@@ -160,9 +158,7 @@ After a comprehensive audit and extensive fixes, the SOWKNOW system has been sig
    git push -u origin master
    ```
 
-3. **Pull Ollama Model**
    ```bash
-   docker exec -it sowknow-ollama ollama pull mistral
    ```
 
 4. **Verify Database**
@@ -217,7 +213,6 @@ After a comprehensive audit and extensive fixes, the SOWKNOW system has been sig
 
 **Backend:**
 - `backend/app/services/pii_detection_service.py` - PII detection and redaction
-- `backend/app/services/ollama_service.py` - Ollama integration
 - `backend/tests/unit/test_pii_detection.py` - 29 PII tests
 - `backend/tests/unit/test_rbac.py` - 30 RBAC tests
 - `backend/tests/unit/test_llm_routing.py` - 35 LLM routing tests
@@ -243,7 +238,6 @@ After a comprehensive audit and extensive fixes, the SOWKNOW system has been sig
 - `backend/app/main.py` - CORS fixes
 - `backend/app/api/documents.py` - RBAC fixes
 - `backend/app/services/search_service.py` - PII detection integration
-- `backend/app/services/chat_service.py` - PII detection + Ollama routing
 - `backend/app/models/user.py` - Model default attempts
 - `backend/app/models/document.py` - Model default attempts
 
@@ -255,7 +249,6 @@ After a comprehensive audit and extensive fixes, the SOWKNOW system has been sig
 - `frontend/app/messages/en.json` - English translations
 
 **Configuration:**
-- `docker-compose.production.yml` - Memory limits, Ollama container
 - `nginx/nginx.conf` - CORS restrictions
 - `frontend/next.config.js` - next-intl plugin
 - `frontend/tsconfig.json` - TypeScript config
@@ -338,7 +331,6 @@ Environment: ⚠️ Production (some vars need values)
 ### Immediate (Before Launch)
 - [ ] Set real API keys in environment
 - [ ] Configure Git remote repository
-- [ ] Pull Ollama model (mistral)
 - [ ] Verify all containers start with new config
 - [ ] Run smoke tests on deployed system
 

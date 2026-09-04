@@ -1,7 +1,6 @@
 # LLM INTEGRATION LAYER - COMPREHENSIVE AUDIT REPORT
 
 **Generated:** 2026-02-21  
-**Scope:** LLM Router, Minimax/Moonshot, Ollama, Context Routing & Response Format  
 **Status:** CRITICAL BLOCKERS IDENTIFIED
 
 ---
@@ -12,7 +11,6 @@
 |----------|--------|----------|------|--------|
 | LLM Router Structure | BLOCKED | 2 | 2 | 1 |
 | Minimax/Moonshot | CRITICAL | 1 | 0 | 2 |
-| Ollama Integration | WARNING | 1 | 1 | 0 |
 | Context Routing | PASSING | 0 | 0 | 1 |
 
 **VERDICT: NOT PRODUCTION READY** - Critical security and architectural issues must be resolved.
@@ -41,7 +39,6 @@ backend/app/services/
 ├── chat_service.py          [EMBEDDED ROUTING - Lines 327-376]
 ├── minimax_service.py       [Direct Minimax API]
 ├── openrouter_service.py    [OpenRouter Gateway]
-├── ollama_service.py        [Local LLM]
 ├── kimi_service.py          [MISSING FILE - Referenced but not found]
 └── pii_detection_service.py [PII Detection]
 ```
@@ -53,7 +50,6 @@ backend/app/services/
 | `detect_context_sensitivity(chunks)` | NOT FOUND | `pii_detection_service.detect_pii()` (text-based) |
 | `generate_completion(prompt, context_chunks, stream)` | NOT FOUND | `chat_service.generate_chat_response()` |
 | `_generate_Minimax(prompt, chunks, stream)` | NOT FOUND | `minimax_service.chat_completion(messages, ...)` |
-| `_generate_ollama(prompt, chunks, stream)` | NOT FOUND | `ollama_service.chat_completion(messages, ...)` |
 
 **Signature Mismatch:**
 ```python
@@ -84,7 +80,6 @@ except ImportError:
 class LLMProvider(str, enum.Enum):
     MINIMAX = "minimax"
     KIMI = "kimi"
-    OLLAMA = "ollama"
     # OPENROUTER = MISSING
 
 # chat_service.py:347 - Uses non-existent enum value:
@@ -154,22 +149,17 @@ if stream:
 
 ---
 
-## AGENT 3: OLLAMA INTEGRATION
 
 ### Configuration Status
 
 | Setting | Expected | Actual | Status |
 |---------|----------|--------|--------|
-| URL Variable | LOCAL_LLM_URL | OLLAMA_BASE_URL + LOCAL_LLM_URL | INCONSISTENT |
-| Default URL | localhost:11434 | ollama:11434 | DIFFERENT |
 | Model | mistral:7b-instruct | mistral:7b-instruct | MATCH |
 | Streaming | Required | Implemented | PASS |
 
 ### Environment Variable Inconsistency
 
 ```python
-# ollama_service.py:18
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 # main_minimal.py:225
 LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
@@ -184,15 +174,10 @@ LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
 
 ```python
 if has_confidential:
-    # Confidential: always use Ollama
-    llm_service = self.ollama_service
-    llm_provider = LLMProvider.OLLAMA
     routing_reason = "confidential_docs"
-    # NO ELSE/FALLBACK - If Ollama unavailable, error returned
 ```
 
 **Impact:** 
-- If Ollama service is down, confidential document queries receive only an error message
 - No alternative processing path exists by design (privacy requirement)
 - No queue/retry mechanism for temporarily unavailable scenarios
 
@@ -201,15 +186,12 @@ if has_confidential:
 return {
     "response": "I'm sorry, I couldn't process your question. The local LLM may be unavailable.",
     "sources": [],
-    "llm_used": "ollama",
 }
 ```
 
 ### Fallback Chain for Public Documents (Working)
 
 ```
-Public Docs → MiniMax → OpenRouter → Ollama
-General Chat → Kimi → MiniMax → OpenRouter → Ollama
 ```
 
 ---
@@ -225,18 +207,15 @@ General Chat → Kimi → MiniMax → OpenRouter → Ollama
 │                                                             │
 │  IF confidential bucket detected                            │
 │     OR PII detected in query                                │
-│     → Ollama (local)                                        │
 │                                                             │
 │  ELSE IF has public document sources                        │
 │     → MiniMax (cloud direct)                                │
 │     → OpenRouter (fallback)                                 │
-│     → Ollama (final fallback)                               │
 │                                                             │
 │  ELSE (general chat, no sources)                            │
 │     → Kimi (cloud) [BROKEN - file missing]                  │
 │     → MiniMax (fallback)                                    │
 │     → OpenRouter (fallback)                                 │
-│     → Ollama (final fallback)                               │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -246,7 +225,6 @@ General Chat → Kimi → MiniMax → OpenRouter → Ollama
 | Field | Required | Status | Structure |
 |-------|----------|--------|-----------|
 | content | string | PRESENT | Main response text |
-| model_used / llm_used | string | PRESENT | Enum: "minimax", "kimi", "ollama" |
 | sources | array | PRESENT | `{document_id, document_name, chunk_id, relevance_score}` |
 
 ### Privacy Protection - VERIFIED
@@ -255,21 +233,16 @@ General Chat → Kimi → MiniMax → OpenRouter → Ollama
 
 **Protection Mechanisms:**
 1. Bucket-based routing (`document_bucket == "confidential"`)
-2. PII detection override (PII in query → Ollama)
-3. "Most restrictive" approach (any confidential → all to Ollama)
 4. Audit logging for confidential access
 
 **Code Verification (chat_service.py:214-217):**
 ```python
 has_confidential = any(
     r.document_bucket == "confidential" for r in search_result["results"]
-) or has_pii  # PII also triggers Ollama routing
 ```
 
 ### Edge Cases Identified
 
-1. **Mixed Buckets:** Uses most restrictive - if ANY confidential, entire request → Ollama
-2. **PII Override:** PII in query text triggers Ollama even for public documents
 3. **Null Findings:** Answer agent returns False for empty findings (safe default)
 4. **Audit Trail:** Confidential access logged at multiple points
 
@@ -283,7 +256,6 @@ has_confidential = any(
 |----|-------|----------|--------|
 | C1 | Exposed API keys in tracked `.env` | `.env` | Security breach |
 | C2 | Missing `kimi_service.py` file | `backend/app/services/` | General chat broken |
-| C3 | No fallback for confidential docs when Ollama down | `chat_service.py:334` | User experience |
 | C4 | Missing centralized `llm_router.py` | `backend/app/services/` | Architecture |
 
 ### HIGH PRIORITY ISSUES
@@ -292,7 +264,6 @@ has_confidential = any(
 |----|-------|----------|--------|
 | H1 | Missing `detect_context_sensitivity()` method | Services | API contract |
 | H2 | Enum inconsistency - OPENROUTER not in LLMProvider | `api/chat.py` | Runtime error |
-| H3 | Inconsistent env vars (OLLAMA_BASE_URL vs LOCAL_LLM_URL) | Multiple | Configuration |
 | H4 | Method signature mismatch | All services | API contract |
 
 ### MEDIUM PRIORITY ISSUES
@@ -320,16 +291,13 @@ has_confidential = any(
        def detect_context_sensitivity(chunks) -> bool
        async def generate_completion(prompt, context_chunks, stream)
        async def _generate_minimax(prompt, chunks, stream)
-       async def _generate_ollama(prompt, chunks, stream)
    ```
 
 5. **Fix enum inconsistency:** Add `OPENROUTER = "openrouter"` to LLMProvider
 
-6. **Standardize environment variables:** Use single `OLLAMA_BASE_URL` everywhere
 
 ### Medium-term Actions (Week 2-4)
 
-7. **Implement queue system for confidential queries** when Ollama temporarily unavailable
 8. **Add health check** before routing to provide proactive status
 9. **Create API contract tests** to verify response formats
 
@@ -342,7 +310,6 @@ backend/app/services/
 ├── chat_service.py          [500 lines] - Main routing logic
 ├── minimax_service.py       [155 lines] - Minimax direct API
 ├── openrouter_service.py    [288 lines] - OpenRouter gateway
-├── ollama_service.py        [186 lines] - Local LLM
 ├── pii_detection_service.py [~100 lines] - PII detection
 ├── collection_chat_service.py - Collection-specific routing
 ├── smart_folder_service.py  - Smart folder generation
@@ -372,7 +339,6 @@ backend/app/network_utils.py [278 lines] - Circuit breaker
 |-------|------|--------|-----------|
 | Agent 1 | LLM Router Structure | COMPLETE | 2026-02-21 |
 | Agent 2 | Minimax/Moonshot Integration | COMPLETE | 2026-02-21 |
-| Agent 3 | Ollama Integration | COMPLETE | 2026-02-21 |
 | Agent 4 | Context Routing & Response | COMPLETE | 2026-02-21 |
 
 ---

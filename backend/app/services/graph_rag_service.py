@@ -35,7 +35,6 @@ class GraphRAGService:
     def _strip_sensitive_content(self, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         """Strip sensitive entity names and relationship details from messages.
 
-        Used as a privacy fallback when Ollama is unavailable for confidential queries.
         Replaces specific names with generic placeholders.
         """
         import re

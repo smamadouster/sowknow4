@@ -86,7 +86,6 @@ The Gemini Flash migration has been successfully completed across all 8 phases. 
 - [x] **Health check** integration for Gemini API
 - [x] **CacheMonitor** with hit/miss tracking and statistics
 - [x] **LLMProvider enum** updated to GEMINI
-- [x] **ChatService** routing updated (Gemini for public, Ollama for confidential)
 - [x] **Environment variables** documented in .env.example
 - [x] **Requirements** updated with google-generativeai package
 
@@ -110,7 +109,6 @@ The Gemini Flash migration has been successfully completed across all 8 phases. 
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| Privacy-first architecture | ✅ Maintained | Confidential docs still route to Ollama |
 | Zero PII to cloud APIs | ✅ Maintained | Gemini only processes public docs |
 | Context caching | ✅ Implemented | Up to 80% cost reduction |
 | 1M+ token context | ✅ Enabled | Full document collections |

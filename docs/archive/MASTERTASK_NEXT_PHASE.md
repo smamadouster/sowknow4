@@ -25,7 +25,6 @@ SOWKNOW backend is **83% test passing** with **95% Phase 2 feature completion**.
 ### What's Working ✅
 - **Core business logic:** 437/442 unit tests passing
 - **Phase 2 features:** All working (Collections, Folders, Reports, Auto-Tagging)
-- **LLM routing:** Correctly implemented (MiniMax/Kimi/Ollama)
 - **RBAC security:** Properly enforced (Admin/SuperUser/User)
 - **PDF export:** 100% working (36/36 tests passing)
 - **CORS security:** 100% working (8/8 tests passing)
@@ -106,7 +105,6 @@ SOWKNOW backend is **83% test passing** with **95% Phase 2 feature completion**.
 - [ ] OpenRouter service has test fixture
 - [ ] MiniMax service has test fixture
 - [ ] Kimi service has test fixture
-- [ ] Ollama service has test fixture
 - [ ] E2E tests use fixtures instead of real APIs
 - [ ] Chat endpoints work with mocked LLMs
 - [ ] No actual API calls during testing
@@ -332,6 +330,5 @@ Before assigning to Agent C3, verify:
 **Status:** ✅ READY FOR ASSIGNMENT TO AGENT C3
 
 Previous Agents Completed:
-- ✅ Agent B2: Documentation mismatch fix (LLM routing: Gemini Flash → MiniMax/Kimi/Ollama)
 - ✅ Agent Analysis: Full test suite analysis + Phase 2 validation
 - ✅ Agent Documentation: Deployment guides, API reference, architecture docs

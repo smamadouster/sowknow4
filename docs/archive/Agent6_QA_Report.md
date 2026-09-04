@@ -48,7 +48,6 @@ volumes:
 
 **Verification:**
 ```bash
-grep -n "has_confidential\|ollama\|LLMProvider" agent_orchestrator.py
 # No matches found
 ```
 
@@ -64,7 +63,6 @@ grep -n "has_confidential\|ollama\|LLMProvider" agent_orchestrator.py
 **Fix Required:**
 - Add `has_confidential` parameter to all agent methods
 - Check document bucket before selecting LLM
-- Route to Ollama for confidential, Gemini for public
 
 ---
 

@@ -7,12 +7,10 @@
 | 16:35 | Task 2: Created Dockerfile.embed + requirements.txt for standalone embedding container (lean, no OCR/Whisper) | backend/Dockerfile.embed, backend/embed_server/requirements.txt | Dockerfile syntax validated, committed 4998bd2 | ~400 |
 
 | 18:06 | Phase 7A: Fixed Telegram auth role — Telegram users always created as "user"; added TELEGRAM_ADMIN_USER_IDS env var support to auth.py | backend/app/api/auth.py | deployed to prod, backend restarted | ~34k |
-| 18:06 | Phase 7D: PRD v1.2 created with all corrections (LLMs, RAM, Ollama, confidential routing, new features) | SOWKNOW_PRD_v1.2.md | created | ~43k |
 | 18:24 | Phase 7B: voice router never registered in main_minimal.py; added include_router(voice.router, prefix="/api/v1") | backend/app/main_minimal.py | deployed, /api/v1/voice/audio/{id}/stream returns 401 not 404 | ~34k |
 
 | 15:06 | Fixed Telegram OGG voice playback (application/ogg mime bug) | backend/app/api/voice.py, frontend/app/[locale]/journal/page.tsx | Fixed: stream endpoint now accepts application/ogg, frontend isAudio() updated | ~800 |
 
-| 2026-04-13T00:00 | Created PRD v1.2 — corrected LLM stack, RAM, container limits, Ollama status, confidential routing, added Phase 7 features | SOWKNOW_PRD_v1.2.md | Created alongside v1.1 (v1.1 intact) | ~3k tokens |
 
 | 2026-04-12T21:20 | Task 4: Created unit tests for pipeline-stats assembler logic | backend/tests/unit/test_admin_pipeline_stats.py | 8/8 tests pass | ~1k tokens |
 
@@ -575,14 +573,12 @@
 | 09:30 | Created monitoring/guardian-hc/guardian_hc/checks/network_health.py | — | ~1398 |
 | 09:30 | Edited monitoring/guardian-hc/Dockerfile | 6→10 lines | ~109 |
 | 09:30 | Edited docker-compose.yml | 6→8 lines | ~53 |
-| 09:30 | Edited monitoring/guardian-hc/guardian_hc/checks/ollama_health.py | modified __init__() | ~233 |
 | 09:31 | Edited monitoring/guardian-hc/guardian-hc.sowknow4.yml | 2→3 lines | ~43 |
 | 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~284 |
 | 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified can_restart() | ~498 |
 | 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | 3→4 lines | ~52 |
 | 09:31 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get_history() | ~451 |
 | 09:32 | Edited monitoring/guardian-hc/guardian_hc/core.py | modified get() | ~315 |
-| 09:35 | Session end: 11 writes across 7 files (network_healer.py, network_health.py, Dockerfile, docker-compose.yml, ollama_health.py) | 27 reads | ~14045 tok |
 
 ## Session: 2026-04-09 09:39
 

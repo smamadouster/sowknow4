@@ -228,7 +228,6 @@
 - Bilingual translations ready (FR/EN)
 - Responsive design with Tailwind
 - Empty state handling exists
-- Confidential document handling properly routed to Ollama
 - Audit logging for confidential access implemented
 - Collection detail shows sources and relevance scores
 - Streaming chat works correctly in main chat page (SSE)

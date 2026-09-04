@@ -9,7 +9,6 @@
 
 ## Executive Summary
 
-The **docker-compose.yml** (main development config) is **93% compliant** with PRD requirements. All 8 containers are present with correct memory/CPU limits, Ollama is correctly excluded from the compose file, and the internal network is properly configured.
 
 **Critical Issue:** Missing backups volume mount.
 
@@ -22,8 +21,6 @@ The **docker-compose.yml** (main development config) is **93% compliant** with P
 | 1 | All 8 containers present? | ✅ YES - nginx, frontend, backend, celery-worker, celery-beat, redis, postgres, telegram-bot |
 | 2 | Memory/CPU limits match spec? | ✅ YES (exact match in docker-compose.yml) |
 | 3 | Internal Docker network? | ✅ YES - `sowknow-net` with bridge driver |
-| 4 | Ollama incorrectly included? | ✅ NO - Correctly excluded (uses external shared instance) |
-| 5 | Backend connects to Ollama? | ✅ YES - Via `extra_hosts: ["host.docker.internal:host-gateway"]` + `LOCAL_LLM_URL=http://host.docker.internal:11434` |
 | 6 | Volume mounts correct? | ⚠️ PARTIAL - public, confidential, postgres, redis present. **Backups MISSING** |
 | 7 | Health checks implemented? | ✅ YES - nginx, backend, postgres, redis all have health checks |
 | 8 | Secrets properly externalized? | ✅ YES - All secrets require .env (`:?` mandatory syntax) |
@@ -45,8 +42,6 @@ The **docker-compose.yml** (main development config) is **93% compliant** with P
 | 9 | telegram-bot memory | 256MB | 256M | ✅ PASS | - |
 | 10 | CPU limits | All services | All 8 services have cpus defined | ✅ PASS | - |
 | 11 | Internal network | sowknow-net | sowknow-net (bridge driver) | ✅ PASS | - |
-| 12 | Ollama in compose | NOT present | Correctly excluded | ✅ PASS | - |
-| 13 | Ollama connection | host.docker.internal | extra_hosts + LOCAL_LLM_URL=http://host.docker.internal:11434 | ✅ PASS | - |
 | 14 | Volume: postgres | sowknow-postgres-data | sowknow-postgres-data | ✅ PASS | - |
 | 15 | Volume: redis | sowknow-redis-data | sowknow-redis-data | ✅ PASS | - |
 | 16 | Volume: public | sowknow-public-data | sowknow-public-data | ✅ PASS | - |

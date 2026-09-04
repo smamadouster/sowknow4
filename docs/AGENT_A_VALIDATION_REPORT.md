@@ -90,15 +90,12 @@
 
 ---
 
-### 6. Ollama Configuration ✅
 
 | Check | Status |
 |-------|--------|
-| Ollama NOT in compose file | ✅ Pass |
 | extra_hosts configured for backend | ✅ Pass |
 | extra_hosts configured for celery-worker | ✅ Pass |
 
-**Result:** Ollama external configuration correct ✅
 
 ---
 
@@ -139,7 +136,6 @@
 | CPU Limits | 8 | 8 | 0 |
 | Volumes | 5 | 5 | 0 |
 | Secrets | 3 | 3 | 0 |
-| Ollama Config | 3 | 3 | 0 |
 | Health Checks | 8 | 8 | 0 |
 | Networks | 2 | 2 | 0 |
 

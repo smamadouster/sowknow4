@@ -19,7 +19,6 @@ from guardian_hc.checks.disk import DiskChecker
 from guardian_hc.checks.memory import MemoryChecker
 from guardian_hc.checks.ssl_check import SslChecker
 from guardian_hc.checks.config_drift import ConfigDriftChecker
-from guardian_hc.checks.ollama_health import OllamaChecker
 from guardian_hc.checks.vps_load import VpsLoadChecker
 from guardian_hc.checks.network_health import NetworkHealthChecker
 from guardian_hc.checks.celery_health import CeleryHealthChecker
@@ -127,7 +126,6 @@ class GuardianConfig:
     patrols: dict = field(default_factory=dict)
     disk: dict = field(default_factory=dict)
     ssl: dict = field(default_factory=dict)
-    ollama: dict = field(default_factory=dict)
     vps_load: dict = field(default_factory=dict)
     network: dict = field(default_factory=dict)
     celery: dict = field(default_factory=dict)
@@ -148,7 +146,6 @@ class GuardianHC:
         self.ssl_checker = SslChecker(config.ssl)
         self.ssl_healer = SslHealer(config.ssl)
         self.drift_checker = ConfigDriftChecker(config)
-        self.ollama_checker = OllamaChecker(config.ollama)
         self.vps_load_checker = VpsLoadChecker(config.vps_load)
         self.network_checker = NetworkHealthChecker(config.network)
         self.network_healer = NetworkHealer({"compose_file": config.compose_file})
@@ -193,7 +190,6 @@ class GuardianHC:
             patrols=raw.get("patrols", {}),
             disk=raw.get("disk", {}),
             ssl=raw.get("ssl", {}),
-            ollama=raw.get("ollama", {}),
             vps_load=raw.get("vps_load", {}),
             network=raw.get("network", {}),
             celery=raw.get("celery", {}),
@@ -689,12 +685,8 @@ class GuardianHC:
                         restart_attempts=0, restart_suppressed=False,
                     ))
 
-            ollama_status = await self.ollama_checker.check()
-            results["checks"].append({"type": "ollama_health", **ollama_status})
-            if ollama_status.get("needs_healing"):
                 await self.alert_manager.send(
                     f"Ollama is *unavailable* -- confidential doc routing may fail.\n"
-                    f"{ollama_status.get('error', '')}")
                 results["failed"] += 1
 
             vps_load_status = await self.vps_load_checker.check()
@@ -797,7 +789,6 @@ class GuardianHC:
             self.register_plugin(InfrastructurePlugin({
                 "services": self.config.services,
                 "disk": v2.disk, "ssl": v2.ssl, "network": v2.network,
-                "celery": v2.celery, "ollama": v2.ollama, "vps_load": v2.vps_load,
                 "compose_file": self.config.compose_file,
             }))
 

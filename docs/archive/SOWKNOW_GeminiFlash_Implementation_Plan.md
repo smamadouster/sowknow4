@@ -28,7 +28,6 @@ This plan details the implementation of **Gemini Flash** as the primary cloud LL
 ┌─────────────────────────────────────────────────────────────┐
 │                     ChatService                              │
 │  ┌─────────────────┐              ┌──────────────────┐      │
-│  │  KimiService    │              │  OllamaService   │      │
 │  │  (Moonshot API) │              │  (Local VPS)     │      │
 │  └─────────────────┘              └──────────────────┘      │
 │         ^                                  ^                 │
@@ -45,7 +44,6 @@ This plan details the implementation of **Gemini Flash** as the primary cloud LL
 ┌─────────────────────────────────────────────────────────────────┐
 │                      ChatService                                 │
 │  ┌─────────────────┐              ┌──────────────────┐          │
-│  │ GeminiService   │              │  OllamaService   │          │
 │  │ (Google AI API) │              │  (Local VPS)     │          │
 │  │                 │              │                  │          │
 │  │ • Context Cache │              │  • Privacy mode  │          │
@@ -561,7 +559,6 @@ gemini_service = GeminiService()
 class LLMProvider(str, enum.Enum):
     """LLM providers used for chat responses"""
     GEMINI = "gemini"       # Google Gemini Flash API
-    OLLAMA = "ollama"       # Shared local Ollama instance
 ```
 
 #### Task 2.3: Update ChatService
@@ -608,7 +605,6 @@ async def health_check():
             "postgres": await check_postgres(),
             "redis": await check_redis(),
             "gemini": await gemini_service.health_check(),
-            "ollama": await check_ollama(),
         }
     }
     return health_status
@@ -716,12 +712,10 @@ cache_monitor = CacheMonitor()
 **Changes:**
 1. Add cache hit/miss indicator
 2. Update model display to show "Gemini Flash" instead of "Kimi 2.5"
-3. Add "Local LLM is thinking..." for Ollama
 
 ```typescript
 interface ChatMessageProps {
   content: string;
-  llmUsed: 'gemini' | 'ollama';
   cacheHit?: boolean;
   sources?: Source[];
 }
@@ -774,7 +768,6 @@ interface ChatMessageProps {
 
 ```
 # Remove:
-# httpx>=0.25.0 (keep for Ollama, just remove Moonshot dependency)
 
 # Add:
 google-generativeai>=0.8.0
@@ -829,7 +822,6 @@ backend/app/services/kimi_service.py  # DELETE: Replaced by gemini_service.py
 
 ### Integration Tests
 - [ ] End-to-end chat flow with Gemini
-- [ ] Confidential routing (Gemini → Ollama switch)
 - [ ] Cache creation for collections
 - [ ] Cache hit on subsequent queries
 - [ ] Health check endpoint
@@ -839,7 +831,6 @@ backend/app/services/kimi_service.py  # DELETE: Replaced by gemini_service.py
 - [ ] Verify GEMINI_API_KEY works
 - [ ] Test streaming responses
 - [ ] Test cache hit/miss indicators in UI
-- [ ] Verify confidential documents route to Ollama
 - [ ] Check token usage tracking
 - [ ] Verify cost cap alerts
 

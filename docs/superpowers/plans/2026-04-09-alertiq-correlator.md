@@ -1367,7 +1367,6 @@ With:
                     results["failed"] += 1
 ```
 
-Note: The `ollama` alert (`~line 390`) stays as `alert_manager.send()` since ollama is disabled in config (`enabled: false`). If you prefer consistency, convert it too, but it's dead code.
 
 - [ ] **Step 6: Run all correlator tests**
 

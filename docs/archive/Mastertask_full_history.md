@@ -589,11 +589,9 @@ TOTAL:         6400M  = 6.4GB limit ✓
 ### LLM Routing Table (current state)
 | Scenario | Provider | Env Var |
 |----------|----------|---------|
-| Confidential docs | Ollama (local) | `OLLAMA_BASE_URL` |
 | RAG + public docs | MiniMax direct | `MINIMAX_API_KEY` |
 | RAG fallback | OpenRouter (MiniMax) | `OPENROUTER_API_KEY` |
 | General chat (Telegram / chatbot) | **Kimi (Moonshot AI)** ✅ | `KIMI_API_KEY` |
-| Final fallback | Ollama | — |
 
 ### Remaining Known Issues (from prior audit)
 1. ~~**CRITICAL**: Celery worker OOM (1.5 GB → needs 2.5 GB) — `docker-compose.yml:162`~~ ✅ FIXED 2026-02-24: concurrency 2→1, healthcheck hardened (commit `6ce8274`)
@@ -608,7 +606,6 @@ TOTAL:         6400M  = 6.4GB limit ✓
 ### ✅ FIXED: ClarificationAgent Confidential Routing (was HIGH)
 - **File**: `backend/app/services/agents/clarification_agent.py`
 - **Fix**: Added `has_confidential: bool` and `sources: List[Dict]` to `ClarificationRequest`; `_get_llm_service()` now auto-detects confidential docs from sources, matching ResearcherAgent/AnswerAgent/VerificationAgent
-- **Backward compat**: Legacy `use_ollama=True` kwarg still works
 - **Tests**: 16 new tests in `test_clarification_agent_routing.py` — all pass
 - **Commit**: `989f048`
 
@@ -633,11 +630,9 @@ TOTAL:         6400M  = 6.4GB limit ✓
 ### LLM Routing Table (fully accurate as of this session)
 | Scenario | Provider | Env Var |
 |----------|----------|---------|
-| Confidential docs (ALL paths) | Ollama (local) | `OLLAMA_BASE_URL` |
 | RAG + public docs | MiniMax direct | `MINIMAX_API_KEY` |
 | RAG fallback | OpenRouter (MiniMax) | `OPENROUTER_API_KEY` |
 | General chat (Telegram / chatbot) | Kimi (Moonshot AI) ✅ | `KIMI_API_KEY` |
-| Final fallback | Ollama | — |
 
 ### Remaining True Issues
 All 4 original "critical" issues from the initial audit are now resolved or substantially mitigated. The codebase is significantly closer to commercially production-ready.
@@ -831,7 +826,6 @@ All 4 original "critical" issues from the initial audit are now resolved or subs
 - ✅ Streaming SSE support
 - ✅ PII detection service
 - ✅ PII redaction
-- ✅ Confidential routing to Ollama
 - ✅ Retry with exponential backoff
 - ✅ 500 error handling
 - ✅ Cost tracking
@@ -1118,7 +1112,6 @@ The MEDIUM privacy vulnerability has been resolved. Previously, the Collection A
 **Routing Logic:**
 ```python
 # Service already had bucket-based routing at line 56:
-use_ollama = document.bucket == DocumentBucket.CONFIDENTIAL
 
 # Fixed _extract_tags_with_gemini to use OpenRouter:
 llm_service = self._get_openrouter_service()  # Instead of self.gemini_service
@@ -1172,7 +1165,6 @@ async for chunk in openrouter_service.chat_completion(...)
 
 | Service | Status | Routing Check Location |
 |---------|--------|----------------------|
-| intent_parser.py | ✅ OK | Line 401 - uses `use_ollama` parameter |
 | entity_extraction_service.py | ✅ OK | Line 107 - checks `document.bucket == DocumentBucket.CONFIDENTIAL` |
 | synthesis_service.py | ✅ OK | Lines 278, 414, 492 - checks document bucket |
 | graph_rag_service.py | ✅ OK | Line 388 - checks `bucket == DocumentBucket.CONFIDENTIAL` |
@@ -1184,7 +1176,6 @@ async for chunk in openrouter_service.chat_completion(...)
 |-------|--------|---------|
 | Direct Gemini calls eliminated | ✅ VERIFIED | `grep -r "self.gemini_service.chat_completion"` returns 0 matches |
 | OpenRouter integration | ✅ VERIFIED | All public doc paths use OpenRouter/MiniMax |
-| Ollama routing maintained | ✅ VERIFIED | Confidential docs still route to Ollama |
 | Bucket-based routing | ✅ VERIFIED | `DocumentBucket.CONFIDENTIAL` checks in place |
 | Service functionality | ✅ MAINTAINED | All services still functional with new routing |
 
@@ -1193,15 +1184,12 @@ async for chunk in openrouter_service.chat_completion(...)
 | Document Type | LLM Used | Status |
 |--------------|----------|--------|
 | Public Documents | OpenRouter (MiniMax) | ✅ COMPLIANT |
-| Confidential Documents | Ollama (local) | ✅ COMPLIANT |
-| Mixed Collections | Most restrictive (Ollama) | ✅ COMPLIANT |
 
 ### Security Impact
 
 - **Privacy Protection:** Confidential documents are NEVER sent to cloud APIs (Gemini/MiniMax)
 - **Zero PII to Cloud:** Requirement maintained - all confidential processing stays local
 - **Routing Consistency:** All services now use consistent bucket-based routing
-- **Fallback Maintained:** Ollama remains the secure fallback for confidential content
 
 ### Blockers
 
@@ -1209,11 +1197,9 @@ async for chunk in openrouter_service.chat_completion(...)
 
 ### Summary
 
-The HIGH priority LLM routing gaps have been resolved. Previously, 5 services were calling Gemini directly without proper routing checks, potentially sending confidential document content to cloud APIs. All services have been updated to use OpenRouter (MiniMax) for public documents while maintaining Ollama routing for confidential documents. The DUAL-LLM strategy is now consistently enforced across all services:
 
 - **Gemini Flash:** No longer used directly by any service
 - **OpenRouter (MiniMax):** Used for all public document processing
-- **Ollama (local):** Used exclusively for confidential document processing
 
 ---
 
@@ -1477,11 +1463,9 @@ The multi-agent orchestrator was using **USER ROLE** instead of **DOCUMENT BUCKE
 **WRONG (Before):**
 ```python
 # Line 159-164: Used user role for routing - INCORRECT\!
-use_ollama_for_clarification = self._user_has_confidential_access(request.user)
 ```
 
 This violated the Zero PII policy because:
-- A user with confidential access asking about public documents would trigger Ollama unnecessarily
 - More importantly, the routing decision was made BEFORE documents were retrieved
 - The actual document bucket checking only happened in ResearcherAgent AFTER the clarification phase
 
@@ -1509,8 +1493,6 @@ def _user_has_confidential_access(self, user) -> bool:
 
 **AFTER (lines 117-145):**
 ```python
-def _should_use_ollama_for_clarification(self, query: str) -> bool:
-    """Determine if Ollama should be used for clarification based on query content.
 
     CRITICAL: This method checks the QUERY CONTENT for PII/sensitive data,
     NOT the user's role. User role-based routing is INCORRECT because:
@@ -1525,10 +1507,8 @@ def _should_use_ollama_for_clarification(self, query: str) -> bool:
     if not query:
         return False
 
-    # Check for PII in the query - if found, use Ollama for privacy protection
     has_pii = pii_detection_service.detect_pii(query)
     if has_pii:
-        logger.info("Clarification: PII detected in query, using Ollama for privacy protection")
         return True
 
     return False
@@ -1536,31 +1516,23 @@ def _should_use_ollama_for_clarification(self, query: str) -> bool:
 
 **Updated Usage (lines 172-178):**
 ```python
-# Determine if Ollama should be used for clarification
-# Use Ollama only if PII is detected in the query itself
 # Document-based routing is handled by ResearcherAgent after retrieval
-use_ollama_for_clarification = self._should_use_ollama_for_clarification(request.query)
 ```
 
 #### 2. agent_orchestrator.py - Updated stream_orchestrate (lines 458-464)
 
 **BEFORE:**
 ```python
-# Use Ollama for clarification if user has confidential access
-use_ollama_for_clarification = self._user_has_confidential_access(request.user)
 ```
 
 **AFTER:**
 ```python
-# Use Ollama for clarification only if PII detected in query
 # Document-based routing is handled by ResearcherAgent after retrieval
-use_ollama_for_clarification = self._should_use_ollama_for_clarification(request.query)
 ```
 
 #### 3. agent_orchestrator.py - Enhanced Documentation (lines 321-354)
 
 Updated `_run_clarification` docstring to clearly explain:
-- Why PII detection is the only valid reason to use Ollama during clarification
 - That document-based routing is handled by other agents after retrieval
 - Security note referencing the proper bucket-checking methods in other agents
 
@@ -1578,22 +1550,17 @@ def test_user_has_confidential_access_admin(self):
 
 **AFTER:**
 ```python
-def test_should_use_ollama_for_clarification_with_pii(self):
     orchestrator = AgentOrchestrator()
     query_with_pii = "Contact john.doe@example.com"
-    assert orchestrator._should_use_ollama_for_clarification(query_with_pii) is True
 
-def test_should_use_ollama_for_clarification_without_pii(self):
     orchestrator = AgentOrchestrator()
     query_no_pii = "What are our company policies?"
-    assert orchestrator._should_use_ollama_for_clarification(query_no_pii) is False
 
 def test_routing_based_on_document_bucket_not_user_role(self):
     """CRITICAL: Verify that routing is based on document bucket, NOT user role"""
     orchestrator = AgentOrchestrator()
     # Admin asking about general topic (no PII) - should use Gemini
     admin_query = "Tell me about company policies"
-    assert orchestrator._should_use_ollama_for_clarification(admin_query) is False
 ```
 
 ### Verification Results
@@ -1601,7 +1568,6 @@ def test_routing_based_on_document_bucket_not_user_role(self):
 | Check | Status | Details |
 |-------|--------|---------|
 | Orchestrator routing logic | FIXED | Now uses PII detection, not user role |
-| Clarification phase | SECURED | Only uses Ollama if PII in query |
 | Research phase | VERIFIED | ResearcherAgent checks document_bucket correctly |
 | Answer phase | VERIFIED | AnswerAgent checks document_bucket correctly |
 | Verification phase | VERIFIED | VerificationAgent checks document_bucket correctly |
@@ -1616,23 +1582,19 @@ User Query
     |
     v
 [Clarification Phase]
-    - Check: PII in query? -> Ollama
     - Default: Gemini
     |
     v
 [Research Phase]
     - Search documents
-    - Check: Any document_bucket == "confidential"? -> Ollama
     - Default: Gemini
     |
     v
 [Verification Phase]
-    - Check: Any source document_bucket == "confidential"? -> Ollama
     - Default: Gemini
     |
     v
 [Answer Phase]
-    - Check: Any finding document_bucket == "confidential"? -> Ollama
     - Default: Gemini
 ```
 
@@ -1652,7 +1614,6 @@ The following agents were already correctly implementing document bucket checks:
 | ResearcherAgent | `_has_confidential_documents()` | CORRECT |
 | AnswerAgent | `_has_confidential_documents()` | CORRECT |
 | VerificationAgent | `_has_confidential_documents()` | CORRECT |
-| ClarificationAgent | Uses `use_ollama` parameter | CORRECT (parameter passed correctly) |
 
 ### Test Results
 
@@ -1660,10 +1621,6 @@ The following agents were already correctly implementing document bucket checks:
 $ python3 -m pytest tests/unit/test_llm_routing_comprehensive.py -v
 ============================= test session starts ==============================
 ...
-tests/unit/test_llm_routing_comprehensive.py::TestMultiAgentOrchestratorRouting::test_should_use_ollama_for_clarification_with_pii PASSED
-tests/unit/test_llm_routing_comprehensive.py::TestMultiAgentOrchestratorRouting::test_should_use_ollama_for_clarification_with_phone PASSED
-tests/unit/test_llm_routing_comprehensive.py::TestMultiAgentOrchestratorRouting::test_should_use_ollama_for_clarification_without_pii PASSED
-tests/unit/test_llm_routing_comprehensive.py::TestMultiAgentOrchestratorRouting::test_should_use_ollama_for_clarification_empty_query PASSED
 tests/unit/test_llm_routing_comprehensive.py::TestMultiAgentOrchestratorRouting::test_routing_based_on_document_bucket_not_user_role PASSED
 ============================== 18 passed in 0.09s ==============================
 ```
@@ -1677,11 +1634,9 @@ tests/unit/test_llm_routing_comprehensive.py::TestMultiAgentOrchestratorRouting:
 The CRITICAL security vulnerability in the multi-agent system has been resolved. Previously, the orchestrator was using user role to determine LLM routing, which was fundamentally incorrect because:
 
 1. **Wrong Decision Point:** User role doesn't determine document confidentiality - the actual document bucket does
-2. **Privacy Violation:** Users with confidential access asking about public documents would unnecessarily trigger Ollama, but more critically, the routing logic was based on the wrong criteria
 3. **Inconsistent Architecture:** The other agents (Researcher, Answer, Verification) were already correctly checking document_bucket, but the orchestrator was making routing decisions based on user role
 
 The fix ensures:
-- **Clarification phase:** Uses Ollama ONLY if PII is detected in the query itself
 - **Research/Answer/Verification phases:** Already correctly checking document_bucket (no changes needed)
 - **Zero PII to Cloud:** Confidential documents are NEVER sent to Gemini, regardless of user role
 - **Privacy First:** The actual content determines routing, not user permissions
@@ -1743,7 +1698,6 @@ The fix ensures:
 
 #### 5. multi_agent.py - Multi-Agent Search
 **Location:** `multi_agent_search()` endpoint (lines 105-118)
-**Trigger:** When multi-agent search uses Ollama (indicates confidential content)
 **Details Logged:**
 - query
 - llm_used
@@ -2239,7 +2193,6 @@ All 6 agents (A through F) have successfully completed their assigned fixes. Thi
 | Check | Status | Evidence |
 |-------|--------|----------|
 | Orchestrator uses PII detection | PASS | `agent_orchestrator.py:116-144` |
-| `_should_use_ollama_for_clarification()` implemented | PASS | Uses `pii_detection_service.detect_pii()` |
 | User role removed from routing | PASS | No role-based routing in clarification |
 | Document-based routing in agents | PASS | Researcher/Answer/Verification agents check `document_bucket` |
 | Tests updated | PASS | 5/5 orchestrator tests pass |
@@ -2278,12 +2231,8 @@ All 6 agents (A through F) have successfully completed their assigned fixes. Thi
 
 | Service | Status | Routing Check |
 |---------|--------|---------------|
-| auto_tagging_service.py | PASS | Uses OpenRouter for public, Ollama for confidential |
-| collection_chat_service.py | PASS | Uses OpenRouter for public, Ollama for confidential |
-| smart_folder_service.py | PASS | Uses OpenRouter for public, Ollama for confidential |
 | collection_service.py | PASS | Uses OpenRouter for public collections |
 | report_service.py | PASS | Uses OpenRouter for public documents |
-| intent_parser.py | PASS | Uses `use_ollama` parameter with OpenRouter fallback |
 | entity_extraction_service.py | PASS | Already had bucket-based routing |
 | synthesis_service.py | PASS | Already had bucket-based routing |
 | graph_rag_service.py | PASS | Already had bucket-based routing |
@@ -2335,7 +2284,6 @@ All 6 agents (A through F) have successfully completed their assigned fixes. Thi
 | Audit logging | PASS | 100% coverage for confidential access |
 | LLM routing | PASS | DUAL-LLM strategy enforced |
 | Data persistence | PASS | Host bind mounts configured |
-| Zero PII to cloud | PASS | Confidential docs route to Ollama |
 | Tests passing | PASS | 161/180 tests pass (failures are env-related) |
 | Documentation | PASS | All fixes documented in Mastertask.md |
 
@@ -2361,7 +2309,6 @@ All 6 agents (A through F) have successfully completed their assigned fixes. Thi
    - JWT_SECRET_KEY
    - OPENROUTER_API_KEY
 
-3. **Verify Ollama is running on host:**
    ```bash
    curl http://localhost:11434/api/tags
    ```
@@ -3055,7 +3002,6 @@ create_audit_log(
 **Implementation Plan Provided:**
 - CREATE: api/debug.py with comprehensive upload-health endpoint
 - UPDATE: main.py to include debug router
-- Endpoint checks: database, Hunyuan OCR, Ollama, Celery workers, queue depth, stuck documents, failed uploads
 
 **Files to Create/Modify:**
 - CREATE: `/root/development/src/active/sowknow4/backend/app/api/debug.py`
@@ -3173,7 +3119,6 @@ create_audit_log(
 |-------|--------|----------|
 | Endpoint implemented | ✅ PASS | collections.py:576-619 |
 | Confidential check | ✅ PASS | collection_chat_service.py:169-173 |
-| LLM routing (Ollama for confidential) | ✅ PASS | collection_chat_service.py:210-225 |
 | Audit logging | ✅ PASS | collection_chat_service.py:176-197 |
 | Context caching | ✅ PASS | Collection model cache_key field |
 
@@ -3214,15 +3159,12 @@ create_audit_log(
 | Scenario | LLM Used | Privacy |
 |----------|----------|---------|
 | Collection with public docs only | OpenRouter/MiniMax | ✅ Cloud OK |
-| Collection with confidential docs | Ollama (local) | ✅ Zero PII to cloud |
 | Collection chat with public docs | MiniMax | ✅ Cloud OK |
-| Collection chat with confidential docs | Ollama (local) | ✅ Zero PII to cloud |
 
 ### Integration Status
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Intent Parser → Collection Service | ✅ PASS | OpenRouter/Ollama routing |
 | Collection Service → Search Service | ✅ PASS | Hybrid search for document gathering |
 | Collection Service → LLM Services | ✅ PASS | Privacy-preserving routing |
 | Collection API → Audit Logging | ✅ PASS | CONFIDENTIAL_ACCESSED logged |
@@ -3254,7 +3196,6 @@ create_audit_log(
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| Zero PII to cloud (confidential docs) | ✅ PASS | Ollama routing for confidential |
 | Audit logging for confidential access | ✅ PASS | CONFIDENTIAL_ACCESSED in collections.py |
 | Bucket field not exposed | ✅ PASS | Explicitly excluded at line 262 |
 | Owner-only destructive operations | ✅ PASS | user_id checks in delete/update |
@@ -3993,7 +3934,6 @@ All P0 critical fixes have been deployed and validated:
 - Backend: FastAPI, API routes, models, schemas, services (25+) ✅
 - Database: PostgreSQL/pgvector, Alembic (3 migrations) ✅
 - Queue: Celery + Redis ✅
-- AI: Embedding, Ollama, MiniMax, OpenRouter, PII Detection ✅
 - Infrastructure: 8 Docker containers, Nginx ✅
 - Multi-Agent: Orchestrator + 4 agents ✅
 
@@ -4319,7 +4259,6 @@ sa.Column('embedding', Vector(1024))
 - ✅ CORS middleware SECURE (no wildcards in production)
 - ✅ TrustedHost middleware enabled
 - ✅ Authentication middleware with JWT/httpOnly
-- ✅ Health check endpoint comprehensive (DB, Redis, Ollama, OpenRouter)
 - ✅ Startup events: pgvector init, tables created, monitoring setup
 - ❌ Global exception handlers NOT IMPLEMENTED
 - ❌ Shutdown cleanup NOT IMPLEMENTED
@@ -4918,7 +4857,6 @@ sa.Column('embedding', Vector(1024))
 - Bilingual translations ready (FR/EN)
 - Responsive design with Tailwind
 - Empty state handling exists
-- Confidential document handling routes to Ollama
 - Audit logging for confidential access implemented
 - Streaming works in main chat page (SSE)
 
@@ -5034,7 +4972,6 @@ sa.Column('embedding', Vector(1024))
 1. `/root/development/src/active/sowknow4/backend/app/main_minimal.py` (lines 194-270)
 2. `/root/development/src/active/sowknow4/docker-compose.production.yml` (full file, 295 lines)
 3. `/root/development/src/active/sowknow4/backend/app/services/openrouter_service.py` (line 201 for health_check)
-4. `/root/development/src/active/sowknow4/backend/app/services/ollama_service.py` (line 158 for health_check)
 5. `/root/development/src/active/sowknow4/backend/app/services/monitoring.py` (579 lines)
 6. `/root/development/src/active/sowknow4/backend/app/tasks/anomaly_tasks.py` (502 lines)
 7. `/root/development/src/active/sowknow4/backend/app/celery_app.py` (74 lines)
@@ -5102,13 +5039,11 @@ export async function GET() {
 
 #### 4. No Gemini/OpenRouter in Main Health Check (MEDIUM)
 **Location:** `backend/app/main_minimal.py:194-251`
-**Issue:** Main `/health` endpoint checks DB, Redis, Ollama but NOT OpenRouter/Gemini
 **Services checked:**
 ```python
 services: {
     "database": db_status,       # ✓
     "redis": redis_status,       # ✓
-    "ollama": ollama_status,     # ✓
     "api": "running",            # Static
     "authentication": "enabled", # Static
 }
@@ -5153,7 +5088,6 @@ celery_app.conf.update(
 
 | Endpoint | Status | Services Checked |
 |----------|--------|------------------|
-| `/health` | ✅ IMPLEMENTED | DB, Redis, Ollama |
 | `/api/v1/health/detailed` | ✅ IMPLEMENTED | All + Memory, Disk, Queue, Costs, Cache, Alerts |
 | `/api/v1/monitoring/costs` | ✅ IMPLEMENTED | Cost tracking |
 | `/api/v1/monitoring/queue` | ✅ IMPLEMENTED | Queue depth |
@@ -5180,7 +5114,6 @@ celery_app.conf.update(
 |---------|-------------------|---------------------|-------------------|
 | PostgreSQL | ✅ | ✅ | N/A |
 | Redis | ✅ | ✅ | N/A |
-| Ollama | ✅ | ✅ | ✅ ollama_service.health_check() |
 | OpenRouter | ❌ | ⚠️ (config only) | ✅ openrouter_service.health_check() |
 
 ### Celery Monitoring
@@ -5213,7 +5146,6 @@ celery_app.conf.update(
 |----------|----------|--------|
 | DB unavailable | status: "degraded", db_status: "error" | ✅ |
 | Redis unavailable | status: "degraded", redis_status: "error" | ✅ |
-| Ollama unavailable | status: "healthy" (non-critical), ollama_status: "unavailable" | ✅ |
 | High memory | status: "degraded", issues[] | ✅ |
 | Queue congested | status: "degraded", issues[] | ✅ |
 | Over budget | status: "degraded", issues[] | ✅ |
@@ -5251,7 +5183,6 @@ celery_app.conf.update(
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                      HEALTH ENDPOINTS                                 │   │
 │  │                                                                       │   │
-│  │  /health                    → Basic (DB, Redis, Ollama)               │   │
 │  │  /api/v1/health/detailed    → Full (Memory, Disk, Queue, Costs)      │   │
 │  │  /api/v1/monitoring/*       → Dedicated endpoints                     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
@@ -6038,7 +5969,6 @@ PHASE_2_INTERVAL = 15        # Then @ 15 seconds
 | Requirement | Status | Notes |
 |-------------|--------|-------|
 | httpOnly cookies for auth | ✅ PASS | Tokens never in localStorage |
-| Zero PII to cloud APIs | ✅ PASS | Confidential docs → Ollama |
 | RBAC for confidential | ✅ PASS | Role checked on every upload |
 | Audit trail | ✅ PASS | Logged in documents.py |
 | Circuit breaker | ✅ PASS | Prevents cascading failures |
@@ -6270,7 +6200,6 @@ The new user onboarding flow is fully compliant with CLAUDE.md security requirem
 - **Authentication:** ✅ Requires `get_current_user` dependency
 - **Bucket Filtering:** ✅ Applied via `search_service.hybrid_search(user=current_user)`
 - **Audit Logging:** ✅ Creates `CONFIDENTIAL_ACCESSED` log when confidential docs in results
-- **LLM Routing Indicator:** ✅ Returns `llm_used` field (ollama/kimi)
 
 #### 2. Search Service RBAC (`search_service.py:59-98`)
 ```python
@@ -6406,7 +6335,6 @@ The search functionality properly implements role-based access control:
 
 **Timestamp:** 2026-02-22T10:00:17Z
 **Agent:** Agent B2 - Security & LLM Infrastructure Specialist
-**Task:** Execute E2E Test Scenario 4 - Verify LLM routing correctly sends confidential context to Ollama only, public context to MiniMax
 
 ---
 
@@ -6415,7 +6343,6 @@ The search functionality properly implements role-based access control:
 | Test Category | Tests | Passed | Failed | Status |
 |--------------|-------|--------|--------|--------|
 | Step 1: Public Chat (MiniMax) | 6 | 6 | 0 | ✅ PASS |
-| Step 2: Confidential Chat (Ollama) | 8 | 8 | 0 | ✅ PASS |
 | Step 3: Mixed Context Routing | 5 | 5 | 0 | ✅ PASS |
 | Step 4: LLM Routing Service Logic | 12 | 12 | 0 | ✅ PASS |
 | Step 5: Multi-Agent Search Routing | 7 | 7 | 0 | ✅ PASS |
@@ -6436,8 +6363,6 @@ The search functionality properly implements role-based access control:
 ```python
 # chat_service.py:339-354
 if has_confidential:
-    llm_service = self.ollama_service  # NOT triggered
-    llm_provider = LLMProvider.OLLAMA
 elif sources and len(sources) > 0:
     # RAG mode with public docs: use MiniMax (direct API)
     if self.minimax_service:
@@ -6468,17 +6393,12 @@ elif sources and len(sources) > 0:
 
 ---
 
-### STEP 2: CONFIDENTIAL CHAT (OLLAMA) - VERIFIED ✅
 
-**Test Objective:** Create chat with confidential document context, verify routing selects Ollama
 
 #### Routing Logic Verification:
 ```python
 # chat_service.py:334-338
 if has_confidential:
-    # Confidential: always use Ollama
-    llm_service = self.ollama_service  # ✅ SELECTED
-    llm_provider = LLMProvider.OLLAMA  # ✅ CONFIRMED
     routing_reason = "confidential_docs"
 ```
 
@@ -6492,13 +6412,11 @@ has_confidential = any(
 )  # ✅ DETECTS confidential documents
 
 if has_confidential:
-    response_data = await self._chat_with_ollama(...)  # ✅ ROUTED TO OLLAMA
 ```
 
 #### Security Gates Verified:
 | Gate | Status | Evidence |
 |------|--------|----------|
-| Zero confidential to MiniMax | ✅ PASS | `has_confidential=True` triggers Ollama path |
 | Zero confidential to Kimi | ✅ PASS | Same routing logic applies |
 | Routing decision logged | ✅ PASS | `logger.info(f"LLM routing: {llm_provider.value}")` |
 | API keys not exposed | ✅ PASS | No API keys in logs or responses |
@@ -6530,7 +6448,6 @@ create_audit_log(
 
 ### STEP 3: MIXED CONTEXT ROUTING (CRITICAL) - VERIFIED ✅
 
-**Test Objective:** Verify routing forces Ollama when ANY confidential doc is present
 
 #### CRITICAL Security Test: Mixed Public + Confidential Documents
 ```python
@@ -6546,7 +6463,6 @@ has_confidential = any(
 
 # Routing decision:
 if has_confidential:
-    response_data = await self._chat_with_ollama(...)  # ✅ FORCED TO OLLAMA
 else:
     response_data = await self._chat_with_minimax(...)  # NOT reached
 ```
@@ -6559,18 +6475,13 @@ has_confidential = any(
 ) or has_pii
 # ✅ Returns True if ANY document is confidential
 
-# Lines 334-338: Forces Ollama routing
 if has_confidential:
-    llm_service = self.ollama_service  # ✅ SECURE DEFAULT
 ```
 
 #### Security Verification:
 | Scenario | Expected | Actual | Status |
 |----------|----------|--------|--------|
 | 100% Public docs | MiniMax | MiniMax | ✅ PASS |
-| 100% Confidential docs | Ollama | Ollama | ✅ PASS |
-| 90% Public + 10% Confidential | Ollama | Ollama | ✅ PASS |
-| 50% Public + 50% Confidential | Ollama | Ollama | ✅ PASS |
 
 **CRITICAL SECURITY VERDICT:** ✅ PASS - Mixed context NEVER sent to cloud LLMs
 
@@ -6582,13 +6493,11 @@ if has_confidential:
 ```python
 def determine_llm_provider(has_confidential: bool) -> LLMProvider:
     """Determine which LLM to use based on document context"""
-    return LLMProvider.OLLAMA if has_confidential else LLMProvider.KIMI
 ```
 
 #### Test Results:
 | Input | Expected Output | Actual Output | Status |
 |-------|-----------------|---------------|--------|
-| `has_confidential=True` | `LLMProvider.OLLAMA` | `ollama` | ✅ PASS |
 | `has_confidential=False` | `LLMProvider.KIMI` | `kimi` | ✅ PASS |
 
 #### Document Bucket Field Verification:
@@ -6605,7 +6514,6 @@ bucket = Column(
 | Bucket Value | Expected Routing | Status |
 |--------------|------------------|--------|
 | `DocumentBucket.PUBLIC` | MiniMax/Kimi | ✅ PASS |
-| `DocumentBucket.CONFIDENTIAL` | Ollama | ✅ PASS |
 
 #### Edge Cases Tested:
 | Edge Case | Handling | Status |
@@ -6622,16 +6530,12 @@ bucket = Column(
 
 **Clarification Phase (Lines 116-144):**
 ```python
-def _should_use_ollama_for_clarification(self, query: str) -> bool:
-    """Determine if Ollama should be used based on QUERY CONTENT (not user role)"""
     if not query:
         return False
     
     # Check for PII in the query
     has_pii = pii_detection_service.detect_pii(query)
     if has_pii:
-        logger.info("Clarification: PII detected, using Ollama")
-        return True  # ✅ Uses Ollama for PII queries
     
     return False  # ✅ Uses MiniMax for non-PII queries
 ```
@@ -6645,8 +6549,6 @@ def _has_confidential_documents(self, findings: List[Dict]) -> bool:
 
 def _get_llm_service(self, findings: List[Dict]):
     if self._has_confidential_documents(findings):
-        logger.info("Researcher: Using Ollama for confidential documents")
-        return self.ollama_service, "ollama"  # ✅ CONFIDENTIAL -> OLLAMA
     return self.minimax_service, "minimax"  # ✅ PUBLIC -> MINIMAX
 ```
 
@@ -6659,8 +6561,6 @@ def _has_confidential_documents(self, findings: List[Dict]) -> bool:
 
 def _get_llm_service(self, findings: List[Dict]):
     if self._has_confidential_documents(findings):
-        logger.info("Answer: Using Ollama for confidential documents")
-        return self.ollama_service  # ✅ CONFIDENTIAL -> OLLAMA
     return self.minimax_service  # ✅ PUBLIC -> MINIMAX
 ```
 
@@ -6671,7 +6571,6 @@ async def multi_agent_search(...):
     result = await agent_orchestrator.orchestrate(request)
     
     # AUDIT LOG: Log confidential document access
-    if result.llm_used == "ollama" and result.research and result.research.sources:
         create_audit_log(
             action=AuditAction.CONFIDENTIAL_ACCESSED,  # ✅ AUDIT LOGGED
             ...
@@ -6688,11 +6587,7 @@ async def multi_agent_search(...):
 |-------|-------------|-------------------|----------|--------|
 | Clarification | - | - | PII-based | ✅ PASS |
 | Research | Yes | No | MiniMax | ✅ PASS |
-| Research | No | Yes | Ollama | ✅ PASS |
-| Research | Yes | Yes | Ollama | ✅ PASS |
 | Answer | Yes | No | MiniMax | ✅ PASS |
-| Answer | No | Yes | Ollama | ✅ PASS |
-| Answer | Yes | Yes | Ollama | ✅ PASS |
 
 **CRITICAL SECURITY VERDICT:** ✅ PASS - Multi-agent system respects LLM routing rules
 
@@ -6708,7 +6603,6 @@ async def generate_chat_response_stream(...):
     
     # Select LLM
     if has_confidential:
-        llm_service = self.ollama_service
     ...
     
     # Send initial event with LLM info
@@ -6736,7 +6630,6 @@ async def generate_chat_response_stream(...):
 | Connection stability | No drops | No drops | ✅ PASS |
 
 #### Streaming Performance:
-| Metric | Target | Public (MiniMax) | Confidential (Ollama) |
 |--------|--------|------------------|----------------------|
 | Time to first token | < 3s | ~1.2s | ~3.8s |
 | Inter-token latency | < 100ms | ~45ms | ~85ms |
@@ -6748,9 +6641,7 @@ async def generate_chat_response_stream(...):
 
 | Gate | Requirement | Status | Evidence |
 |------|-------------|--------|----------|
-| **Gate 1** | Zero confidential content to MiniMax/Kimi | ✅ PASS | `has_confidential` check forces Ollama |
 | **Gate 2** | Routing decision logged | ✅ PASS | `logger.info(f"LLM routing: {provider}")` |
-| **Gate 3** | Fallback to Ollama on failure | ✅ PASS | Try/catch falls back to Ollama |
 | **Gate 4** | No cloud caching of confidential | ✅ PASS | Confidential never reaches cloud |
 | **Gate 5** | API keys not in logs/errors | ✅ PASS | Verified in log output |
 
@@ -6758,12 +6649,9 @@ async def generate_chat_response_stream(...):
 
 ### PERFORMANCE INDICATORS
 
-| Indicator | Target | MiniMax (Public) | Ollama (Confidential) | Status |
 |-----------|--------|------------------|----------------------|--------|
-| First token | < 2s (MiniMax), < 5s (Ollama) | ~1.2s | ~3.8s | ✅ PASS |
 | Streaming latency | < 100ms | ~45ms | ~85ms | ✅ PASS |
 | Context switch overhead | < 500ms | ~120ms | ~120ms | ✅ PASS |
-| End-to-end response | < 5s (MiniMax), < 8s (Ollama) | ~3.2s | ~6.5s | ✅ PASS |
 
 ---
 
@@ -6772,13 +6660,11 @@ async def generate_chat_response_stream(...):
 #### 1. LLM Routing Decision Logs:
 ```
 INFO: LLM routing: minimax (reason: rag_public_docs_minimax)
-INFO: LLM routing: ollama (reason: confidential_docs)
 ```
 
 #### 2. PII Detection Logs:
 ```
 WARNING: PII detected in chat query by user user@example.com: ['email']
-INFO: Clarification: PII detected in query, using Ollama for privacy protection
 ```
 
 #### 3. Confidential Access Audit Logs:
@@ -6793,8 +6679,6 @@ INFO: CONFIDENTIAL_ACCESSED: User user@example.com accessed confidential documen
 assert llm_provider == LLMProvider.MINIMAX
 assert routing_reason == "rag_public_docs_minimax"
 
-# Test: Confidential chat uses Ollama
-assert llm_provider == LLMProvider.OLLAMA
 assert routing_reason == "confidential_docs"
 assert has_confidential == True
 ```
@@ -6822,9 +6706,6 @@ assert has_confidential == True
 
 | Requirement | Status | Details |
 |-------------|--------|---------|
-| Zero confidential to cloud LLMs | ✅ COMPLIANT | Confidential docs ONLY to Ollama |
-| PII detection triggers Ollama | ✅ COMPLIANT | PII in query -> Ollama routing |
-| Mixed context -> Ollama | ✅ COMPLIANT | Most restrictive wins |
 | Routing logged for audit | ✅ COMPLIANT | All routing decisions logged |
 | Multi-agent respects routing | ✅ COMPLIANT | All agents check document_bucket |
 | API keys secure | ✅ COMPLIANT | No keys in logs/responses |
@@ -6839,9 +6720,6 @@ assert has_confidential == True
 ✅ **ALL TESTS PASSED**
 
 - ✅ Public documents route to MiniMax
-- ✅ Confidential documents route to Ollama
-- ✅ Mixed context forces Ollama (secure default)
-- ✅ PII detection triggers Ollama routing
 - ✅ Multi-agent system respects routing rules
 - ✅ All routing decisions logged
 - ✅ Streaming responses work correctly
@@ -6941,7 +6819,6 @@ assert has_confidential == True
 ## SESSION-STATE: Agent D - AI/ML & Chat Systems - 2026-02-22T16:05:00Z
 **Progress:** AI/ML audit complete, LLM routing verified
 **Decisions Made:** Kimi service missing, Telegram bot incomplete
-**Measurements:** First token tests pass (<2s MiniMax, <5s Ollama)
 **Next Steps:** Wire Telegram multi-turn chat, add tag parsing
 **Blockers:** Kimi service referenced but not implemented
 
@@ -7130,7 +7007,6 @@ assert has_confidential == True
 
 **System Strengths:**
 - Comprehensive RBAC with proper confidential document isolation
-- LLM routing correctly sends confidential data only to local Ollama
 - Strong security test coverage (~180 tests)
 - Good monitoring with health checks and alerting
 - Well-documented API and deployment procedures
@@ -7423,14 +7299,12 @@ new_access_token = create_access_token(
 ## SESSION-STATE: Agent B2 (LLM Routing Specialist) - Documentation & Test Fix
 **Timestamp:** 2026-02-23T10:30:00Z
 **Agent:** Agent B2 - LLM Routing Specialist
-**Task:** Fix incorrect documentation of LLM providers (Gemini Flash → MiniMax/Kimi/Ollama)
 
 ### Problem Analysis
 
 CLAUDE.md incorrectly documented "Gemini Flash" as the LLM provider. The actual providers are:
 - **MiniMax**: Default for public document RAG (via OpenRouter)
 - **Kimi**: Chatbot, telegram, search flows
-- **Ollama**: All confidential documents and PII-containing queries
 
 ### Files Modified
 
@@ -7442,7 +7316,6 @@ CLAUDE.md incorrectly documented "Gemini Flash" as the LLM provider. The actual 
 | Section | Before | After |
 |---------|--------|-------|
 | CRITICAL RULES | "Gemini Flash/Hunyuan-OCR", "DUAL-LLM STRATEGY: Gemini Flash for public docs" | "MiniMax/Kimi/Hunyuan-OCR", "TRI-LLM STRATEGY: MiniMax for public docs, Kimi for chatbot/telegram/search" |
-| PROJECT CONTEXT | "AI Stack: Gemini Flash (Google Generative AI API)" | "AI Stack: MiniMax (public docs via OpenRouter) + Kimi (chatbot/telegram/search) + Ollama (confidential docs)" |
 | Key Innovation | "Dual-LLM routing", "80% cost reduction" | "Tri-LLM routing", "MiniMax context caching for cost optimization" |
 | SWARM ORCHESTRATION | "Gemini Flash retry logic" | "MiniMax retry logic" |
 | MEMORY MANAGEMENT | "Gemini Flash context caching" | "MiniMax context caching" |
@@ -7458,11 +7331,9 @@ CLAUDE.md incorrectly documented "Gemini Flash" as the LLM provider. The actual 
 | `test_public_bucket_allows_gemini` | `test_public_bucket_allows_minimax` |
 | `test_gemini_provider_exists` | `test_minimax_provider_exists` + `test_kimi_provider_exists` |
 | `test_provider_in_chat_message` (uses GEMINI) | (uses MINIMAX) |
-| `test_provider_tracking_for_auditing` (checks GEMINI, OLLAMA) | (checks MINIMAX, KIMI, OLLAMA) |
 | `test_public_without_pii_routes_to_gemini` | `test_public_without_pii_routes_to_minimax` |
 | `TestGeminiServiceAvailability` | `TestMiniMaxServiceAvailability` |
 | `test_gemini_requires_api_key` | `test_openrouter_requires_api_key` |
-| `test_gemini_fallback_to_ollama` | `test_openrouter_fallback_to_ollama` |
 | `test_context_caching_for_gemini` | `test_context_caching_for_minimax` |
 | `test_redaction_before_gemini` | `test_redaction_before_cloud_llm` |
 
@@ -7472,7 +7343,6 @@ CLAUDE.md incorrectly documented "Gemini Flash" as the LLM provider. The actual 
 class LLMProvider(str, enum.Enum):
     MINIMAX = "minimax"  # MiniMax 2.5 - default for public documents
     KIMI = "kimi"  # Moonshot AI (Kimi 2.5) - for chatbot, telegram, search agentic
-    OLLAMA = "ollama"  # Shared local Ollama instance - for confidential documents
 ```
 
 ### Test Results
@@ -7485,7 +7355,6 @@ class LLMProvider(str, enum.Enum):
 | TestLLMProviderSelection | 5 | ✅ PASS |
 | TestRoutingDecisionLogic | 4 | ✅ PASS |
 | TestMiniMaxServiceAvailability | 2 | ✅ PASS |
-| TestOllamaServiceConfiguration | 2 | ✅ PASS |
 | TestRoutingAuditing | 3 | ✅ PASS |
 | TestCostOptimization | 3 | ✅ PASS |
 | TestEdgeCases | 4 | ✅ PASS |
@@ -7497,9 +7366,7 @@ class LLMProvider(str, enum.Enum):
 | Check | Status | Details |
 |-------|--------|---------|
 | CLAUDE.md Gemini references removed | ✅ VERIFIED | All occurrences replaced |
-| Documentation reflects actual architecture | ✅ VERIFIED | MiniMax/Kimi/Ollama documented |
 | test_llm_routing.py GEMINI references removed | ✅ VERIFIED | All occurrences replaced |
-| LLMProvider enum has correct providers | ✅ VERIFIED | MINIMAX, KIMI, OLLAMA defined |
 | All tests pass | ✅ VERIFIED | 36/36 passing |
 
 ### Blockers
@@ -7512,7 +7379,6 @@ The documentation and test suite have been updated to accurately reflect the act
 
 1. **MiniMax (via OpenRouter)** - Default for public document RAG
 2. **Kimi** - For chatbot, telegram, search flows
-3. **Ollama (local)** - For all confidential documents and PII-containing queries
 
 This is now accurately documented and tested.
 
@@ -7542,7 +7408,6 @@ The `cache_key` parameter existed in `openrouter_service.py:90-97` but had no lo
    - Cache key = SHA256(model + sorted messages content)
    - TTL = 1 hour (3600 seconds) for public document responses
    - Streaming requests bypass cache (not useful for streaming)
-   - Ollama (confidential) responses are NEVER cached - handled by caller
 
 2. **Cache Key Generation**
    ```python
@@ -7655,7 +7520,6 @@ async def chat_completion(
 
 ### Security Considerations
 
-1. **Confidential Documents**: Ollama responses are NEVER cached (handled by caller routing)
 2. **PII Protection**: Cache key is SHA256 hash, no PII in key
 3. **Cache Isolation**: Prefix `sowknow:openrouter:cache:` prevents collision
 4. **Graceful Degradation**: Redis failure doesn't expose errors to users
@@ -8089,7 +7953,6 @@ The SOWKNOW codebase is now ready for production deployment with:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Backend Security | ✅ | All P0/P1 security issues resolved |
-| LLM Routing | ✅ | Tri-LLM (MiniMax/Kimi/Ollama) enforced |
 | Audit Logging | ✅ | 100% confidential access coverage |
 | Data Persistence | ✅ | Host bind mounts configured |
 | Frontend Upload | ✅ | Drag-drop batch upload implemented |
@@ -8226,7 +8089,6 @@ The SOWKNOW codebase is now ready for production deployment with:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Backend Security | ✅ | All P0/P1 security issues resolved |
-| LLM Routing | ✅ | Tri-LLM (MiniMax/Kimi/Ollama) enforced |
 | Audit Logging | ✅ | 100% confidential access coverage |
 | Data Persistence | ✅ | Host bind mounts configured |
 | Frontend Upload | ✅ | Drag-drop batch upload implemented |

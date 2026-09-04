@@ -125,7 +125,6 @@ FastAPI Backend (8000)
 └─ LLM Providers:
    ├─ Kimi/Moonshot (chat, search)
    ├─ MiniMax/OpenRouter (public docs)
-   └─ Ollama (confidential docs)
 ```
 
 ### Key Statistics
@@ -136,7 +135,6 @@ FastAPI Backend (8000)
 | Status | Production Ready |
 | Services | 8 Docker containers |
 | Memory Budget | 6.4GB (VPS shared) |
-| Search Response | <3s (Kimi), <8s (Ollama) |
 | Document Processing | >50 docs/hour |
 | API Uptime | >99.5% |
 | Cache Hit Rate | >50% |
@@ -152,7 +150,6 @@ FastAPI Backend (8000)
 | Embeddings | multilingual-e5-large (local) |
 | OCR | PaddleOCR (primary), Tesseract (fallback) |
 | Containerization | Docker, Docker Compose |
-| LLMs | Kimi, MiniMax, Ollama |
 
 ### Important Files
 

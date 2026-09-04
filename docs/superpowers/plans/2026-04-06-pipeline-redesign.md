@@ -1741,7 +1741,6 @@ In `docker-compose.yml`, replace the `celery-worker:` service block (lines 211-2
       - REDIS_HOST=redis
       - KIMI_API_KEY=${KIMI_API_KEY:-}
       - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - SENTENCE_TRANSFORMERS_HOME=/models
       - HF_HOME=/models
       - TRANSFORMERS_CACHE=/models

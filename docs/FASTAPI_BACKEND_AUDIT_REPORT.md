@@ -339,7 +339,6 @@ return StreamingResponse(
 | `/health` endpoint | ✅ | `main.py:239-305` |
 | Database check | ✅ | `SELECT 1` query |
 | Redis check | ✅ | `redis.ping()` |
-| Ollama check | ✅ | `/api/tags` endpoint |
 | OpenRouter check | ✅ | `openrouter_service.health_check()` |
 | Detailed health | ✅ | `main_minimal.py:254-354` |
 

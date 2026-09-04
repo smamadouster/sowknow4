@@ -59,7 +59,6 @@ All security validation checks have been completed successfully. The SOWKNOW Doc
 | Check | Status | Details |
 |-------|--------|---------|
 | Internal network (sowknow-net) | ✅ PASS | Configured |
-| Ollama excluded | ✅ PASS | Using shared instance |
 
 ### Phase 6: Backup Validation ✅
 
@@ -130,7 +129,6 @@ scripts/full_validation.sh
 
 ### Network Security ✅
 - Internal Docker network (sowknow-net)
-- Ollama excluded (shared instance for privacy)
 - No exposed unnecessary ports
 
 ---

@@ -50,7 +50,6 @@ class LLMProvider(StrEnum):
     MINIMAX = "minimax"
     KIMI = "kimi"
     OPENROUTER = "openrouter"
-    OLLAMA = "ollama"
     TOGETHER = "together"
 
 
@@ -84,7 +83,6 @@ class FallbackTrigger(StrEnum):
 class RoutingDecision:
     """Result of the LLM routing decision."""
 
-    provider_name: str  # e.g. "minimax", "openrouter", "ollama"
     reason: RoutingReason
     service: Any  # The actual service instance
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -106,7 +104,6 @@ class LLMRouter:
     """
 
     # Fallback chains per routing scenario (§5.2 updated).
-    # Ollama and Together.ai are removed from the active chain.
     # MiniMax is optional; all traffic routes through OpenRouter with tier
     # fallback + per-tier model-level fallback (deepseek → qwen, handled inside
     # openrouter_service). Each chain is an ordered list of provider names
@@ -129,14 +126,12 @@ class LLMRouter:
         minimax_service: Any = None,
         kimi_service: Any = None,
         openrouter_service: Any = None,
-        ollama_service: Any = None,
         together_service: Any = None,
         pii_detection_service: Any = None,
     ) -> None:
         self._minimax = minimax_service
         self._kimi = kimi_service
         self._openrouter = openrouter_service
-        self._ollama = ollama_service
         self._together = together_service
         self._pii = pii_detection_service
 
@@ -183,10 +178,6 @@ class LLMRouter:
         # §5.2: All traffic routes through OpenRouter.
         # --- LOCAL $0.00 INTERCEPTOR FOR SIMPLE TIER ---
         if tier in (TaskTier.SIMPLE, TaskTier.STANDARD):
-            local_ollama = OllamaService()
-            if local_ollama.available:
-                logger.info(f"Routing {tier.value} tier to local Ollama ($0.00 - Offline Mode)")
-                async for chunk in local_ollama.chat_completion(
                     messages=messages,
                     stream=True,
                     temperature=temperature,
@@ -196,7 +187,6 @@ class LLMRouter:
                 return
         # -------------------------------------------------
 
-        # Ollama and Together.ai are intentionally removed from the active fallback chain.
         # Confidential data relies on metadata-only stripping (PRD §1.3).
         if self._openrouter is not None:
             providers_to_try.append(("openrouter", self._openrouter))
@@ -413,7 +403,6 @@ class LLMRouter:
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
         # §5.2: All traffic routes through OpenRouter.
-        # Ollama is removed from the active fallback chain (CPU too slow).
         # Confidential data relies on metadata-only stripping (PRD §1.3).
         if is_sensitive:
             reason = (
@@ -552,7 +541,6 @@ class LLMServiceAdapter:
 def _build_router() -> LLMRouter:
     """Instantiate the router with the project's singleton services."""
     # All imports intentionally lazy to avoid circular imports at module load.
-    # Ollama and Together.ai are intentionally not imported: they are removed
     # from the active fallback chain and must not be instantiated in production.
     minimax_svc = None
     kimi_svc = None

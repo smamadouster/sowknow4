@@ -143,7 +143,6 @@
 
 ### LLM Routing (Privacy-First) - ALL SERVICES VERIFIED
 
-| Service | Routes to Ollama for Confidential? | Evidence |
 |---------|-------------------------------------|----------|
 | Chat Service | ✅ YES | chat_service.py:334-338 |
 | Collection Service | ✅ YES | collection_service.py:411-446 |
@@ -214,7 +213,6 @@
 | Provider | PRD Specification | Actual Implementation | Status |
 |----------|-------------------|----------------------|--------|
 | Gemini Flash | Public docs via OpenRouter | MiniMax as primary | ⚠️ MISMATCH |
-| Ollama | Confidential docs | Ollama for confidential | ✅ CORRECT |
 | Kimi | General chat | Service NOT FOUND | ❌ MISSING |
 
 ### First Token Latency (Tests Verified)
@@ -222,7 +220,6 @@
 | Component | Target | Test Evidence |
 |-----------|--------|---------------|
 | MiniMax | <2s | test_performance_targets.py:188-224 |
-| Ollama | <5s | test_performance_targets.py:229-259 |
 
 ---
 
@@ -237,7 +234,6 @@
 | Page Load | <2s | ⚠️ PARTIAL | Next.js PWA, no performance budget |
 | Search Response | <3s | ⚠️ PARTIAL | Hybrid search implemented, no timeout |
 | Document Processing | >50 docs/hour | ⚠️ UNVERIFIED | Celery configured, no throughput tests |
-| Chat First Token | <2s (Flash), <5s (Ollama) | ✅ PASS | Tests verify targets |
 | Concurrent Users | 5 without degradation | ⚠️ PARTIAL | DB pool 10+20, no user limit |
 
 ### Infrastructure Constraints
@@ -399,7 +395,6 @@
 **Progress:** AI systems audit complete, LLM routing verified
 **Score:** 78/100
 **Critical Findings:** Kimi missing, Telegram incomplete
-**Measurements:** First token tests pass (<2s MiniMax, <5s Ollama)
 
 ### SESSION-STATE: Agent E - Performance & NFR - 2026-02-22
 **Progress:** NFR audit complete, infrastructure verified

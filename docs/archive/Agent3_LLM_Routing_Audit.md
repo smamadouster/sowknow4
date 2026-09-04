@@ -15,7 +15,6 @@
   - `/root/development/src/active/sowknow4/backend/app/services/chat_service.py` - Core routing logic
   - `/root/development/src/active/sowknow4/backend/app/services/search_service.py` - Document retrieval with RBAC
 
-### Task 2: Verify Conditional Logic - Ollama Switching for Confidential Docs
 - **Status:** PARTIALLY VERIFIED (see findings)
 - **Evidence:** Found proper routing in `chat_service.py` and `collection_chat_service.py`
 
@@ -80,14 +79,10 @@ The multi-agent system (Phase 3) sends ALL search results to Gemini, including c
 ```python
 # chat_service.py lines 326-357
 if has_confidential:
-    # Confidential: always use Ollama
-    llm_service = self.ollama_service
-    llm_provider = LLMProvider.OLLAMA
 ```
 
 The main chat service correctly:
 - Checks for confidential documents in search results
-- Routes to Ollama when `has_confidential = True`
 - Uses OpenRouter (MiniMax) for public RAG
 - Uses Kimi for general chat (no documents)
 
@@ -107,7 +102,6 @@ has_confidential = any(
 )
 
 if has_confidential:
-    response_data = await self._chat_with_ollama(...)
 else:
     response_data = await self._chat_with_gemini(...)
 ```
@@ -128,7 +122,6 @@ has_confidential = any(
 )
 
 if has_confidential:
-    response = await self.ollama_service.generate(...)
 else:
     response = await self.gemini_service.chat_completion(...)
 ```
@@ -144,7 +137,6 @@ else:
 PII detection is implemented and used in chat_service and search_service. It correctly:
 - Detects email, phone, SSN, credit card, IBAN, French national ID
 - Redacts PII from chunks when detected in query
-- Triggers Ollama routing when PII is found
 
 **Code Evidence:**
 - `/root/development/src/active/sowknow4/backend/app/services/pii_detection_service.py` (294 lines)
@@ -261,7 +253,6 @@ app/services/agents/clarification_agent.py
 | Clarification agent (leak) | `/root/development/src/active/sowknow4/backend/app/services/agents/clarification_agent.py` |
 | PII detection | `/root/development/src/active/sowknow4/backend/app/services/pii_detection_service.py` |
 | Gemini service | `/root/development/src/active/sowknow4/backend/app/services/gemini_service.py` |
-| Ollama service | `/root/development/src/active/sowknow4/backend/app/services/chat_service.py` (inline) |
 | Collection chat (secure) | `/root/development/src/active/sowknow4/backend/app/services/collection_chat_service.py` |
 | Collection service (secure) | `/root/development/src/active/sowknow4/backend/app/services/collection_service.py` |
 
@@ -273,7 +264,6 @@ app/services/agents/clarification_agent.py
 
 1. **Fix Multi-Agent System (CRITICAL)**
    - Add confidential document check in researcher_agent before calling Gemini
-   - Add routing to Ollama when search results contain confidential documents
    - Apply same fix to answer_agent, verification_agent, clarification_agent
 
 2. **Audit Additional Services (HIGH)**
@@ -298,7 +288,6 @@ class LLMRoutingService:
     async def chat_completion(messages, context):
         # Check for confidential documents in context
         if self._contains_confidential(context):
-            return await self.ollama_service.chat_completion(messages)
         else:
             return await self.gemini_service.chat_completion(messages)
 ```
@@ -320,4 +309,3 @@ This would ensure consistent routing across all services.
 | **Additional Services** | **HIGH RISK** |
 | Gemini Cache | MEDIUM CONCERN |
 
-**Overall Assessment:** The core chat functionality correctly routes confidential documents to Ollama. However, the multi-agent system (Phase 3) and several secondary services bypass these protections and send ALL content (including confidential) to Gemini. This is a critical privacy violation that must be fixed before production use with Admin/SuperUser accounts.

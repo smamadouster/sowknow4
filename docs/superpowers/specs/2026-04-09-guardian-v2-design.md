@@ -324,7 +324,6 @@ monitoring/guardian-hc/
 │   │   ├── network_health.py
 │   │   ├── celery_health.py
 │   │   ├── vps_load.py
-│   │   └── ollama_health.py
 │   │
 │   ├── healers/                # Existing healers (unchanged)
 │   │   ├── container_healer.py

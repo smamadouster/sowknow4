@@ -8,7 +8,6 @@
 
 ## Executive Summary
 
-All critical security vulnerabilities and P0 issues from the Mastertask audit have been resolved. The system now properly routes confidential documents to local Ollama, maintains complete audit trails, and includes all required UI indicators.
 
 ---
 
@@ -20,14 +19,10 @@ All critical security vulnerabilities and P0 issues from the Mastertask audit ha
 - `/root/development/src/active/sowknow4/backend/app/services/agents/agent_orchestrator.py`
 
 **Changes:**
-- Fixed `_run_clarification` to accept `use_ollama` parameter
-- Updated `orchestrate` and `stream_orchestrate` to determine Ollama usage based on user's confidential access
-- Users with confidential access now use Ollama for clarification (privacy protection)
 - Added `_user_has_confidential_access` method with proper role checking
 
 **Security Impact:**
 - Before: Always routed to external LLM (Gemini), potential privacy leak
-- After: Users with confidential access use local Ollama for all processing
 
 ### 2. Agent Orchestrator Routing Logic ✅
 
@@ -36,7 +31,6 @@ All critical security vulnerabilities and P0 issues from the Mastertask audit ha
 
 **Changes:**
 - Fixed routing to use user access permission AND document bucket (not just role)
-- Clarification agent now respects `use_ollama` flag from orchestrator
 - All agent calls properly propagate confidential document flags
 
 ### 3. LLM Routing in 7+ Services ✅
@@ -45,8 +39,6 @@ All critical security vulnerabilities and P0 issues from the Mastertask audit ha
 | Service | Status | Notes |
 |---------|--------|-------|
 | `auto_tagging_service.py` | ✅ Already correct | Routes based on document.bucket |
-| `intent_parser.py` | ✅ Already correct | Accepts use_ollama parameter |
-| `entity_extraction_service.py` | ✅ Already correct | Accepts use_ollama parameter |
 | `chat_service.py` | ✅ Verified | Uses LLM router |
 | `collection_chat_service.py` | ✅ Verified | Uses LLM router |
 | `synthesis_service.py` | ✅ Verified | Has routing logic |
@@ -91,7 +83,6 @@ Messages → _truncate_messages() → Token count logging → API call
 **Status:** Already correct
 - Volume mounts: `public_data`, `confidential_data` properly defined
 - Memory limits: Within 6.4GB budget
-- Ollama configuration: Uses shared instance via `host.docker.internal`
 
 ---
 
@@ -128,7 +119,6 @@ Messages → _truncate_messages() → Token count logging → API call
 - Updated stuck document detection to use `Document.updated_at` (per PRD)
 - Runs daily at 09:00 AM UTC
 
-### 4. Ollama Thinking Indicator ✅
 
 **File Modified:**
 - `/root/development/src/active/sowknow4/frontend/app/[locale]/chat/page.tsx`
@@ -136,7 +126,6 @@ Messages → _truncate_messages() → Token count logging → API call
 **Changes:**
 - Added `streamingLlm` state variable to track which LLM is processing
 - Modified streaming indicator to show:
-  - "🛡️ Local LLM is thinking... (confidential mode)" for Ollama
   - "Thinking..." for Gemini/default
 - Captures LLM info from SSE stream and displays appropriate message
 
@@ -211,7 +200,6 @@ Messages → _truncate_messages() → Token count logging → API call
 | Telegram bot updated | ✅ Fixed |
 | Cache indicators | ✅ Added |
 | Daily anomaly report | ✅ Implemented |
-| Ollama thinking indicator | ✅ Added |
 | Multi-Agent Search | ✅ Complete |
 | 429 handling | ✅ Added |
 

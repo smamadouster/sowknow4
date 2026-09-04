@@ -121,7 +121,6 @@ export default function MonitoringPage() {
         { name: 'NATS', status: health.nats, type: 'infrastructure' },
         { name: 'Backend API', status: health.status === 'error' ? 'error' : 'ok', type: 'application' },
         { name: 'Celery Worker', status: celery ? 'ok' : 'error', type: 'application' },
-        { name: 'Ollama (Local LLM)', status: health.ollama, type: 'external' },
       ]
     : [];
 

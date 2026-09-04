@@ -100,12 +100,10 @@ curl http://localhost:8000/api/v1/documents | jq '.'
 # Check which LLM service is failing
 docker logs sowknow-backend --tail 100 | grep -i "error\|exception"
 
-# Test Ollama connectivity
 curl http://host.docker.internal:11434/api/tags
 ```
 
 **Solution**:
-1. If Ollama unavailable: Check Docker extra_hosts configuration
 2. If OpenRouter unavailable: Check API key and network
 3. If Gemini unavailable: Check API key and quota
 
@@ -128,7 +126,6 @@ curl http://localhost:8000/api/v1/monitoring/system | jq '.cache'
 **Solution**:
 1. Enable stricter caching in configuration
 2. Reduce `max_tokens` limits
-3. Implement stricter PII detection (more queries → Ollama)
 
 ---
 
@@ -278,7 +275,6 @@ docker logs sowknow-certbot --tail 20
 docker logs sowknow-backend 2>&1 | grep -i "routing"
 
 # Check which provider was used
-docker logs sowknow-backend 2>&1 | grep -i "gemini\|ollama\|openrouter"
 ```
 
 **Solution**:
@@ -301,7 +297,6 @@ docker logs sowknow-backend 2>&1 | grep -i "gemini\|ollama\|openrouter"
 
 **Solution**:
 1. Add confidential check before Gemini calls
-2. Route to Ollama when `has_confidential=True`
 3. Apply to all Phase 3 agents
 
 ---

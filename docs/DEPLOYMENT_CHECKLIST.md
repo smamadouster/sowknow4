@@ -20,7 +20,6 @@
 | 1 | Gemini | `GEMINI_API_KEY` | Key starts with `AIza...` |
 | 2 | OpenRouter | `OPENROUTER_API_KEY` | Key starts with `sk-or-v1-...` |
 | 3 | Hunyuan OCR | `HUNYUAN_API_KEY` | Non-empty |
-| 4 | Ollama | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` |
 
 ### Docker Configuration
 

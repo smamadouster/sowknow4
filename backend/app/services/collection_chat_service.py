@@ -213,7 +213,6 @@ class CollectionChatService:
         # connection idle-in-transaction while waiting for OpenRouter.
         await db.commit()
 
-        # Generate response — route confidential docs to local Ollama when available
         response_data = await self._chat_with_llm(
             message=message,
             collection=collection,
@@ -297,9 +296,7 @@ class CollectionChatService:
         db: AsyncSession,
         has_confidential: bool = False,
     ) -> dict[str, Any]:
-        """Chat with appropriate LLM — Ollama for confidential, OpenRouter for public."""
 
-        # Try local Ollama first for confidential collections
         if has_confidential:
             logger.info("CollectionChat: Routing confidential collection to local LLM")
 
@@ -330,7 +327,6 @@ When answering:
         )
 
         # Build document context text
-        # PRIVACY: When confidential and Ollama unavailable, strip chunk text to metadata-only
         context_parts = []
         for doc in document_context:
             if has_confidential:
@@ -409,7 +405,6 @@ When answering:
             "llm_used": "openrouter",
         }
 
-    async def _chat_with_ollama(
         self,
         message: str,
         collection: Collection,

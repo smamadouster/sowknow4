@@ -6,7 +6,6 @@
 
 **Architecture:** New `search_models.py` and `search_agent.py` in `backend/app/services/` implement the pipeline logic, reusing existing `search_service.py` for hybrid retrieval and `llm_router.py` for LLM calls. A new `search_agent_router.py` replaces the old search and multi-agent routers. Frontend is rewritten with Tailwind CSS and next-intl, using SSE for progressive updates.
 
-**Tech Stack:** FastAPI, SQLAlchemy 2.0, pgvector, PostgreSQL FTS, MiniMax 2.7, Ollama, Next.js 14, Tailwind CSS, next-intl, SSE
 
 **Spec:** `docs/superpowers/specs/2026-03-20-agentic-search-design.md`
 
@@ -847,10 +846,7 @@ class TestLLMRouting:
             mock_llm.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_confidential_routes_to_ollama(self):
-        """Confidential context must use Ollama."""
         with patch("app.services.search_agent._call_llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = ("Ollama response", "ollama/mistral")
             from backend.app.services.search_agent import _call_llm
             result, model = await _call_llm(
                 messages=[{"role": "user", "content": "test"}],
@@ -1811,7 +1807,6 @@ In `frontend/app/messages/en.json`, replace the existing `"search"` block (lines
         "unknown": "General"
     },
     "model": {
-        "ollama": "Ollama (Local)",
         "minimax": "MiniMax 2.7"
     },
     "examples": {
@@ -1879,7 +1874,6 @@ In `frontend/app/messages/fr.json`, replace the existing `"search"` block (lines
         "unknown": "General"
     },
     "model": {
-        "ollama": "Ollama (Local)",
         "minimax": "MiniMax 2.7"
     },
     "examples": {

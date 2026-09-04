@@ -586,7 +586,6 @@ export default function ChatPage() {
                   </div>
                   <div className="flex flex-col">
                     <span className="text-sm font-medium text-text-secondary">
-                      {streamingLlm?.toLowerCase().includes('ollama')
                         ? 'Mode confidentiel — réponse locale...'
                         : 'Recherche en cours...'}
                     </span>

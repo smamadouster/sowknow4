@@ -14,7 +14,6 @@ Replace the current basic hybrid search (`/api/v1/search`) and multi-agent searc
 2. **QueryExpander** — Build search query variants from original + sub-queries + keyword-focused variant.
 3. **HybridRetriever** — pgvector semantic + PostgreSQL FTS with RRF fusion. RBAC bucket filtering at SQL level.
 4. **ReRanker** — Collapse chunks to document-level results, normalize scores, assign relevance labels (highly_relevant/relevant/partially/marginal).
-5. **SynthesisAgent** — LLM answer generation with privacy routing (MiniMax via existing LLMRouter for public RAG, Ollama for confidential).
 6. **SuggestionAgent** — Generate 3-5 follow-up query suggestions. Never includes document content (safe for MiniMax 2.7).
 
 ## Backend Architecture
@@ -120,7 +119,6 @@ The uploaded spec proposed a denormalized `bucket` column on `document_chunks`. 
 
 - `PipelineProgress` — stage dots with Tailwind transitions
 - `IntentBadge` — intent type + confidence + keyword chips
-- `SynthesisBlock` — collapsible answer card with Ollama/Kimi model badge
 - `ResultCard` — tiered result with relevance dot, excerpt, highlights, tags
 - `Suggestions` — follow-up query chips
 - `CitationsPanel` — sticky sidebar with source excerpts
@@ -140,7 +138,6 @@ Added under `search` namespace in both `en.json` and `fr.json`:
 
 - `TestRelevanceLabels` (7) — threshold boundary tests
 - `TestRBACEnforcement` (6) — confidential visibility per role (SECURITY CRITICAL)
-- `TestLLMRouting` (3) — privacy invariant: confidential -> Ollama
 - `TestQueryExpansion` (4) — sub-queries, dedup, keyword variants
 - `TestResultRanking` (4) — sort order, ranks, top_k, chunk collapse
 - `TestCitations` (4) — match results, one-per-doc, max 10, excerpt length
@@ -163,7 +160,5 @@ Uses existing `LLMRouter.select_provider` chains, NOT direct httpx calls:
 |---------|-----|-------|
 | Intent parsing (no doc content) | MiniMax 2.7 | Lightweight classification task, no document content |
 | Synthesis with all-public results | MiniMax 2.7 (public_docs_rag chain) | Follows existing router with context caching for cost optimization |
-| Synthesis with any confidential result | Ollama only | `has_confidential=True` forces Ollama, no fallback to external |
 | Suggestion generation (no doc content) | MiniMax 2.7 | Lightweight generation task, no document content |
 
-**Note:** MiniMax 2.7 replaces Kimi 2.5 for all external LLM calls (intent parsing, public synthesis, suggestions). This simplifies the tri-LLM strategy to a dual-LLM approach for search: MiniMax 2.7 for public contexts, Ollama for confidential. Context caching on MiniMax provides cost optimization on repeated queries.

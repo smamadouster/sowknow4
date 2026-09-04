@@ -159,7 +159,6 @@ Frontend expects:          Backend returns:
 |---------|-------------|----------|
 | Database | ✅ | admin.py:609-612, 756-759 |
 | Redis | ✅ | admin.py:615-622, 762-769 |
-| Ollama | ✅ | admin.py:771-781 |
 | Moonshot API | ✅ (config only) | admin.py:784-787 |
 | Gemini | ❌ | Not implemented |
 

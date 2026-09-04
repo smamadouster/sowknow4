@@ -272,7 +272,6 @@ In `docker-compose.yml`, add the following service AFTER the `celery-beat` servi
 
 Key differences from main worker:
 - `SKIP_MODEL_DOWNLOAD=1` — no embedding model (saves 1.3GB)
-- Only `MINIMAX_API_KEY` — no OLLAMA, no KIMI
 - `--concurrency=2` — safe because no heavy model in memory
 - `-Q collections` — only consumes from collections queue
 - `512M` memory — lightweight, just HTTP calls
@@ -316,7 +315,6 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 
 ### Task 3: Rewrite pipeline Stage 1 — UNDERSTAND (MiniMax-only intent parsing)
 
-Replace the Ollama/OpenRouter routing in intent parsing with MiniMax direct for all collection queries. Add a quality gate on confidence.
 
 **Files:**
 - Modify: `backend/app/services/collection_service.py`
@@ -333,11 +331,8 @@ from app.services.intent_parser import ParsedIntent
 
 
 class TestStage1Understand:
-    """Stage 1: Intent parsing always uses MiniMax, never Ollama."""
 
     @pytest.mark.asyncio
-    async def test_understand_never_calls_ollama(self):
-        """Even for admin users, intent parsing must NOT use Ollama."""
         mock_intent = ParsedIntent(
             query="test", keywords=["test"], collection_name="Test", confidence=0.9,
         )
@@ -350,7 +345,6 @@ class TestStage1Understand:
 
             mock_parse.assert_called_once()
             call_kwargs = mock_parse.call_args.kwargs
-            assert call_kwargs.get("use_ollama") is False, "Collections must never use Ollama for intent parsing"
 
     @pytest.mark.asyncio
     async def test_understand_retries_on_low_confidence(self):
@@ -414,7 +408,6 @@ In `backend/app/services/collection_service.py`, add this method to `CollectionS
     async def _understand_query(self, query: str) -> tuple[ParsedIntentModel, str]:
         """
         Stage 1: UNDERSTAND — Parse intent and pick search strategy.
-        Always uses MiniMax (never Ollama). Retries on low confidence.
         
         Returns:
             (ParsedIntent, strategy) where strategy is one of:
@@ -422,16 +415,13 @@ In `backend/app/services/collection_service.py`, add this method to `CollectionS
             - "date_filtered": query specifies date ranges
             - "broad_hybrid": generic query, use all search types
         """
-        # First attempt — always MiniMax (use_ollama=False)
         intent = await self.intent_parser.parse_intent(
-            query=query, user_language="en", use_ollama=False,
         )
 
         # Quality gate: retry on low confidence
         if intent.confidence < 0.5:
             logger.info(f"Low confidence ({intent.confidence}) for '{query}', retrying with simplified prompt")
             retry_intent = await self.intent_parser.parse_intent(
-                query=query, user_language="en", use_ollama=False,
             )
             if retry_intent.confidence > intent.confidence:
                 intent = retry_intent
@@ -742,11 +732,9 @@ Add to `backend/tests/unit/test_collection_v2_pipeline.py`:
 
 ```python
 class TestStage3Synthesize:
-    """Stage 3: Summary generation uses MiniMax direct, never Ollama/OpenRouter."""
 
     @pytest.mark.asyncio
     async def test_synthesize_uses_minimax_direct(self):
-        """Summary must use minimax_service.chat_completion_non_stream, not OpenRouter or Ollama."""
         gathered_results = [
             {"document_id": "d1", "article_id": "a1", "article_title": "Tax Report 2023",
              "article_summary": "Annual tax filing for Mboup household", "document_name": "tax.pdf",
@@ -766,8 +754,6 @@ class TestStage3Synthesize:
             assert "Summary of tax documents" in summary
 
     @pytest.mark.asyncio
-    async def test_synthesize_never_calls_ollama(self):
-        """Even with confidential results, must NOT call Ollama."""
         gathered_results = [
             {"document_id": "d1", "article_id": None, "article_title": None,
              "article_summary": None, "document_name": "secret.pdf",
@@ -779,13 +765,10 @@ class TestStage3Synthesize:
             collection_service.minimax_service, "chat_completion_non_stream",
             new_callable=AsyncMock, return_value="Summary.",
         ), patch.object(
-            collection_service.ollama_service, "generate",
             new_callable=AsyncMock,
-        ) as mock_ollama:
             await collection_service._synthesize_summary(
                 collection_name="Secrets", query="secret", results=gathered_results, intent=intent,
             )
-            mock_ollama.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_synthesize_uses_article_context(self):
@@ -839,7 +822,6 @@ In `backend/app/services/collection_service.py`, add:
         """
         Stage 3: SYNTHESIZE — Generate collection summary using MiniMax direct.
         Uses article titles+summaries as rich context (not just filenames).
-        Never uses Ollama or OpenRouter.
         """
         # Build rich context from results
         context_lines = []
@@ -1020,7 +1002,6 @@ In `backend/app/services/collection_service.py`, replace the body of `build_coll
             raise
 ```
 
-Also remove the `use_ollama` variable from the old code (it's no longer needed).
 
 - [ ] **Step 4: Run all v2 tests**
 
@@ -1486,7 +1467,6 @@ DEPLOYMENT CHECKLIST — Smart Collections v2
 
 | Component | What Changes | Why |
 |-----------|-------------|-----|
-| LLM routing | MiniMax direct for all collection calls | Faster (no Ollama 600s), cheaper (no OpenRouter hop), safe (only titles/summaries sent) |
 | Celery queue | Dedicated `collections` queue + 512MB worker | Collections never wait behind 2,600 document tasks |
 | Search | Articles-first with chunk fallback + quality gates | Richer results, better summaries, handles "no results" gracefully |
 | Model | `article_id` on CollectionItem | Links to pre-synthesized articles for display |

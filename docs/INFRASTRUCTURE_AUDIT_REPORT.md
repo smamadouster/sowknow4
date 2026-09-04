@@ -120,7 +120,6 @@
 | REDIS_PASSWORD | Redis authentication |
 | MINIMAX_API_KEY | MiniMax LLM integration |
 | MINIMAX_MODEL | Model selection |
-| OLLAMA_BASE_URL | Ollama integration |
 | COOKIE_DOMAIN | Session management |
 | EMBEDDING_MODEL | Document embeddings |
 | EMBEDDING_DIMENSIONS | Vector dimensions |

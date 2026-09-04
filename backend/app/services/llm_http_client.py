@@ -2,7 +2,6 @@
 Shared async HTTP client for all LLM providers with connection pooling.
 
 Replaces per-request httpx.AsyncClient instantiation across OpenRouter,
-MiniMax, Kimi, and Ollama services. Eliminates TCP handshake overhead
 and prevents connection pool exhaustion under load.
 """
 
@@ -52,13 +51,8 @@ class LLMHTTPClient:
 
     @classmethod
     async def post(cls, url, *args, **kwargs):
-        # THE MASTER OVERRIDE: Force all traffic to local Ollama
         if "openrouter" in url or "minimax" in url or "kimi" in url or "together" in url or "anthropic" in url:
             import os
-            url = os.getenv("OLLAMA_BASE_URL", "http://sowknow4-ollama:11434") + "/v1/chat/completions"
-            # Force the dummy API key for Ollama
             if "headers" not in kwargs: kwargs["headers"] = {}
-            kwargs["headers"]["Authorization"] = "Bearer ollama"
-            print(f"🌐 [LLMHTTPClient] Intercepted cloud request. Rerouted to Local Ollama ($0.00)")
         return await cls.get_client().post(url, *args, **kwargs)
 

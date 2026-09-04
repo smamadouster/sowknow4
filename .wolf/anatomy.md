@@ -17,7 +17,6 @@
 
 ## ../../../../../var/docker/sowknow4/backend/app/services/
 
-- `chat_service.py` — OllamaService: chat_completion, health_check, get_conversation_history, retrieve_relevant_chunks + 1 (~7069 tok)
 - `llm_router.py` — RoutingReason: generate_completion, detect_context_sensitivity, select_provider, build_messages + 1 (~3456 tok)
 - `whisper_service.py` — WhisperService: transcribe (~745 tok)
 
@@ -1046,8 +1045,6 @@
 - `monitoring.meta.json` (~628 tok)
 - `ocr_service.data.json` (~8214 tok)
 - `ocr_service.meta.json` (~605 tok)
-- `ollama_service.data.json` (~3246 tok)
-- `ollama_service.meta.json` (~691 tok)
 - `openrouter_service.data.json` (~6538 tok)
 - `openrouter_service.meta.json` (~899 tok)
 - `performance_service.data.json` (~5968 tok)

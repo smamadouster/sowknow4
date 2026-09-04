@@ -246,7 +246,6 @@
       "unknown": "General"
     },
     "model": {
-      "ollama": "Ollama (Local)",
       "minimax": "MiniMax 2.7"
     },
     "examples": {
@@ -276,7 +275,6 @@
     "thinking": "Thinking...",
     "model_used": "Model Used",
     "kimi": "Kimi 2.5",
-    "ollama": "Ollama",
     "no_sessions": "No conversations",
     "sessions_title": "Conversations",
     "error_loading": "Error loading",

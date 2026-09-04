@@ -23,7 +23,6 @@ Fallback model (`OPENROUTER_MODEL`): `deepseek/deepseek-v4-flash-0731`.
 Optional / legacy providers (not in any active chain):
 - **MiniMax** `MiniMax-M2.7` (`app/services/minimax_service.py`) — used only if `MINIMAX_API_KEY` set; preferred by `llm_gateway.chat_completion_non_stream`.
 - **Kimi** `moonshot-v1-128k` (`kimi_service.py`) — legacy, imported by `_build_router` but excluded from chains.
-- **Ollama** `llama3.1:8b` (`ollama_service.py`) — legacy, excluded (CPU too slow); `collection_chat_service._chat_with_ollama` is dead code.
 - **Together** `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` (`together_service.py`) — legacy, not imported by `_build_router`.
 
 ## Routing core

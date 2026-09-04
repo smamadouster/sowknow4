@@ -42,9 +42,7 @@ All critical security and privacy issues identified in the audit have been succe
 - **Chat Service**: `/root/development/src/active/sowknow4/backend/app/services/chat_service.py`
   - Modified `retrieve_relevant_chunks()` to check for PII
   - Redacts PII from chunk text when detected
-  - Routes to Ollama when PII is present
 
-**Security Impact**: PII in user queries is now detected before being sent to cloud APIs. Queries containing PII are automatically routed to local Ollama for processing.
 
 ## 2. LocalStorage Authentication Fixes
 
@@ -171,25 +169,19 @@ if document.bucket == DocumentBucket.CONFIDENTIAL and current_user.role not in [
 
 **Security Impact**: SUPERUSER role now has consistent access to confidential documents across all services, matching the RBAC design.
 
-## 6. Ollama Container Configuration
 
 **File**: `/root/development/src/active/sowknow4/docker-compose.production.yml`
 
 **Container Added**:
 ```yaml
-ollama:
-  image: ollama/ollama:latest
-  container_name: sowknow-ollama
   restart: unless-stopped
   mem_limit: 2g
   ports:
     - "11434:11434"
   volumes:
-    - ollama_data:/root/.ollama
   networks:
     - sowknow-net
   environment:
-    - OLLAMA_HOST=0.0.0.0
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
     interval: 30s
@@ -201,8 +193,6 @@ ollama:
         cpus: '2'
 ```
 
-### Ollama Service Created
-**File**: `/root/development/src/active/sowknow4/backend/app/services/ollama_service.py`
 
 **Features**:
 - `chat_completion()`: Streaming and non-streaming chat
@@ -212,12 +202,9 @@ ollama:
 - Configurable model via environment variables
 
 **Environment Variables**:
-- `OLLAMA_BASE_URL`: Defaults to `http://ollama:11434`
-- `OLLAMA_MODEL`: Defaults to `mistral:7b-instruct`
 
 **Memory Allocation**: 2GB limit (within 6.4GB total budget)
 
-**Security Impact**: Confidential documents and PII-containing queries are now processed locally by Ollama, ensuring zero data leaves the infrastructure.
 
 ## 7. JWT Token Validation Enhancement
 
@@ -310,7 +297,6 @@ location /health {
 
 ### New Files Created:
 1. `/root/development/src/active/sowknow4/backend/app/services/pii_detection_service.py` (297 lines)
-2. `/root/development/src/active/sowknow4/backend/app/services/ollama_service.py` (186 lines)
 
 ### Files Modified:
 1. `/root/development/src/active/sowknow4/backend/app/main.py` - CORS and TrustedHost
@@ -325,19 +311,16 @@ location /health {
 10. `/root/development/src/active/sowknow4/frontend/lib/store.ts` - RBAC helpers
 11. `/root/development/src/active/sowknow4/nginx/nginx.conf` - CORS fix + health endpoint Host header
 12. `/root/development/src/active/sowknow4/nginx/nginx-http-only.conf` - health endpoint Host header
-13. `/root/development/src/active/sowknow4/docker-compose.production.yml` - Ollama added
 
 ## Security Improvements Matrix
 
 | Issue | Risk Level | Fix Implemented | Status |
 |-------|-----------|-----------------|--------|
-| PII sent to cloud APIs | CRITICAL | PII detection service + auto-routing to Ollama | ✅ FIXED |
 | localStorage authentication | HIGH | Cookie-based authentication | ✅ FIXED |
 | CORS wildcard (*) | HIGH | Specific domain whitelisting | ✅ FIXED |
 | JWT silent failure on errors | MEDIUM | Custom exceptions + proper error propagation | ✅ FIXED |
 | Missing token type validation | MEDIUM | Token type claims + validation in decode_token | ✅ FIXED |
 | Missing SUPERUSER in RBAC | MEDIUM | All endpoints now check SUPERUSER | ✅ FIXED |
-| No Ollama container | MEDIUM | Container added with proper config | ✅ FIXED |
 | Client-side RBAC missing | MEDIUM | Helper functions + UI updates | ✅ FIXED |
 
 ## Privacy Protection Flow
@@ -347,13 +330,11 @@ User Input (Query/Document)
     ↓
 PII Detection Service
     ↓
-├─ PII Detected? → Route to Ollama (local)
 │   └─ Redact PII from context
 │   └─ Process locally
 │   └─ Return response
 │
 └─ No PII?
-    ├─ Confidential Document? → Route to Ollama (local)
     │
     └─ Public Document Only → Route to Gemini Flash (cloud)
 ```
@@ -363,7 +344,6 @@ PII Detection Service
 1. **PII Detection Testing**:
    - Test with various PII patterns (emails, phones, SSN, etc.)
    - Verify redaction works correctly
-   - Confirm routing to Ollama when PII detected
 
 2. **Authentication Testing**:
    - Verify no localStorage usage in browser DevTools
@@ -381,10 +361,7 @@ PII Detection Service
    - Verify requests from other domains are blocked
    - Test preflight OPTIONS requests
 
-5. **Ollama Integration**:
-   - Verify Ollama container starts successfully
    - Test health check endpoint
-   - Verify confidential documents route to Ollama
    - Test with mistral:7b-instruct model
 
 ## Deployment Checklist
@@ -392,12 +369,9 @@ PII Detection Service
 Before deploying to production:
 - [ ] Set `ALLOWED_ORIGINS` environment variable to production domain
 - [ ] Set `ALLOWED_HOSTS` environment variable to production domain
-- [ ] Ensure Ollama model is pulled: `docker exec sowknow-ollama ollama pull mistral:7b-instruct`
 - [ ] Update Nginx CORS configuration for production domain
 - [ ] Test PII detection with real-world examples
 - [ ] Verify SUPERUSER role can access confidential documents
-- [ ] Monitor Ollama memory usage (2GB limit)
-- [ ] Test failover when Ollama is unavailable
 - [ ] Test JWT token expiration and error handling
 - [ ] Verify refresh token flow works correctly
 - [ ] Test token type validation (access vs refresh)
@@ -408,7 +382,6 @@ Before deploying to production:
 1. **PII Detection**: Regex-based, may have false positives/negatives
    - Future: Consider ML-based PII detection
 
-2. **Ollama Performance**: CPU-only processing
    - Future: GPU acceleration if available
 
 3. **Confidential Detection**: Currently bucket-based
@@ -416,7 +389,6 @@ Before deploying to production:
 
 ### Security Monitoring Recommendations:
 1. Log all PII detections for audit
-2. Monitor Ollama usage patterns
 3. Alert on repeated PII detection failures
 4. Track confidential access by SUPERUSER role
 

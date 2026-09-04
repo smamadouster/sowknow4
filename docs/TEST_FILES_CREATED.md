@@ -64,13 +64,11 @@
 **Path**: `/root/development/src/active/sowknow4/backend/tests/unit/test_llm_routing.py`
 
 **Description**: Unit tests for dual-LLM routing logic:
-- PII-based routing (PII detected → Ollama)
 - Role-based routing (user permissions)
 - Document bucket routing
 - LLM provider selection
 - Routing decision logic
 - Gemini service availability
-- Ollama service configuration
 - Routing auditing
 - Cost optimization
 - Edge cases

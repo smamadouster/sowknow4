@@ -26,7 +26,6 @@ SOWKNOW uses OpenRouter as the primary API gateway to access Minimax models, spe
 │              │                                │               │
 │              ▼                                ▼               │
 │     ┌─────────────────┐              ┌──────────────────┐     │
-│     │ OpenRouter     │              │ Ollama           │     │
 │     │ (Minimax-01)  │              │ (Local/Mistral)  │     │
 │     │ Cost: $0.25/M  │              │ Cost: $0.00      │     │
 │     └─────────────────┘              └──────────────────┘     │
@@ -39,11 +38,7 @@ SOWKNOW uses OpenRouter as the primary API gateway to access Minimax models, spe
 | Document Type | PII Detected | User Role | LLM Provider |
 |---------------|--------------|-----------|--------------|
 | Public        | No           | Any       | Minimax      |
-| Public        | Yes          | Any       | Ollama       |
-| Confidential  | No           | Admin     | Ollama       |
-| Confidential  | No           | SuperUser | Ollama       |
 | Confidential  | Any          | User      | (Hidden)     |
-| Any           | Any          | Any       | Ollama       |
 
 ## API Configuration
 
@@ -57,9 +52,6 @@ OPENROUTER_MODEL=minimax/minimax-01
 OPENROUTER_SITE_URL=https://sowknow.gollamtech.com
 OPENROUTER_SITE_NAME=SOWKNOW
 
-# Ollama (Local - for confidential)
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-OLLAMA_MODEL=mistral
 ```
 
 ### Model Specifications
@@ -67,7 +59,6 @@ OLLAMA_MODEL=mistral
 | Model | Context Window | Input Cost | Output Cost |
 |-------|---------------|------------|-------------|
 | minimax/minimax-01 | 32K tokens | $0.10/1M | $0.25/1M |
-| mistral (Ollama) | 8K tokens | $0.00 | $0.00 |
 
 ## Services Using Minimax
 
@@ -75,11 +66,9 @@ OLLAMA_MODEL=mistral
 
 1. **Chat Service** (`chat_service.py`)
    - Public document RAG: Uses Minimax
-   - Confidential/PII: Routes to Ollama
 
 2. **Collection Chat** (`collection_chat_service.py`)
    - Public collections: Uses Minimax
-   - Confidential collections: Uses Ollama
 
 3. **Search Service** (`search_service.py`)
    - Document retrieval with RBAC filtering
@@ -114,7 +103,6 @@ if cache_key in cache:
 ### Cost Optimization Rules
 
 1. **Minimax for Public**: Use for all public document queries
-2. **Ollama for Confidential**: Free local processing
 3. **Cache Repeated Queries**: Reduces API calls by up to 80%
 4. **Chunk Size Optimization**: 500-token chunks balance context/performance
 
@@ -203,7 +191,6 @@ pytest backend/tests/integration/test_openrouter_streaming.py -v
 **Symptoms**: API timeouts
 
 **Solutions**:
-1. Check Ollama is running: `docker ps | grep ollama`
 2. Verify network to OpenRouter
 3. Add timeout configuration
 

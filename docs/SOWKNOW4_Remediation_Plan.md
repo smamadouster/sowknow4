@@ -167,26 +167,18 @@ docker compose up -d redis
 ### CONTEXT
 
 Evidence from forensic round 2:
-- `llm_router.py` hard-codes confidential/PII traffic to `["ollama"]` only
-- Ollama was intentionally removed from the VPS (too slow on CPU)
-- When a confidential query arrives, the router tries Ollama, health check fails, raises `RuntimeError("No LLM provider available.")`
 - 8,895 documents are in the confidential bucket — any search matching these will hard-fail
 - HOWEVER: `chat_service.py` already implements metadata-only stripping (lines 191, 299, 305, 317) — confidential chunk content is stripped to metadata before reaching the LLM prompt
 - The privacy guarantee is preserved at the service layer — the router just doesn't know this yet
 
-The fix: Update the LLM router to allow cloud providers (OpenRouter/MiniMax) for confidential queries when Ollama is not available, BECAUSE the metadata-only content stripping already prevents raw confidential text from reaching the cloud LLM.
 
 ### CHANGES
 
 **File: `/var/docker/sowknow4/backend/app/services/llm_router.py`**
 
 Locate the `select_provider` method (around lines 215-238). Currently the logic is:
-- If vault_hint == "confidential": providers = ["ollama"]
-- This must change to: If vault_hint == "confidential" AND Ollama is available: use Ollama. If Ollama is NOT available: use the normal provider chain (OpenRouter → MiniMax) with a log warning that confidential query is being handled via metadata-only mode.
 
 Important constraints:
-- Do NOT remove the Ollama preference for confidential — if Ollama is ever re-added, it should automatically become the confidential provider again
-- DO add a clear log line: `logger.warning("Confidential query routed via metadata-only mode (Ollama unavailable)")` — this creates an audit trail
 - Do NOT change the metadata stripping in chat_service.py — it's already correct
 - The docstring at lines 11-13 is stale ("Public docs → MiniMax → OpenRouter") — fix it to match reality while editing
 
@@ -194,7 +186,6 @@ Important constraints:
 
 Also update the `_build_router()` or module docstring to accurately reflect the routing:
 - Public: OpenRouter (Mistral Small 2603) → MiniMax M2.7
-- Confidential: Ollama (if available) → OpenRouter/MiniMax with metadata-only stripping (if Ollama unavailable)
 - PII detected: Same as confidential
 
 ### DEPLOY
@@ -231,9 +222,7 @@ echo "  Backend health endpoint not reachable (will be fixed in Phase 4)"
 
 # QA-2.2: The routing change is in the running code
 echo "--- QA-2.2: Router code verification ---"
-docker exec sowknow4-backend grep -n "metadata.only\|metadata-only\|Ollama unavailable\|allkeys-lru\|confidential.*openrouter\|confidential.*fallback" /app/app/services/llm_router.py | head -10
 # EXPECTED: Lines showing the new fallback logic and log warning
-# FAIL IF: Still shows only ["ollama"] for confidential with no fallback
 
 # QA-2.3: No import errors or startup crashes
 echo "--- QA-2.3: Backend startup logs ---"
@@ -241,11 +230,6 @@ docker logs sowknow4-backend --since 5m 2>&1 | grep -iE "error|exception|import|
 # EXPECTED: No errors (or only pre-existing unrelated warnings)
 # FAIL IF: ImportError, SyntaxError, or any crash
 
-# QA-2.4: Ollama health check failures are logged (expected — Ollama is removed)
-echo "--- QA-2.4: Ollama health check in logs ---"
-docker logs sowknow4-backend --since 5m 2>&1 | grep -iE "ollama" | tail -5
-# EXPECTED: "ollama failed" or "Ollama unavailable" — this is correct behavior
-# FAIL IF: No mention of Ollama at all (routing logic may not be executing)
 
 # QA-2.5: Verify confidential document count is accessible
 echo "--- QA-2.5: Confidential document count ---"
@@ -693,7 +677,6 @@ docker builder prune --keep-storage 2GB
 Create a PRD update document noting at minimum:
 - VPS is 31GB RAM, not 16GB
 - LLM provider is OpenRouter (Mistral Small 2603) with MiniMax fallback, not Kimi/Moonshot
-- Ollama is removed (not viable on CPU-only VPS)
 - Confidential routing uses metadata-only stripping to cloud providers
 - Container limits: Redis 768MB, celery-heavy 4GB (not 512MB per PRD)
 - Queue separation: celery-collections is separate, celery-light still handles pipeline stages

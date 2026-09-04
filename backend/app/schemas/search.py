@@ -28,7 +28,6 @@ class SearchResponse(BaseModel):
     query: str
     results: list[SearchResultChunk]
     total: int
-    llm_used: str | None = None  # "kimi" or "ollama" if routing occurred
     partial: bool = False  # True when results are incomplete due to timeout
     warning: str | None = None  # Human-readable reason when partial=True
     next_cursor: str | None = None  # Cursor for next page (T09)

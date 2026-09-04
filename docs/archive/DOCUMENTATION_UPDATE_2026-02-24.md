@@ -69,7 +69,6 @@ Comprehensive documentation for SOWKNOW Phase 3 has been created covering deploy
 **Key Sections**:
 - System overview with diagram
 - Technology stack (frontend, backend, data, infrastructure, AI/ML)
-- Tri-LLM routing architecture (Kimi, MiniMax, Ollama)
 - Data flow diagrams (upload, search, knowledge graph building)
 - Role-Based Access Control (RBAC) with permission matrix
 - Security architecture (authentication, API security, audit logging)

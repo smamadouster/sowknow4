@@ -104,7 +104,6 @@
 │         │  Beat Scheduler      │                  │
 │         └──────────────────────┘                  │
 │                                                     │
-│  (Ollama runs on host, accessible via             │
 │   host.docker.internal:11434)                     │
 └─────────────────────────────────────────────────────┘
 ```
@@ -131,7 +130,6 @@ Document → Is Confidential?
          YES       NO
           │        │
           ▼        ▼
-        Ollama   Which Type?
        (Local)    │
               ┌───┼───┐
              Chat Search Public
@@ -142,11 +140,9 @@ Document → Is Confidential?
 ```
 
 **Routing Rules**:
-- **Confidential documents** → Ollama (local, zero PII)
 - **Chat queries** → Kimi/Moonshot API
 - **Search queries** → Kimi/Moonshot API
 - **Public documents** → MiniMax/OpenRouter
-- **Fallback** → Ollama if APIs fail
 
 ---
 
@@ -181,9 +177,7 @@ OPENROUTER_API_KEY=<your-openrouter-key>
 # Optional: Legacy Gemini Support
 GEMINI_API_KEY=<your-gemini-key>
 
-# Local LLM (Ollama)
 LOCAL_LLM_URL=http://host.docker.internal:11434
-OLLAMA_MODEL=mistral  # or other model
 
 # CORS & Cookie Configuration
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000

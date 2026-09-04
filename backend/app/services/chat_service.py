@@ -3,7 +3,6 @@ Chat service for RAG-powered conversations
 
 LLM Routing Strategy:
 - Confidential chunks are stripped to metadata-only before reaching cloud LLM prompts.
-- Raw confidential context requires the local Ollama provider and fails closed if unavailable.
 - Public and metadata-only prompts route through llm_router.
 """
 

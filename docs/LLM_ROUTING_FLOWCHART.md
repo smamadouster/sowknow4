@@ -42,14 +42,11 @@ This document describes the LLM routing logic in SOWKNOW, which determines which
               ▼                               ▼
 ┌─────────────────────────┐   ┌───────────────────────────────────┐
 │                        │   │   ┌─────────────────────────┐    │
-│   ROUTE TO OLLAMA      │   │   │ PII detected in query? │    │
 │   (Local/Mistral)     │   │   └───────────┬─────────────┘    │
 │                        │   │               │                 │
-│   - Uses local Ollama  │   │   YES          │ NO              │
 │   - Zero cost         │   │   ▼             ▼                │
 │   - 100% confidential │   │   ┌────────┐  ┌─────────────┐    │
 │                        │   │   │ROUTE TO│  │ROUTE TO    │    │
-└────────────────────────┘   │   │OLLAMA  │  │MINIMAX     │    │
                             │   │        │  │(OpenRouter)│    │
                             │   └────────┘  └─────────────┘    │
                             │                                │
@@ -102,11 +99,7 @@ def detect_pii(self, text: str) -> Dict[str, Any]:
 ```python
 # chat_service.py - Route decision
 if has_confidential:
-    # Always use Ollama for confidential
-    llm_service = self.ollama_service
 elif pii_detected:
-    # Use Ollama if PII in query
-    llm_service = self.ollama_service
 else:
     # Use Minimax for public-only queries
     llm_service = self.openrouter_service
@@ -117,8 +110,6 @@ else:
 | User Role | Can See Public | Can See Confidential | Routing |
 |-----------|---------------|---------------------|---------|
 | **User** | ✅ Yes | ❌ No | Minimax (public) |
-| **SuperUser** | ✅ Yes | ✅ Yes (View Only) | Ollama (if contains confidential) |
-| **Admin** | ✅ Yes | ✅ Yes | Ollama (if contains confidential) |
 
 ## Multi-Agent System (Phase 3) - CURRENTLY BROKEN
 
@@ -185,7 +176,6 @@ curl -X POST http://localhost/api/v1/chat \
   -d '{"message": "What is in my confidential files?"}'
 ```
 
-Expected: Routes to Ollama (check logs)
 
 ### Test: PII in Query
 
@@ -197,7 +187,6 @@ curl -X POST http://localhost/api/v1/chat \
   -d '{"message": "Find my SSN 123-45-6789"}'
 ```
 
-Expected: Routes to Ollama (due to PII detection)
 
 ## Log Verification
 
@@ -209,6 +198,4 @@ docker logs sowknow-backend 2>&1 | grep -i "routing\|llm\|provider"
 Expected output examples:
 ```
 Routing to OpenRouter (Minimax) - public docs only
-Routing to Ollama - confidential documents detected
-Routing to Ollama - PII detected in query
 ```

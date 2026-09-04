@@ -506,8 +506,6 @@ class TestLLMMetrics:
 
     def test_can_increment_retry_count(self):
         """Should count retries by provider."""
-        llm_retry_total.inc(labels={"provider": "ollama"})
-        assert llm_retry_total._values[("ollama",)] == 1.0
 ```
 
 - [ ] **Step 2: Run test to verify it fails**

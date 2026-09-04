@@ -212,9 +212,7 @@ function IntentBadge({ intent, confidenceLabel, intentLabel }: { intent: StreamS
   );
 }
 
-function SynthesisBlock({ text, model, synthesizedAnswerLabel, ollamaLabel, minimaxLabel }: { text: string; model: string | null; synthesizedAnswerLabel: string; ollamaLabel: string; minimaxLabel: string }) {
   const [expanded, setExpanded] = useState(true);
-  const isOllama = model?.toLowerCase().includes('ollama');
 
   return (
     <div className="bg-vault-800/40 border border-white/[0.06] rounded-xl mb-5 overflow-hidden">
@@ -226,11 +224,9 @@ function SynthesisBlock({ text, model, synthesizedAnswerLabel, ollamaLabel, mini
           </span>
           {model && (
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold border ${
-              isOllama
                 ? 'bg-vault-1000 text-amber-400 border-amber-400/20'
                 : 'bg-blue-500/10 text-blue-400 border-blue-400/20'
             }`}>
-              {isOllama ? `🛡️ ${ollamaLabel}` : `❄️ ${minimaxLabel}`}
             </span>
           )}
         </div>
@@ -840,7 +836,6 @@ export default function SearchPage() {
           <div className="flex gap-5 items-start">
             <div className="flex-1 min-w-0">
               {stream.synthesis && (
-                <SynthesisBlock text={stream.synthesis} model={stream.modelUsed} synthesizedAnswerLabel={t('synthesizedAnswer')} ollamaLabel={t('model.ollama')} minimaxLabel={t('model.minimax')} />
               )}
               {stream.stage === 'synthesis' && !stream.synthesis && (
                 <SynthesisSkeleton synthesizedAnswerLabel={t('synthesizedAnswer')} />

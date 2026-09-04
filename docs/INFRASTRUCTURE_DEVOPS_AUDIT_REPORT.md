@@ -121,7 +121,6 @@ location ~ /(docker-compose|Dockerfile) {
 
 ### MED-2: OpenRouter Missing from Basic /health
 - **Location:** `backend/app/main_minimal.py:195`
-- **Issue:** Only DB, Redis, Ollama checked in basic endpoint
 - **Note:** Available in `/api/v1/health/detailed`
 
 ### MED-3: No Proxy Timeouts Configured
@@ -199,7 +198,6 @@ location ~ /(docker-compose|Dockerfile) {
 | /api/v1/health/detailed | PASS | `main_minimal.py:255` |
 | PostgreSQL check | PASS | Both health endpoints |
 | Redis check | PASS | Both health endpoints |
-| Ollama check | PASS | Both health endpoints |
 | OpenRouter check | PARTIAL | Detailed endpoint only |
 | 30-60s intervals | PASS | `docker-compose.production.yml` |
 | Backend healthcheck | PASS | 30s interval |
@@ -335,7 +333,6 @@ http {
 - `backend/app/main.py` (health endpoints)
 - `docker-compose.production.yml` (health checks)
 - `backend/app/services/openrouter_service.py` (health_check)
-- `backend/app/services/ollama_service.py` (health_check)
 
 **Findings:** 0 Critical, 2 High, 4 Medium
 **Compliance:** 85%

@@ -226,7 +226,6 @@ python sowknow_sync.py --sync
 
 ## Privacy & Security
 
-- **Confidential Routing**: Documents marked confidential only use local LLM (Ollama)
 - **No PII to Cloud**: Private data never leaves your infrastructure
 - **Audit Logging**: All confidential access is logged
 

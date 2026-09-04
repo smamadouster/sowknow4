@@ -91,7 +91,6 @@ class EntityExtractionService:
         try:
             # Entity extraction uses OpenRouter for all docs.
             # The extracted entities (names, orgs, dates) are metadata, not document content.
-            use_ollama = False
 
             # Prepare text for analysis
             document_text = self._prepare_document_text(chunks)
@@ -104,7 +103,6 @@ class EntityExtractionService:
                     "created_at": document.created_at.isoformat(),
                     "mime_type": document.mime_type,
                 },
-                use_ollama=use_ollama,
             )
 
             if not extracted:
@@ -172,7 +170,6 @@ class EntityExtractionService:
                         "created_at": document.created_at.isoformat(),
                         "mime_type": document.mime_type,
                     },
-                    use_ollama=False,
                 )
             )
 
@@ -333,7 +330,6 @@ class EntityExtractionService:
         filename: str,
         text: str,
         metadata: dict[str, Any],
-        use_ollama: bool = False,
     ) -> dict[str, Any] | None:
         """Extract entities using cloud LLM with tiered fallback cascade.
 

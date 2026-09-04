@@ -33,7 +33,6 @@ SOWKNOW is **NOT production-ready** from a testing perspective. The system has s
 | 1 | Zero frontend tests (0% coverage) | Cannot validate UI behavior, accessibility, user flows |
 | 2 | RAG pipeline chunking/embedding/vector search untested | Core search functionality may fail silently |
 | 3 | Missing AsyncClient fixture | All async endpoint tests are invalid |
-| 4 | No external service mocks | Tests depend on live Gemini/Ollama/Redis - flaky and costly |
 | 5 | No E2E upload-to-chat flow | Primary user journey untested |
 | 6 | No SQL injection or XSS security tests | Critical security vulnerabilities may exist |
 
@@ -91,7 +90,6 @@ SOWKNOW is **NOT production-ready** from a testing perspective. The system has s
 - **Severity:** Critical
 - **Impact:** Tests unreliable, costly (API calls), and fail when external services are down
 - **Agent:** Agent 1
-- **Details:** No mocks for Gemini API, Ollama, Redis, Hunyuan OCR
 - **Recommendation:** Implement mock fixtures for all external services
 
 ### P0-004: RAG Pipeline Core Components Untested
@@ -423,7 +421,6 @@ Security             62%     90%     -28%
 | Priority | Action | Effort | Owner Suggestion |
 |----------|--------|--------|------------------|
 | P0-1 | Add AsyncClient fixture + asyncio_mode | 2h | Backend Dev |
-| P0-2 | Create external service mocks (Gemini, Ollama, Redis) | 8h | Backend Dev |
 | P0-3 | Implement RAG pipeline tests (chunking, embeddings, vectors) | 16h | Backend Dev |
 | P0-4 | Add SQL injection test suite | 4h | Security Engineer |
 | P0-5 | Add XSS test suite | 4h | Security Engineer |
@@ -446,7 +443,6 @@ Security             62%     90%     -28%
 
 ### Week 1: Critical Infrastructure
 - [ ] Add AsyncClient fixture and asyncio_mode configuration
-- [ ] Create external service mocks (Gemini, Ollama, Redis, OCR)
 - [ ] Add missing `__init__.py` files to test directories
 - [ ] Install pytest-mock and faker dependencies
 - [ ] Add SQL injection test suite

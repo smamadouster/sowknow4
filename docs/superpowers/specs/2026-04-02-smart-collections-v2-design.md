@@ -3,7 +3,6 @@
 ## Summary
 
 Redesign the Smart Collections build pipeline with 3 changes:
-1. **MiniMax 2.7 for all LLM calls** — remove Ollama from collections entirely (only filenames/titles sent, no PII risk)
 2. **Dedicated Celery queue + lightweight worker** — collections never compete with OCR/embedding tasks
 3. **Articles-first hybrid search with quality gates** — search articles first, fall back to chunks, retry on poor results
 
@@ -32,9 +31,6 @@ Stage 3: SYNTHESIZE + DELIVER
 ## Change 1: MiniMax for Everything
 
 **What changes:**
-- `_generate_collection_summary()` — remove the `has_confidential` branch and Ollama call. Always use MiniMax directly (not OpenRouter).
-- `build_collection_pipeline()` — remove `use_ollama` flag. Always pass `use_ollama=False` to intent parser.
-- Remove `self.ollama_service` from CollectionService `__init__`.
 
 **Why this is safe:** The collection summary prompt sends article titles, summaries, and filenames — never document content. No PII leaves the system.
 

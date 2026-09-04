@@ -10,7 +10,6 @@ The test suite ensures:
 - Correct number of services are configured
 - Resource limits (memory/CPU) are properly set
 - Volumes are defined for persistent data
-- Ollama uses shared instance (not containerized)
 - Health checks are configured for critical services
 - No hardcoded secrets in configuration files
 - Production compose file is valid
@@ -92,11 +91,8 @@ Verifies at least 3 volumes are defined for persistent data storage.
 - uploads
 - backups
 
-### Test 5: Ollama Exclusion Verification
 
-Confirms Ollama is NOT containerized in compose files.
 
-**Rationale:** Ollama uses the shared host instance (ghostshell-api) to save ~2GB memory.
 
 ### Test 6: Health Check Validation
 

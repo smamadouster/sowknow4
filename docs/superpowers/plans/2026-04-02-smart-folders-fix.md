@@ -2,9 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix Smart Folders so they actually work — fix the double `/api` URL prefix (404s) and remove Ollama routing so all documents (public + confidential) use MiniMax M2.7 directly.
 
-**Architecture:** Minimal 3-file fix. Frontend URL prefix bug in 3 fetch calls. Backend service removes Ollama routing branch, always uses MiniMax. No new files, no new dependencies.
 
 **Tech Stack:** Next.js (frontend fetch calls), FastAPI + MiniMax API (backend service)
 
@@ -76,23 +74,18 @@ git commit -m "fix(collections): remove double /api prefix in report export URL"
 
 ---
 
-### Task 3: Remove Ollama routing — always use MiniMax in smart folder service
 
 **Files:**
 - Modify: `backend/app/services/smart_folder_service.py:82-104`
 
-Remove the `has_confidential` check and Ollama branch. Always call `_generate_with_minimax`. Remove the `_generate_with_ollama` method entirely. Remove the `ollama_service` import and instance.
 
-- [ ] **Step 1: Remove Ollama import and instance**
 
 In `backend/app/services/smart_folder_service.py`, remove line 27:
 ```python
-from app.services.ollama_service import ollama_service
 ```
 
 And in `__init__` (line 38), remove:
 ```python
-self.ollama_service = ollama_service
 ```
 
 - [ ] **Step 2: Replace the routing logic (lines 82-104)**
@@ -107,13 +100,11 @@ Replace the `has_confidential` check and conditional branches:
 
         # Generate content
         if has_confidential:
-            generated = await self._generate_with_ollama(
                 topic=topic,
                 document_context=document_context,
                 style=style,
                 length=length,
             )
-            llm_used = "ollama"
         else:
             generated = await self._generate_with_minimax(
                 topic=topic,
@@ -139,15 +130,12 @@ With:
         llm_used = "minimax"
 ```
 
-- [ ] **Step 3: Delete `_generate_with_ollama` method (lines 289-332)**
 
-Remove the entire `_generate_with_ollama` method.
 
 - [ ] **Step 4: Update module docstring (line 4)**
 
 Change:
 ```python
-Uses MiniMax (public documents) or Ollama (confidential documents) to
 ```
 to:
 ```python
@@ -158,7 +146,6 @@ Uses MiniMax M2.7 directly for all documents to
 
 ```bash
 git add backend/app/services/smart_folder_service.py
-git commit -m "fix(smart-folders): use MiniMax directly for all docs, remove Ollama routing"
 ```
 
 ---
@@ -307,4 +294,3 @@ Navigate to `https://sowknow.gollamtech.com/smart-folders`, enter a topic, click
 - No 404 errors in browser console
 - Content generates successfully
 - Sources are displayed
-- `llm_used` shows "minimax" (not "ollama")

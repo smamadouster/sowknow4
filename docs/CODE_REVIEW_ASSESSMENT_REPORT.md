@@ -10,7 +10,6 @@
 
 ## 1. Executive Summary
 
-This comprehensive code review assesses the SOWKNOW project against its documented specifications in CLAUDE.md, PRD v1.1, and Execution Plan v1.2. The system is a privacy-first AI-powered knowledge management platform designed to transform scattered digital documents into a queryable wisdom vault using a dual-LLM architecture (Gemini Flash for public documents, Ollama for confidential documents).
 
 ### Overall Assessment: CONDITIONALLY PRODUCTION-READY
 
@@ -18,7 +17,6 @@ The SOWKNOW system demonstrates solid architectural foundations with all three p
 
 **Key Findings:**
 
-The project successfully implements the core feature set including document upload with OCR processing, RAG-powered semantic search, conversational AI chat, Smart Collections, Smart Folders, Knowledge Graph, Graph-RAG synthesis, and Multi-Agent Search. The dual-LLM routing architecture is in place with privacy-focused PII detection and automatic routing to Ollama for confidential documents. French language support with English localization is functional through next-intl integration. Memory limits are properly configured across all containers with a total allocation of 3.5GB within the 6.4GB budget.
 
 However, critical gaps remain. The nginx container was found in a stopped state (Error 521 incident), indicating potential stability issues with container orchestration. Monitoring and alerting are not fully configured despite being specified in the PRD. Automated backup processes are documented but not actively running. The test suite shows a 68% pass rate with 26 failing tests. Frontend test coverage remains at zero percent, and the Git repository has no remote configured.
 
@@ -36,7 +34,6 @@ The assessment covered backend code quality including FastAPI structure, SQLAlch
 
 ### 3.1 Technology Stack Compliance
 
-The implemented technology stack aligns with project specifications. The frontend uses Next.js 14 with TypeScript, Tailwind CSS, and Zustand for state management, matching the PRD requirements. The backend implements FastAPI with SQLAlchemy 2.0 ORM and Alembic migrations. The database layer uses PostgreSQL 16 with pgvector extension for vector storage and Redis for caching and task queuing. The AI stack incorporates Gemini Flash through Google Generative AI API, Ollama for local inference, multilingual-e5-large for embeddings, and Hunyuan OCR for document text extraction.
 
 The infrastructure uses Docker containers orchestrated with Docker Compose, Nginx as reverse proxy, and Let's Encrypt for SSL certificates. All specifications from CLAUDE.md are correctly implemented.
 
@@ -48,7 +45,6 @@ However, the production deployment was found with the nginx container in a "Crea
 
 ### 3.3 Service Dependencies
 
-The backend correctly references the shared Ollama instance through `OLLAMA_BASE_URL=http://host.docker.internal:11434`, avoiding the need for a separate Ollama container and saving approximately 2GB of memory as designed. The extra_hosts configuration allows Docker containers to access host services, which is properly implemented.
 
 ---
 
@@ -66,13 +62,11 @@ A critical security vulnerability was identified and addressed where CORS middle
 
 ### 4.3 Data Privacy
 
-The PII detection service was implemented to address the critical requirement of preventing personal information from being sent to external cloud APIs. The service detects emails, phone numbers, SSNs, and other sensitive data, routing affected requests to Ollama for processing. This addresses the "Zero PII ever sent to cloud APIs" requirement from CLAUDE.md.
 
 However, the audit reports note that PII pattern detection has edge cases, particularly with addresses and passport numbers, that need refinement. Core PII detection (emails, phones, SSN) works correctly, but the system should be enhanced before processing sensitive personal documents.
 
 ### 4.4 Confidential Document Handling
 
-The dual-LLM routing architecture correctly routes confidential documents to the local Ollama instance while using Gemini Flash for public documents. This is a core privacy feature. However, the system relies on the shared Ollama instance (ghostshell-api) which could become a single point of failure or performance bottleneck if other projects on the VPS heavily utilize it.
 
 ---
 
@@ -82,7 +76,6 @@ The dual-LLM routing architecture correctly routes confidential documents to the
 
 The document management system with Public/Confidential bucket separation is implemented. Document upload with drag-and-drop, file validation, and batch processing is functional. OCR processing through Hunyuan API with Base, Large, and Gundam modes is operational. Text extraction for PDFs, DOCX, TXT, MD, JSON is working. The RAG pipeline with chunking, embedding (multilingual-e5-large), and pgvector storage is operational. Hybrid search combining pgvector similarity with PostgreSQL full-text search is functional.
 
-The chat interface with persistent sessions, streaming responses, and source citations is implemented. Gemini Flash integration with context caching is working, and confidential document routing to Ollama is automatic. The Telegram bot for upload and chat is implemented.
 
 ### 5.2 Phase 2: Intelligence Layer (Complete)
 
@@ -226,7 +219,6 @@ The kimi_service.py file remains in the codebase despite the migration to Gemini
 | French Default Interface | ✅ Complete | next-intl with FR default |
 | English Support | ✅ Complete | Full translations provided |
 | Gemini Flash for Public | ✅ Complete | With context caching |
-| Ollama for Confidential | ✅ Complete | Shared instance integration |
 | Smart Collections | ✅ Complete | NL queries working |
 | Smart Folders | ✅ Complete | AI content generation |
 | PDF Reports | ✅ Complete | 3 formats |
@@ -243,7 +235,6 @@ The kimi_service.py file remains in the codebase despite the migration to Gemini
 
 ### 10.1 Immediate Actions (Before Next Deployment)
 
-First, investigate and fix the nginx container stability issue. Verify that all containers start correctly after deployment and add health check alerting. Second, configure Git remote repository and push code to ensure proper backup and version control. Third, verify all environment variables have real values (GEMINI_API_KEY, HUNYUAN_API_KEY, HUNYUAN_SECRET_ID) and are not using placeholders. Fourth, test the confidential document routing by uploading a test document and verifying it routes to Ollama.
 
 ### 10.2 Short-Term (Within 1 Month)
 
@@ -273,7 +264,6 @@ Configuration files reviewed include CLAUDE.md, SOWKNOW_PRD_v1.1.md, SOWKNOW_Exe
 
 Documentation reviewed includes COMPREHENSIVE_AUDIT_REPORT.md, PRODUCTION_READINESS_FINAL_REPORT.md, SECURITY_FIX_REPORT.md, and MONITORING.md.
 
-Backend services reviewed include main.py, main_minimal.py, gemini_service.py, ollama_service.py, pii_detection_service.py, search_service.py, chat_service.py, and multi-agent services.
 
 ---
 

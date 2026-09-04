@@ -2,9 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Strip confidential search results to metadata-only before LLM prompts, route all chat through cloud LLMs, remove Ollama from the critical path.
 
-**Architecture:** `retrieve_relevant_chunks()` splits results by bucket — public chunks keep full text, confidential chunks get replaced with a metadata summary. `build_rag_context()` labels each source type in the prompt. The `has_confidential` Ollama gate is removed from both streaming and non-streaming paths. All queries go through the public fallback chain (MiniMax → OpenRouter → Ollama).
 
 **Tech Stack:** Python 3.11, FastAPI, SQLAlchemy 2.0 async, pytest with SQLite (unit tests)
 
@@ -16,7 +14,6 @@
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `backend/app/services/chat_service.py` | Modify | Core changes: retrieve_relevant_chunks, build_rag_context, remove Ollama gates |
 | `backend/tests/unit/test_chat_metadata_routing.py` | Create | Unit tests for the new metadata-only flow |
 
 ---
@@ -498,7 +495,6 @@ System prompt instructs LLM not to fabricate confidential content."
 
 ---
 
-### Task 3: Test and remove Ollama confidential gate from `generate_chat_response`
 
 **Files:**
 - Modify: `backend/tests/unit/test_chat_metadata_routing.py`
@@ -510,11 +506,8 @@ Append to `backend/tests/unit/test_chat_metadata_routing.py`:
 
 ```python
 class TestGenerateChatResponseRouting:
-    """Test that confidential queries route through cloud LLMs, not Ollama."""
 
     @pytest.mark.asyncio
-    async def test_confidential_query_uses_cloud_llm_not_ollama(self):
-        """When search returns confidential docs, the LLM call goes to cloud, not Ollama."""
         from app.services.chat_service import ChatService
 
         svc = ChatService()
@@ -560,7 +553,6 @@ class TestGenerateChatResponseRouting:
                 current_user=mock_user,
             )
 
-        # Verify: cloud LLM was called, NOT Ollama
         mock_router.select_provider.assert_called_once()
         call_kwargs = mock_router.select_provider.call_args
         # has_confidential must be False in the router call (no confidential text reaches LLM)
@@ -574,9 +566,7 @@ class TestGenerateChatResponseRouting:
 
 Run: `cd /home/development/src/active/sowknow4/backend && python -m pytest tests/unit/test_chat_metadata_routing.py::TestGenerateChatResponseRouting -v -x 2>&1 | tail -20`
 
-Expected: FAIL — current code hits the Ollama gate when `has_confidential=True`.
 
-- [ ] **Step 3: Remove Ollama gate from `generate_chat_response`**
 
 In `backend/app/services/chat_service.py`, in the `generate_chat_response` method:
 
@@ -604,14 +594,10 @@ With:
             )
 ```
 
-Also update the `except RuntimeError` fallback to use openrouter instead of ollama:
 
 Replace:
 ```python
         except RuntimeError as routing_err:
-            logger.error(f"llm_router.select_provider failed, falling back to Ollama: {routing_err}")
-            llm_service = self.ollama_service
-            llm_provider = LLMProvider.OLLAMA
             routing_reason = "emergency_fallback"
 ```
 
@@ -623,8 +609,6 @@ With:
                 llm_service = openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
             else:
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
             routing_reason = "emergency_fallback"
 ```
 
@@ -638,16 +622,13 @@ Expected: All tests PASS.
 
 ```bash
 git add backend/tests/unit/test_chat_metadata_routing.py backend/app/services/chat_service.py
-git commit -m "feat: remove Ollama gate from non-streaming chat path
 
 Confidential queries now route through cloud LLMs since chunk text is
 already stripped to metadata. has_confidential=False passed to router.
-Emergency fallback prefers OpenRouter over Ollama."
 ```
 
 ---
 
-### Task 4: Remove Ollama gate from `generate_chat_response_stream`
 
 **Files:**
 - Modify: `backend/app/services/chat_service.py:431-561`
@@ -661,8 +642,6 @@ class TestStreamingConfidentialRouting:
     """Test that streaming path also routes confidential through cloud."""
 
     @pytest.mark.asyncio
-    async def test_streaming_confidential_does_not_hit_ollama_gate(self):
-        """Streaming path should not check Ollama health for confidential queries."""
         from app.services.chat_service import ChatService
 
         svc = ChatService()
@@ -676,7 +655,6 @@ class TestStreamingConfidentialRouting:
              patch.object(svc, "get_conversation_history", new_callable=AsyncMock) as mock_history, \
              patch("app.services.chat_service.get_cached_context_block", new_callable=AsyncMock) as mock_ctx, \
              patch("app.services.chat_service.llm_router") as mock_router, \
-             patch.object(svc, "ollama_service") as mock_ollama:
 
             mock_retrieve.return_value = (
                 [{"document_name": "secret.pdf", "chunk_text": "[Confidential — metadata only]",
@@ -710,8 +688,6 @@ class TestStreamingConfidentialRouting:
             ):
                 chunks.append(chunk)
 
-        # Ollama health check should NOT have been called
-        mock_ollama.health_check.assert_not_called()
         # Router called with has_confidential=False
         mock_router.select_provider.assert_called_once()
         call_kwargs = mock_router.select_provider.call_args
@@ -722,13 +698,10 @@ class TestStreamingConfidentialRouting:
 
 Run: `cd /home/development/src/active/sowknow4/backend && python -m pytest tests/unit/test_chat_metadata_routing.py::TestStreamingConfidentialRouting -v -x 2>&1 | tail -20`
 
-Expected: FAIL — Ollama health_check is still called.
 
-- [ ] **Step 3: Remove Ollama gate from streaming path**
 
 In `backend/app/services/chat_service.py`, in `generate_chat_response_stream`:
 
-**Delete the entire streaming confidential gate block** (the `if has_confidential:` block that checks Ollama health, enqueues to DeferredQueryService, and yields error SSE events).
 
 Also add isolated search DB session (same fix as non-streaming path). Replace:
 ```python
@@ -767,8 +740,6 @@ Update the emergency fallback to prefer OpenRouter (same as non-streaming path):
                 llm_service = openrouter_service
                 llm_provider = LLMProvider.OPENROUTER
             else:
-                llm_service = self.ollama_service
-                llm_provider = LLMProvider.OLLAMA
             routing_reason = "emergency_fallback"
 ```
 
@@ -782,7 +753,6 @@ Expected: All tests PASS.
 
 ```bash
 git add backend/tests/unit/test_chat_metadata_routing.py backend/app/services/chat_service.py
-git commit -m "feat: remove Ollama gate from streaming chat path
 
 Same metadata-only routing for streaming. Isolated search DB session
 to prevent connection corruption from search timeouts."
@@ -835,6 +805,5 @@ git add -A
 git commit -m "feat: metadata-only confidential routing — complete
 
 Confidential search results stripped to metadata before LLM prompt.
-All chat routes through cloud LLMs. Ollama removed from critical path.
 Tested and deployed to production."
 ```

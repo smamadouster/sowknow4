@@ -16,7 +16,6 @@ Each entry must include: date, credential type, reason, and operator.
 **Actions taken:**
 - `.env.example` updated: all real-looking values replaced with `YOUR_*_HERE` placeholders
 - `OPENROUTER_API_KEY` and `MINIMAX_API_KEY` placeholders added
-- `LOCAL_LLM_URL` renamed to canonical `OLLAMA_BASE_URL` across all config files
 - `scripts/setup_env.sh` created to auto-generate secrets on first setup
 
 **Remediation status:** ✅ All .env.example values are now safe placeholders.

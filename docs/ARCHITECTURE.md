@@ -101,7 +101,6 @@ SOWKNOW is a privacy-first, AI-powered knowledge management system designed to t
          │  AI/ML Services (External + Local)               │
          │  - Kimi API (Moonshot) - Chat & Search           │
          │  - MiniMax API (OpenRouter) - Public docs        │
-         │  - Ollama (Local) - Confidential docs            │
          │  - multilingual-e5-large - Embeddings           │
          └──────────────────────────────────────────────────┘
 ```
@@ -164,7 +163,6 @@ SOWKNOW is a privacy-first, AI-powered knowledge management system designed to t
 |---------|----------|----------|---------|
 | Chat LLM | Kimi (Moonshot) | Chat interface & search | Cloud (no PII) |
 | Public Docs | MiniMax (OpenRouter) | Public document analysis | Cloud (no PII) |
-| Confidential | Ollama (Local) | Confidential document processing | Local only |
 | Embeddings | multilingual-e5-large | Vector embeddings (local) | Local only |
 
 ---
@@ -180,7 +178,6 @@ Incoming Request
     │
     ├─ Is Confidential Document?
     │  │
-    │  ├─ YES → Route to Ollama (Local)
     │  │         ✓ Zero cloud API calls
     │  │         ✓ No PII exposure
     │  │         ✓ Private processing
@@ -203,7 +200,6 @@ Incoming Request
     │                   ✓ Context caching support
     │
     └─ FALLBACK: If cloud API fails
-       └─ Fall back to Ollama (Local)
           ✓ Graceful degradation
           ✓ Maintains availability
           ✓ Slower but reliable
@@ -253,7 +249,6 @@ Incoming Request
 - Context caching for cost optimization
 - Stable for structured extraction
 
-#### Ollama (Local)
 
 **Best for**: Confidential documents, fallback processing
 
@@ -432,7 +427,6 @@ User Query
         ┌─────────────────────┐
         │ LLM Provider Route   │
         │ - Is confidential?   │
-        │   YES → Ollama       │
         │   NO → Kimi / MiniMax│
         └────────┬────────────┘
                  │
@@ -726,7 +720,6 @@ Access: Admin only, all access logged
 | Metric | Target | Achieved |
 |--------|--------|----------|
 | Search response (Kimi) | < 3s | ✓ 2.5s avg |
-| Search response (Ollama) | < 8s | ✓ 6.2s avg |
 | Document processing | > 50 docs/hour | ✓ 120 docs/hour |
 | Knowledge graph load | < 5s | ✓ 2.8s avg |
 | Multi-agent search | < 30s | ✓ 18s avg |
@@ -863,7 +856,6 @@ Docker Network (sowknow-net):
 ├─ Internal only bridge
 ├─ Services communicate via hostnames
 ├─ No external access from containers
-└─ Ollama via host.docker.internal (localhost:11434)
 
 Firewall (Host):
 ├─ 80: Caddy (HTTP)
@@ -904,7 +896,6 @@ Layer 3: Detailed Metrics
 ```
 Performance Metrics:
 ├─ API response time (p50, p95, p99)
-├─ Search latency by provider (Kimi, MiniMax, Ollama)
 ├─ Document processing throughput (docs/hour)
 ├─ Cache hit rate (%)
 └─ Queue depth (pending tasks)

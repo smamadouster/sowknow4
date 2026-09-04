@@ -29,7 +29,6 @@
 - **Issue**: Zero PII scanning before sending to Gemini Flash or Hunyuan OCR
 - **PRD Requirement**: "Zero PII ever sent to cloud APIs"
 - **Impact**: Violates core privacy-first principle
-- **Fix Required**: Implement PII detection service that routes to Ollama when detected
 
 ### 2. Language Defaults to English, Not French (CRITICAL)
 - **Location**: Frontend (all pages)
@@ -68,11 +67,8 @@
 - **Impact**: SUPERUSER role may be denied access inappropriately
 - **Fix Required**: Standardize all RBAC checks
 
-### 8. Missing Ollama Container (CRITICAL)
 - **Location**: `docker-compose.production.yml`
-- **Issue**: No ollama service defined, but backend references `http://ollama:11434`
 - **Impact**: Connection failures for confidential document processing
-- **Fix Required**: Add ollama container or update references
 
 ---
 
@@ -154,7 +150,6 @@
 | SQL Injection | ⚠️ Risk | Parameterized but with string concatenation |
 | RBAC | ❌ Inconsistent | SUPERUSER not always included |
 | Bucket Isolation | ⚠️ Partial | Correct in search, inconsistent elsewhere |
-| Dual-LLM Routing | ❌ Issues | Missing Ollama fallback |
 | PII Detection | ❌ Missing | Zero implementation |
 | Context Caching | ✅ Good | Implemented with TTL |
 
@@ -193,7 +188,6 @@
 | RBAC (3 roles) | ⚠️ Partial | Roles exist but checks inconsistent |
 | French Default | ❌ Failed | Defaults to English |
 | Gemini Flash for Public | ✅ Good | Implemented |
-| Ollama for Confidential | ❌ Failed | Container missing |
 | Context Caching | ✅ Good | Implemented |
 | Smart Collections | ✅ Good | Implemented |
 | Knowledge Graph | ✅ Good | Implemented |
@@ -209,7 +203,6 @@
 3. Implement client-side RBAC
 4. Add memory limits to containers
 5. Fix CORS configuration
-6. Add Ollama container or update references
 
 ### Phase 2: Compliance Fixes (Should Do)
 7. Implement French as default language
@@ -238,7 +231,6 @@ The SOWKNOW system has solid core functionality with excellent features like Sma
 ## 📎 Appendix: File References
 
 ### Critical Files to Modify:
-1. `docker-compose.production.yml` - Memory limits, Ollama container
 2. `backend/app/main.py` - CORS configuration
 3. `backend/app/documents.py` - RBAC consistency
 4. `backend/app/services/` - Add PII detection service

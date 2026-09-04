@@ -35,7 +35,6 @@ Lead: Orchestrator
 
 ### Scenario 4: Chat with LLM Routing (Agent B2)
 - Gemini Flash for public documents
-- Ollama for confidential documents
 - PII detection routing
 - Context caching verification
 
@@ -60,13 +59,11 @@ Lead: Orchestrator
 - [x] JWT token handling across all scenarios (Agent A1 verified: httpOnly cookies, token rotation; Agent C1 verified: all collection endpoints use `get_current_user`)
 - [x] Role-based access control consistency (Agent C1 verified: bucket filtering by role)
 - [x] No data leakage between user types (Agent C1 verified: confidential invisible to regular users)
-- [x] Confidential document isolation (Agent C1 verified: Ollama routing for confidential docs)
 - [x] Password complexity enforcement (Agent A1 verified: 8+ chars, upper, lower, digit, special required)
 - [x] User enumeration prevention (Agent A1 verified: generic error messages on login)
 
 ### Performance Indicators
 - [ ] Upload processing time < 30s (BLOCKED: A2-001 OOM issue)
-- [ ] Search response time < 3s (Gemini), < 8s (Ollama)
 - [ ] LLM routing latency
 - [x] Collection generation speed < 30s (Agent C1: target defined, needs real testing)
 
@@ -74,7 +71,6 @@ Lead: Orchestrator
 - [ ] Telegram bot ↔ Backend API
 - [x] OCR pipeline (PaddleOCR) ↔ Document processing (Agent A2 verified: OCR works)
 - [ ] Embedding generation ↔ Search indexing (Agent A2: BLOCKED by OOM issue)
-- [x] Collection service ↔ LLM routing (Agent C1 verified: OpenRouter/Ollama routing)
 
 ---
 
@@ -381,7 +377,6 @@ Completed: 2026-02-22T10:45:00Z
 | Category | Status | Details |
 |----------|--------|---------|
 | PII Detection Service | ✓ PASS | All patterns detected correctly |
-| LLM Routing Logic | ✓ PASS | Correct confidential → Ollama routing |
 | Privacy Compliance | ✓ PASS | No PII leakage to cloud APIs |
 | Context Caching | ✗ FAIL | Not implemented |
 | Unit Tests | PARTIAL | 30 passed, 5 failed |
@@ -401,19 +396,16 @@ Completed: 2026-02-22T10:45:00Z
 | Redaction | Email + phone | ✓ `[EMAIL_REDACTED]`, `[PHONE_REDACTED]` |
 
 **PII Patterns Implemented**: Email, US/French SSN, French/Intl Phone, Credit Card (Luhn), IBAN, IP Address, URLs with params
-**Default Threshold**: 1 (single PII instance triggers Ollama routing)
 
 #### Step 2: Chat with Public Documents (No PII)
 **Routing Logic** (`chat_service.py:339-354`):
 ```
-Public docs RAG → MiniMax (direct API) → OpenRouter → Ollama fallback
 ```
 ⚠️ **Finding**: System uses **MiniMax/Kimi**, NOT Gemini Flash as documented.
 
 **Actual LLM Providers** (`chat.py:10-15`):
 - `MINIMAX` - default for public documents
 - `KIMI` - for chatbot, telegram, search
-- `OLLAMA` - for confidential documents
 
 #### Step 3: Chat with PII in Query
 **Implementation** (`chat_service.py:186-190`):
@@ -423,7 +415,6 @@ if has_pii:
     pii_summary = pii_detection_service.get_pii_summary(query)
     logger.warning(f"PII detected in chat query by user {current_user.email}")
 ```
-**Result**: ✓ PII in query → routes to Ollama
 
 #### Step 4: Chat with Confidential Documents
 **Implementation** (`chat_service.py:214-217`):
@@ -432,7 +423,6 @@ has_confidential = any(
     r.document_bucket == "confidential" for r in search_result["results"]
 ) or has_pii
 ```
-**Result**: ✓ Confidential bucket → Ollama routing enforced
 
 #### Step 5: Context Caching Verification
 **File**: `backend/app/services/openrouter_service.py:90-97`
@@ -444,9 +434,6 @@ async def chat_completion(..., cache_key: Optional[str] = None):
 
 #### Step 6: Fallback Handling
 **Fallback Chain** (`chat_service.py:327-376`):
-1. Confidential/PII → Ollama (always)
-2. Public RAG → MiniMax → OpenRouter → Ollama
-3. General Chat → Kimi → MiniMax → OpenRouter → Ollama
 **Result**: ✓ Graceful degradation implemented
 
 #### Unit Test Results
@@ -459,13 +446,11 @@ async def chat_completion(..., cache_key: Optional[str] = None):
 | `test_gemini_provider_exists` | LLMProvider has no GEMINI attribute |
 | `test_provider_in_chat_message` | Same GEMINI issue |
 | `test_provider_tracking_for_auditing` | Same GEMINI issue |
-| `test_ollama_base_url_configurable` | URL is `http://host.docker.internal:11434` |
 
 #### Privacy Compliance Assessment
 | Check | Status | Notes |
 |-------|--------|-------|
 | PII detection accuracy | ✓ PASS | All major patterns detected |
-| PII → Ollama routing | ✓ PASS | Confidential always local |
 | Redaction capability | ✓ PASS | Can redact before cloud APIs |
 | Zero PII to cloud | ✓ PASS | Routing logic enforced |
 | Audit logging | ✓ PASS | PII detection logged with user ID |
@@ -483,7 +468,6 @@ async def chat_completion(..., cache_key: Optional[str] = None):
 | `backend/app/services/pii_detection_service.py` | PII detection | ✓ |
 | `backend/app/services/chat_service.py` | Chat + routing logic | ✓ |
 | `backend/app/services/openrouter_service.py` | OpenRouter API | ✓ |
-| `backend/app/services/ollama_service.py` | Ollama API | ✓ |
 | `backend/app/services/minimax_service.py` | MiniMax direct API | ✓ |
 | `backend/app/models/chat.py` | LLMProvider enum | ✓ |
 | `backend/tests/unit/test_llm_routing.py` | Routing tests | ✓ |
@@ -529,13 +513,11 @@ Completed: 2026-02-22T11:15:00Z
 - Summary generation: ✓ (`_generate_collection_summary()` in collection_service.py:390-483)
 - LLM routing:
   - Public docs → OpenRouter/MiniMax: ✓
-  - Confidential docs → Ollama: ✓
 - Themes identification: ✓ (via LLM prompt)
 - Context caching: PLACEHOLDER (not yet implemented)
 
 **Step 5: Collection with Confidential Documents**
 - Status: PARTIAL ✓
-- LLM routing to Ollama: ✓ (line 426-446 in collection_service.py)
 - RBAC filtering: ✓ (search_service.py:59-98)
 - Security: `has_confidential` check at line 412-415
 - Gap: Export endpoint not fully tested
@@ -544,7 +526,6 @@ Completed: 2026-02-22T11:15:00Z
 - Status: IMPLEMENTED ✓
 - Endpoint: `POST /api/v1/collections/{id}/chat`
 - Scoped to collection docs: ✓ (`_build_document_context()`)
-- LLM routing: ✓ (`_chat_with_minimax()` / `_chat_with_ollama()`)
 - Sources included: ✓
 - Audit logging: ✓ (confidential access logged at line 176-197)
 
@@ -558,22 +539,17 @@ Completed: 2026-02-22T11:15:00Z
 | Scenario | Expected LLM | Actual | Status |
 |----------|-------------|--------|--------|
 | Public docs only | MiniMax/OpenRouter | OpenRouter | ✓ |
-| Any confidential doc | Ollama | Ollama | ✓ |
 | Intent parsing (public) | OpenRouter | OpenRouter | ✓ |
-| Intent parsing (admin) | Ollama | Ollama | ✓ |
 | Collection chat (public) | MiniMax | MiniMax | ✓ |
-| Collection chat (confidential) | Ollama | Ollama | ✓ |
 
 Evidence locations:
 - `collection_service.py:411-415` - has_confidential check
-- `collection_service.py:426-446` - Ollama routing
 - `collection_service.py:448-479` - OpenRouter routing
 - `collection_chat_service.py:210-225` - Chat routing
 
 #### Security Observations
 
 **PASS:**
-1. ✓ Confidential documents only analyzed by Ollama (verified in source code)
 2. ✓ Bucket metadata not leaked in collection items response
 3. ✓ Regular users cannot see confidential documents (bucket filter at search_service.py:96-98)
 4. ✓ Audit logging for confidential access in collection chat
@@ -748,7 +724,6 @@ Completed: 2026-02-22T10:45:00Z
 | JWT authentication required | ✓ | `get_current_user` dependency on all endpoints |
 | RBAC on collection access | ✓ | Visibility filter in `_get_user_visibility_filter()` |
 | Confidential docs filtered for Users | ✓ | search_service.py:96-98 |
-| Confidential docs route to Ollama | ✓ | collection_service.py:412-415, 426-446 |
 | No bucket metadata leakage | ✓ | collections.py:262-268 (bucket excluded) |
 | Audit logging for confidential access | ✓ | collection_chat_service.py:176-197 |
 | SuperUser VIEW-ONLY enforcement | ✓ | search_service.py:93-95 (view-only in search) |
@@ -770,13 +745,8 @@ Completed: 2026-02-22T10:45:00Z
 ### Agent B2 - LLM Routing Privacy
 | Check | Status | Evidence |
 |-------|--------|----------|
-| PII detection for emails | ✓ | `john@example.com` → detected, routes to Ollama |
-| PII detection for French phones | ✓ | `06 12 34 56 78` → detected, routes to Ollama |
-| PII detection for SSN | ✓ | `123-45-6789` → detected, routes to Ollama |
 | PII detection for credit cards | ✓ | Luhn validated cards → detected |
 | PII redaction capability | ✓ | `[EMAIL_REDACTED]`, `[PHONE_REDACTED]` |
-| Confidential bucket → Ollama | ✓ | chat_service.py:334-338 |
-| PII in query → Ollama | ✓ | chat_service.py:186-190, 214-217 |
 | Audit logging for PII detection | ✓ | `logger.warning(f"PII detected in chat query...")` |
 
 ### Agent B1 - Search Access Control Security
@@ -794,7 +764,6 @@ Completed: 2026-02-22T10:45:00Z
 | Token refresh role bug | ⚠ | auth.py:524,534 uses stale role |
 
 ### Privacy Compliance
-- ✓ PII never sent to cloud APIs (Ollama routing for confidential)
 - ✓ Document content not exposed in collection summaries (filenames only)
 - ✓ Audit trail for confidential document access
 
@@ -829,7 +798,6 @@ Completed: 2026-02-22T10:45:00Z
 | PII detection | < 10ms | ~1ms | ✓ PASS |
 | LLM selection logic | < 5ms | ~1ms | ✓ PASS |
 | MiniMax response | < 3s | N/A (external API) | NOT TESTED |
-| Ollama response | < 8s | N/A (local) | NOT TESTED |
 | Unit test pass rate | 100% | 85.7% (30/35) | PARTIAL |
 
 **Note:** Performance tests for external LLM APIs require live API keys and network access.
@@ -916,8 +884,6 @@ Completed: 2026-02-22T10:45:00Z
 | Authentication | ✓ SECURE | httpOnly cookies, token rotation, bcrypt |
 | Authorization (RBAC) | ✓ SECURE | Role-based bucket filtering |
 | Confidential Isolation | ✓ SECURE | 404 prevents enumeration |
-| PII Protection | ✓ SECURE | Ollama routing for sensitive data |
-| LLM Routing | ✓ SECURE | Confidential → Ollama enforced |
 | Token Security | ⚠ MINOR | Refresh uses stale role (low impact) |
 
 **Zero critical security vulnerabilities found.**

@@ -3,15 +3,12 @@
 
 **Date:** February 2026
 **Classification:** CONFIDENTIAL
-**Timeline:** 20 Weeks (3 Phases) | LLM: Kimi 2.5 + Shared Ollama
 
 ---
 
 ## 1. Executive Summary
 
-The SOWKNOW execution plan spans 20 weeks across 3 phases. Phase 1 (8 weeks) delivers the Core MVP: document upload, OCR processing via Hunyuan API, RAG-powered search using multilingual-e5-large embeddings, conversational AI chat via Kimi 2.5, confidential document routing via shared Ollama, and Telegram bot integration. Phase 2 (6 weeks) adds Smart Collections, Smart Folders, report generation, and auto-tagging. Phase 3 (6 weeks) implements Knowledge Graph, Graph-RAG, synthesis engine, and agentic search.
 
-Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW uses the shared Ollama instance already running on the VPS, and Kimi 2.5 via Moonshot API for all cloud AI features, consistent with the broader Aicha platform ecosystem.
 
 ### 1.1 Timeline Overview
 
@@ -25,9 +22,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 
 | Resource | Specification | Impact |
 |----------|---------------|--------|
-| VPS | Hostinger 16GB RAM, 200GB Disk (shared) | ~6.4GB for SOWKNOW containers; rest for Ollama + OS + other projects |
-| GPU | None | OCR via Hunyuan API; Ollama CPU inference (shared) |
-| Ollama | Shared instance, already running | No container management; connect via LOCAL_LLM_URL |
 | Cloud LLM | Kimi 2.5 via Moonshot API | Pay-per-token; daily cost monitoring required |
 | Users at Launch | 5 | Low concurrency; simplified auth sufficient |
 | Document Ingestion | Incremental | No big-bang migration; pipeline ramps up gradually |
@@ -50,9 +44,7 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 | User Management | Admin seeding, CRUD for users, role assignment, can_access_confidential flag | Admin can manage users |
 | Next.js Scaffold | TypeScript, Tailwind, layout, auth pages, PWA manifest, next-intl (FR/EN) | Frontend at :3000 |
 | Nginx Config | Reverse proxy, TLS (Let's Encrypt), rate limiting, static file serving | HTTPS working |
-| Ollama Connection | Verify shared Ollama reachable from Docker (extra_hosts config), health check endpoint | Ollama ping working |
 
-**Exit Criteria:** Admin logs in, sees empty dashboard, all 8 containers healthy, HTTPS working, Ollama reachable.
 
 ### Sprint 2: Document Pipeline (Weeks 3-4)
 **Theme:** Upload + OCR + Text Extraction + Storage
@@ -71,7 +63,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 **Exit Criteria:** Admin uploads files via web, sees them processed (OCR for images, text extraction for PDFs), views document list with status.
 
 ### Sprint 3: Search + RAG + Chat (Weeks 5-6)
-**Theme:** Embedding Pipeline + Hybrid Search + Kimi 2.5 Chat + Ollama Routing
 
 | Task | Description | Deliverable |
 |------|-------------|-------------|
@@ -82,9 +73,7 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 | Moonshot Integration | Kimi 2.5 API client (httpx async), streaming SSE, context packing (10 msgs + chunks) | Kimi 2.5 responding |
 | Chat API | Session management, message history, source citations, llm_used tracking | POST /api/chat/* working |
 | Chat UI | ChatGPT-like interface, streaming responses, citations, session list, model indicator | /chat page functional |
-| Confidential Routing | Auto-detect confidential docs in retrieved chunks, switch to Ollama, log decisions | LLM routing working |
 
-**Exit Criteria:** Users search by natural language, get relevant results. Multi-turn chat works via Kimi 2.5. Confidential queries auto-route to Ollama. Model indicator shows active LLM.
 
 ### Sprint 4: Telegram + Dashboard + QA (Weeks 7-8)
 **Theme:** Telegram Bot + Admin Dashboard + Anomalies + Production Deploy
@@ -97,12 +86,10 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 | Dashboard | Total docs, uploads today, pages indexed, system health cards (Legal-BERT style) | Dashboard with live stats |
 | Anomaly Report | 09:00 AM daily via Celery Beat: docs in 'processing' >24h shown in Anomalies Bucket | Anomalies in dashboard |
 | Role-Based UI | Hide Upload/Settings/KG for non-admin, hide Confidential for User role | UI respects all roles |
-| Error Handling | Graceful degradation for all API failures, Ollama unavailable fallback messaging | UI never crashes |
 | Language Toggle | French (default) / English selector, persistent preference | Bilingual UI working |
 | E2E Testing | Critical paths: upload > process > search > chat > Telegram > confidential routing | All paths validated |
 | VPS Deploy | Production deploy to Hostinger, SSL, DNS, monitoring, backup automation | System live |
 
-**Phase 1 Exit Criteria:** Complete MVP live on production. Upload via web + Telegram. Search + chat via Kimi 2.5. Confidential docs route to shared Ollama. Dashboard with stats and anomalies. All 5 users onboarded.
 
 ---
 
@@ -129,7 +116,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 |------|-------------|-------------|
 | Smart Folders API | User inputs topic, Kimi 2.5 searches related docs and generates article/content | POST /api/smart-folders/generate |
 | Smart Folders UI | Topic input, document preview, generated content display, save as new document | /smart-folders page |
-| Admin Confidential | Admin Smart Folder requests include Confidential docs (routed via Ollama) | Vault analysis working |
 | Report Generation | Kimi 2.5 creates Short/Standard/Comprehensive reports from collections | 3 report templates |
 | PDF Export | Professional PDF: cover, summary, document list, analysis, citations | Downloadable PDF reports |
 | AI Auto-Tagging | On ingestion: Kimi 2.5 extracts topic, entities, importance, language | Auto-tags on uploads |
@@ -186,7 +172,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 | Agent Orchestration | Coordinate flow, fallback to simple RAG if agents fail | Full pipeline working |
 | Full System QA | E2E testing all features, load testing with 5 concurrent users | Production-ready |
 | Documentation | Complete API docs, user guide (FR/EN), admin manual, deployment runbook | Full docs delivered |
-| Monitoring | Advanced metrics: query latency, Kimi 2.5 costs, Ollama usage, storage | Ops dashboard live |
 
 **Phase 3 Exit Criteria:** Knowledge Graph operational. Graph-RAG improves search. Synthesis answers broad questions. Agentic search pipeline functional. Full documentation complete.
 
@@ -196,7 +181,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 
 | Risk | Phase | Impact | Prob. | Mitigation |
 |------|-------|--------|-------|------------|
-| Shared Ollama overloaded by other projects | 1 | Medium | Medium | Request queuing, timeout handling, graceful fallback messaging to user |
 | Moonshot API downtime or latency | 1 | High | Low | Retry with exponential backoff, cache responses, queue pending requests |
 | Kimi 2.5 cost overrun | 1-2 | Medium | Medium | Daily cost monitoring, batch processing, prompt optimization |
 | VPS memory contention (shared) | 1 | High | Medium | Strict Docker limits (6.4GB total), stagger heavy jobs, monitor VPS-wide |
@@ -214,7 +198,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 |------------|------|------|----------|
 | Hostinger VPS | Infrastructure | Low | Migrate to Hetzner/OVH |
 | Moonshot API (Kimi 2.5) | Cloud LLM | Medium | OpenRouter (Gemini Flash / Claude Haiku) |
-| Shared Ollama | Local LLM | Medium | Queue requests, degrade gracefully if busy |
 | Hunyuan-OCR API | OCR Service | Medium | Tesseract OCR (local, lower quality) |
 | Telegram Bot API | Communication | Low | Very stable; no fallback needed |
 | sentence-transformers | Embedding | Low | Pin version for stability |
@@ -227,7 +210,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 
 - All 8 SOWKNOW containers start cleanly with resource limits (<6.4GB total)
 - Health checks passing for all services
-- Shared Ollama reachable from SOWKNOW containers via localhost:11434
 - Kimi 2.5 (Moonshot API) responding with valid API key
 - HTTPS working with valid SSL certificate
 - Admin account created with strong password
@@ -237,12 +219,10 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 - Monitoring alerts for memory, disk, errors configured
 - Telegram bot responding to messages
 - French and English UI both functional
-- Confidential routing verified: Kimi 2.5 for public, Ollama for confidential
 
 ### 7.2 Post-Launch Monitoring (First 2 Weeks)
 
 - Daily: SOWKNOW container memory vs. 6.4GB budget
-- Daily: VPS total memory usage (including Ollama and other projects)
 - Daily: Moonshot API cost tracking
 - Daily: Processing anomalies report (09:00 AM)
 - Weekly: Search quality spot-check (10 sample queries FR + EN)
@@ -257,7 +237,6 @@ Each sprint is 2 weeks. Every sprint ends with a deployable increment. SOWKNOW u
 |-------|----------|-------------|
 | Phase 1 (Wk 8) | 5 users upload, search, and chat successfully | Manual testing by all 5 users |
 | Phase 1 (Wk 8) | OCR accuracy >97% on 50-doc sample batch | Automated accuracy check |
-| Phase 1 (Wk 8) | Kimi 2.5 search answers in <3s, Ollama in <8s | Latency monitoring |
 | Phase 1 (Wk 8) | Confidential routing 100% accurate (no PII to cloud) | Audit log review |
 | Phase 2 (Wk 14) | Smart Collections + Smart Folders adopted by >3/5 users | Usage analytics |
 | Phase 2 (Wk 14) | PDF reports generated >90% success rate | Error tracking |

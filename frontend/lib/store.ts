@@ -165,7 +165,6 @@ interface ChatMessage {
     chunk_id: string;
     relevance_score: number;
   }>;
-  llm_used?: 'kimi' | 'ollama';
   created_at: string;
 }
 
@@ -182,14 +181,12 @@ interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
   isStreaming: boolean;
-  llmUsed: 'kimi' | 'ollama' | null;
   setSessions: (sessions: ChatSession[]) => void;
   setCurrentSession: (session: ChatSession | null) => void;
   setMessages: (messages: ChatMessage[]) => void;
   addMessage: (message: ChatMessage) => void;
   setLoading: (loading: boolean) => void;
   setStreaming: (streaming: boolean) => void;
-  setLlmUsed: (llm: 'kimi' | 'ollama' | null) => void;
   createSession: (title: string) => Promise<void>;
   loadSessions: () => Promise<void>;
   loadMessages: (sessionId: string) => Promise<void>;

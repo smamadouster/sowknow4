@@ -15,7 +15,6 @@
 | Priority | Change | Impact | Effort | Savings |
 |----------|--------|--------|--------|---------|
 | **1** | **Eliminate free-tier models from production paths.** `smart_folder_service.py` hardcodes `FALLBACK_MODEL = "qwen/qwen3-235b-a22b:free"`, and `OPENROUTER_TIER_SIMPLE` defaults to `meta-llama/llama-3.3-70b-instruct:free`. Free-tier models on OpenRouter have no SLA, aggressive rate limits, and 5–15s cold-start stalls. Under West-African latency (180–250ms RTT to EU), a free-tier stall cascades into user-visible hangs. | Reliability ↑↑, Latency ↓↓ | 2 env vars + 1 constant | ~$0 direct, prevents user churn |
-| **2** | **Add persistent `httpx.AsyncClient` connection pooling to all LLM services.** Every provider (OpenRouter, MiniMax, Kimi, Ollama) instantiates a new `AsyncClient` per request. With 5 concurrent users × 4 LLM calls each, this creates 20+ simultaneous TCP handshakes. On high-RTT networks, TLS setup alone adds 500–800ms per call. The `rerank_service.py` already does this correctly; the LLM services do not. | Reliability ↑↑, Latency ↓↓ | 1 shared module + 4 service edits | Prevents timeout storms |
 | **3** | **Implement per-user LLM token budgets.** The `CostCeiling` is global ($5/day) with no per-user isolation. A single Admin running a 25-document Comprehensive Report or batch Smart Folder generation can exhaust the entire daily budget, breaking Chat for all other users (including heirs). For a family vault, this is a catastrophic fairness failure. | Cost control ↑↑, Fairness ↑↑ | 1 middleware + Redis counters | Prevents $50–150/day runaway spend |
 
 **Combined effect**: These three changes eliminate the most likely launch-day failures (free-tier stalls, connection exhaustion, budget monopolization) with <2 days of engineering.
@@ -258,7 +257,6 @@ Currently, all tasks use `tier="complex"` or `tier="standard"` with no granulari
 | `.env` line 11 | `OPENROUTER_MODEL=moonshotai/kimi-k2.6` — stale value; code defaults to `deepseek/deepseek-v4-pro` if unset | **Medium** — confusion during incident response |
 | `.env` line 8–9 | `MINIMAX_API_KEY=disabled`, `MINIMAX_MODEL=disabled` — commented but present | Low — could be uncommented by mistake |
 | `.env` line 12–13 | `MOONSHOT_API_KEY=disabled`, `KIMI_MODEL=disabled` — same | Low |
-| `.env` line 16 | `LOCAL_LLM_URL=http://host.docker.internal:11434` — Docker Desktop-specific; fails on Linux production | **High** — Ollama fallback broken on prod deploy (though Ollama is currently removed) |
 | `backend/app/services/monitoring.py` | Pricing table contains 6 deprecated models: `openai/gpt-4o`, `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet` (old pricing), `minimax/minimax-01`, `MiniMax-M2.5`, `moonshotai/kimi-k2.5` | **Medium** — cost tracking inaccurate if old models referenced |
 | `backend/app/services/openrouter_service.py` | `OPENROUTER_TIER_MODELS` hardcodes `meta-llama/llama-3.3-70b-instruct:free` as fallback if env var unset | **High** — production will use free tier if env var missing |
 | `backend/app/services/smart_folder_service.py` | `FALLBACK_MODEL = "qwen/qwen3-235b-a22b:free"` hardcoded constant | **Critical** — Smart Folder generation falls back to unreliable free tier |
@@ -271,8 +269,6 @@ Currently, all tasks use `tier="complex"` or `tier="standard"` with no granulari
 # MINIMAX_API_KEY_DEPRECATED=disabled
 # KIMI_API_KEY_DEPRECATED=disabled
 
-# Step 2: Fix LOCAL_LLM_URL for production (if Ollama ever re-enabled)
-OLLAMA_BASE_URL=http://ollama:11434   # Docker service name, not host.docker.internal
 
 # Step 3: Update production env validation
 ```
@@ -331,14 +327,9 @@ for model in [settings.OPENROUTER_MODEL, settings.OPENROUTER_TIER_SIMPLE, ...]:
 ### 5.1 Current Fallback Chain
 
 ```
-Confidential: Ollama → OpenRouter → MiniMax
-Public RAG:   OpenRouter → MiniMax → Ollama
-General Chat: OpenRouter → MiniMax → Ollama
 ```
 
 **Problems**:
-1. **MiniMax is disabled** — fallback chain is effectively `OpenRouter → Ollama` for public, and `Ollama → OpenRouter` for confidential.
-2. **Ollama is intentionally removed** (PRD §1.3: "too slow on CPU"). If not running, confidential data is forced to OpenRouter with only "metadata-only stripping." This is by design for SOWKNOW, but the router code still tries Ollama first for confidential, adding latency.
 3. **No latency-based cutover** — a slow OpenRouter call waits 60s before timeout; no secondary provider is tried mid-flight.
 4. **No cost-anomaly fallback** — if DeepSeek V4 Pro spikes in price, there is no automatic downgrade.
 5. **Smart Folder Service has its own fallback logic** (`_generate_with_openrouter_fallback`) that uses the free-tier Qwen model, bypassing the centralized router entirely.
@@ -357,7 +348,6 @@ Tertiary:   Azure — Mistral Small (EU West datacenter, low latency to West Afr
 Ultimate:   Graceful degradation to "Search results only" — list retrieved documents with excerpts, no synthesis
 ```
 
-**Why no Ollama**: Ollama is removed from the VPS. Re-adding it (even Gemma 2B) would require GPU or accept 30–60s response times on CPU. For a family chat interface, this is unacceptable. The metadata-only stripping approach (PRD §1.3) is the correct privacy architecture for SOWKNOW.
 
 #### Smart Collections & Reports (Quality-Critical)
 
@@ -804,7 +794,6 @@ def enforce_prompt_ceiling(messages: list[dict], tier: str) -> list[dict]:
 | **Privacy-first positioning** | Never log full prompts to external monitoring. The metadata-only stripping is SOWKNOW's core privacy guarantee — audit this path quarterly. |
 | **Cost sensitivity (family users)** | Offer "Eco mode" toggle: uses Gemini Flash + shorter context + no verification agent. Reduces cost 80% with modest quality loss. Ideal for heirs doing casual exploration. |
 | **Mobile data (PWA)** | Cap SSE stream chunks at 256 bytes; compress JSON payloads; avoid large base64 inlining. iPhone Safari has aggressive background tab killing. |
-| **Ollama removed** | Do NOT re-enable Ollama on CPU. If GPU is added later, use a fine-tuned 7B model for confidential queries. Until then, metadata-only stripping is the correct architecture. |
 
 ---
 

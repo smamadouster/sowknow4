@@ -150,7 +150,6 @@ def upgrade():
 |------------|-------|-----------|--------|
 | minimax | ✅ | ❌ | **MISSING** |
 | kimi | ✅ | ✅ | OK |
-| ollama | ✅ | ✅ | OK |
 
 **Fix:** Add migration to alter enum:
 ```sql
@@ -334,7 +333,6 @@ CREATE INDEX ix_collections_is_confidential ON sowknow.collections (is_confident
 | DocumentStatus | pending, uploading, processing, indexed, error | ✅ |
 | DocumentLanguage | fr, en, multi, unknown | ✅ |
 | MessageRole | user, assistant, system | ✅ |
-| LLMProvider | **minimax**, kimi, ollama | ⚠️ Missing minimax |
 | TaskType | ocr_processing, text_extraction, chunking, embedding_generation, indexing | ✅ |
 | TaskStatus | pending, in_progress, completed, failed, cancelled | ✅ |
 | CollectionType | smart, manual, folder | ✅ |

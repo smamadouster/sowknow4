@@ -5,11 +5,9 @@
 
 ## Problem
 
-When a search query matches confidential documents, the chat pipeline routes the entire request (including full chunk text) through Ollama for local privacy-preserving inference. Ollama on a CPU-only VPS is fundamentally non-viable for interactive chat: 25-40s latency per request, constant memory pressure, and any background task (entity extraction, health checks) blocks the single-threaded inference queue. This makes confidential search unusable.
 
 ## Decision
 
-Strip confidential search results to metadata only before they reach the LLM prompt. Route ALL chat generation through cloud LLMs (OpenRouter/MiniMax fallback chain). Ollama is removed from the critical path.
 
 **Privacy guarantee preserved:** Confidential document text never leaves the server. Only document-level metadata (filename, date, page count, mime type, tags) reaches external APIs.
 
@@ -63,10 +61,8 @@ Update system prompt to include:
 
 #### `backend/app/services/chat_service.py` — `generate_chat_response()` and `generate_chat_response_stream()`
 
-- Remove the `if has_confidential:` Ollama health check gate
 - Remove DeferredQueryService queueing for confidential queries
 - Pass `has_confidential=False` to `llm_router.select_provider()` since no confidential text reaches the LLM. The `has_confidential` flag on the response dict is still set truthfully for audit logging and UI display — it just no longer gates LLM routing.
-- All queries use the public fallback chain: MiniMax → OpenRouter → Ollama
 
 #### `backend/app/services/llm_router.py`
 
@@ -94,7 +90,6 @@ Fields used in metadata summary: `filename`, `created_at`, `page_count`, `mime_t
 - **Search layer** — `hybrid_search()`, `SearchResult`, no changes
 - **Telegram bot** — no changes needed
 - **Frontend** — no changes needed
-- **Ollama service** — stays available, just not on the critical chat path
 
 ### Mixed Results Handling (Option C)
 
@@ -120,8 +115,6 @@ LLM responds:
 ### Performance Impact
 
 - Search latency: unchanged
-- LLM latency: ~2-5s via OpenRouter (vs 25-60s+ via Ollama)
-- No Ollama dependency for interactive chat
 - No memory contention with background tasks
 
 ### Risks and Mitigations
@@ -130,4 +123,3 @@ LLM responds:
 |------|-----------|
 | Metadata itself could be sensitive (e.g., filename contains person's name) | Filenames are already visible in the UI to authorized users. The metadata exposure to the cloud LLM is equivalent to what the search API already returns. |
 | LLM hallucinates confidential document contents | System prompt explicitly forbids this. Response quality can be monitored. |
-| Future need for full confidential RAG | Ollama path preserved as dead code. Can be re-enabled when GPU hardware or a faster local model is available. |

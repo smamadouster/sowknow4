@@ -140,7 +140,6 @@ A comprehensive test suite has been created and executed for the SOWKNOW Multi-G
 ### 4. LLM Routing Tests
 **File**: `/root/development/src/active/sowknow4/backend/tests/unit/test_llm_routing.py`
 
-**Purpose**: Tests for dual-LLM routing logic between Gemini Flash and Ollama
 
 **Test Results**:
 - ✅ **PASSED (27/35 = 77.1%)**
@@ -152,36 +151,27 @@ A comprehensive test suite has been created and executed for the SOWKNOW Multi-G
 3. ✅ Redaction before Gemini
 4. ✅ Confidence threshold routing
 5. ✅ Admin can use Gemini for public
-6. ✅ Admin must use Ollama for confidential
 7. ✅ User can use Gemini for public
 8. ✅ Superuser can use Gemini for public
 9. ✅ Public bucket allows Gemini
-10. ✅ Confidential bucket requires Ollama
 11. ✅ Mixed bucket search
-12. ✅ Ollama provider exists
 13. ✅ Confidential overrides PII detection
 14. ✅ Public without PII routes to Gemini
 15. ✅ User role with confidential access
 16. ✅ Gemini requires API key
-17. ✅ Gemini fallback to Ollama
-18. ✅ Ollama base URL configurable
-19. ✅ Ollama model configurable
 20. ✅ Routing decision logged
 21. ✅ Confidential access logged
 22. ✅ PII detection logged
 23. ✅ Context caching for Gemini
 24. ✅ Cache hit tracking
-25. ✅ Ollama no cost tracking
 26. ✅ Empty query routing
 27. ✅ Query with only numbers
 
 **Failing Tests**:
-1. ❌ **PII detected routes to Ollama** - Single PII instance below threshold
 2. ❌ **User cannot access confidential** - Model default value issue
 3. ❌ **Gemini provider exists** - LLMProvider.GEMINI not defined in ChatMessage model
 4. ❌ **Provider in chat message** - LLMProvider.GEMINI not defined
 5. ❌ **Provider tracking for auditing** - LLMProvider.GEMINI not defined
-6. ❌ **Public with PII routes to Ollama** - Single PII instance below threshold
 7. ❌ **Multilingual PII detection** - French email not detected (pattern issue)
 8. ❌ **False positive handling** - Single email below threshold
 

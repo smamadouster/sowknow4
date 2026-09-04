@@ -54,7 +54,6 @@ class GuardianV2Config:
     patrols: dict
     disk: dict
     ssl: dict
-    ollama: dict
     vps_load: dict
     network: dict
     celery: dict
@@ -142,7 +141,6 @@ def load_config(raw: dict) -> GuardianV2Config:
     patrols: dict = dict(raw.get("patrols") or {})
     disk: dict = dict(raw.get("disk") or {})
     ssl: dict = dict(raw.get("ssl") or {})
-    ollama: dict = dict(raw.get("ollama") or {})
     vps_load: dict = dict(raw.get("vps_load") or {})
     network: dict = dict(raw.get("network") or {})
     celery: dict = dict(raw.get("celery") or {})
@@ -172,7 +170,6 @@ def load_config(raw: dict) -> GuardianV2Config:
         patrols=patrols,
         disk=disk,
         ssl=ssl,
-        ollama=ollama,
         vps_load=vps_load,
         network=network,
         celery=celery,

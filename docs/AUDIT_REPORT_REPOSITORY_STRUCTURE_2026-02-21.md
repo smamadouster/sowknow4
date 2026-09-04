@@ -164,7 +164,6 @@ The SOWKNOW repository demonstrates a mature, well-architected codebase with str
 | **Backend: API Routes** | `/backend/app/api/` (auth, admin, search, documents, collections, chat, etc.) |
 | **Backend: Models** | `/backend/app/models/` (user, document, chat, collection, processing, knowledge_graph) |
 | **Backend: Schemas** | `/backend/app/schemas/` (user, document, chat, collection, search, token) |
-| **Backend: Services** | `/backend/app/services/` (25+ services including embedding, ollama, minimax, openrouter, chat, search) |
 | **Backend: Multi-Agent System** | `/backend/app/services/agents/` (orchestrator, answer, clarification, researcher, verification) |
 | **Database: Alembic** | `/backend/alembic/versions/` (001_initial_schema, 002_add_collections, 003_add_knowledge_graph) |
 | **Database: PostgreSQL/pgvector** | Configured in docker-compose.yml with `pgvector/pgvector:pg16` |
@@ -172,7 +171,6 @@ The SOWKNOW repository demonstrates a mature, well-architected codebase with str
 | **Queue: Celery Tasks** | `/backend/app/tasks/` (document_tasks, anomaly_tasks) |
 | **Queue: Redis** | Configured in docker-compose.yml |
 | **AI: Embedding Service** | `/backend/app/services/embedding_service.py` |
-| **AI: Ollama Service** | `/backend/app/services/ollama_service.py` |
 | **AI: MiniMax Service** | `/backend/app/services/minimax_service.py` |
 | **AI: OpenRouter Service** | `/backend/app/services/openrouter_service.py` |
 | **AI: PII Detection** | `/backend/app/services/pii_detection_service.py` |

@@ -194,7 +194,6 @@ Authorization: Bearer {token}
       "available": true,
       "routing": ["public_documents"]
     },
-    "ollama": {
       "available": true,
       "routing": ["confidential_documents"]
     }

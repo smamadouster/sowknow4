@@ -31,7 +31,6 @@
 - 8 files modified
 - 59 LLM routing tests fixed and validated
 - Removed all references to non-existent "Gemini Flash" provider
-- Verified actual tri-LLM system (MiniMax/Kimi/Ollama)
 
 **Key Deliverables:**
 1. ✅ test_confidential_bucket_isolation.py - Rewrote 5 test cases
@@ -115,7 +114,6 @@
 | **TOTAL PHASE 2** | **✅ READY** | **76** | **95%** | **1,724 lines** |
 
 **Architecture Verified:**
-- ✅ LLM Routing: Correct (Kimi for public, Ollama for confidential)
 - ✅ RBAC Enforcement: Working (Admin/SuperUser/User separation)
 - ✅ Confidential Protection: Verified (documents hidden from unauthorized)
 - ✅ Audit Logging: Implemented (all operations logged)
@@ -340,7 +338,6 @@
 - ✅ Core logic verified (98.9% unit tests)
 - ✅ Security hardened (RBAC, PII protection, audit logging)
 - ✅ Documentation comprehensive (4,938 lines)
-- ✅ LLM routing verified (MiniMax/Kimi/Ollama)
 
 ### What Remains
 - ⏳ Test infrastructure hardening (3-4 days)

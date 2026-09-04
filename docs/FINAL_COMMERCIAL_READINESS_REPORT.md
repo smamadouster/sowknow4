@@ -130,14 +130,12 @@ The SOWKNOW Multi-Generational Legacy Knowledge System has undergone comprehensi
 | Component | Provider | Cost Model | Notes |
 |-----------|----------|------------|-------|
 | Public RAG | Minimax (OpenRouter) | $0.10/M input, $0.25/M output | Primary |
-| Confidential RAG | Ollama (Local) | Free | Secure |
 | General Chat | Gemini Flash | Cached | Fallback |
 | OCR | Hunyuan API | Pay per use | Primary |
 
 ### Optimization Achieved
 
 - Context caching: Up to 80% cost reduction on repeated queries
-- PII routing: Automatically redirects to free Ollama
 - Confidential auto-routing: Free local processing for sensitive docs
 
 ### Recommendations
@@ -189,7 +187,6 @@ curl http://localhost:8000/health
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
 | API Cost Overrun | MEDIUM | MEDIUM | Budget limits, monitoring |
-| Ollama Unavailable | LOW | HIGH | Fallback to Gemini |
 | Database Failure | LOW | CRITICAL | Backups in place |
 
 ---

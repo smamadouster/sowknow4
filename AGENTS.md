@@ -12,6 +12,26 @@ self-hosted Docker on a single VPS. Deploy target IS this repo:
 - **Never plain `docker compose up` after `.env` edits** — compose recreates
   every env_file consumer INCLUDING POSTGRES (killed a REINDEX mid-flight once).
 - **Never `compose down`, never `-v`.** Data lives in named volumes.
+- **deploy.sh does NOT cold-start infra** — it refuses if postgres is down
+  (prints the cold-start hint since 2026-09-05). Cold start order:
+  `docker compose -f docker-compose.production.yml up -d --no-deps postgres nats redis`,
+  wait for pg_isready, then run deploy.sh.
+- **Container ops on this host always use `-f docker-compose.production.yml`.**
+  `docker-compose.yml` carries the legacy `sowknow4-*` names — running it here
+  creates a SECOND frontend claiming port 3000 (that collision cost an hour on
+  2026-09-05). "Where does prod actually run?" — ask the containers, not docs:
+  `docker inspect <c> --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'`
+  → `/home/development/src/active/sowknow4` (this repo). /var/docker/sowknow4
+  is retired (still holds 3 uncommitted local hotfix files — review before
+  discarding).
+- **No pattern-based bulk edits.** The 2026-09-05 `sed -i '/ollama/Id'` removed
+  lines that merely MENTIONED the word — comments, function signatures, a
+  dataclass field (RoutingDecision.provider_name) — breaking 2 JSX files,
+  4 Python files, 1 runtime import. A "dead code" deletion that isn't
+  compile-gated is a code generator of syntax errors. The pre-commit hook now
+  runs `scripts/verify_tree.sh --staged` (py_compile + tsc --noEmit + JSON)
+  BEFORE regenerating maps; run `scripts/verify_tree.sh --all --imports`
+  before deploying any sweeping change.
 - Index-building migrations: `CONCURRENTLY` only (migration 010's blocking
   CREATE INDEX died mid-build and left semantic search exact-scanning for months).
 

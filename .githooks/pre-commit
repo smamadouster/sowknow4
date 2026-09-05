@@ -7,9 +7,26 @@
 set -euo pipefail
 
 # Colors
+RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
+# ════════════════════════════════════════════════════════════════════════════
+# Gate 0: verify_tree — compile/sanity check BEFORE regenerating maps.
+# Born from the 2026-09-05 Ollama-removal incident: broken JSX/Python was
+# committed, mapped, and deployed because nothing compiled the tree first.
+# ════════════════════════════════════════════════════════════════════════════
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -x "${REPO_ROOT}/scripts/verify_tree.sh" ]; then
+    echo -e "${YELLOW}🛡️  Verify-Tree: compiling staged files...${NC}"
+    if ! bash "${REPO_ROOT}/scripts/verify_tree.sh" --staged; then
+        echo -e "${RED}✗ COMMIT ABORTED — verify_tree failed.${NC}"
+        echo -e "${YELLOW}   Fix the files above, re-stage, commit again.${NC}"
+        echo -e "${YELLOW}   Full-tree check: scripts/verify_tree.sh --all${NC}"
+        exit 1
+    fi
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts/structural_audit" && pwd)"
 

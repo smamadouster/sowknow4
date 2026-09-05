@@ -26,7 +26,11 @@ TARGET="${1:-$SERVICES}"
 
 echo "=== [1/3] Pre-deploy checks ==="
 if ! docker exec sowknow-postgres pg_isready -U "${POSTGRES_USER:-sowknow}" >/dev/null 2>&1; then
-    echo "FATAL: postgres not ready"; exit 1
+    echo "FATAL: postgres not ready."
+    echo "  If the stack is cold-started, bring up infra FIRST (named volumes keep data; never -v):"
+    echo "    docker compose -f docker-compose.production.yml up -d --no-deps postgres nats redis"
+    echo "  then wait for pg_isready and re-run scripts/deploy.sh."
+    exit 1
 fi
 # Refuse to deploy during long-running index maintenance
 MAINT=$(docker exec sowknow-postgres psql -U "${POSTGRES_USER:-sowknow}" -d "${POSTGRES_DB:-sowknow}" -tAc \

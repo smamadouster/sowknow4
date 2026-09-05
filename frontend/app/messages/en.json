@@ -436,7 +436,6 @@
     "examples": "Example Topics to Try",
     "word_count": "words",
     "llm_gemini": "Generated with Gemini Flash",
-    "llm_ollama": "Generated with Ollama",
     "llm_minimax": "Generated with MiniMax",
     "untitled": "Untitled",
     "export_pdf": "Export PDF",

@@ -11,7 +11,6 @@ interface HealthData {
   redis: string;
   vault: string;
   nats: string;
-  ollama: string;
   checked_at: string;
 }
 

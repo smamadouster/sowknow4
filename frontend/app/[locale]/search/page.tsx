@@ -212,6 +212,7 @@ function IntentBadge({ intent, confidenceLabel, intentLabel }: { intent: StreamS
   );
 }
 
+function SynthesisBlock({ text, model, synthesizedAnswerLabel, minimaxLabel }: { text: string; model: string | null; synthesizedAnswerLabel: string; minimaxLabel: string }) {
   const [expanded, setExpanded] = useState(true);
 
   return (
@@ -223,10 +224,8 @@ function IntentBadge({ intent, confidenceLabel, intentLabel }: { intent: StreamS
             {synthesizedAnswerLabel}
           </span>
           {model && (
-            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold border ${
-                ? 'bg-vault-1000 text-amber-400 border-amber-400/20'
-                : 'bg-blue-500/10 text-blue-400 border-blue-400/20'
-            }`}>
+            <span className="rounded-full px-2 py-0.5 text-xs font-semibold border bg-blue-500/10 text-blue-400 border-blue-400/20">
+              {`❄️ ${minimaxLabel}`}
             </span>
           )}
         </div>
@@ -836,6 +835,7 @@ export default function SearchPage() {
           <div className="flex gap-5 items-start">
             <div className="flex-1 min-w-0">
               {stream.synthesis && (
+                <SynthesisBlock text={stream.synthesis} model={stream.modelUsed} synthesizedAnswerLabel={t('synthesizedAnswer')} minimaxLabel={t('model.minimax')} />
               )}
               {stream.stage === 'synthesis' && !stream.synthesis && (
                 <SynthesisSkeleton synthesizedAnswerLabel={t('synthesizedAnswer')} />

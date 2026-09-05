@@ -302,12 +302,6 @@ a {
   border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
-.model-indicator.ollama {
-  background-color: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.2);
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .chat-message {

@@ -41,7 +41,6 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [streamingLlm, setStreamingLlm] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
@@ -215,7 +214,6 @@ export default function ChatPage() {
       content: '',
     };
     setMessages(prev => [...prev, assistantMessage]);
-    setStreamingLlm(null);
 
     streamAbortControllerRef.current?.abort();
     const controller = new AbortController();
@@ -285,7 +283,6 @@ export default function ChatPage() {
                       : m
                   )
                 );
-                setStreamingLlm(parsed.model);
               } else if (parsed.type === 'error') {
                 setError(parsed.error || 'Unknown error');
               }
@@ -586,8 +583,7 @@ export default function ChatPage() {
                   </div>
                   <div className="flex flex-col">
                     <span className="text-sm font-medium text-text-secondary">
-                        ? 'Mode confidentiel — réponse locale...'
-                        : 'Recherche en cours...'}
+                      {'Recherche en cours...'}
                     </span>
                     <span className="text-[11px] opacity-60">Analyse des documents pertinents</span>
                   </div>

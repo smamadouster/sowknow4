@@ -33,7 +33,6 @@
 #   nginx:           256MB  cpus: 0.5  (Reverse proxy, profile-gated)
 #   certbot:         128MB  cpus: 0.25 (SSL certificate management)
 #   prometheus:      256MB  cpus: 0.25 (Metrics scraper)
-#   ollama:          SHARED (Uses ghostshell-api on host, no container memory)
 #   TOTAL MEMORY:   ~15300MB
 #   TOTAL CPU:       ~12.5 (CFS scheduler time-sliced on shared VPS)
 #

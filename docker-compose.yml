@@ -3,7 +3,7 @@
 # VPS: Hostinger 32GB shared VPS (upgraded from 16GB on 2026-03-23)
 #
 # NAMING CONVENTION: All containers use "sowknow4-" prefix. No exceptions.
-# PORT POLICY: Only frontend (3000), nginx (80/443) and Ollama loopback (127.0.0.1:11434)
+# PORT POLICY: Only frontend (3000) and nginx (80/443)
 #              are exposed to host. The backend is internal-only and must be reached
 #              through nginx so HTTPS, HSTS, rate limits and security headers apply.
 #              Internal services (postgres, redis, vault, nats) are network-only.
@@ -859,9 +859,7 @@ services:
     networks:
       - sowknow-net
 
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.enable_icc: "true"
+   
 
 volumes:
   sowknow-postgres-data:
@@ -875,6 +873,6 @@ volumes:
   sowknow-model-cache:
   sowknow-audio-data:
   sowknow-prometheus-data:
-  # Shared with MasterSRE's host-routed local LLM and preserved across deploys.
-    external: true
-    name: ollama_data
+networks:
+  sowknow-net:
+    driver: bridge

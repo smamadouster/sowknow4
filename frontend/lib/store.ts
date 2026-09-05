@@ -199,7 +199,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   messages: [],
   isLoading: false,
   isStreaming: false,
-  llmUsed: null,
 
   setSessions: (sessions) => set({ sessions }),
 
@@ -214,8 +213,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
 
   setStreaming: (isStreaming) => set({ isStreaming }),
-
-  setLlmUsed: (llmUsed) => set({ llmUsed }),
 
   createSession: async (title) => {
     set({ isLoading: true });
@@ -268,7 +265,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   sendMessage: async (content) => {
-    const { currentSession, messages, llmUsed } = get();
+    const { currentSession, messages } = get();
 
     if (!currentSession) {
       await get().createSession('New Chat');

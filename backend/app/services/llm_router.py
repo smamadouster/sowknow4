@@ -83,6 +83,7 @@ class FallbackTrigger(StrEnum):
 class RoutingDecision:
     """Result of the LLM routing decision."""
 
+    provider_name: str  # e.g. "minimax", "openrouter"
     reason: RoutingReason
     service: Any  # The actual service instance
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -176,16 +177,6 @@ class LLMRouter:
             sensitivity_reason = "confidential_docs" if has_confidential else "public_content"
 
         # §5.2: All traffic routes through OpenRouter.
-        # --- LOCAL $0.00 INTERCEPTOR FOR SIMPLE TIER ---
-        if tier in (TaskTier.SIMPLE, TaskTier.STANDARD):
-                    messages=messages,
-                    stream=True,
-                    temperature=temperature,
-                    max_tokens=max_tokens or 2048,
-                ):
-                    yield chunk
-                return
-        # -------------------------------------------------
 
         # Confidential data relies on metadata-only stripping (PRD §1.3).
         if self._openrouter is not None:

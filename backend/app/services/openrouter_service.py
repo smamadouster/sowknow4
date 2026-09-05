@@ -531,10 +531,6 @@ class OpenRouterService:
             "max_tokens": max_tokens,
             "stream": stream,
         }
-            # Qwen3 reasons by default. SowKnow's local operational calls favor
-            # predictable latency and memory use over hidden reasoning tokens.
-            payload["reasoning_effort"] = os.getenv(
-            )
 
         from app.services.llm_http_client import LLMHTTPClient
 

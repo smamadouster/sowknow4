@@ -29,7 +29,14 @@ from guardian_hc.healers.network_healer import NetworkHealer
 from guardian_hc.patrol.runner import PatrolRunner
 from guardian_hc.alerts import AlertManager
 from guardian_hc.correlator import AlertEvent, IncidentCorrelator
-from guardian_hc.plugin import GuardianPlugin, CheckResult, HealResult, Insight, CheckContext, AnalysisContext
+from guardian_hc.plugin import (
+    GuardianPlugin,
+    CheckResult,
+    HealResult,
+    Insight,
+    CheckContext,
+    AnalysisContext,
+)
 from guardian_hc.config import GuardianV2Config, load_config as load_v2_config
 from guardian_hc.agents import AgentRegistry
 from guardian_hc.db import MetricsDB
@@ -41,20 +48,28 @@ logger = structlog.get_logger()
 def _build_pg_dsn(cfg: dict) -> str:
     """Build a PostgreSQL DSN from config dict. ${VAR} patterns resolve from env."""
     parts = [
-        "postgre", "sql://",  # split to avoid secret scan false positive
-        cfg.get("user", "guardian"), ":",
-        _resolve_env(cfg.get("password", "")), "@",
-        cfg.get("host", "postgres"), ":",
-        str(cfg.get("port", 5432)), "/",
+        "postgre",
+        "sql://",  # split to avoid secret scan false positive
+        cfg.get("user", "guardian"),
+        ":",
+        _resolve_env(cfg.get("password", "")),
+        "@",
+        cfg.get("host", "postgres"),
+        ":",
+        str(cfg.get("port", 5432)),
+        "/",
         cfg.get("dbname", "sowknow"),
     ]
     return "".join(parts)
+
 
 # Restart cooldown: max attempts before suppression, then exponential backoff
 RESTART_MAX_ATTEMPTS = 5
 RESTART_COOLDOWN_BASE = 300  # 5 minutes initial cooldown
 RESTART_COOLDOWN_MAX = 3600  # 1 hour max cooldown
-TRACKER_STATE_FILE = os.environ.get("GUARDIAN_STATE_DIR", "/tmp") + "/guardian-restart-trackers.json"
+TRACKER_STATE_FILE = (
+    os.environ.get("GUARDIAN_STATE_DIR", "/tmp") + "/guardian-restart-trackers.json"
+)
 HEAL_VERIFY_DELAY = 20  # seconds to wait after restart before verifying health
 HEAL_VERIFY_TIMEOUT = 10  # seconds for the verification check itself
 
@@ -62,9 +77,14 @@ HEAL_VERIFY_TIMEOUT = 10  # seconds for the verification check itself
 @dataclass
 class RestartTracker:
     """Tracks restart attempts per container to prevent flapping."""
+
     attempts: int = 0
-    last_attempt: datetime = field(default_factory=lambda: datetime.min.replace(tzinfo=timezone.utc))
-    suppressed_until: datetime = field(default_factory=lambda: datetime.min.replace(tzinfo=timezone.utc))
+    last_attempt: datetime = field(
+        default_factory=lambda: datetime.min.replace(tzinfo=timezone.utc)
+    )
+    suppressed_until: datetime = field(
+        default_factory=lambda: datetime.min.replace(tzinfo=timezone.utc)
+    )
 
     def can_restart(self) -> tuple[bool, str]:
         now = datetime.now(timezone.utc)
@@ -87,7 +107,8 @@ class RestartTracker:
             self.attempts += 1
             if self.attempts >= RESTART_MAX_ATTEMPTS:
                 cooldown = min(
-                    RESTART_COOLDOWN_BASE * (2 ** (self.attempts - RESTART_MAX_ATTEMPTS)),
+                    RESTART_COOLDOWN_BASE
+                    * (2 ** (self.attempts - RESTART_MAX_ATTEMPTS)),
                     RESTART_COOLDOWN_MAX,
                 )
                 self.suppressed_until = now + timedelta(seconds=cooldown)
@@ -103,8 +124,12 @@ class RestartTracker:
     def from_dict(cls, d: dict) -> "RestartTracker":
         return cls(
             attempts=d.get("attempts", 0),
-            last_attempt=datetime.fromisoformat(d["last_attempt"]) if d.get("last_attempt") else datetime.min.replace(tzinfo=timezone.utc),
-            suppressed_until=datetime.fromisoformat(d["suppressed_until"]) if d.get("suppressed_until") else datetime.min.replace(tzinfo=timezone.utc),
+            last_attempt=datetime.fromisoformat(d["last_attempt"])
+            if d.get("last_attempt")
+            else datetime.min.replace(tzinfo=timezone.utc),
+            suppressed_until=datetime.fromisoformat(d["suppressed_until"])
+            if d.get("suppressed_until")
+            else datetime.min.replace(tzinfo=timezone.utc),
         )
 
 
@@ -174,13 +199,15 @@ class GuardianHC:
 
         services = []
         for svc in raw.get("services", []):
-            services.append(ServiceConfig(
-                name=svc.get("name", ""),
-                container=svc.get("container", ""),
-                health_check=svc.get("health_check", {}),
-                auto_heal=svc.get("auto_heal", {}),
-                memory=svc.get("memory", {}),
-            ))
+            services.append(
+                ServiceConfig(
+                    name=svc.get("name", ""),
+                    container=svc.get("container", ""),
+                    health_check=svc.get("health_check", {}),
+                    auto_heal=svc.get("auto_heal", {}),
+                    memory=svc.get("memory", {}),
+                )
+            )
 
         config = GuardianConfig(
             app_name=raw.get("app", {}).get("name", "Application"),
@@ -260,10 +287,14 @@ class GuardianHC:
                 plugin_results = await plugin.check(context)
                 results.extend(plugin_results)
             except Exception as e:
-                logger.error("plugin.check_failed", name=plugin.name, error=str(e)[:200])
+                logger.error(
+                    "plugin.check_failed", name=plugin.name, error=str(e)[:200]
+                )
         return results
 
-    async def run_plugin_heals(self, check_results: list[CheckResult]) -> list[HealResult]:
+    async def run_plugin_heals(
+        self, check_results: list[CheckResult]
+    ) -> list[HealResult]:
         """Call heal() on plugins for each CheckResult with needs_healing=True.
 
         Container restart hints (heal_hint starting with "restart:") are gated
@@ -289,25 +320,37 @@ class GuardianHC:
                 if runbook:
                     try:
                         rb_result = await self._runbook_engine.execute(
-                            runbook, result.check_name,
-                            context={"check_name": result.check_name, "plugin": result.plugin},
+                            runbook,
+                            result.check_name,
+                            context={
+                                "check_name": result.check_name,
+                                "plugin": result.plugin,
+                            },
                         )
-                        self.log_action({
-                            "target": result.check_name,
-                            "action": f"runbook:{rb_result.outcome}",
-                            "plugin": plugin.name,
-                            "success": rb_result.outcome in ("resolved",),
-                            "details": f"{rb_result.steps_executed[-1].output[:200] if rb_result.steps_executed else ''}",
-                        })
-                        heal_results.append(HealResult(
-                            plugin=plugin.name,
-                            target=result.check_name,
-                            action=f"runbook:{rb_result.outcome}",
-                            success=rb_result.outcome == "resolved",
-                            details=f"{len(rb_result.steps_executed)} steps in {rb_result.duration_s:.1f}s",
-                        ))
+                        self.log_action(
+                            {
+                                "target": result.check_name,
+                                "action": f"runbook:{rb_result.outcome}",
+                                "plugin": plugin.name,
+                                "success": rb_result.outcome in ("resolved",),
+                                "details": f"{rb_result.steps_executed[-1].output[:200] if rb_result.steps_executed else ''}",
+                            }
+                        )
+                        heal_results.append(
+                            HealResult(
+                                plugin=plugin.name,
+                                target=result.check_name,
+                                action=f"runbook:{rb_result.outcome}",
+                                success=rb_result.outcome == "resolved",
+                                details=f"{len(rb_result.steps_executed)} steps in {rb_result.duration_s:.1f}s",
+                            )
+                        )
                     except Exception as e:
-                        logger.error("runbook.execute_failed", check=result.check_name, error=str(e)[:200])
+                        logger.error(
+                            "runbook.execute_failed",
+                            check=result.check_name,
+                            error=str(e)[:200],
+                        )
                     continue  # Don't also call plugin.heal() after a runbook
 
             # No runbook — fall back to plugin.heal() with RestartTracker gating
@@ -328,13 +371,15 @@ class GuardianHC:
                         check=result.check_name,
                         container=container,
                     )
-                    self.log_action({
-                        "target": result.check_name,
-                        "action": "plugin_heal_disabled_by_config",
-                        "plugin": plugin.name,
-                        "success": False,
-                        "details": f"auto_heal.restart=false for {container}",
-                    })
+                    self.log_action(
+                        {
+                            "target": result.check_name,
+                            "action": "plugin_heal_disabled_by_config",
+                            "plugin": plugin.name,
+                            "success": False,
+                            "details": f"auto_heal.restart=false for {container}",
+                        }
+                    )
                     await self.alert_manager.send(
                         f"⚠️ Guardian: *{result.check_name}* needs healing but "
                         f"auto-restart is disabled for `{container}` — manual action required."
@@ -344,15 +389,21 @@ class GuardianHC:
                 tracker = self._get_tracker(container)
                 can, msg = tracker.can_restart()
                 if not can:
-                    logger.warning("plugin.heal_suppressed",
-                                   check=result.check_name, container=container, reason=msg[:200])
-                    self.log_action({
-                        "target": result.check_name,
-                        "action": "plugin_heal_suppressed",
-                        "plugin": plugin.name,
-                        "success": False,
-                        "details": msg,
-                    })
+                    logger.warning(
+                        "plugin.heal_suppressed",
+                        check=result.check_name,
+                        container=container,
+                        reason=msg[:200],
+                    )
+                    self.log_action(
+                        {
+                            "target": result.check_name,
+                            "action": "plugin_heal_suppressed",
+                            "plugin": plugin.name,
+                            "success": False,
+                            "details": msg,
+                        }
+                    )
                     await self.alert_manager.send(
                         f"⚠️ Guardian: heal suppressed for *{result.check_name}* "
                         f"(container `{container}` restarted {tracker.attempts}x with no improvement). "
@@ -368,13 +419,15 @@ class GuardianHC:
                         self._get_tracker(container).record_attempt(heal_result.success)
                         self._save_tracker_state()
 
-                    self.log_action({
-                        "target": result.check_name,
-                        "action": f"plugin_heal:{heal_result.action}",
-                        "plugin": plugin.name,
-                        "success": heal_result.success,
-                        "details": heal_result.details,
-                    })
+                    self.log_action(
+                        {
+                            "target": result.check_name,
+                            "action": f"plugin_heal:{heal_result.action}",
+                            "plugin": plugin.name,
+                            "success": heal_result.success,
+                            "details": heal_result.details,
+                        }
+                    )
                     heal_results.append(heal_result)
             except Exception as e:
                 logger.error("plugin.heal_failed", name=plugin.name, error=str(e)[:200])
@@ -394,7 +447,9 @@ class GuardianHC:
                 plugin_insights = await plugin.analyze(context)
                 insights.extend(plugin_insights)
             except Exception as e:
-                logger.error("plugin.analyze_failed", name=plugin.name, error=str(e)[:200])
+                logger.error(
+                    "plugin.analyze_failed", name=plugin.name, error=str(e)[:200]
+                )
         return insights
 
     def _get_tracker(self, container: str) -> RestartTracker:
@@ -406,7 +461,11 @@ class GuardianHC:
         """Reset tracker when a previously-failed container passes health checks."""
         tracker = self._restart_trackers.get(container)
         if tracker and tracker.attempts > 0:
-            logger.info("tracker.auto_reset", container=container, prev_attempts=tracker.attempts)
+            logger.info(
+                "tracker.auto_reset",
+                container=container,
+                prev_attempts=tracker.attempts,
+            )
             tracker.record_attempt(True)
             self._save_tracker_state()
 
@@ -451,26 +510,41 @@ class GuardianHC:
             check = await HttpHealthChecker.check(hc.get("url", ""), timeout=timeout)
             return check.get("healthy", False)
         elif hc.get("type") == "tcp":
-            check = await TcpHealthChecker.check(hc.get("host", "localhost"), hc.get("port", 0))
+            check = await TcpHealthChecker.check(
+                hc.get("host", "localhost"), hc.get("port", 0)
+            )
             return check.get("healthy", False)
         return status["status"] == "running"
 
-    async def _try_heal_container(self, svc: ServiceConfig, reason: str, results: dict) -> bool:
+    async def _try_heal_container(
+        self, svc: ServiceConfig, reason: str, results: dict
+    ) -> bool:
         """Attempt container restart with cooldown + post-heal verification."""
         tracker = self._get_tracker(svc.container)
         can, msg = tracker.can_restart()
         if not can:
             results["failed"] += 1
-            results["events"].append(AlertEvent(
-                event_id=f"{results['level']}-{svc.name}-restart_suppressed-{int(datetime.now(timezone.utc).timestamp())}",
-                severity="CRITICAL", service=svc.name, container=svc.container,
-                check_type="restart_suppressed", patrol_level=results["level"],
-                timestamp=datetime.now(timezone.utc),
-                summary=f"{svc.name} restart suppressed after {tracker.attempts} attempts",
-                details=msg, heal_attempted=True, heal_success=False, heal_action=None,
-                restart_attempts=tracker.attempts, restart_suppressed=True,
-            ))
-            self.log_action({"target": svc.name, "action": "restart_suppressed", "reason": msg})
+            results["events"].append(
+                AlertEvent(
+                    event_id=f"{results['level']}-{svc.name}-restart_suppressed-{int(datetime.now(timezone.utc).timestamp())}",
+                    severity="CRITICAL",
+                    service=svc.name,
+                    container=svc.container,
+                    check_type="restart_suppressed",
+                    patrol_level=results["level"],
+                    timestamp=datetime.now(timezone.utc),
+                    summary=f"{svc.name} restart suppressed after {tracker.attempts} attempts",
+                    details=msg,
+                    heal_attempted=True,
+                    heal_success=False,
+                    heal_action=None,
+                    restart_attempts=tracker.attempts,
+                    restart_suppressed=True,
+                )
+            )
+            self.log_action(
+                {"target": svc.name, "action": "restart_suppressed", "reason": msg}
+            )
             self._save_tracker_state()
             return False
 
@@ -484,42 +558,70 @@ class GuardianHC:
             verified = await self._verify_container_health(svc)
             if verified:
                 tracker.record_attempt(True)
-                self.log_action({"target": svc.name, "action": f"restart_{reason}", "verified": True, **heal})
+                self.log_action(
+                    {
+                        "target": svc.name,
+                        "action": f"restart_{reason}",
+                        "verified": True,
+                        **heal,
+                    }
+                )
                 results["healed"] += 1
                 self._save_tracker_state()
                 return True
             else:
                 tracker.record_attempt(False)
-                self.log_action({"target": svc.name, "action": f"restart_{reason}", "verified": False, **heal})
+                self.log_action(
+                    {
+                        "target": svc.name,
+                        "action": f"restart_{reason}",
+                        "verified": False,
+                        **heal,
+                    }
+                )
                 results["failed"] += 1
-                results["events"].append(AlertEvent(
-                    event_id=f"{results['level']}-{svc.name}-{reason}-{int(datetime.now(timezone.utc).timestamp())}",
-                    severity="CRITICAL", service=svc.name, container=svc.container,
-                    check_type=reason, patrol_level=results["level"],
-                    timestamp=datetime.now(timezone.utc),
-                    summary=f"{svc.name} restarted but failed post-heal verification",
-                    details=f"Container restarted for {reason} but FAILED post-heal verification. May be crash-looping.",
-                    heal_attempted=True, heal_success=False,
-                    heal_action=f"docker restart {svc.container}",
-                    restart_attempts=tracker.attempts, restart_suppressed=False,
-                ))
+                results["events"].append(
+                    AlertEvent(
+                        event_id=f"{results['level']}-{svc.name}-{reason}-{int(datetime.now(timezone.utc).timestamp())}",
+                        severity="CRITICAL",
+                        service=svc.name,
+                        container=svc.container,
+                        check_type=reason,
+                        patrol_level=results["level"],
+                        timestamp=datetime.now(timezone.utc),
+                        summary=f"{svc.name} restarted but failed post-heal verification",
+                        details=f"Container restarted for {reason} but FAILED post-heal verification. May be crash-looping.",
+                        heal_attempted=True,
+                        heal_success=False,
+                        heal_action=f"docker restart {svc.container}",
+                        restart_attempts=tracker.attempts,
+                        restart_suppressed=False,
+                    )
+                )
                 self._save_tracker_state()
                 return False
         else:
             tracker.record_attempt(False)
             self.log_action({"target": svc.name, "action": f"restart_{reason}", **heal})
             results["failed"] += 1
-            results["events"].append(AlertEvent(
-                event_id=f"{results['level']}-{svc.name}-{reason}-{int(datetime.now(timezone.utc).timestamp())}",
-                severity="CRITICAL", service=svc.name, container=svc.container,
-                check_type=reason, patrol_level=results["level"],
-                timestamp=datetime.now(timezone.utc),
-                summary=f"{svc.name} failed {reason} and auto-restart failed",
-                details=f"Auto-restart failed: {heal.get('error', '')}",
-                heal_attempted=True, heal_success=False,
-                heal_action=f"docker restart {svc.container}",
-                restart_attempts=tracker.attempts, restart_suppressed=False,
-            ))
+            results["events"].append(
+                AlertEvent(
+                    event_id=f"{results['level']}-{svc.name}-{reason}-{int(datetime.now(timezone.utc).timestamp())}",
+                    severity="CRITICAL",
+                    service=svc.name,
+                    container=svc.container,
+                    check_type=reason,
+                    patrol_level=results["level"],
+                    timestamp=datetime.now(timezone.utc),
+                    summary=f"{svc.name} failed {reason} and auto-restart failed",
+                    details=f"Auto-restart failed: {heal.get('error', '')}",
+                    heal_attempted=True,
+                    heal_success=False,
+                    heal_action=f"docker restart {svc.container}",
+                    restart_attempts=tracker.attempts,
+                    restart_suppressed=False,
+                )
+            )
             self._save_tracker_state()
             return False
 
@@ -530,7 +632,9 @@ class GuardianHC:
                 return svc
         return None
 
-    async def _handle_memory_critical(self, ms: dict, level: str, results: dict) -> None:
+    async def _handle_memory_critical(
+        self, ms: dict, level: str, results: dict
+    ) -> None:
         """Route one needs_healing memory result.
 
         Declared + auto_heal.restart → tracked restart (RestartTracker flap
@@ -557,42 +661,71 @@ class GuardianHC:
                 "undeclared containers; declare it with an explicit auto_heal policy."
             )
             service = ms["container"]
-        results["events"].append(AlertEvent(
-            event_id=f"{level}-{service}-memory_critical-{int(datetime.now(timezone.utc).timestamp())}",
-            severity="HIGH", service=service, container=ms["container"],
-            check_type="memory_critical", patrol_level=level,
-            timestamp=datetime.now(timezone.utc),
-            summary=summary, details=details,
-            heal_attempted=False, heal_success=None, heal_action=None,
-            restart_attempts=0, restart_suppressed=False,
-        ))
+        results["events"].append(
+            AlertEvent(
+                event_id=f"{level}-{service}-memory_critical-{int(datetime.now(timezone.utc).timestamp())}",
+                severity="HIGH",
+                service=service,
+                container=ms["container"],
+                check_type="memory_critical",
+                patrol_level=level,
+                timestamp=datetime.now(timezone.utc),
+                summary=summary,
+                details=details,
+                heal_attempted=False,
+                heal_success=None,
+                heal_action=None,
+                restart_attempts=0,
+                restart_suppressed=False,
+            )
+        )
         results["failed"] += 1
 
     async def run_check_cycle(self, level: str = "standard") -> dict:
         """Run a complete check + heal cycle."""
-        results = {"level": level, "timestamp": datetime.now(timezone.utc).isoformat(),
-                   "checks": [], "healed": 0, "failed": 0, "events": []}
+        results = {
+            "level": level,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "checks": [],
+            "healed": 0,
+            "failed": 0,
+            "events": [],
+        }
 
         for svc in self.config.services:
             status = await self.container_checker.check(svc.container)
-            results["checks"].append({"service": svc.name, "type": "container", **status})
+            results["checks"].append(
+                {"service": svc.name, "type": "container", **status}
+            )
 
             if status["status"] != "running" and svc.auto_heal.get("restart", False):
                 await self._try_heal_container(svc, "container_down", results)
 
             hc = svc.health_check
             if hc.get("type") == "http" and status["status"] == "running":
-                http_status = await HttpHealthChecker.check(hc.get("url", ""), timeout=hc.get("timeout", 10))
-                results["checks"].append({"service": svc.name, "type": "http", **http_status})
-                if not http_status.get("healthy") and svc.auto_heal.get("restart", False):
+                http_status = await HttpHealthChecker.check(
+                    hc.get("url", ""), timeout=hc.get("timeout", 10)
+                )
+                results["checks"].append(
+                    {"service": svc.name, "type": "http", **http_status}
+                )
+                if not http_status.get("healthy") and svc.auto_heal.get(
+                    "restart", False
+                ):
                     await self._try_heal_container(svc, "http_unhealthy", results)
                 elif http_status.get("healthy"):
                     self._clear_tracker_if_stale(svc.container)
 
             elif hc.get("type") == "tcp" and status["status"] == "running":
-                tcp_status = await TcpHealthChecker.check(hc.get("host", "localhost"), hc.get("port", 0))
-                results["checks"].append({"service": svc.name, "type": "tcp", **tcp_status})
-                if not tcp_status.get("healthy") and svc.auto_heal.get("restart", False):
+                tcp_status = await TcpHealthChecker.check(
+                    hc.get("host", "localhost"), hc.get("port", 0)
+                )
+                results["checks"].append(
+                    {"service": svc.name, "type": "tcp", **tcp_status}
+                )
+                if not tcp_status.get("healthy") and svc.auto_heal.get(
+                    "restart", False
+                ):
                     await self._try_heal_container(svc, "tcp_unhealthy", results)
                 elif tcp_status.get("healthy"):
                     self._clear_tracker_if_stale(svc.container)
@@ -618,32 +751,51 @@ class GuardianHC:
             for cr in celery_results:
                 results["checks"].append({"type": "celery", **cr})
                 if cr.get("needs_healing"):
-                    if cr.get("check") == "celery_queue" and cr.get("severity") == "critical":
-                        results["events"].append(AlertEvent(
-                            event_id=f"{level}-celery-celery_queue_critical-{int(datetime.now(timezone.utc).timestamp())}",
-                            severity="CRITICAL", service="celery-light", container="sowknow-celery-light",
-                            check_type="celery_queue_critical", patrol_level=level,
-                            timestamp=datetime.now(timezone.utc),
-                            summary=f"Celery queue depth critical: {cr.get('total_depth')} tasks",
-                            details=f"Queue depth: {cr.get('total_depth')}. Queues: {cr.get('queues', {})}",
-                            heal_attempted=False, heal_success=None, heal_action=None,
-                            restart_attempts=0, restart_suppressed=False,
-                        ))
+                    if (
+                        cr.get("check") == "celery_queue"
+                        and cr.get("severity") == "critical"
+                    ):
+                        results["events"].append(
+                            AlertEvent(
+                                event_id=f"{level}-celery-celery_queue_critical-{int(datetime.now(timezone.utc).timestamp())}",
+                                severity="CRITICAL",
+                                service="celery-light",
+                                container="sowknow-celery-light",
+                                check_type="celery_queue_critical",
+                                patrol_level=level,
+                                timestamp=datetime.now(timezone.utc),
+                                summary=f"Celery queue depth critical: {cr.get('total_depth')} tasks",
+                                details=f"Queue depth: {cr.get('total_depth')}. Queues: {cr.get('queues', {})}",
+                                heal_attempted=False,
+                                heal_success=None,
+                                heal_action=None,
+                                restart_attempts=0,
+                                restart_suppressed=False,
+                            )
+                        )
                         results["failed"] += 1
                     elif cr.get("restart_loop"):
                         container = cr.get("container", "")
                         svc = self._find_svc_for_container(container)
                         if svc:
-                            results["events"].append(AlertEvent(
-                                event_id=f"{level}-{svc.name}-restart_suppressed-{int(datetime.now(timezone.utc).timestamp())}",
-                                severity="CRITICAL", service=svc.name, container=svc.container,
-                                check_type="restart_suppressed", patrol_level=level,
-                                timestamp=datetime.now(timezone.utc),
-                                summary=f"{svc.name} is in a restart loop (likely CODE BUG)",
-                                details="Container is in a restart loop. Restarting won't fix it.",
-                                heal_attempted=False, heal_success=None, heal_action=None,
-                                restart_attempts=0, restart_suppressed=True,
-                            ))
+                            results["events"].append(
+                                AlertEvent(
+                                    event_id=f"{level}-{svc.name}-restart_suppressed-{int(datetime.now(timezone.utc).timestamp())}",
+                                    severity="CRITICAL",
+                                    service=svc.name,
+                                    container=svc.container,
+                                    check_type="restart_suppressed",
+                                    patrol_level=level,
+                                    timestamp=datetime.now(timezone.utc),
+                                    summary=f"{svc.name} is in a restart loop (likely CODE BUG)",
+                                    details="Container is in a restart loop. Restarting won't fix it.",
+                                    heal_attempted=False,
+                                    heal_success=None,
+                                    heal_action=None,
+                                    restart_attempts=0,
+                                    restart_suppressed=True,
+                                )
+                            )
                             results["failed"] += 1
                     elif cr.get("status") in ("not_found", "exited"):
                         container = cr.get("container", "")
@@ -657,37 +809,52 @@ class GuardianHC:
 
             if net_status.get("probes_degraded"):
                 # Probes failed but no stale nftables — alert only, don't heal
-                probes_failed = [p for p in net_status.get("probe_results", []) if not p.get("ok")]
+                probes_failed = [
+                    p for p in net_status.get("probe_results", []) if not p.get("ok")
+                ]
                 probe_summary = ", ".join(p.get("to", "?") for p in probes_failed)
                 logger.warning("network.probes_degraded", failed=probe_summary)
 
             if net_status.get("needs_healing"):
                 stale = net_status.get("stale_bridges", [])
-                probes_failed = [p for p in net_status.get("probe_results", []) if not p.get("ok")]
-                stale_summary = ", ".join(s.get("bridge", "?") for s in stale) if stale else "none"
-                probe_summary = ", ".join(p.get("to", "?") for p in probes_failed) if probes_failed else "none"
+                probes_failed = [
+                    p for p in net_status.get("probe_results", []) if not p.get("ok")
+                ]
+                stale_summary = (
+                    ", ".join(s.get("bridge", "?") for s in stale) if stale else "none"
+                )
+                probe_summary = (
+                    ", ".join(p.get("to", "?") for p in probes_failed)
+                    if probes_failed
+                    else "none"
+                )
 
                 heal = await self.network_healer.heal(stale_bridges=stale)
-                self.log_action({"target": "network", "action": "nftables_flush", **heal})
+                self.log_action(
+                    {"target": "network", "action": "nftables_flush", **heal}
+                )
                 if heal.get("healed"):
                     results["healed"] += 1
                 else:
                     results["failed"] += 1
-                    results["events"].append(AlertEvent(
-                        event_id=f"{level}-network-network_broken-{int(datetime.now(timezone.utc).timestamp())}",
-                        severity="CRITICAL", service="network", container=None,
-                        check_type="network_broken", patrol_level=level,
-                        timestamp=datetime.now(timezone.utc),
-                        summary="Docker network broken - nftables stale rules",
-                        details=f"Stale bridges: {stale_summary}. Failed probes: {probe_summary}. Heal failed: {heal.get('error', 'unknown')}",
-                        heal_attempted=True, heal_success=False,
-                        heal_action="nftables surgical handle deletion (fallback: flush + docker restart)",
-                        restart_attempts=0, restart_suppressed=False,
-                    ))
-
-                await self.alert_manager.send(
-                    f"Ollama is *unavailable* -- confidential doc routing may fail.\n"
-                results["failed"] += 1
+                    results["events"].append(
+                        AlertEvent(
+                            event_id=f"{level}-network-network_broken-{int(datetime.now(timezone.utc).timestamp())}",
+                            severity="CRITICAL",
+                            service="network",
+                            container=None,
+                            check_type="network_broken",
+                            patrol_level=level,
+                            timestamp=datetime.now(timezone.utc),
+                            summary="Docker network broken - nftables stale rules",
+                            details=f"Stale bridges: {stale_summary}. Failed probes: {probe_summary}. Heal failed: {heal.get('error', 'unknown')}",
+                            heal_attempted=True,
+                            heal_success=False,
+                            heal_action="nftables surgical handle deletion (fallback: flush + docker restart)",
+                            restart_attempts=0,
+                            restart_suppressed=False,
+                        )
+                    )
 
             vps_load_status = await self.vps_load_checker.check()
             now = datetime.now(timezone.utc)
@@ -710,16 +877,24 @@ class GuardianHC:
                             detail = f"Load5={vls.get('load5')}"
                         elif vls.get("type") == "steal_time":
                             detail = f"Steal={vls.get('steal_pct')}%"
-                        results["events"].append(AlertEvent(
-                            event_id=f"{level}-vps_load-vps_load_high-{int(now.timestamp())}",
-                            severity="WARNING", service="vps_load", container=None,
-                            check_type="vps_load_high", patrol_level=level,
-                            timestamp=now,
-                            summary=f"VPS load critical: {detail}",
-                            details=f"{vls['type']} threshold exceeded: {detail}",
-                            heal_attempted=False, heal_success=None, heal_action=None,
-                            restart_attempts=0, restart_suppressed=False,
-                        ))
+                        results["events"].append(
+                            AlertEvent(
+                                event_id=f"{level}-vps_load-vps_load_high-{int(now.timestamp())}",
+                                severity="WARNING",
+                                service="vps_load",
+                                container=None,
+                                check_type="vps_load_high",
+                                patrol_level=level,
+                                timestamp=now,
+                                summary=f"VPS load critical: {detail}",
+                                details=f"{vls['type']} threshold exceeded: {detail}",
+                                heal_attempted=False,
+                                heal_success=None,
+                                heal_action=None,
+                                restart_attempts=0,
+                                restart_suppressed=False,
+                            )
+                        )
                         results["failed"] += 1
                 else:
                     self._vps_load_since.pop(vkey, None)
@@ -743,7 +918,9 @@ class GuardianHC:
         self.last_patrol_time = datetime.now(timezone.utc)
         # Write heartbeat file for Docker healthcheck to verify patrol loop is alive
         try:
-            Path("/tmp/guardian-heartbeat").write_text(self.last_patrol_time.isoformat())
+            Path("/tmp/guardian-heartbeat").write_text(
+                self.last_patrol_time.isoformat()
+            )
         except Exception:
             pass
         return results
@@ -752,19 +929,26 @@ class GuardianHC:
         """Test that alert channels are functional. Cross-alert if one fails."""
         telegram_ok = await self.alert_manager.test_telegram()
         email_ok = await self.alert_manager.test_email()
-        results["checks"].append({
-            "type": "alert_channels",
-            "telegram": telegram_ok,
-            "email": email_ok,
-        })
+        results["checks"].append(
+            {
+                "type": "alert_channels",
+                "telegram": telegram_ok,
+                "email": email_ok,
+            }
+        )
         if not telegram_ok and email_ok:
             await self.alert_manager.send_email_only(
-                "Guardian HC: Telegram alerting is DOWN. Check bot token/chat_id.")
+                "Guardian HC: Telegram alerting is DOWN. Check bot token/chat_id."
+            )
         elif telegram_ok and not email_ok:
             await self.alert_manager.send(
-                "Guardian HC: Email alerting is DOWN. Check SMTP credentials.")
+                "Guardian HC: Email alerting is DOWN. Check SMTP credentials."
+            )
         elif not telegram_ok and not email_ok:
-            logger.error("alert_channels.ALL_DOWN", note="Both Telegram and email are unreachable")
+            logger.error(
+                "alert_channels.ALL_DOWN",
+                note="Both Telegram and email are unreachable",
+            )
 
     async def _init_v2(self):
         """Initialize v2 plugin system if config has version 2.0."""
@@ -778,7 +962,9 @@ class GuardianHC:
             pg_dsn = _build_pg_dsn(db_cfg)
             self._metrics_db = MetricsDB(
                 pg_dsn=pg_dsn,
-                fallback_path=db_cfg.get("fallback_sqlite", "/tmp/guardian-metrics-buffer.db"),
+                fallback_path=db_cfg.get(
+                    "fallback_sqlite", "/tmp/guardian-metrics-buffer.db"
+                ),
             )
             await self._metrics_db.connect()
 
@@ -786,54 +972,96 @@ class GuardianHC:
 
         if plugin_cfg.get("infrastructure", {}).get("enabled", True):
             from guardian_hc.plugins.infrastructure import InfrastructurePlugin
-            self.register_plugin(InfrastructurePlugin({
-                "services": self.config.services,
-                "disk": v2.disk, "ssl": v2.ssl, "network": v2.network,
-                "compose_file": self.config.compose_file,
-            }))
+
+            self.register_plugin(
+                InfrastructurePlugin(
+                    {
+                        "services": self.config.services,
+                        "disk": v2.disk,
+                        "ssl": v2.ssl,
+                        "network": v2.network,
+                        "compose_file": self.config.compose_file,
+                    }
+                )
+            )
 
         if plugin_cfg.get("probes", {}).get("enabled", False):
             from guardian_hc.plugins.probes import ProbesPlugin
-            self.register_plugin(ProbesPlugin({
-                "service_account": plugin_cfg["probes"].get("service_account", "guardian-probe"),
-                "admin_account": plugin_cfg["probes"].get("admin_account", {}),
-                "backend_url": "http://backend:8000",
-                "redis_host": v2.celery.get("redis_host", "redis"),
-                "redis_port": v2.celery.get("redis_port", 6379),
-                "redis_password": _resolve_env(v2.celery.get("redis_password", "")),
-                "nginx_url": "http://localhost",
-            }))
+
+            self.register_plugin(
+                ProbesPlugin(
+                    {
+                        "service_account": plugin_cfg["probes"].get(
+                            "service_account", "guardian-probe"
+                        ),
+                        "admin_account": plugin_cfg["probes"].get("admin_account", {}),
+                        "backend_url": "http://backend:8000",
+                        "redis_host": v2.celery.get("redis_host", "redis"),
+                        "redis_port": v2.celery.get("redis_port", 6379),
+                        "redis_password": _resolve_env(
+                            v2.celery.get("redis_password", "")
+                        ),
+                        "nginx_url": "http://localhost",
+                    }
+                )
+            )
 
         if plugin_cfg.get("sentinel", {}).get("enabled", False):
             from guardian_hc.plugins.sentinel import SentinelPlugin
-            self.register_plugin(SentinelPlugin({
-                "backend_url": "http://backend:8000",
-                "redis_host": v2.celery.get("redis_host", "redis"),
-                "redis_port": v2.celery.get("redis_port", 6379),
-                "redis_password": _resolve_env(v2.celery.get("redis_password", "")),
-            }))
+
+            self.register_plugin(
+                SentinelPlugin(
+                    {
+                        "backend_url": "http://backend:8000",
+                        "redis_host": v2.celery.get("redis_host", "redis"),
+                        "redis_port": v2.celery.get("redis_port", 6379),
+                        "redis_password": _resolve_env(
+                            v2.celery.get("redis_password", "")
+                        ),
+                    }
+                )
+            )
 
         if plugin_cfg.get("trends", {}).get("enabled", False):
             from guardian_hc.plugins.trends import TrendsPlugin
-            self.register_plugin(TrendsPlugin({
-                "retention_raw": plugin_cfg["trends"].get("retention_raw", "48h"),
-                "retention_hourly": plugin_cfg["trends"].get("retention_hourly", "14d"),
-                "redis_host": v2.celery.get("redis_host", "redis"),
-                "redis_port": v2.celery.get("redis_port", 6379),
-                "redis_password": v2.celery.get("redis_password", ""),
-            }))
+
+            self.register_plugin(
+                TrendsPlugin(
+                    {
+                        "retention_raw": plugin_cfg["trends"].get(
+                            "retention_raw", "48h"
+                        ),
+                        "retention_hourly": plugin_cfg["trends"].get(
+                            "retention_hourly", "14d"
+                        ),
+                        "redis_host": v2.celery.get("redis_host", "redis"),
+                        "redis_port": v2.celery.get("redis_port", 6379),
+                        "redis_password": v2.celery.get("redis_password", ""),
+                    }
+                )
+            )
 
         if plugin_cfg.get("memory", {}).get("enabled", False):
             from guardian_hc.plugins.memory import MemoryPlugin
-            self.register_plugin(MemoryPlugin({
-                "bootstrap_sources": plugin_cfg["memory"].get("bootstrap_sources", []),
-            }))
+
+            self.register_plugin(
+                MemoryPlugin(
+                    {
+                        "bootstrap_sources": plugin_cfg["memory"].get(
+                            "bootstrap_sources", []
+                        ),
+                    }
+                )
+            )
 
         # Initialize runbook engine — loads YAML runbooks from configured directory
-        runbooks_dir = v2.runbooks_dir if hasattr(v2, "runbooks_dir") and v2.runbooks_dir else ""
+        runbooks_dir = (
+            v2.runbooks_dir if hasattr(v2, "runbooks_dir") and v2.runbooks_dir else ""
+        )
         if not runbooks_dir:
             # Default: runbooks/ sibling to the config file, or package default
             import os
+
             default_paths = [
                 "/app/runbooks",
                 os.path.join(os.path.dirname(__file__), "..", "runbooks"),
@@ -843,7 +1071,10 @@ class GuardianHC:
             self._runbook_engine = RunbookEngine(runbooks_dir, self)
             logger.info("runbooks.initialized", loaded=self._runbook_engine.loaded)
         else:
-            logger.warning("runbooks.no_dir_found", note="Runbooks disabled — no runbooks/ directory found")
+            logger.warning(
+                "runbooks.no_dir_found",
+                note="Runbooks disabled — no runbooks/ directory found",
+            )
 
         logger.info("guardian.v2.initialized", plugins=list(self._plugins.keys()))
 
@@ -851,18 +1082,24 @@ class GuardianHC:
         """Main loop -- run patrols, dashboard, and daily report on schedule."""
         await self._init_v2()
         logger.info("guardian_hc.started", app=self.config.app_name)
-        print(f"Guardian HC v{__import__('guardian_hc').__version__} -- Protecting: {self.config.app_name}")
+        print(
+            f"Guardian HC v{__import__('guardian_hc').__version__} -- Protecting: {self.config.app_name}"
+        )
 
         tasks = []
         tasks.append(asyncio.create_task(self.patrol_runner.run()))
 
         try:
             from guardian_hc.dashboard import DashboardServer
+
             dashboard = DashboardServer(self, port=self.config.dashboard_port)
             tasks.append(asyncio.create_task(dashboard.start()))
             print(f"Dashboard: http://localhost:{self.config.dashboard_port}")
         except ImportError:
-            logger.info("dashboard.aiohttp_not_installed", note="pip install aiohttp for dashboard")
+            logger.info(
+                "dashboard.aiohttp_not_installed",
+                note="pip install aiohttp for dashboard",
+            )
 
         tasks.append(asyncio.create_task(self._daily_report_loop()))
         await asyncio.gather(*tasks)
@@ -870,13 +1107,18 @@ class GuardianHC:
     async def _daily_report_loop(self):
         """Send daily report at 6:00 AM UTC."""
         from guardian_hc.daily_report import send_report
+
         while True:
             now = datetime.now(timezone.utc)
             target = now.replace(hour=6, minute=0, second=0, microsecond=0)
             if now >= target:
                 target += timedelta(days=1)
             wait = (target - now).total_seconds()
-            logger.info("daily_report.scheduled", next_run=target.isoformat(), wait_hours=round(wait / 3600, 1))
+            logger.info(
+                "daily_report.scheduled",
+                next_run=target.isoformat(),
+                wait_hours=round(wait / 3600, 1),
+            )
             await asyncio.sleep(wait)
             try:
                 result = await send_report(self, alert_manager=self.alert_manager)

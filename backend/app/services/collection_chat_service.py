@@ -24,9 +24,6 @@ from app.services.llm_gateway import llm_gateway
 logger = logging.getLogger(__name__)
 
 
-
-
-
 async def create_audit_log(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -330,9 +327,7 @@ When answering:
         context_parts = []
         for doc in document_context:
             if has_confidential:
-                context_parts.append(
-                    f"Document: {doc['filename']} (metadata only — confidential content stripped)"
-                )
+                context_parts.append(f"Document: {doc['filename']} (metadata only — confidential content stripped)")
             else:
                 chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
                 context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
@@ -382,7 +377,11 @@ When answering:
 
         async for chunk in self.llm.chat_completion(
             # §3.3: standard tier (Mistral Small) — better French family narrative, lower latency
-            messages=messages, stream=False, temperature=0.7, max_tokens=2048, tier="standard",
+            messages=messages,
+            stream=False,
+            temperature=0.7,
+            max_tokens=2048,
+            tier="standard",
         ):
             if chunk and not chunk.startswith("Error:"):
                 response_parts.append(chunk)
@@ -403,56 +402,6 @@ When answering:
             "response": response_text,
             "sources": sources,
             "llm_used": "openrouter",
-        }
-
-        self,
-        message: str,
-        collection: Collection,
-        document_context: list[dict[str, Any]],
-        session: ChatSession,
-        db: AsyncSession,
-    ) -> dict[str, Any]:
-        """Chat with local LLM for confidential collections (via gateway)."""
-        system_prompt = build_service_prompt(
-            service_name="SOWKNOW Collection Chat Service (Confidential Mode)",
-            mission="Answer questions about confidential documents using only the local LLM",
-            constraints=(
-                "- You MUST restrict answers to documents within the active collection\n"
-                "- You MUST NOT expose confidential information beyond what is necessary\n"
-                "- You MUST cite which collection documents support each claim"
-            ),
-            task_prompt=f"Collection: {collection.name}\nQuery: {collection.query}",
-        )
-
-        context_parts = []
-        for doc in document_context:
-            chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
-            context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
-        context_text = "\n\n".join(context_parts)
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Documents context:\n{context_text}\n\nUser question: {message}"},
-        ]
-
-        response_parts = []
-        async for chunk in self.llm.chat_completion(
-            messages=messages, stream=False, temperature=0.7, max_tokens=2048, has_confidential=True
-        ):
-            if chunk and not chunk.startswith("Error:"):
-                response_parts.append(chunk)
-
-        response_text = "".join(response_parts).strip()
-
-        sources = [
-            {"document_id": doc["id"], "filename": doc["filename"], "relevance": doc["relevance"]}
-            for doc in document_context[:5]
-        ]
-
-        return {
-            "response": response_text,
-            "sources": sources,
-            "llm_used": "local",
         }
 
 

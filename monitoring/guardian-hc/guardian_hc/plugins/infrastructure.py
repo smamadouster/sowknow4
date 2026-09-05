@@ -3,6 +3,7 @@
 Zero behavior change: this plugin delegates every check and heal to the
 existing v1 checker/healer implementations.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,6 @@ from guardian_hc.checks.config_drift import ConfigDriftChecker
 from guardian_hc.checks.network_health import NetworkHealthChecker
 from guardian_hc.checks.celery_health import CeleryHealthChecker
 from guardian_hc.checks.vps_load import VpsLoadChecker
-from guardian_hc.checks.ollama_health import OllamaChecker
 from guardian_hc.checks.resource_hogs import ResourceHogsChecker
 from guardian_hc.healers.container_healer import ContainerHealer
 from guardian_hc.healers.disk_healer import DiskHealer
@@ -47,15 +47,46 @@ from guardian_hc.healers.network_healer import NetworkHealer
 #   - restart_rate: in-memory sliding window of RestartCount per container
 
 PATROL_CHECKS: dict[str, list[str]] = {
-    "critical": ["containers", "api_health", "oom_events", "restart_rate", "resource_hogs"],
-    "standard": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "resource_hogs", "oom_events", "restart_rate"],
-    "deep": ["containers", "api_health", "disk", "memory", "network", "celery", "vps_load", "resource_hogs", "ssl", "config_drift", "oom_events", "restart_rate"],
+    "critical": [
+        "containers",
+        "api_health",
+        "oom_events",
+        "restart_rate",
+        "resource_hogs",
+    ],
+    "standard": [
+        "containers",
+        "api_health",
+        "disk",
+        "memory",
+        "network",
+        "celery",
+        "vps_load",
+        "resource_hogs",
+        "oom_events",
+        "restart_rate",
+    ],
+    "deep": [
+        "containers",
+        "api_health",
+        "disk",
+        "memory",
+        "network",
+        "celery",
+        "vps_load",
+        "resource_hogs",
+        "ssl",
+        "config_drift",
+        "oom_events",
+        "restart_rate",
+    ],
 }
 
 
 # ---------------------------------------------------------------------------
 # Plugin
 # ---------------------------------------------------------------------------
+
 
 class InfrastructurePlugin(GuardianPlugin):
     """Wraps all existing v1 checkers and healers under the v2 plugin interface."""
@@ -72,19 +103,22 @@ class InfrastructurePlugin(GuardianPlugin):
         self._disk_checker = DiskChecker(config.get("disk"))
         self._memory_checker = MemoryChecker()
         self._ssl_checker = SslChecker(config.get("ssl"))
-        self._config_drift_checker = ConfigDriftChecker(config)  # receives full config dict
+        self._config_drift_checker = ConfigDriftChecker(
+            config
+        )  # receives full config dict
         self._network_checker = NetworkHealthChecker(config.get("network"))
         self._celery_checker = CeleryHealthChecker(config.get("celery"))
         self._vps_checker = VpsLoadChecker(config.get("vps_load"))
         self._resource_hogs_checker = ResourceHogsChecker(config.get("resource_hogs"))
-        self._ollama_checker = OllamaChecker(config.get("ollama"))
 
         # Instantiate healers
         self._container_healer = ContainerHealer()
         self._disk_healer = DiskHealer(config.get("disk"))
         self._memory_healer = MemoryHealer()
         self._ssl_healer = SslHealer(config.get("ssl"))
-        self._network_healer = NetworkHealer({"compose_file": config.get("compose_file", "./docker-compose.yml")})
+        self._network_healer = NetworkHealer(
+            {"compose_file": config.get("compose_file", "./docker-compose.yml")}
+        )
 
         # OOM + restart-rate sliding-window state (in-memory, wiped on Guardian restart)
         #   _oom_events: container_name -> list[datetime] of OOM events in the window
@@ -242,7 +276,13 @@ class InfrastructurePlugin(GuardianPlugin):
         raw = await self._disk_checker.check()
         needs = raw.get("needs_healing", False)
         severity_str = raw.get("severity", "ok")
-        sev = Severity.CRITICAL if severity_str == "critical" else Severity.WARNING if severity_str == "warning" else Severity.INFO
+        sev = (
+            Severity.CRITICAL
+            if severity_str == "critical"
+            else Severity.WARNING
+            if severity_str == "warning"
+            else Severity.INFO
+        )
         return [
             CheckResult(
                 plugin=self.name,
@@ -373,7 +413,9 @@ class InfrastructurePlugin(GuardianPlugin):
                 check_name="config_drift",
                 status="fail" if needs else "pass",
                 severity=Severity.WARNING if needs else Severity.INFO,
-                summary=f"Config drift: {count} item(s) drifted" if needs else "Config drift: none",
+                summary=f"Config drift: {count} item(s) drifted"
+                if needs
+                else "Config drift: none",
                 details=raw,
                 needs_healing=needs,
                 heal_hint=None,
@@ -413,7 +455,9 @@ class InfrastructurePlugin(GuardianPlugin):
                     check_name=f"resource_{check_name}",
                     status="fail" if needs else "pass",
                     severity=sev_map.get(severity, Severity.WARNING),
-                    summary=f"Resource {check_name}: {item.get('count', 0)} hog(s) detected" if needs else f"Resource {check_name}: OK",
+                    summary=f"Resource {check_name}: {item.get('count', 0)} hog(s) detected"
+                    if needs
+                    else f"Resource {check_name}: OK",
                     details=item,
                     needs_healing=needs,
                     heal_hint="kill_resource_hogs" if needs else None,
@@ -431,29 +475,38 @@ class InfrastructurePlugin(GuardianPlugin):
         """
         now = datetime.now(timezone.utc)
         # First call: look back over the full window so we don't miss fresh OOMs.
-        since = self._last_oom_poll or (now - timedelta(minutes=self._oom_window_minutes))
+        since = self._last_oom_poll or (
+            now - timedelta(minutes=self._oom_window_minutes)
+        )
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "events",
-                "--since", since.strftime("%Y-%m-%dT%H:%M:%S"),
-                "--until", now.strftime("%Y-%m-%dT%H:%M:%S"),
-                "--filter", "event=oom",
-                "--format", "{{.Time}}|{{.Actor.Attributes.name}}",
+                "docker",
+                "events",
+                "--since",
+                since.strftime("%Y-%m-%dT%H:%M:%S"),
+                "--until",
+                now.strftime("%Y-%m-%dT%H:%M:%S"),
+                "--filter",
+                "event=oom",
+                "--format",
+                "{{.Time}}|{{.Actor.Attributes.name}}",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
         except (asyncio.TimeoutError, FileNotFoundError, OSError) as exc:
-            return [CheckResult(
-                plugin=self.name,
-                module="Infrastructure",
-                check_name="oom_events",
-                status="fail",
-                severity=Severity.WARNING,
-                summary=f"OOM probe error: {str(exc)[:100]}",
-                needs_healing=False,
-            )]
+            return [
+                CheckResult(
+                    plugin=self.name,
+                    module="Infrastructure",
+                    check_name="oom_events",
+                    status="fail",
+                    severity=Severity.WARNING,
+                    summary=f"OOM probe error: {str(exc)[:100]}",
+                    needs_healing=False,
+                )
+            ]
 
         self._last_oom_poll = now
 
@@ -481,36 +534,40 @@ class InfrastructurePlugin(GuardianPlugin):
                 del self._oom_events[name]
                 continue
             if len(fresh) >= self._oom_alert_threshold:
-                results.append(CheckResult(
-                    plugin=self.name,
-                    module="Infrastructure",
-                    check_name=f"oom_{name}",
-                    status="fail",
-                    severity=Severity.CRITICAL,
-                    summary=(
-                        f"{name} OOM-killed {len(fresh)}x in the last "
-                        f"{self._oom_window_minutes} min — likely memory leak "
-                        f"or cgroup limit too low. Restart won't fix it."
-                    ),
-                    details={
-                        "events": [t.isoformat() for t in fresh],
-                        "window_minutes": self._oom_window_minutes,
-                    },
-                    # Deliberately not healable: a restart would just OOM again.
-                    needs_healing=False,
-                    heal_hint=None,
-                ))
+                results.append(
+                    CheckResult(
+                        plugin=self.name,
+                        module="Infrastructure",
+                        check_name=f"oom_{name}",
+                        status="fail",
+                        severity=Severity.CRITICAL,
+                        summary=(
+                            f"{name} OOM-killed {len(fresh)}x in the last "
+                            f"{self._oom_window_minutes} min — likely memory leak "
+                            f"or cgroup limit too low. Restart won't fix it."
+                        ),
+                        details={
+                            "events": [t.isoformat() for t in fresh],
+                            "window_minutes": self._oom_window_minutes,
+                        },
+                        # Deliberately not healable: a restart would just OOM again.
+                        needs_healing=False,
+                        heal_hint=None,
+                    )
+                )
 
         if not results:
-            results.append(CheckResult(
-                plugin=self.name,
-                module="Infrastructure",
-                check_name="oom_events",
-                status="pass",
-                severity=Severity.INFO,
-                summary="No container OOM-kills in the last "
-                        f"{self._oom_window_minutes} min",
-            ))
+            results.append(
+                CheckResult(
+                    plugin=self.name,
+                    module="Infrastructure",
+                    check_name="oom_events",
+                    status="pass",
+                    severity=Severity.INFO,
+                    summary="No container OOM-kills in the last "
+                    f"{self._oom_window_minutes} min",
+                )
+            )
         return results
 
     async def _check_restart_rate(self) -> list[CheckResult]:
@@ -558,50 +615,56 @@ class InfrastructurePlugin(GuardianPlugin):
                     oldest_rc = history[0][1]
                     delta = restart_count - oldest_rc
                     if delta >= self._restart_alert_threshold:
-                        results.append(CheckResult(
-                            plugin=self.name,
-                            module="Infrastructure",
-                            check_name=f"restart_rate_{name}",
-                            status="fail",
-                            severity=Severity.CRITICAL,
-                            summary=(
-                                f"{name} restarted {delta}x in the last "
-                                f"{self._restart_window_minutes} min "
-                                f"(RestartCount {oldest_rc} → {restart_count}). "
-                                f"Check `docker logs {name}` and dmesg for OOM."
-                            ),
-                            details={
-                                "delta": delta,
-                                "window_minutes": self._restart_window_minutes,
-                                "current_restart_count": restart_count,
-                            },
-                            # Deliberately not healable: auto-restart during a
-                            # crash-loop just accelerates the loop.
-                            needs_healing=False,
-                            heal_hint=None,
-                        ))
+                        results.append(
+                            CheckResult(
+                                plugin=self.name,
+                                module="Infrastructure",
+                                check_name=f"restart_rate_{name}",
+                                status="fail",
+                                severity=Severity.CRITICAL,
+                                summary=(
+                                    f"{name} restarted {delta}x in the last "
+                                    f"{self._restart_window_minutes} min "
+                                    f"(RestartCount {oldest_rc} → {restart_count}). "
+                                    f"Check `docker logs {name}` and dmesg for OOM."
+                                ),
+                                details={
+                                    "delta": delta,
+                                    "window_minutes": self._restart_window_minutes,
+                                    "current_restart_count": restart_count,
+                                },
+                                # Deliberately not healable: auto-restart during a
+                                # crash-loop just accelerates the loop.
+                                needs_healing=False,
+                                heal_hint=None,
+                            )
+                        )
         except Exception as exc:
-            return [CheckResult(
-                plugin=self.name,
-                module="Infrastructure",
-                check_name="restart_rate",
-                status="fail",
-                severity=Severity.WARNING,
-                summary=f"Restart-rate probe error: {str(exc)[:100]}",
-                needs_healing=False,
-            )]
+            return [
+                CheckResult(
+                    plugin=self.name,
+                    module="Infrastructure",
+                    check_name="restart_rate",
+                    status="fail",
+                    severity=Severity.WARNING,
+                    summary=f"Restart-rate probe error: {str(exc)[:100]}",
+                    needs_healing=False,
+                )
+            ]
 
         if not results:
-            results.append(CheckResult(
-                plugin=self.name,
-                module="Infrastructure",
-                check_name="restart_rate",
-                status="pass",
-                severity=Severity.INFO,
-                summary=f"No crash-looping containers "
-                        f"(window: {self._restart_window_minutes} min, "
-                        f"threshold: {self._restart_alert_threshold})",
-            ))
+            results.append(
+                CheckResult(
+                    plugin=self.name,
+                    module="Infrastructure",
+                    check_name="restart_rate",
+                    status="pass",
+                    severity=Severity.INFO,
+                    summary=f"No crash-looping containers "
+                    f"(window: {self._restart_window_minutes} min, "
+                    f"threshold: {self._restart_alert_threshold})",
+                )
+            )
         return results
 
     # ------------------------------------------------------------------
@@ -615,7 +678,7 @@ class InfrastructurePlugin(GuardianPlugin):
 
         # restart:<container_name>
         if hint.startswith("restart:"):
-            container_name = hint[len("restart:"):]
+            container_name = hint[len("restart:") :]
             raw = await self._container_healer.heal(container_name)
             return HealResult(
                 plugin=self.name,
@@ -649,7 +712,7 @@ class InfrastructurePlugin(GuardianPlugin):
 
         # ssl_renew:<domain>
         if hint.startswith("ssl_renew:"):
-            domain = hint[len("ssl_renew:"):]
+            domain = hint[len("ssl_renew:") :]
             raw = await self._ssl_healer.heal(domain)
             return HealResult(
                 plugin=self.name,

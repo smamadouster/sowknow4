@@ -69,7 +69,7 @@ class ClarificationAgent:
             return False
         return any(s.get("document_bucket") == "confidential" for s in sources)
 
-    async def clarify(self, request: ClarificationRequest, use_ollama: bool = False) -> ClarificationResult:
+    async def clarify(self, request: ClarificationRequest) -> ClarificationResult:
         """
         Analyze and potentially clarify a user query.
 
@@ -81,11 +81,11 @@ class ClarificationAgent:
             Clarification result with questions and assumptions.
         """
         has_confidential = request.has_confidential or self._has_confidential_documents(request.sources)
-        if use_ollama:
-            has_confidential = True
 
         # Build the messages for the LLM
-        system_prompt = CLARIFICATION_IDENTITY + """
+        system_prompt = (
+            CLARIFICATION_IDENTITY
+            + """
 
 ## Task
 Analyze user queries to determine if they are clear enough to proceed.
@@ -100,6 +100,7 @@ Return a JSON object with:
   "suggested_filters": {"key": "value"},
   "reasoning": "explanation of your analysis"
 }"""
+        )
 
         user_prompt = f"Query: {request.query}"
         if request.context:
@@ -113,7 +114,11 @@ Return a JSON object with:
         try:
             response_parts = []
             async for chunk in self.llm.chat_completion(
-                messages=messages, stream=False, temperature=0.3, max_tokens=1024, tier="simple",
+                messages=messages,
+                stream=False,
+                temperature=0.3,
+                max_tokens=1024,
+                tier="simple",
                 has_confidential=has_confidential,
             ):
                 if chunk and not chunk.startswith("Error:") and not chunk.startswith("__USAGE__"):

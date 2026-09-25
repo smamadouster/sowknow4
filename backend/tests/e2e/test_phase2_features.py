@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 E2E Tests for Phase 2 Features
 
@@ -7,6 +5,7 @@ Comprehensive end-to-end tests covering Smart Collections,
 Smart Folders, Reports, and Auto-Tagging.
 """
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 

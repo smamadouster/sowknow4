@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 #!/usr/bin/env python3
 """
 SOWKNOW Performance Benchmark Script
@@ -16,6 +14,7 @@ Run with: python tests/performance/run_benchmarks.py
 
 Results are printed in markdown table format for easy reporting.
 """
+import pytest
 import asyncio
 import json
 import os

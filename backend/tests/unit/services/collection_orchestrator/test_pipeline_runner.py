@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for PipelineRunner — all services and DB mocked."""
 
 import uuid
@@ -8,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.models.collection_orchestrator import (
     AnalysisResult,

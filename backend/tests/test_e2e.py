@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 End-to-End Tests for SOWKNOW Phase 3
 
@@ -11,6 +9,7 @@ Tests the complete system including:
 - Multi-Agent Search
 """
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.orm import Session
 

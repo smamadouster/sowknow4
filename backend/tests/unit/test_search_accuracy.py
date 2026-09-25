@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Tests for Phase 2 accuracy improvements:
 - Language-aware regconfig
@@ -8,6 +6,7 @@ Tests for Phase 2 accuracy improvements:
 - Re-ranker integration (mocked)
 """
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from unittest.mock import AsyncMock, patch
 
 from app.services.search_service import _get_regconfig, HybridSearchService

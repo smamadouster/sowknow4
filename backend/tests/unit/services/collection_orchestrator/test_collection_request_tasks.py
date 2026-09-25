@@ -1,9 +1,9 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for FR6.4 retry policy helpers in collection_request_tasks.
 
 Pure functions only — no broker, no DB.
 """
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.tasks.collection_request_tasks import (
     RETRY_BASE_SECONDS,

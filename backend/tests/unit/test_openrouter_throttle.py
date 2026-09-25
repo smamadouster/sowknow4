@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for OpenRouterThrottle — provider-aware dynamic throttling with
 adaptive backoff (blueprint §2.3 Tier C).
@@ -7,6 +5,7 @@ adaptive backoff (blueprint §2.3 Tier C).
 import time
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.services.openrouter_throttle import (
     ADAPTIVE_BACKOFF_FACTOR,

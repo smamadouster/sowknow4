@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for DELETE /smart-folders/{id} — owner-scoped, idempotent.
 
 FastAPI TestClient with dependency_overrides for auth + DB. No DB, no network.
@@ -10,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

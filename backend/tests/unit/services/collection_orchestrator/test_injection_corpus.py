@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """FR7.1 prompt-injection defence — security test corpus (spec Scenario 7).
 
 End-to-end through extraction → analysis → summary with a mocked LLM router.
@@ -27,6 +25,7 @@ import uuid
 from typing import Any
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import app.services.collection_orchestrator.summary_generator as summary_generator_mod
 from app.services.collection_orchestrator.analysis_engine import AnalysisEngine

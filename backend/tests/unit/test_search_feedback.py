@@ -1,9 +1,8 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Tests for /api/v1/search/feedback endpoint
 """
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi.testclient import TestClient
 
 

@@ -1,9 +1,8 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 import uuid
 from dataclasses import asdict
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.services.smart_folder.analysis import AnalysisResult
 from app.services.smart_folder.report_generator import (

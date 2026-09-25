@@ -1,6 +1,6 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for memory retrieval/injection + scenario clustering (v0.1)."""
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import uuid
 from types import SimpleNamespace

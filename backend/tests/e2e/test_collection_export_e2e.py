@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 E2E Test Scenario: Collection PDF Export
 =========================================
@@ -17,6 +15,7 @@ import json
 from uuid import uuid4
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 

@@ -1,9 +1,8 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.services.smart_folder.agent.executor import SkillExecutor
 from app.services.smart_folder.agent.planner import Planner, Plan, PlanStep

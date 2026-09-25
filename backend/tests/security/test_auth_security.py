@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Security tests for authentication endpoints.
 
@@ -19,6 +17,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi.testclient import TestClient
 from jose import jwt
 from sqlalchemy.orm import Session

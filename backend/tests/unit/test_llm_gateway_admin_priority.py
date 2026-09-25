@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for LLMGateway — Admin total priority bypasses module-level concurrency caps.
 """
@@ -7,6 +5,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from unittest.mock import MagicMock
 

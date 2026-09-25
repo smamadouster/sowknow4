@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for the SemanticCache two-tier caching layer.
 
 Covers:
@@ -21,6 +19,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import numpy as np
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.services.semantic_cache import (
     GLOBAL_INDEX_KEY,

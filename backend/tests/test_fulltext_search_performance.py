@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Performance test suite for PostgreSQL tsvector full-text search.
 
@@ -23,6 +21,7 @@ import time
 from collections.abc import Generator
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 

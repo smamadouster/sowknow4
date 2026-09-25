@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Integration tests for the knowledge graph module.
 
@@ -15,6 +13,7 @@ import uuid
 
 import asyncpg
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 import pytest_asyncio
 
 pytestmark = pytest.mark.requires_postgres

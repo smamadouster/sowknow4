@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Performance and Resilience Test Suite for SOWKNOW
 
@@ -34,6 +32,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import numpy as np
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 

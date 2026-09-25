@@ -1,9 +1,8 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_graph import Entity, EntityType

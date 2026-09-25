@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit test conftest — lightweight fixtures for tests that do not need a real DB.
 
@@ -11,6 +9,7 @@ that has the project dependencies installed (i.e. without Docker or PostgreSQL).
 Integration/E2E tests that need the full stack should use the root-level
 tests/conftest.py which requires Docker + PostgreSQL.
 """
+import pytest
 import os
 
 # Prevent the parent conftest from failing on missing DB connection.

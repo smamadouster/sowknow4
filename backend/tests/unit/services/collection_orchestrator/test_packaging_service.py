@@ -1,6 +1,6 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for the packaging service (in-app view + PDF export)."""
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import uuid
 from datetime import datetime, timezone

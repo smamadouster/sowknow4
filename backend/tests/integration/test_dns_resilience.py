@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Integration tests for DNS resilience and network utilities.
 """
@@ -10,6 +8,7 @@ import sys
 from unittest.mock import AsyncMock, patch
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 # Setup path for dns_validator (relative to this test file)
 test_dir = os.path.dirname(__file__)

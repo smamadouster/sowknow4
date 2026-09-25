@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Standalone security tests for token and authentication logic.
 
@@ -11,6 +9,7 @@ import time
 from datetime import datetime, timedelta
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from jose import jwt
 
 from app.models.user import UserRole

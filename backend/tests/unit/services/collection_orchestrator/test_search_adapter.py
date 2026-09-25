@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for SearchAdapter (FR2) — search_service and DB mocked."""
 
 import uuid
@@ -8,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import app.services.collection_orchestrator.search_adapter as sa_module
 from app.services.collection_orchestrator.query_planner import SearchCallSpec

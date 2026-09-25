@@ -1,11 +1,11 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for Collection Export endpoint — PDF generation with mocked reportlab.
 
 These tests verify the export logic without a real database or real PDF rendering,
 using unittest.mock to isolate the endpoint behaviour.
 """
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import io
 from datetime import datetime

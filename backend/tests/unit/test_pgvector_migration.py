@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Tests for pgvector embedding migration
 
@@ -15,6 +13,7 @@ from uuid import uuid4
 
 import numpy as np
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 # pgvector's Vector type is only available when pgvector is installed
 try:

@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Performance QA Validation — End-to-End Benchmarks
 
@@ -14,6 +12,7 @@ import statistics
 import time
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi.testclient import TestClient
 
 

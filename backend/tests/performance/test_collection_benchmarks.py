@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Collection Performance Benchmark Tests
 =======================================
@@ -49,6 +47,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.models.document import Document, DocumentBucket, DocumentStatus
 from app.schemas.collection import CollectionCreate

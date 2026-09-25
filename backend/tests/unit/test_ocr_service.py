@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for OCR Service with three processing modes
 
@@ -18,6 +16,7 @@ import tempfile
 from unittest.mock import AsyncMock, patch
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from PIL import Image
 
 

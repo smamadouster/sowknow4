@@ -1,6 +1,6 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Tests for LLM request metrics."""
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from app.services.prometheus_metrics import (
     Counter,
     Histogram,

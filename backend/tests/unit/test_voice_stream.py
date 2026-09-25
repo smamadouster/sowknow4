@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for voice audio streaming — regression suite for the recurring
 "cannot play voice files" bug.
@@ -25,6 +23,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 

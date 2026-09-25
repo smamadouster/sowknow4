@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Standalone unit tests for JWT token refresh role propagation bug fix.
 
@@ -14,6 +12,8 @@ token payload, not old_token["role"].
 
 This test file verifies the fix without requiring database connections.
 """
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import os
 

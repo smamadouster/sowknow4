@@ -1,11 +1,10 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for graph traversal intent detection in ResearcherAgent.
 No database required.
 """
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.services.agents.researcher_agent import ResearcherAgent
 

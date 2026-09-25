@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Vault Protocol Enforcement Tests — Sprint 3.2
 
@@ -25,6 +23,7 @@ from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 # Module-level marker so pytest-asyncio (strict mode) treats all async tests
 pytestmark = pytest.mark.asyncio

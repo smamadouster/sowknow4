@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Tests for metadata-only confidential routing in chat service."""
 
 from datetime import UTC, datetime, timezone
@@ -7,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 
 def _make_search_result(bucket="public", chunk_text="Some content", doc_name="test.pdf"):

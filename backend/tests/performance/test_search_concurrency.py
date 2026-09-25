@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Load and concurrency tests for the search endpoint.
 
@@ -13,6 +11,7 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 # ---------------------------------------------------------------------------
 # Helpers

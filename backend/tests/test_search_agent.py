@@ -1,11 +1,10 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 SOWKNOW Agentic Search — Test Suite
 Run: pytest backend/tests/test_search_agent.py -v
 """
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.services.search_models import (
     AgenticSearchRequest,

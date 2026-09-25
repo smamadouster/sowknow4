@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Auth Compliance Test Suite - QA Engineer Validation
 
@@ -21,6 +19,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 

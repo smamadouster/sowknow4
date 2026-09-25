@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Security tests package for SOWKNOW.
 
@@ -11,3 +9,4 @@ This package contains comprehensive security tests for:
 - Cookie security
 - Token security
 """
+import pytest

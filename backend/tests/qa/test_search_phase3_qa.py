@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Phase 3 QA Validation — Advanced Optimizations
 
@@ -11,6 +9,7 @@ Validates:
 Run: pytest backend/tests/qa/test_search_phase3_qa.py -v
 """
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 

@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Comprehensive Confidential Bucket Isolation Tests
 
@@ -22,6 +20,7 @@ import os
 import uuid
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session

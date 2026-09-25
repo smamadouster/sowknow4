@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for FR8.5 reproducibility — no DB, no network."""
 
 import uuid
@@ -7,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

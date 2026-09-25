@@ -1,10 +1,9 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Embedding Service Tests
 Tests embedding model functionality
 """
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 
 class TestEmbeddingServiceConfiguration:

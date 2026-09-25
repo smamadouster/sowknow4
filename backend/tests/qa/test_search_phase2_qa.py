@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Phase 2 QA Validation — Accuracy Foundation
 
@@ -13,6 +11,7 @@ Validates:
 Run: pytest backend/tests/qa/test_search_phase2_qa.py -v
 """
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 from unittest.mock import AsyncMock, patch
 
 from app.services.search_service import _get_regconfig, HybridSearchService

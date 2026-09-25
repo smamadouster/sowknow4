@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for the Agent Memory distillation service (draft v0.1).
 
 Covers:
@@ -10,6 +8,8 @@ Covers:
 - Semantic dedup: an atom similar to an existing statement is dropped.
 - _cosine edge cases.
 """
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import uuid
 

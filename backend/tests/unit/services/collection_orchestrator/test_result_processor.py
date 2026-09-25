@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for ResultProcessor (FR3) — rerank/LLM mocked, no DB."""
 
 import json
@@ -9,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 import app.services.collection_orchestrator.result_processor as rp_module
 from app.services.collection_orchestrator.result_processor import (

@@ -1,11 +1,10 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 Unit tests for Cache Monitor service
 """
 from datetime import datetime, timedelta
 
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.services.cache_monitor import CacheMonitor, DailyCacheStats
 

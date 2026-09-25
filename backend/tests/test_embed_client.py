@@ -1,10 +1,9 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 import os
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 pytestmark = pytest.mark.sqlite_safe
 

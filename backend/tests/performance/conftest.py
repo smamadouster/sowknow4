@@ -1,5 +1,3 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """
 PostgreSQL container fixtures for collection performance benchmarks.
 

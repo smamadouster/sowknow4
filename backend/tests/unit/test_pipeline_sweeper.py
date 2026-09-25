@@ -1,6 +1,6 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for pipeline_sweeper — unified recovery task."""
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch

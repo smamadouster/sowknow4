@@ -1,6 +1,6 @@
-import pytest
-@pytest.mark.skip(reason="Ollama removed")
 """Unit tests for the learned-skill model + skill extraction guard logic."""
+import pytest
+pytest.skip("Disabled during Ollama removal (Sep 4)", allow_module_level=True)
 
 from app.models.learned_skill import LearnedSkill, SkillStatus
 

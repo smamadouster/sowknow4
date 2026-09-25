@@ -10754,7 +10754,7 @@
 {"id":10754,"type":"edge","label":"item","outV":10752,"inVs":[10749],"document":10651}
 {"id":10755,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef parse_intent(self, query, user_language)\n```"}}}
 {"id":10756,"type":"edge","label":"hover","outV":10750,"inV":10755}
-{"id":10757,"type":"vertex","label":"range","start":{"line":472,"character":4},"end":{"line":472,"character":17}}
+{"id":10757,"type":"vertex","label":"range","start":{"line":521,"character":4},"end":{"line":521,"character":17}}
 {"id":10758,"type":"vertex","label":"resultSet"}
 {"id":10759,"type":"edge","label":"next","outV":10757,"inV":10758}
 {"id":10760,"type":"vertex","label":"definitionResult"}
@@ -10762,7 +10762,7 @@
 {"id":10762,"type":"edge","label":"item","outV":10760,"inVs":[10757],"document":10651}
 {"id":10763,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _extract_json(self, text)\n```"}}}
 {"id":10764,"type":"edge","label":"hover","outV":10758,"inV":10763}
-{"id":10765,"type":"vertex","label":"range","start":{"line":507,"character":4},"end":{"line":507,"character":27}}
+{"id":10765,"type":"vertex","label":"range","start":{"line":556,"character":4},"end":{"line":556,"character":27}}
 {"id":10766,"type":"vertex","label":"resultSet"}
 {"id":10767,"type":"edge","label":"next","outV":10765,"inV":10766}
 {"id":10768,"type":"vertex","label":"definitionResult"}
@@ -10770,7 +10770,7 @@
 {"id":10770,"type":"edge","label":"item","outV":10768,"inVs":[10765],"document":10651}
 {"id":10771,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef _generate_fallback_name(self, query)\n```"}}}
 {"id":10772,"type":"edge","label":"hover","outV":10766,"inV":10771}
-{"id":10773,"type":"vertex","label":"range","start":{"line":514,"character":4},"end":{"line":514,"character":23}}
+{"id":10773,"type":"vertex","label":"range","start":{"line":563,"character":4},"end":{"line":563,"character":23}}
 {"id":10774,"type":"vertex","label":"resultSet"}
 {"id":10775,"type":"edge","label":"next","outV":10773,"inV":10774}
 {"id":10776,"type":"vertex","label":"definitionResult"}
@@ -10781,7 +10781,7 @@
 {"id":10781,"type":"edge","label":"contains","outV":10651,"inVs":[10653,10661,10669,10677,10685,10693,10701,10709,10717,10725,10733,10741,10749,10757,10765,10773]}
 {"id":10782,"type":"vertex","label":"document","uri":"file:///home/development/src/active/sowknow4/backend/app/services/jev_client.py","languageId":"python"}
 {"id":10783,"type":"edge","label":"contains","outV":1,"inVs":[10782]}
-{"id":10784,"type":"vertex","label":"range","start":{"line":70,"character":0},"end":{"line":70,"character":11}}
+{"id":10784,"type":"vertex","label":"range","start":{"line":76,"character":0},"end":{"line":76,"character":11}}
 {"id":10785,"type":"vertex","label":"resultSet"}
 {"id":10786,"type":"edge","label":"next","outV":10784,"inV":10785}
 {"id":10787,"type":"vertex","label":"definitionResult"}
@@ -10789,7 +10789,7 @@
 {"id":10789,"type":"edge","label":"item","outV":10787,"inVs":[10784],"document":10782}
 {"id":10790,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\nclass JevDecision\n# methods: \n```"}}}
 {"id":10791,"type":"edge","label":"hover","outV":10785,"inV":10790}
-{"id":10792,"type":"vertex","label":"range","start":{"line":79,"character":0},"end":{"line":79,"character":13}}
+{"id":10792,"type":"vertex","label":"range","start":{"line":85,"character":0},"end":{"line":85,"character":13}}
 {"id":10793,"type":"vertex","label":"resultSet"}
 {"id":10794,"type":"edge","label":"next","outV":10792,"inV":10793}
 {"id":10795,"type":"vertex","label":"definitionResult"}
@@ -10797,7 +10797,7 @@
 {"id":10797,"type":"edge","label":"item","outV":10795,"inVs":[10792],"document":10782}
 {"id":10798,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef decisions_url()\n```"}}}
 {"id":10799,"type":"edge","label":"hover","outV":10793,"inV":10798}
-{"id":10800,"type":"vertex","label":"range","start":{"line":94,"character":0},"end":{"line":94,"character":14}}
+{"id":10800,"type":"vertex","label":"range","start":{"line":100,"character":0},"end":{"line":100,"character":14}}
 {"id":10801,"type":"vertex","label":"resultSet"}
 {"id":10802,"type":"edge","label":"next","outV":10800,"inV":10801}
 {"id":10803,"type":"vertex","label":"definitionResult"}
@@ -10805,7 +10805,7 @@
 {"id":10805,"type":"edge","label":"item","outV":10803,"inVs":[10800],"document":10782}
 {"id":10806,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef build_question()\n```"}}}
 {"id":10807,"type":"edge","label":"hover","outV":10801,"inV":10806}
-{"id":10808,"type":"vertex","label":"range","start":{"line":111,"character":0},"end":{"line":111,"character":17}}
+{"id":10808,"type":"vertex","label":"range","start":{"line":117,"character":0},"end":{"line":117,"character":17}}
 {"id":10809,"type":"vertex","label":"resultSet"}
 {"id":10810,"type":"edge","label":"next","outV":10808,"inV":10809}
 {"id":10811,"type":"vertex","label":"definitionResult"}
@@ -10813,7 +10813,7 @@
 {"id":10813,"type":"edge","label":"item","outV":10811,"inVs":[10808],"document":10782}
 {"id":10814,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef privacy_class_for(query)\n```"}}}
 {"id":10815,"type":"edge","label":"hover","outV":10809,"inV":10814}
-{"id":10816,"type":"vertex","label":"range","start":{"line":129,"character":0},"end":{"line":129,"character":17}}
+{"id":10816,"type":"vertex","label":"range","start":{"line":135,"character":0},"end":{"line":135,"character":17}}
 {"id":10817,"type":"vertex","label":"resultSet"}
 {"id":10818,"type":"edge","label":"next","outV":10816,"inV":10817}
 {"id":10819,"type":"vertex","label":"definitionResult"}
@@ -10821,7 +10821,7 @@
 {"id":10821,"type":"edge","label":"item","outV":10819,"inVs":[10816],"document":10782}
 {"id":10822,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef decide_date_range(query)\n```"}}}
 {"id":10823,"type":"edge","label":"hover","outV":10817,"inV":10822}
-{"id":10824,"type":"vertex","label":"range","start":{"line":192,"character":0},"end":{"line":192,"character":14}}
+{"id":10824,"type":"vertex","label":"range","start":{"line":198,"character":0},"end":{"line":198,"character":14}}
 {"id":10825,"type":"vertex","label":"resultSet"}
 {"id":10826,"type":"edge","label":"next","outV":10824,"inV":10825}
 {"id":10827,"type":"vertex","label":"definitionResult"}
@@ -10829,7 +10829,7 @@
 {"id":10829,"type":"edge","label":"item","outV":10827,"inVs":[10824],"document":10782}
 {"id":10830,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef shadow_compare(query, incumbent_decision)\n```"}}}
 {"id":10831,"type":"edge","label":"hover","outV":10825,"inV":10830}
-{"id":10832,"type":"vertex","label":"range","start":{"line":261,"character":0},"end":{"line":261,"character":15}}
+{"id":10832,"type":"vertex","label":"range","start":{"line":267,"character":0},"end":{"line":267,"character":15}}
 {"id":10833,"type":"vertex","label":"resultSet"}
 {"id":10834,"type":"edge","label":"next","outV":10832,"inV":10833}
 {"id":10835,"type":"vertex","label":"definitionResult"}
@@ -10837,7 +10837,7 @@
 {"id":10837,"type":"edge","label":"item","outV":10835,"inVs":[10832],"document":10782}
 {"id":10838,"type":"vertex","label":"hoverResult","result":{"contents":{"kind":"markdown","value":"```python\ndef schedule_shadow(query, incumbent_decision)\n```"}}}
 {"id":10839,"type":"edge","label":"hover","outV":10833,"inV":10838}
-{"id":10840,"type":"vertex","label":"range","start":{"line":272,"character":4},"end":{"line":272,"character":8}}
+{"id":10840,"type":"vertex","label":"range","start":{"line":278,"character":4},"end":{"line":278,"character":8}}
 {"id":10841,"type":"vertex","label":"resultSet"}
 {"id":10842,"type":"edge","label":"next","outV":10840,"inV":10841}
 {"id":10843,"type":"vertex","label":"definitionResult"}

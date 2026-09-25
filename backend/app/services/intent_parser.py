@@ -16,6 +16,8 @@ from typing import Any
 from app.services.agent_identity import build_service_prompt
 from app.services.llm_gateway import llm_gateway
 from app.services.rollback_monitor import rollback_monitor
+from app.services.jev_client import JEV_AUTO_EXECUTE_CONFIDENCE, shadow_compare
+from app.services.sakanal_attribution import current_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +421,75 @@ Now parse the user's query:"""
                 try:
                     intent_data = json.loads(json_text)
                     rollback_monitor.record_json_parse(tier="simple", success=True)
+
+                    # --- JEV decision for date_range.type (enforcement, 2026-09-25) -------
+                    # The incumbent LLM still answers every other field (keywords, entities,
+                    # document_types, collection_name are free-text extraction JEV cannot do), so
+                    # this OVERRIDES one bounded field rather than eliminating the call. Read
+                    # plainly: this buys accuracy, not tokens.
+                    #
+                    # BOUNDED BY CONFIDENCE AND BY A TIMEOUT. JEV's answer is adopted only at
+                    # >= JEV_AUTO_EXECUTE_CONFIDENCE; below that, or on any failure, the
+                    # incumbent's answer stands. The 2s cap means a slow origin cannot stall a
+                    # request the user is waiting on -- the call is now on the critical path,
+                    # which costs roughly its own latency (~300ms p95 measured).
+                    #
+                    # The same call still records the pair: the incumbent's answer rides to the
+                    # gateway as a header and both land on one span, joined by
+                    # x-sakanal-request-id. That is what keeps the fallback rate and the future
+                    # agreement trend measurable from the ledger.
+                    incumbent_date_range = str((intent_data.get("date_range") or {}).get("type") or "")
+                    try:
+                        decision = await shadow_compare(
+                            query,
+                            incumbent_date_range,
+                            request_id=current_request_id(),
+                            timeout_s=2.0,
+                        )
+                        if decision is not None and decision.confidence >= JEV_AUTO_EXECUTE_CONFIDENCE:
+                            # A "custom" answer is NOT actionable here, and adopting it would be a
+                            # silent data bug rather than a wrong answer. _resolve_date_range()
+                            # returns date_range["custom"] for that type -- concrete start/end
+                            # bounds -- but JEV answers only a bounded CHOICE and never emits
+                            # bounds. Adopting a bare {"type": "custom"} therefore yields no date
+                            # filter at all: the search silently widens to the whole corpus, while
+                            # the strategy label still reads "date_filtered". So custom is DEFERRED
+                            # to the incumbent, which can produce bounds when it says custom.
+                            #
+                            # MEASURED, not assumed (2026-09-25 golden set, 60 queries): all 6
+                            # high-confidence custom answers were EXPLICIT named ranges
+                            # ("between January and March 2024", "Q1 to Q3 2023") where the
+                            # incumbent also answered custom and was already correct. So this
+                            # deferral cost nothing on the only evidence we have. Every
+                            # ROLLING-window query ("last 30 days", "past four weeks") scored
+                            # below 0.90 and falls back regardless, so enforcing custom was never
+                            # the value on offer here. Deferral is logged, and countable, so the
+                            # rate stays visible if that stops being true.
+                            if decision.choice == "custom":
+                                logger.info(
+                                    "JEV defer: jev=custom(%.2f) carries no bounds; "
+                                    "keeping incumbent '%s'",
+                                    decision.confidence,
+                                    incumbent_date_range,
+                                )
+                            else:
+                                intent_data["date_range"] = {"type": decision.choice}
+                                logger.info(
+                                    "JEV override: date_range=%s (conf=%.2f) replaced '%s'",
+                                    decision.choice,
+                                    decision.confidence,
+                                    incumbent_date_range,
+                                )
+                        else:
+                            conf = decision.confidence if decision else -1.0
+                            logger.info(
+                                "JEV fallback: conf=%.2f below %.2f or unavailable; keeping '%s'",
+                                conf,
+                                JEV_AUTO_EXECUTE_CONFIDENCE,
+                                incumbent_date_range,
+                            )
+                    except Exception:
+                        logger.warning("JEV decision failed (soft); keeping incumbent", exc_info=True)
                 except Exception:
                     rollback_monitor.record_json_parse(tier="simple", success=False)
                     raise

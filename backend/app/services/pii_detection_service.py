@@ -42,7 +42,26 @@ class PIIDetectionService:
             re.IGNORECASE,
         ),
         "phone_intl": re.compile(
-            r"(?:(?:\+|00)[1-9]\d{0,2})?[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}",  # International
+            # International format REQUIRES the +/00 country-code prefix.
+            #
+            # The previous pattern made the country code optional and every digit group 1-4, so it
+            # was really "several digits with separators" and matched ANY four-digit run. With
+            # confidence_threshold=1 it classified every query containing a year as PII:
+            # "in the summer of 2021", "between Q1 and Q3 2023", "dated 14/02/2020". InputGuard
+            # then marked those queries confidential and the SAKANAL privacy gate refused 6 of 60
+            # pilot queries with 403 privacy_violation, blinding the decision engine to exactly the
+            # temporal markers it exists to read. The gate was right; "phone number" was wrong.
+            #
+            # Requiring the prefix is the fix, and it is not a weakening: a prefix-less national
+            # number is covered by the `phone` (French) and `phone_us` (NANP) patterns, both of
+            # which are shape-specific and cannot match a date.
+            r"(?:\+|00)\d{1,3}[-.\s]?\(?\d{1,4}\)?(?:[-.\s]?\d{2,4}){1,4}",
+            re.IGNORECASE,
+        ),
+        "phone_us": re.compile(
+            # NANP 3-3-4. Specific enough that a calendar date cannot satisfy it (a date is
+            # 4-2-2 or 2-2-4 with different separators), so no bare year and no ISO date matches.
+            r"\b\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b",
             re.IGNORECASE,
         ),
         "credit_card": re.compile(

@@ -417,7 +417,10 @@ app.add_middleware(
 )
 
 # Request-ID Middleware — injects X-Request-ID into every response (T01)
+from app.services.sakanal_attribution import SakanalAttributionMiddleware  # noqa: E402
+
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SakanalAttributionMiddleware)
 
 # CSRF Middleware — double-submit cookie validation on state-changing requests (FP8)
 from app.middleware.csrf import CSRFMiddleware  # noqa: E402

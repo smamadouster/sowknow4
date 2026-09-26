@@ -20,6 +20,13 @@ import time
 import urllib.request
 
 API = "http://127.0.0.1:8001"
+
+# PROVENANCE. This script runs on a 15-minute cron and drives real searches, so its LLM
+# calls are indistinguishable from a user's unless it says otherwise. The app reads this
+# name off the inbound request and reports `x-sakanal-synthetic: true` upstream, which is
+# what lets SAKANAL separate this monitor from organic traffic. Without it, ~86% of
+# sowknow's search_agent spans look like users.
+PROVENANCE = {"X-Synthetic-Monitor": "sowknow-search-smoke"}
 LOG = "/var/log/sowknow-search-smoke.log"
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 
@@ -50,7 +57,7 @@ def alert(msg: str) -> None:
         data = json.dumps({"chat_id": chat, "text": f"🔴 SOWKNOW search smoke test\n{msg}"}).encode()
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            data=data, headers={"Content-Type": "application/json"},
+            data=data, headers={"Content-Type": "application/json", **PROVENANCE},
         )
         urllib.request.urlopen(req, timeout=10)
     except Exception:
@@ -71,7 +78,11 @@ def http(method: str, path: str, token: str, body: dict | None = None, timeout: 
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(
         API + path, data=data, method=method,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            **PROVENANCE,
+        },
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, resp.read().decode()

@@ -71,6 +71,7 @@ OPENROUTER_RESPONSE_CACHE_TTL = int(os.getenv("OPENROUTER_RESPONSE_CACHE_TTL", "
 
 # Redis configuration for context caching
 from app.core.redis_url import safe_redis_url
+from app.services.sakanal_attribution import current_feature, current_request_id, current_synthetic
 
 REDIS_URL = safe_redis_url()
 CACHE_TTL_SECONDS = 3600  # 1 hour TTL for cached responses
@@ -266,6 +267,28 @@ class OpenRouterService:
             headers["X-OpenRouter-Cache"] = "true"
             if use_ttl:
                 headers["X-OpenRouter-Cache-TTL"] = str(use_ttl)
+
+        # SAKANAL attribution — see app/services/sakanal_attribution.py. Emitted here because
+        # this is the single place outbound headers are built, so it covers every caller,
+        # including the ones that bypass llm_router. A call without these headers lands in the
+        # gateway as "unattributed", which is a bug and not an acceptable resting state.
+        feature = current_feature()
+        request_id = current_request_id()
+        headers["X-Sakanal-Feature"] = feature
+        headers["x-sakanal-request-id"] = request_id
+        # Provenance, when the current request declared itself a monitor. Absent => NO header => the
+        # outbound set is byte-for-byte what it was, so organic traffic is unaffected by construction.
+        # Without this the 15-minute search smoke test is indistinguishable from a user in the ledger,
+        # and every per-feature baseline computed over `search_agent` is a baseline over the fixture.
+        if current_synthetic():
+            headers["x-sakanal-synthetic"] = "true"
+        logger.info(
+            "[SAKANAL] feature=%s request_id=%s synthetic=%s",
+            feature,
+            request_id,
+            current_synthetic(),
+        )
+
         return headers
 
     def select_model_for_tier(self, tier: str = "standard") -> str:

@@ -240,6 +240,7 @@ services:
   # Three workers with staggered max-requests so both replicas never restart
   # simultaneously.
   embed-server-2:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile.embed
@@ -261,7 +262,7 @@ services:
       - sowknow-model-cache:/models
     command: >
       uvicorn embed_server.main:app --host 0.0.0.0 --port 8000
-      --workers 3 --limit-max-requests 12000
+      --workers 1 --limit-max-requests 10000
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\"' || exit 1"]
       interval: 30s
@@ -271,9 +272,12 @@ services:
     deploy:
       resources:
         limits:
-          # 2026-07-28: 3 workers × ~1.3GB model + batch spikes exceeded 4096m
-          # (OOMKilled observed) — 6GB keeps all three workers alive.
-          memory: 6144m
+          # 2026-09-26: was 3 workers x 1.3GB + --limit-max-requests 12000.
+          # Now 1 worker + init to reap healthcheck subprocesses; 4GB is ample, was 6GB.
+          # --limit-max-requests 0 is NOT "unlimited": uvicorn reads 0 as "restart after
+          # zero requests" and the container loops without ever going healthy. 10000
+          # mirrors the sibling embed-server replica, which runs this exact pattern.
+          memory: 4096m
           cpus: '2.0'
     networks:
       - sowknow-net

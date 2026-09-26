@@ -43,6 +43,51 @@ _feature: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 _request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "sakanal_request_id", default=None
 )
+# Provenance: did this traffic come from a person, or from a scheduled monitor?
+#
+# WHY IT IS SEPARATE FROM `feature`. A monitor is still billable to the feature it exercised, so
+# provenance is orthogonal to attribution: encoding it in the feature name (`search_agent_monitor`)
+# would break the `sakanal.spans.feature <-> this app's module` join that the whole attribution
+# module exists to make exact, and it would need an allowlist edit on BOTH sides to survive.
+# SAKANAL records the flag directly.
+_synthetic: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "sakanal_synthetic", default=False
+)
+
+# The in-app convention for declaring provenance. `X-Synthetic-Monitor` already carries a probe
+# NAME and is the programme-wide marker (golegal's canary and MFA drill send it; golegal's
+# magistrate middleware consumes it). `x-sakanal-synthetic` is the gateway's transport flag.
+# ONE definition, honoured the same way on every app — a second dialect here is how the two ends
+# of one header end up disagreeing about what was declared.
+SYNTHETIC_NAME_HEADER = "x-synthetic-monitor"
+SYNTHETIC_FLAG_HEADER = "x-sakanal-synthetic"
+
+
+def synthetic_from_headers(headers: Any) -> bool:
+    """
+    Read a provenance DECLARATION off inbound headers. Absent means organic.
+
+    A monitoring NAME declares by its presence; the transport flag requires an explicit
+    true/1. Anything else stays organic, so a monitor that fails to declare itself
+    understates monitor burn and can never inflate the organic population it is measured
+    against. The asymmetry is deliberate and it matches the gateway's own parser.
+    """
+    try:
+        marker = headers.get(SYNTHETIC_NAME_HEADER)
+    except Exception:
+        marker = None
+    if marker and str(marker).strip():
+        return True
+    try:
+        flag = headers.get(SYNTHETIC_FLAG_HEADER)
+    except Exception:
+        flag = None
+    return str(flag or "").strip().lower() in ("true", "1")
+
+
+def current_synthetic() -> bool:
+    """True when the call being made right now belongs to a declared monitor."""
+    return bool(_synthetic.get())
 
 # Longest matching prefix wins, so the order of this tuple does not matter.
 _PATH_FEATURES: tuple[tuple[str, str], ...] = (
@@ -112,15 +157,20 @@ def current_request_id() -> str:
     return rid
 
 
-def bind(feature: str | None = None, request_id: str | None = None) -> tuple[Any, Any]:
+def bind(
+    feature: str | None = None,
+    request_id: str | None = None,
+    synthetic: bool = False,
+) -> tuple[Any, Any, Any]:
     """Bind attribution for the current context. Pass the result to :func:`unbind`."""
-    return (_feature.set(feature), _request_id.set(request_id))
+    return (_feature.set(feature), _request_id.set(request_id), _synthetic.set(synthetic))
 
 
-def unbind(tokens: tuple[Any, Any]) -> None:
-    ftok, rtok = tokens
+def unbind(tokens: tuple[Any, ...]) -> None:
+    ftok, rtok, stok = tokens
     _feature.reset(ftok)
     _request_id.reset(rtok)
+    _synthetic.reset(stok)
 
 
 def install_celery_hooks() -> None:
@@ -145,6 +195,7 @@ def install_celery_hooks() -> None:
     def _postrun(**_kw: Any) -> None:
         _feature.set(None)
         _request_id.set(None)
+        _synthetic.set(False)
 
 
 class SakanalAttributionMiddleware(BaseHTTPMiddleware):
@@ -160,7 +211,9 @@ class SakanalAttributionMiddleware(BaseHTTPMiddleware):
         if feature == UNATTRIBUTED:
             return await call_next(request)
         rid = str(uuid.uuid4())
-        tokens = bind(feature, rid)
+        # Provenance rides the same per-request context as the feature, read from the inbound
+        # declaration so a probe does not have to know anything about the gateway's header names.
+        tokens = bind(feature, rid, synthetic_from_headers(request.headers))
         try:
             response = await call_next(request)
         finally:

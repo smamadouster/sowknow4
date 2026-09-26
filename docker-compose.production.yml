@@ -143,6 +143,7 @@ services:
 
   # Backend API
   backend:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -196,6 +197,7 @@ services:
 
   # Embedding microservice
   embed-server:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile.embed
@@ -285,6 +287,7 @@ services:
 
   # Reranking microservice
   rerank-server:
+    init: true
     build:
       context: ./backend/rerank_server
       dockerfile: Dockerfile
@@ -320,6 +323,7 @@ services:
   # Memory/CPU allocations are reduced vs docker-compose.yml to fit a smaller VPS; tune upward
   # if embedding throughput or entity extraction becomes a bottleneck.
   celery-light:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -365,6 +369,7 @@ services:
       start_period: 90s
 
   celery-entities:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -408,6 +413,7 @@ services:
       start_period: 120s
 
   celery-articles:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -451,6 +457,7 @@ services:
       start_period: 90s
 
   celery-heavy:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -498,6 +505,7 @@ services:
       start_period: 120s
 
   celery-collections:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -537,6 +545,7 @@ services:
 
   # Celery Beat - Scheduled Tasks
   celery-beat:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -570,6 +579,7 @@ services:
 
   # Frontend (Next.js)
   frontend:
+    init: true
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -610,6 +620,7 @@ services:
   # Do NOT start this nginx container - it will conflict with Caddy on ports 80/443.
   # This configuration is kept for reference and development environments only.
   nginx:
+    init: true
     profiles: ["nginx"]  # Only start with: docker-compose --profile nginx up -d
     image: nginx:alpine
     container_name: sowknow-nginx
@@ -641,6 +652,7 @@ services:
 
   # Certbot for Let's Encrypt SSL
   certbot:
+    init: true
     image: certbot/certbot:latest
     container_name: sowknow-certbot
     restart: unless-stopped
@@ -666,6 +678,7 @@ services:
 
   # Telegram Bot - Mobile Interface
   telegram-bot:
+    init: true
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -697,6 +710,7 @@ services:
 
   # Prometheus - scrapes backend /metrics
   prometheus:
+    init: true
     image: prom/prometheus:latest
     container_name: sowknow-prometheus
     restart: unless-stopped
@@ -727,6 +741,7 @@ services:
 
   # Guardian HC - autonomous observability & self-healing
   guardian-hc:
+    init: true
     build:
       context: ./monitoring/guardian-hc
       dockerfile: Dockerfile

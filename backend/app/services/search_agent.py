@@ -654,24 +654,13 @@ async def parse_intent(query: str) -> ParsedIntent:
 # ---- STAGE 5: SYNTHESIS AGENT ----
 
 
-async def synthesize_answer(
-    query: str,
-    results: list[SearchResult],
-    raw_chunks: list[RawChunk],
-    intent: ParsedIntent,
-    has_confidential: bool,
-    language: str,
-    context_block: str | None = None,
-) -> tuple[str, str]:
-    # Prioritize public chunks with actual content for synthesis accuracy
+def _build_synthesis_user_message(query: str, raw_chunks: list[RawChunk], language: str) -> str:
+    """Shared context building for synthesis (streaming + non-streaming)."""
     public_chunks = [c for c in raw_chunks if c.document_bucket != DocumentBucket.CONFIDENTIAL]
     confidential_chunks = [c for c in raw_chunks if c.document_bucket == DocumentBucket.CONFIDENTIAL]
 
-    # Take top public chunks + top confidential chunks, up to 8 total
     top_public = sorted(public_chunks, key=lambda c: c.rrf_score, reverse=True)[:5]
     top_confidential = sorted(confidential_chunks, key=lambda c: c.rrf_score, reverse=True)[:3]
-
-    # Merge and re-sort by score so highest relevance appears first
     top_chunks = sorted(top_public + top_confidential, key=lambda c: c.rrf_score, reverse=True)[:8]
 
     context_parts = []
@@ -684,8 +673,19 @@ async def synthesize_answer(
         )
     context = "\n---\n".join(context_parts)
     lang_instruction = "Reponds en francais." if language == "fr" else "Respond in English."
-    user_message = f"Question : {query}\n\n{lang_instruction}\n\nDocuments disponibles :\n{context}"
+    return f"Question : {query}\n\n{lang_instruction}\n\nDocuments disponibles :\n{context}"
 
+
+async def synthesize_answer(
+    query: str,
+    results: list[SearchResult],
+    raw_chunks: list[RawChunk],
+    intent: ParsedIntent,
+    has_confidential: bool,
+    language: str,
+    context_block: str | None = None,
+) -> tuple[str, str]:
+    user_message = _build_synthesis_user_message(query, raw_chunks, language)
     return await _call_llm(
         messages=[{"role": "user", "content": user_message}],
         system=SYNTHESIS_SYSTEM_PROMPT,
@@ -706,25 +706,7 @@ async def synthesize_answer_stream(
     context_block: str | None = None,
 ):
     """Streaming variant of synthesize_answer — yields (token, provider_name)."""
-    public_chunks = [c for c in raw_chunks if c.document_bucket != DocumentBucket.CONFIDENTIAL]
-    confidential_chunks = [c for c in raw_chunks if c.document_bucket == DocumentBucket.CONFIDENTIAL]
-
-    top_public = sorted(public_chunks, key=lambda c: c.rrf_score, reverse=True)[:5]
-    top_confidential = sorted(confidential_chunks, key=lambda c: c.rrf_score, reverse=True)[:3]
-    top_chunks = sorted(top_public + top_confidential, key=lambda c: c.rrf_score, reverse=True)[:8]
-
-    context_parts = []
-    for i, chunk in enumerate(top_chunks, 1):
-        bucket_label = "[CONFIDENTIEL]" if chunk.document_bucket == DocumentBucket.CONFIDENTIAL else "[PUBLIC]"
-        context_parts.append(
-            f"[Extrait {i}] {bucket_label} Source: {chunk.document_title}"
-            + (f", p.{chunk.page_number}" if chunk.page_number else "")
-            + f"\n{chunk.text}\n"
-        )
-    context = "\n---\n".join(context_parts)
-    lang_instruction = "Reponds en francais." if language == "fr" else "Respond in English."
-    user_message = f"Question : {query}\n\n{lang_instruction}\n\nDocuments disponibles :\n{context}"
-
+    user_message = _build_synthesis_user_message(query, raw_chunks, language)
     async for chunk, model in _call_llm_stream(
         messages=[{"role": "user", "content": user_message}],
         system=SYNTHESIS_SYSTEM_PROMPT,

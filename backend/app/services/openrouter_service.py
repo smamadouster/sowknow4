@@ -149,6 +149,7 @@ class OpenRouterService:
         self.api_key = OPENROUTER_API_KEY
         self.base_url = OPENROUTER_BASE_URL
         self.model = OPENROUTER_MODEL
+        self._last_model: str | None = None
         self.site_url = OPENROUTER_SITE_URL
         self.site_name = OPENROUTER_SITE_NAME
         self._cache_enabled = False
@@ -407,7 +408,7 @@ class OpenRouterService:
         if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
             from app.services.openrouter_throttle import openrouter_throttle
 
-            openrouter_throttle.record_429(self.model)
+            openrouter_throttle.record_429(self._last_model or self.model)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -550,6 +551,7 @@ class OpenRouterService:
             tier = effective_tier
 
         model = _model_override or self.select_model_for_tier(tier)
+        self._last_model = model
 
         # --- Provider-aware dynamic throttling (blueprint §2.3 Tier C) ---
         from app.services.openrouter_throttle import openrouter_throttle

@@ -33,6 +33,7 @@ def generate_smart_folder_v2_task(
     user_id: str,
     smart_folder_id: str | None = None,
     refinement_query: str | None = None,
+    stream_key: str | None = None,
 ) -> dict[str, Any]:
     """Generate a Smart Folder v2 report asynchronously via the agentic pipeline.
 
@@ -42,6 +43,8 @@ def generate_smart_folder_v2_task(
         user_id: UUID string of the requesting user.
         smart_folder_id: If refining, the existing SmartFolder ID.
         refinement_query: Follow-up constraint if this is a refinement.
+        stream_key: If set, publish real-time progress + completion events to
+            the Redis pub/sub channel ``smart_folder:progress:{stream_key}``.
 
     Returns:
         Dictionary with smart_folder_id, report_id, status, and result payload.
@@ -53,6 +56,9 @@ def generate_smart_folder_v2_task(
     from app.models.smart_folder import SmartFolder, SmartFolderStatus
     from app.models.user import User
     from app.services.smart_folder.agent_runner import agent_runner
+    from app.services.smart_folder.progress import channel_for, publish_event
+
+    channel = channel_for(stream_key) if stream_key else None
 
     async def _run() -> dict[str, Any]:
         async with AsyncSessionLocal() as db:
@@ -93,7 +99,24 @@ def generate_smart_folder_v2_task(
                     query=query,
                     smart_folder=smart_folder,
                     refinement_query=refinement_query,
+                    stream_key=stream_key,
                 )
+
+                # Publish terminal event to the pub/sub channel (best-effort)
+                if channel:
+                    if result.get("status") == "completed":
+                        await publish_event(
+                            channel,
+                            "complete",
+                            smart_folder_id=result.get("smart_folder_id"),
+                            report_id=result.get("report_id"),
+                        )
+                    else:
+                        await publish_event(
+                            channel,
+                            "error",
+                            error=result.get("error", "Smart Folder generation failed"),
+                        )
 
                 # Audit: confidential access
                 if include_confidential and result.get("status") == "completed":
@@ -136,6 +159,8 @@ def generate_smart_folder_v2_task(
                 return result
 
             except Exception as exc:
+                if channel:
+                    await publish_event(channel, "error", error=str(exc))
                 smart_folder.status = SmartFolderStatus.FAILED
                 smart_folder.error_message = str(exc)
                 await db.commit()

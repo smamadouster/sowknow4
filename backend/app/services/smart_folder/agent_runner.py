@@ -21,6 +21,7 @@ from app.services.smart_folder.agent.executor import SkillExecutor
 from app.services.smart_folder.agent.planner import Planner
 from app.services.smart_folder.agent.synthesizer import Synthesizer
 from app.services.smart_folder.entity_resolver import entity_resolver
+from app.services.smart_folder.progress import channel_for, publish_step
 from app.services.smart_folder.query_parser import query_parser
 from app.services.smart_folder.report_generator import report_generator
 
@@ -81,6 +82,7 @@ class SmartFolderAgentRunner:
         query: str,
         smart_folder: SmartFolder,
         refinement_query: str | None = None,
+        stream_key: str | None = None,
     ) -> dict[str, Any]:
         """Run the agentic pipeline end-to-end.
 
@@ -94,7 +96,16 @@ class SmartFolderAgentRunner:
         Returns:
             Dict with report data and metadata.
         """
+        channel = channel_for(stream_key) if stream_key else None
+
+        async def _progress(step: str, message: str, pct: int) -> None:
+            """Emit a real pipeline step to the pub/sub channel (best-effort)."""
+            if channel:
+                await publish_step(channel, step, message, pct)
+
         # --- Step 1: Parse Query (if new) ---
+        await _progress("parsing", "Understanding your request…", 12)
+
         entity_id = smart_folder.entity_id
         entity_name = smart_folder.entity.name if smart_folder.entity else None
         relationship_type = smart_folder.relationship_type
@@ -151,6 +162,7 @@ class SmartFolderAgentRunner:
                     }
 
         # --- Step 2: Plan ---
+        await _progress("resolving", "Finding the right entity…", 28)
         plan = await self.planner.plan(
             query=query,
             entity_name=entity_name,
@@ -166,6 +178,7 @@ class SmartFolderAgentRunner:
         )
 
         # --- Step 3: Execute Skills ---
+        await _progress("retrieving", "Searching your vault…", 48)
         execution_context = {
             "db": db,
             "user": user,
@@ -196,9 +209,13 @@ class SmartFolderAgentRunner:
             }
 
         # --- Step 4: Synthesize ---
+        await _progress("analysing", "Extracting milestones & patterns…", 72)
+
         # If only one skill (general_narrative) succeeded and returned a full report,
         # we can use its raw_output directly to avoid an extra LLM call.
         successful_results = [r for r in skill_results.values() if r.success]
+
+        await _progress("generating", "Writing your report…", 88)
 
         if (
             len(successful_results) == 1

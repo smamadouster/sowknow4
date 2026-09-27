@@ -11,7 +11,7 @@ Provides endpoints for:
 import json
 import logging
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -633,8 +633,9 @@ async def get_report(
 # SSE Streaming endpoint for real-time generation progress
 # -----------------------------------------------------------------------------
 
-from fastapi.responses import StreamingResponse
 import asyncio
+
+from fastapi.responses import StreamingResponse
 
 
 @router.post("/stream")
@@ -645,117 +646,233 @@ async def stream_smart_folder_generation(
 ) -> StreamingResponse:
     """Stream Smart Folder generation progress via Server-Sent Events.
 
+    Progress is real: the Celery task publishes pipeline events to a Redis
+    pub/sub channel, and this endpoint subscribes to that channel (BEFORE the
+    task is dispatched — pub/sub is fire-and-forget) and forwards events to
+    the browser. A Celery ``AsyncResult`` poll is kept as a safety net so the
+    stream still terminates if pub/sub drops or the task finishes before the
+    subscription is established.
+
     Returns a stream of JSON events:
       - event: "step"     — { step, message, progress_percent }
       - event: "complete" — { smart_folder_id, report_id, report }
       - event: "error"    — { error }
     """
-    from app.tasks.smart_folder_tasks import generate_smart_folder_v2_task
     from celery.result import AsyncResult
+
     from app.celery_app import celery_app
+    from app.services.smart_folder.progress import channel_for
+    from app.tasks.smart_folder_tasks import generate_smart_folder_v2_task
 
     include_confidential = current_user.can_access_confidential
 
-    # Kick off the Celery task
+    # Mint the stream key up front so the subscriber is attached before the
+    # task starts publishing (Redis pub/sub delivers only to current subscribers).
+    stream_key = uuid4().hex
+    channel = channel_for(stream_key)
+
+    # Attach the pub/sub subscriber BEFORE dispatching so no event is lost.
+    redis_client = None
+    pubsub = None
+    try:
+        import redis.asyncio as aioredis
+
+        from app.core.redis_url import safe_redis_url
+
+        redis_client = aioredis.from_url(
+            safe_redis_url(),
+            decode_responses=True,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+        )
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(channel)
+    except Exception as exc:
+        logger.warning(
+            "Pub/sub subscribe failed for %s (%s); falling back to AsyncResult polling",
+            stream_key,
+            exc,
+        )
+        pubsub = None
+
+    # Kick off the Celery task (after subscribing).
     try:
         task = generate_smart_folder_v2_task.delay(
             query=request.query,
             include_confidential=include_confidential,
             user_id=str(current_user.id),
+            stream_key=stream_key,
         )
     except Exception as exc:
         logger.error("Failed to queue smart folder v2 generation: %s", exc, exc_info=True)
+        if pubsub is not None:
+            try:
+                await pubsub.unsubscribe(channel)
+                await pubsub.aclose()
+            except Exception:
+                pass
+        if redis_client is not None:
+            try:
+                await redis_client.aclose()
+            except Exception:
+                pass
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to queue generation task.",
         )
 
     task_id = task.id
-    logger.info("SSE stream started for task %s user=%s", task_id, current_user.email)
+    logger.info(
+        "SSE stream started | task=%s stream=%s user=%s",
+        task_id,
+        stream_key,
+        current_user.email,
+    )
+
+    async def _fetch_report(sf_id: str) -> dict[str, Any] | None:
+        """Read the latest report for a finished Smart Folder."""
+        try:
+            sf_stmt = select(SmartFolder).where(
+                SmartFolder.id == UUID(sf_id),
+                SmartFolder.user_id == current_user.id,
+            )
+            sf_res = await db.execute(sf_stmt)
+            sf = sf_res.scalar_one_or_none()
+            if sf and sf.reports:
+                latest = sf.reports[0]
+                return {
+                    "title": latest.generated_content.get("title", ""),
+                    "summary": latest.generated_content.get("summary", ""),
+                    "timeline": latest.generated_content.get("timeline", []),
+                    "patterns": latest.generated_content.get("patterns", []),
+                    "trends": latest.generated_content.get("trends", []),
+                    "issues": latest.generated_content.get("issues", []),
+                    "learnings": latest.generated_content.get("learnings", []),
+                    "recommendations": latest.generated_content.get("recommendations", []),
+                    "raw_markdown": latest.generated_content.get("raw_markdown", ""),
+                    "citation_index": latest.citation_index,
+                    "source_asset_ids": latest.source_asset_ids,
+                }
+        except Exception as exc:
+            logger.warning("Failed to fetch report for SSE: %s", exc)
+        return None
 
     async def event_generator():
-        steps = [
-            ("parsing", "Understanding your request…", 10),
-            ("resolving", "Finding the right entity…", 25),
-            ("retrieving", "Searching your vault…", 40),
-            ("analysing", "Extracting milestones & patterns…", 60),
-            ("generating", "Writing your report…", 80),
-        ]
-        step_index = 0
-        last_status = None
+        try:
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 300  # 5 min safety ceiling
 
-        for _ in range(120):  # Max ~3 minutes of polling
-            result = AsyncResult(task_id, app=celery_app)
+            while True:
+                # 1) Drain real progress events from Redis pub/sub.
+                if pubsub is not None:
+                    try:
+                        msg = await pubsub.get_message(
+                            ignore_subscribe_messages=True, timeout=0.1
+                        )
+                    except Exception as exc:
+                        logger.debug("Pub/sub read failed: %s", exc)
+                        pubsub = None  # drop pub/sub; rely on AsyncResult polling
+                        msg = None
 
-            if result.state == "PENDING":
-                if step_index < len(steps):
-                    step_key, message, pct = steps[step_index]
-                    yield f'event: step\ndata: {{"step":"{step_key}","message":"{message}","progress_percent":{pct}}}\n\n'
-                    step_index += 1
-                await asyncio.sleep(1.5)
-                continue
-
-            if result.state == "SUCCESS":
-                task_result = result.result or {}
-                if task_result.get("status") == "completed":
-                    sf_id = task_result.get("smart_folder_id")
-                    report_id = task_result.get("report_id")
-                    # Fetch full report from DB
-                    report_data = None
-                    if sf_id:
+                    if msg and msg.get("type") == "message":
                         try:
-                            sf_stmt = select(SmartFolder).where(
-                                SmartFolder.id == UUID(sf_id),
-                                SmartFolder.user_id == current_user.id,
+                            event = json.loads(msg.get("data", "{}"))
+                        except Exception:
+                            event = {}
+
+                        etype = event.get("event")
+                        if etype == "step":
+                            yield (
+                                "event: step\ndata: "
+                                + json.dumps(
+                                    {
+                                        "step": event.get("step"),
+                                        "message": event.get("message"),
+                                        "progress_percent": event.get("progress_percent"),
+                                    }
+                                )
+                                + "\n\n"
                             )
-                            sf_res = await db.execute(sf_stmt)
-                            sf = sf_res.scalar_one_or_none()
-                            if sf and sf.reports:
-                                latest = sf.reports[0]
-                                report_data = {
-                                    "title": latest.generated_content.get("title", ""),
-                                    "summary": latest.generated_content.get("summary", ""),
-                                    "timeline": latest.generated_content.get("timeline", []),
-                                    "patterns": latest.generated_content.get("patterns", []),
-                                    "trends": latest.generated_content.get("trends", []),
-                                    "issues": latest.generated_content.get("issues", []),
-                                    "learnings": latest.generated_content.get("learnings", []),
-                                    "recommendations": latest.generated_content.get("recommendations", []),
-                                    "raw_markdown": latest.generated_content.get("raw_markdown", ""),
-                                    "citation_index": latest.citation_index,
-                                    "source_asset_ids": latest.source_asset_ids,
+                            continue
+                        if etype == "complete":
+                            sf_id = event.get("smart_folder_id")
+                            report_id = event.get("report_id")
+                            report_data = await _fetch_report(sf_id) if sf_id else None
+                            yield (
+                                "event: complete\ndata: "
+                                + json.dumps(
+                                    {
+                                        "smart_folder_id": sf_id,
+                                        "report_id": report_id,
+                                        "report": report_data,
+                                    }
+                                )
+                                + "\n\n"
+                            )
+                            return
+                        if etype == "error":
+                            yield (
+                                "event: error\ndata: "
+                                + json.dumps({"error": event.get("error", "Generation failed")})
+                                + "\n\n"
+                            )
+                            return
+
+                # 2) Safety net: Celery AsyncResult state.
+                result = AsyncResult(task_id, app=celery_app)
+                if result.state == "SUCCESS":
+                    task_result = result.result or {}
+                    if task_result.get("status") == "completed":
+                        sf_id = task_result.get("smart_folder_id")
+                        report_id = task_result.get("report_id")
+                        report_data = await _fetch_report(sf_id) if sf_id else None
+                        yield (
+                            "event: complete\ndata: "
+                            + json.dumps(
+                                {
+                                    "smart_folder_id": sf_id,
+                                    "report_id": report_id,
+                                    "report": report_data,
                                 }
-                        except Exception as exc:
-                            logger.warning("Failed to fetch report for SSE: %s", exc)
+                            )
+                            + "\n\n"
+                        )
+                    else:
+                        yield (
+                            "event: error\ndata: "
+                            + json.dumps({"error": task_result.get("error", "Unknown error")})
+                            + "\n\n"
+                        )
+                    return
+                if result.state == "FAILURE":
+                    yield (
+                        "event: error\ndata: "
+                        + json.dumps({"error": str(result.info)})
+                        + "\n\n"
+                    )
+                    return
 
-                    payload = json.dumps({
-                        "smart_folder_id": sf_id,
-                        "report_id": report_id,
-                        "report": report_data,
-                    })
-                    yield f'event: complete\ndata: {payload}\n\n'
-                else:
-                    err = task_result.get("error", "Unknown error")
-                    payload = json.dumps({"error": err})
-                    yield f'event: error\ndata: {payload}\n\n'
-                return
+                if loop.time() > deadline:
+                    yield (
+                        "event: error\ndata: "
+                        + json.dumps({"error": "Generation timed out. Please check status later."})
+                        + "\n\n"
+                    )
+                    return
 
-            if result.state == "FAILURE":
-                payload = json.dumps({"error": str(result.info)})
-                yield f'event: error\ndata: {payload}\n\n'
-                return
-
-            # Still running — advance steps based on time
-            if step_index < len(steps):
-                step_key, message, pct = steps[step_index]
-                yield f'event: step\ndata: {{"step":"{step_key}","message":"{message}","progress_percent":{pct}}}\n\n'
-                step_index += 1
-
-            await asyncio.sleep(1.5)
-
-        # Timeout fallback
-        payload = json.dumps({"error": "Generation timed out. Please check status later."})
-        yield f'event: error\ndata: {payload}\n\n'
+                await asyncio.sleep(0.5)
+        finally:
+            if pubsub is not None:
+                try:
+                    await pubsub.unsubscribe(channel)
+                    await pubsub.aclose()
+                except Exception:
+                    pass
+            if redis_client is not None:
+                try:
+                    await redis_client.aclose()
+                except Exception:
+                    pass
 
     return StreamingResponse(
         event_generator(),

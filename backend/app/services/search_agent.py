@@ -514,6 +514,42 @@ async def _call_llm(
     return "".join(chunks), model_name
 
 
+async def _call_llm_stream(
+    messages: list[dict],
+    system: str,
+    has_confidential: bool,
+    temperature: float = 0.1,
+    max_tokens: int = 1024,
+    context_block: str | None = None,
+    tier: str = "standard",
+):
+    """Streaming variant of _call_llm: yields (chunk, provider_name)."""
+    query_text = messages[0].get("content", "") if messages else ""
+
+    decision = await llm_router.select_provider(
+        query=query_text,
+        has_confidential=has_confidential,
+    )
+    model_name = decision.provider_name
+
+    effective_system = system
+    if context_block:
+        effective_system = context_block + "\n\n" + system
+
+    full_messages = [{"role": "system", "content": effective_system}] + messages
+    tier_enum = TaskTier(tier) if isinstance(tier, str) else tier
+
+    async for chunk in llm_router.generate_completion(
+        messages=full_messages,
+        query=query_text,
+        has_confidential=has_confidential,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        tier=tier_enum,
+    ):
+        yield chunk, model_name
+
+
 def _clean_json(raw: str) -> str:
     """Extract the first balanced JSON object from an LLM reply.
 
@@ -658,6 +694,47 @@ async def synthesize_answer(
         max_tokens=600,
         context_block=context_block,
     )
+
+
+async def synthesize_answer_stream(
+    query: str,
+    results: list[SearchResult],
+    raw_chunks: list[RawChunk],
+    intent: ParsedIntent,
+    has_confidential: bool,
+    language: str,
+    context_block: str | None = None,
+):
+    """Streaming variant of synthesize_answer — yields (token, provider_name)."""
+    public_chunks = [c for c in raw_chunks if c.document_bucket != DocumentBucket.CONFIDENTIAL]
+    confidential_chunks = [c for c in raw_chunks if c.document_bucket == DocumentBucket.CONFIDENTIAL]
+
+    top_public = sorted(public_chunks, key=lambda c: c.rrf_score, reverse=True)[:5]
+    top_confidential = sorted(confidential_chunks, key=lambda c: c.rrf_score, reverse=True)[:3]
+    top_chunks = sorted(top_public + top_confidential, key=lambda c: c.rrf_score, reverse=True)[:8]
+
+    context_parts = []
+    for i, chunk in enumerate(top_chunks, 1):
+        bucket_label = "[CONFIDENTIEL]" if chunk.document_bucket == DocumentBucket.CONFIDENTIAL else "[PUBLIC]"
+        context_parts.append(
+            f"[Extrait {i}] {bucket_label} Source: {chunk.document_title}"
+            + (f", p.{chunk.page_number}" if chunk.page_number else "")
+            + f"\n{chunk.text}\n"
+        )
+    context = "\n---\n".join(context_parts)
+    lang_instruction = "Reponds en francais." if language == "fr" else "Respond in English."
+    user_message = f"Question : {query}\n\n{lang_instruction}\n\nDocuments disponibles :\n{context}"
+
+    async for chunk, model in _call_llm_stream(
+        messages=[{"role": "user", "content": user_message}],
+        system=SYNTHESIS_SYSTEM_PROMPT,
+        has_confidential=has_confidential,
+        temperature=0.2,
+        max_tokens=600,
+        context_block=context_block,
+    ):
+        yield chunk, model
+
 
 
 # ---- STAGE 6: SUGGESTION AGENT ----

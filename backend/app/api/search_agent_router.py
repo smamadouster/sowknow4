@@ -31,6 +31,7 @@ from app.services.search_agent import (
     rerank_merged_chunks,
     run_agentic_search,
     synthesize_answer,
+    synthesize_answer_stream,
 )
 from app.services.search_models import (
     AgenticSearchRequest,
@@ -376,44 +377,31 @@ async def search_stream(
                 ):
                     yield _sse_event("stage", {"stage": "synthesis", "message": "Synthese de la reponse..."})
                     try:
-                        answer, model_used = await asyncio.wait_for(
-                            synthesize_answer(
+                        async with asyncio.timeout(30.0):
+                            async for chunk, model in synthesize_answer_stream(
                                 request.query,
                                 results,
                                 all_chunks,
                                 intent,
                                 has_confidential,
                                 intent.detected_language,
-                            ),
-                            timeout=30.0,
-                        )
-                        yield _sse_event(
-                            "synthesis",
-                            {
-                                "answer": answer,
-                                "model": model_used,
-                                "language": intent.detected_language,
-                            },
-                        )
+                            ):
+                                model_used = model
+                                yield _sse_event(
+                                    "synthesis",
+                                    {"answer": chunk, "model": model},
+                                )
                     except asyncio.TimeoutError:
                         logger.warning("Synthesis timed out after 30s")
                         yield _sse_event(
                             "synthesis",
-                            {
-                                "answer": "",
-                                "model": None,
-                                "language": intent.detected_language,
-                            },
+                            {"answer": "", "model": None, "language": intent.detected_language},
                         )
                     except Exception as exc:
                         logger.warning("Synthesis failed: %s", exc)
                         yield _sse_event(
                             "synthesis",
-                            {
-                                "answer": "[Synthèse indisponible — veuillez consulter les documents ci-dessus]",
-                                "model": None,
-                                "language": intent.detected_language,
-                            },
+                            {"answer": "[Synthèse indisponible — veuillez consulter les documents ci-dessus]", "model": None, "language": intent.detected_language},
                         )
 
                 # Backpressure: abort before expensive suggestion generation

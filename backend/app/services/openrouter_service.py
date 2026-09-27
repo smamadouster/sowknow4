@@ -120,6 +120,22 @@ def _get_redis_client():
     return _redis_client
 
 
+def _should_retry(exc: BaseException) -> bool:
+    """Retry only transient failures (429/5xx/network), never a 4xx reject.
+
+    A 4xx from the gateway is a *decision* (zombie_loop, privacy_violation,
+    feature_reject, ...) -- re-sending the identical body re-triggers it and
+    manufactures more zombie_loop spans. Retrying a reject can never succeed,
+    so fail fast instead.
+    """
+    if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status == 429 or status >= 500
+    return False
+
+
 class OpenRouterService:
     """Service for interacting with OpenRouter API (OpenAI-compatible)
 
@@ -396,7 +412,7 @@ class OpenRouterService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_random_exponential(multiplier=1, min=1, max=15),
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
+        retry=_should_retry,
         reraise=True,
         before_sleep=_before_sleep_on_retry,
     )

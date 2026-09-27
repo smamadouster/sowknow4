@@ -152,12 +152,20 @@ async def decide_date_range(
     if not query.strip():
         return None
 
+    # PRIVACY: never_cloud content must not leave this host. Classify locally and
+    # skip the cloud shadow call outright, instead of sending it and letting the
+    # gateway refuse it (which pollutes the ledger with privacy_violation spans).
+    privacy = privacy_class_for(query)
+    if privacy == "never_cloud":
+        logger.info("JEV shadow skipped: query classified never_cloud")
+        return None
+
     headers = {
         "authorization": f"Bearer {api_key}",
         "content-type": "application/json",
         # Strict mode on the Sowknow key requires this, on every route.
         "x-sakanal-feature": SHADOW_FEATURE,
-        "x-sakanal-privacy": privacy_class_for(query),
+        "x-sakanal-privacy": privacy,
         # The join to the incumbent's span.
         "x-sakanal-request-id": request_id or current_request_id(),
     }
@@ -215,11 +223,16 @@ async def shadow_compare(
     if not api_key or not query.strip():
         return None
 
+    privacy = privacy_class_for(query)
+    if privacy == "never_cloud":
+        logger.info("JEV shadow compare skipped: query classified never_cloud")
+        return None
+
     headers = {
         "authorization": f"Bearer {api_key}",
         "content-type": "application/json",
         "x-sakanal-feature": SHADOW_FEATURE,
-        "x-sakanal-privacy": privacy_class_for(query),
+        "x-sakanal-privacy": privacy,
         "x-sakanal-request-id": request_id or current_request_id(),
         "x-sakanal-incumbent-decision": incumbent_decision,
     }

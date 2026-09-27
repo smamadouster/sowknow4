@@ -168,12 +168,12 @@ export default function CollectionDetailPage() {
 
     const userMessage = chatInput;
     setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }, { role: "assistant", content: "" }]);
     setChatLoading(true);
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/v1/collections/${params.id}/chat`,
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/collections/${params.id}/chat/stream`,
         {
           method: "POST",
           credentials: "include",
@@ -181,22 +181,49 @@ export default function CollectionDetailPage() {
             "Content-Type": "application/json",
             "X-CSRF-Token": getCsrfToken(),
           },
-          body: JSON.stringify({
-            message: userMessage,
-          }),
+          body: JSON.stringify({ message: userMessage }),
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        setChatMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let full = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          try {
+            const evt = JSON.parse(raw);
+            if (typeof evt.token === "string") {
+              full += evt.token;
+              setChatMessages((prev) => {
+                const next = [...prev];
+                next[next.length - 1] = { role: "assistant", content: full };
+                return next;
+              });
+            }
+          } catch { /* ignore malformed line */ }
+        }
       }
     } catch (error) {
       console.error("Error sending chat message:", error);
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Sorry, I couldn't process that message." },
-      ]);
+      setChatMessages((prev) => {
+        const next = [...prev];
+        if (next[next.length - 1]?.role === "assistant" && !next[next.length - 1].content) {
+          next[next.length - 1] = { role: "assistant", content: "Sorry, I couldn't process that message." };
+        }
+        return next;
+      });
     } finally {
       setChatLoading(false);
     }

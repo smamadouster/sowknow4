@@ -730,6 +730,54 @@ async def chat_with_collection(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Chat error: {str(e)}")
 
 
+@router.post("/{collection_id}/chat/stream")
+async def chat_with_collection_stream_endpoint(
+    collection_id: UUID,
+    chat_data: CollectionChatCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Streaming collection-scoped chat (SSE token-by-token)."""
+    # Access check (same rule as the non-streaming endpoint)
+    visibility_filter = collection_service._get_user_visibility_filter(current_user)
+    coll_result = await db.execute(
+        select(Collection).where(
+            and_(
+                Collection.id == collection_id,
+                or_(
+                    Collection.user_id == current_user.id,
+                    Collection.visibility.in_(visibility_filter),
+                ),
+            )
+        )
+    )
+    collection = coll_result.scalar_one_or_none()
+    if not collection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+
+    async def event_generator():
+        from app.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as stream_db:
+            try:
+                async for chunk in collection_chat_service.chat_with_collection_stream(
+                    collection_id=collection_id,
+                    message=chat_data.message,
+                    user=current_user,
+                    db=stream_db,
+                    session_name=chat_data.session_name,
+                ):
+                    yield f'data: {json.dumps({"token": chunk})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+            except ValueError as e:
+                yield f'data: {json.dumps({"error": str(e)})}\n\n'
+            except Exception as e:
+                logger.warning("Collection chat stream failed: %s", e)
+                yield f'data: {json.dumps({"error": str(e)})}\n\n'
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @router.get("/{collection_id}/export", response_model=None)
 async def export_collection(
     collection_id: UUID,

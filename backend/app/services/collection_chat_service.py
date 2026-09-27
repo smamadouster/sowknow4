@@ -256,6 +256,107 @@ class CollectionChatService:
             "cache_hit": response_data.get("cache_hit", False),
         }
 
+    async def chat_with_collection_stream(
+        self,
+        collection_id: uuid.UUID,
+        message: str,
+        user: User,
+        db: AsyncSession,
+        session_name: str | None = None,
+    ):
+        """Streaming variant of chat_with_collection — yields answer text chunks."""
+        session, created = await self.get_or_create_chat_session(
+            collection_id=collection_id, user=user, db=db, session_name=session_name
+        )
+
+        collection = (await db.execute(select(Collection).where(Collection.id == collection_id))).scalar_one_or_none()
+        if not collection:
+            raise ValueError(f"Collection {collection_id} not found")
+
+        from app.models.collection import CollectionItem
+
+        collection_items = (
+            (
+                await db.execute(
+                    select(CollectionItem)
+                    .where(CollectionItem.collection_id == collection_id)
+                    .order_by(CollectionItem.relevance_score.desc())
+                    .limit(20)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        document_context = await self._build_document_context(collection_items, db)
+        has_confidential = any(
+            item.document.bucket.value == "confidential" for item in collection_items if item.document
+        )
+
+        if has_confidential:
+            confidential_docs = [
+                {"id": str(item.document.id), "filename": item.document.filename}
+                for item in collection_items
+                if item.document and item.document.bucket.value == "confidential"
+            ]
+            await create_audit_log(
+                db=db,
+                user_id=user.id,
+                action=AuditAction.CONFIDENTIAL_ACCESSED,
+                resource_type="collection_chat",
+                resource_id=str(collection_id),
+                details={
+                    "collection_name": collection.name,
+                    "confidential_document_count": len(confidential_docs),
+                    "confidential_documents": confidential_docs,
+                    "action": "chat_with_collection_stream",
+                },
+            )
+            logger.info(
+                f"CONFIDENTIAL_ACCESSED: User {user.email} accessed confidential documents in collection chat stream {collection_id}"
+            )
+
+        user_msg = ChatMessage(
+            session_id=session.id,
+            role=MessageRole.USER,
+            content=message,
+            llm_used=LLMProvider.OPENROUTER,
+        )
+        db.add(user_msg)
+        await db.flush()
+        await db.commit()
+
+        response_text = ""
+        async for chunk in self._chat_with_llm_stream(
+            message=message,
+            collection=collection,
+            document_context=document_context,
+            session=session,
+            db=db,
+            has_confidential=has_confidential,
+        ):
+            response_text += chunk
+            yield chunk
+
+        assistant_msg = ChatMessage(
+            session_id=session.id,
+            role=MessageRole.ASSISTANT,
+            content=response_text.strip(),
+            llm_used=LLMProvider.OPENROUTER,
+        )
+        db.add(assistant_msg)
+        session.title = session.title
+
+        result = await db.execute(
+            select(CollectionChatSession).where(CollectionChatSession.collection_id == collection_id)
+        )
+        collection_chat = result.scalar_one_or_none()
+        if collection_chat:
+            collection_chat.message_count += 1
+            collection_chat.llm_used = LLMProvider.OPENROUTER
+
+        await db.commit()
+
+
     async def _build_document_context(self, collection_items: list[Any], db: AsyncSession) -> list[dict[str, Any]]:
         """Build document context from collection items"""
         context = []
@@ -405,5 +506,92 @@ When answering:
         }
 
 
+    async def _chat_with_llm_stream(
+        self,
+        message: str,
+        collection: Collection,
+        document_context: list[dict[str, Any]],
+        session: ChatSession,
+        db: AsyncSession,
+        has_confidential: bool = False,
+    ):
+        """Streaming variant of _chat_with_llm — yields text chunks as they arrive."""
+        collection_task = f"""You are answering questions about a document collection called "{collection.name}".
+
+Collection Summary: {collection.ai_summary or "No summary available"}
+Query: {collection.query}
+
+You have access to {len(document_context)} documents in this collection. Use this context to answer questions.
+
+When answering:
+1. Reference specific documents by filename when relevant
+2. Quote relevant passages from the documents
+3. If the information isn't in the documents, say so
+4. Be concise but thorough"""
+
+        system_prompt = build_service_prompt(
+            service_name="SOWKNOW Collection Chat Service",
+            mission="Provide collection-scoped conversational AI with context isolated to the selected document collection",
+            constraints=(
+                "- You MUST restrict answers to documents within the active collection\n"
+                "- You MUST cite which collection documents support each claim\n"
+                "- You MUST handle confidential collection queries with appropriate privacy safeguards\n"
+                "- You MUST NOT reference documents outside the active collection"
+            ),
+            task_prompt=collection_task,
+        )
+
+        context_parts = []
+        for doc in document_context:
+            if has_confidential:
+                context_parts.append(f"Document: {doc['filename']} (metadata only — confidential content stripped)")
+            else:
+                chunk_text = chr(10).join([f"Page {c['page']}: {c['text'][:200]}..." for c in doc["chunks"]])
+                context_parts.append(f"Document: {doc['filename']}\n{chunk_text}")
+        context_text = "\n\n".join(context_parts)
+
+        history = (
+            (
+                await db.execute(
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == session.id)
+                    .order_by(ChatMessage.created_at)
+                    .limit(10)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in history[-6:]:
+            role = "user" if msg.role == MessageRole.USER else "assistant"
+            messages.append({"role": role, "content": msg.content})
+        messages.append(
+            {
+                "role": "user",
+                "content": f"Documents context:\n{context_text}\n\nUser question: {message}",
+            }
+        )
+
+        try:
+            context_block = await get_cached_context_block(db)
+            if context_block and messages and messages[0]["role"] == "system":
+                messages[0]["content"] = context_block + "\n\n" + messages[0]["content"]
+        except Exception:
+            pass
+
+        async for chunk in self.llm.chat_completion(
+            messages=messages,
+            stream=True,
+            temperature=0.7,
+            max_tokens=2048,
+            tier="standard",
+        ):
+            if chunk and not chunk.startswith("Error:"):
+                yield chunk
+
+
 # Global collection chat service instance
 collection_chat_service = CollectionChatService()
+

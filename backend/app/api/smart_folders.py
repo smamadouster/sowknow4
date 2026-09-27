@@ -708,12 +708,12 @@ async def stream_smart_folder_generation(
         if pubsub is not None:
             try:
                 await pubsub.unsubscribe(channel)
-                await pubsub.aclose()
+                await pubsub.close()
             except Exception:
                 pass
         if redis_client is not None:
             try:
-                await redis_client.aclose()
+                await redis_client.close()
             except Exception:
                 pass
         raise HTTPException(
@@ -865,12 +865,12 @@ async def stream_smart_folder_generation(
             if pubsub is not None:
                 try:
                     await pubsub.unsubscribe(channel)
-                    await pubsub.aclose()
+                    await pubsub.close()
                 except Exception:
                     pass
             if redis_client is not None:
                 try:
-                    await redis_client.aclose()
+                    await redis_client.close()
                 except Exception:
                     pass
 

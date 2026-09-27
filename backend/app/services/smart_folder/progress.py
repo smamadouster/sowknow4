@@ -42,7 +42,7 @@ async def publish_event(channel: str, event: str, **payload: Any) -> None:
         )
         message = json.dumps({"event": event, **payload}, default=str)
         await client.publish(channel, message)
-        await client.aclose()
+        await client.close()
     except Exception as exc:  # noqa: BLE001 - best effort only
         logger.debug("Smart Folder progress publish skipped (%s): %s", channel, exc)
 

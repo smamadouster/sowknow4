@@ -655,7 +655,7 @@ async def synthesize_answer(
         system=SYNTHESIS_SYSTEM_PROMPT,
         has_confidential=has_confidential,
         temperature=0.2,
-        max_tokens=1500,
+        max_tokens=600,
         context_block=context_block,
     )
 

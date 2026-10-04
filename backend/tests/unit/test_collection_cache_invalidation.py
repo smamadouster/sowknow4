@@ -33,7 +33,6 @@ def _stub_heavy_modules():
         "app.schemas.collection",
         "app.services.intent_parser",
         "app.services.search_service",
-        "app.services.minimax_service",
         "app.services.ollama_service",
         "app.services.openrouter_service",
     ]

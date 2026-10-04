@@ -38,7 +38,6 @@ from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentBucket, DocumentChunk, DocumentLanguage, DocumentStatus
 from app.models.user import User, UserRole
-from app.services.minimax_service import MiniMaxService
 from app.services.ollama_service import OllamaService
 from app.services.search_service import search_service
 
@@ -184,9 +183,7 @@ class TestPerformanceTargets:
         Target: p50 < 2s
         Method: SSE stream timing measurement
         """
-        minimax_service = MiniMaxService()
-
-        # Mock response to simulate streaming
+        # Mock response to simulate streaming (cloud LLM path)
         async def mock_stream():
             await asyncio.sleep(0.1)  # Simulate first token
             yield "Hello"
@@ -208,15 +205,15 @@ class TestPerformanceTargets:
                     first_token_time = time.time()
                 chunk_count += 1
         except Exception as e:
-            print(f"MiniMax streaming error: {e}")
+            print(f"Cloud LLM streaming error: {e}")
 
         if first_token_time:
             first_token_latency = (first_token_time - start) * 1000
-            print(f"MiniMax First Token Latency: {first_token_latency:.0f}ms")
+            print(f"Cloud LLM First Token Latency: {first_token_latency:.0f}ms")
             # For mock, this should be very fast
             assert first_token_latency < 2000, f"First token ({first_token_latency:.0f}ms) exceeds 2000ms"
         else:
-            pytest.skip("MiniMax API not available for testing")
+            pytest.skip("Cloud LLM API not available for testing")
 
     @pytest.mark.asyncio
     async def test_chat_first_token_ollama_under_5s(self, test_db_with_docs: Session):
@@ -523,25 +520,25 @@ class TestResilienceMatrix:
     # Test 1: Kill MiniMax API (block DNS)
     # ----------------------------------------
     @pytest.mark.asyncio
-    async def test_minimax_api_down_graceful_degradation(self):
+    async def test_cloud_llm_down_graceful_degradation(self):
         """
         Test: Chat returns "Cloud AI unavailable" message, queues request
         Expected: Graceful degradation, no crash
         Status: ☐ PASS
         """
-        minimax_service = MiniMaxService()
+        llm_service = Mock()
 
         # Create a mock async generator that returns an error message
         async def mock_failing_chat(*args, **kwargs):
             yield "Error: Cloud AI unavailable"
 
         # Mock API failure
-        with patch.object(minimax_service, 'chat_completion', side_effect=mock_failing_chat):
+        with patch.object(llm_service, 'chat_completion', side_effect=mock_failing_chat):
             messages = [{"role": "user", "content": "Hello"}]
 
             chunks = []
             try:
-                async for chunk in minimax_service.chat_completion(messages):
+                async for chunk in llm_service.chat_completion(messages):
                     chunks.append(chunk)
             except Exception as e:
                 chunks.append(f"Error: {str(e)}")
@@ -556,7 +553,7 @@ class TestResilienceMatrix:
     @pytest.mark.asyncio
     async def test_ollama_unresponsive_warning(self):
         """
-        Test: Warning message, public queries still work via MiniMax/Kimi fallback
+        Test: Warning message, public queries still work via cloud LLM fallback
         Expected: No crash, fallback to cloud LLM
         Status: ☐ PASS
         """

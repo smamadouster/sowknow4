@@ -4,12 +4,11 @@ LLM Gateway — Unified facade for all LLM providers.
 This module is the SINGLE entry point for LLM consumption across Sowknow.
 It wraps the existing LLMRouter with a simplified, consumer-friendly interface,
 eliminating the need for direct imports of individual services
-(openrouter_service, minimax_service, kimi_service).
+(openrouter_service, ollama_service).
 
 Migration example (consumer code):
     OLD:
         from app.services.openrouter_service import openrouter_service
-        from app.services.minimax_service import minimax_service
         async for chunk in openrouter_service.chat_completion(messages):
             ...
         # Fallback manually if openrouter fails ...

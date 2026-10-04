@@ -47,10 +47,7 @@ class RoutingReason(StrEnum):
 class LLMProvider(StrEnum):
     """Canonical provider identifiers — single source of truth."""
 
-    MINIMAX = "minimax"
-    KIMI = "kimi"
     OPENROUTER = "openrouter"
-    TOGETHER = "together"
 
 
 class TaskTier(StrEnum):
@@ -83,7 +80,7 @@ class FallbackTrigger(StrEnum):
 class RoutingDecision:
     """Result of the LLM routing decision."""
 
-    provider_name: str  # e.g. "minimax", "openrouter"
+    provider_name: str  # e.g. "openrouter"
     reason: RoutingReason
     service: Any  # The actual service instance
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -105,7 +102,7 @@ class LLMRouter:
     """
 
     # Fallback chains per routing scenario (§5.2 updated).
-    # MiniMax is optional; all traffic routes through OpenRouter with tier
+    # All traffic routes through OpenRouter (via the SAKANAL gateway) with tier
     # fallback + per-tier model-level fallback (deepseek → qwen, handled inside
     # openrouter_service). Each chain is an ordered list of provider names
     # tried left-to-right.
@@ -124,16 +121,10 @@ class LLMRouter:
     def __init__(
         self,
         *,
-        minimax_service: Any = None,
-        kimi_service: Any = None,
         openrouter_service: Any = None,
-        together_service: Any = None,
         pii_detection_service: Any = None,
     ) -> None:
-        self._minimax = minimax_service
-        self._kimi = kimi_service
         self._openrouter = openrouter_service
-        self._together = together_service
         self._pii = pii_detection_service
 
     # ------------------------------------------------------------------
@@ -181,8 +172,6 @@ class LLMRouter:
         # Confidential data relies on metadata-only stripping (PRD §1.3).
         if self._openrouter is not None:
             providers_to_try.append(("openrouter", self._openrouter))
-        if self._minimax is not None and getattr(self._minimax, "api_key", None):
-            providers_to_try.append(("minimax", self._minimax))
 
         last_error = ""
         for name, service in providers_to_try:
@@ -456,12 +445,9 @@ class LLMRouter:
         """
         if preferred == LLMProvider.OPENROUTER and self._openrouter is not None:
             return self._openrouter, "openrouter"
-        if preferred == LLMProvider.MINIMAX and self._minimax is not None:
-            return self._minimax, "minimax"
         # Fallback to any available
         for svc, name in [
             (self._openrouter, "openrouter"),
-            (self._minimax, "minimax"),
         ]:
             if svc is not None:
                 return svc, name
@@ -533,24 +519,8 @@ def _build_router() -> LLMRouter:
     """Instantiate the router with the project's singleton services."""
     # All imports intentionally lazy to avoid circular imports at module load.
     # from the active fallback chain and must not be instantiated in production.
-    minimax_svc = None
-    kimi_svc = None
     openrouter_svc = None
     pii_svc = None
-
-    try:
-        from app.services.minimax_service import minimax_service as _m
-
-        minimax_svc = _m
-    except Exception as exc:
-        logger.warning("LLMRouter: minimax_service not available: %s", exc, exc_info=True)
-
-    try:
-        from app.services.kimi_service import kimi_service as _k
-
-        kimi_svc = _k
-    except Exception as exc:
-        logger.warning("LLMRouter: kimi_service not available: %s", exc, exc_info=True)
 
     try:
         from app.services.openrouter_service import openrouter_service as _or
@@ -567,8 +537,6 @@ def _build_router() -> LLMRouter:
         logger.warning("LLMRouter: pii_detection_service not available: %s", exc, exc_info=True)
 
     return LLMRouter(
-        minimax_service=minimax_svc,
-        kimi_service=kimi_svc,
         openrouter_service=openrouter_svc,
         pii_detection_service=pii_svc,
     )

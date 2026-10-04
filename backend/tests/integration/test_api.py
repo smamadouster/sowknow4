@@ -155,11 +155,11 @@ class TestChatEndpoints:
         )
         assert response.status_code == 401
 
-    @patch('app.services.chat_service.minimax_service')
-    async def test_chat_with_valid_message(self, mock_minimax, client: TestClient, auth_headers):
+    @patch('app.services.chat_service.llm_gateway')
+    async def test_chat_with_valid_message(self, mock_gateway, client: TestClient, auth_headers):
         """Test chat with valid message"""
-        # Mock the MiniMax service
-        mock_minimax.chat_completion = MagicMock()
+        # Mock the LLM gateway facade (single call site)
+        mock_gateway.chat_completion = MagicMock()
 
         response = client.post(
             "/api/v1/chat",

@@ -128,12 +128,12 @@ class Settings(BaseSettings):
 
     OPENROUTER_MODEL: str = Field(default="deepseek/deepseek-v4-flash-0731")
     OPENROUTER_TIER_SIMPLE: str = Field(default="deepseek/deepseek-v4-flash-0731")
-    OPENROUTER_TIER_STANDARD: str = Field(default="deepseek/deepseek-v4-flash-0731")
-    OPENROUTER_TIER_COMPLEX: str = Field(default="deepseek/deepseek-v4-pro")
-    OPENROUTER_TIER_FALLBACK_SIMPLE: str = Field(default="qwen/qwen3.8-max")
-    OPENROUTER_TIER_FALLBACK_STANDARD: str = Field(default="qwen/qwen3.8-max")
-    OPENROUTER_TIER_FALLBACK_COMPLEX: str = Field(default="qwen/qwen3.8-max")
-    OPENROUTER_BASE_URL: str = Field(default="https://openrouter.ai/api/v1")
+    OPENROUTER_TIER_STANDARD: str = Field(default="deepseek/deepseek-v4-pro")
+    OPENROUTER_TIER_COMPLEX: str = Field(default="anthropic/claude-sonnet-4")
+    OPENROUTER_TIER_FALLBACK_SIMPLE: str = Field(default="qwen/qwen3.8-max-0902")
+    OPENROUTER_TIER_FALLBACK_STANDARD: str = Field(default="qwen/qwen3.8-max-0902")
+    OPENROUTER_TIER_FALLBACK_COMPLEX: str = Field(default="qwen/qwen3.8-max-0902")
+    OPENROUTER_BASE_URL: str = Field(default="https://sakanal.gollamtech.com/v1")
     OPENROUTER_SITE_URL: str = Field(default="https://sowknow.gollamtech.com")
     OPENROUTER_SITE_NAME: str = Field(default="SOWKNOW")
     LLM_DEPRECATED_MODELS: str = Field(

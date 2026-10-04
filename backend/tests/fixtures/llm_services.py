@@ -2,20 +2,20 @@
 LLM Service Test Fixtures
 
 Provides reusable pytest fixtures and mock factories for all LLM services:
-- OpenRouter (Kimi K2.5 via OpenRouter, with Redis cache)
-- MiniMax (direct API, M2.5)
-- Kimi (direct Moonshot AI API)
+- OpenRouter (via the SAKANAL gateway, with Redis cache)
 - Ollama (local, confidential docs)
+
+The legacy direct-provider clients were removed (single-door doctrine:
+all cloud LLM traffic transits the SAKANAL gateway).
 
 Usage in tests:
     from tests.fixtures.llm_services import (
-        mock_kimi_service, mock_minimax_service,
         mock_ollama_service, mock_openrouter_service,
         llm_response_factory, streaming_response_factory
     )
 
 Or use the pytest fixtures directly (requires conftest to import them):
-    def test_something(mock_kimi_service):
+    def test_something(mock_openrouter_service):
         ...
 """
 from collections.abc import AsyncGenerator
@@ -51,96 +51,6 @@ def health_ok_factory(service_name: str = "llm") -> dict[str, Any]:
 def health_error_factory(service_name: str = "llm", error: str = "Connection refused") -> dict[str, Any]:
     """Return an unhealthy status dict."""
     return {"status": "unhealthy", "service": service_name, "error": error}
-
-
-# ---------------------------------------------------------------------------
-# Kimi Service mock (Moonshot AI direct)
-# ---------------------------------------------------------------------------
-
-def make_mock_kimi_service(
-    response_content: str = "Kimi test response.",
-    health_status: str = "healthy",
-    raise_on_call: Exception | None = None,
-) -> MagicMock:
-    """
-    Create a mock KimiService instance.
-
-    The mock mimics the real KimiService interface:
-    - chat_completion(messages, stream=False, ...) -> AsyncGenerator[str] or str
-    - health_check() -> Dict
-    """
-    service = MagicMock()
-    service.api_key = "test-kimi-key"
-    service.base_url = "https://api.moonshot.cn/v1"
-    service.model = "moonshot-v1-128k"
-
-    if raise_on_call:
-        service.chat_completion = AsyncMock(side_effect=raise_on_call)
-    else:
-        async def _kimi_chat_completion(messages, stream=False, **kwargs):
-            if stream:
-                async def _stream():
-                    for word in response_content.split():
-                        yield word + " "
-                return _stream()
-            return response_content
-
-        service.chat_completion = _kimi_chat_completion
-
-    if health_status == "healthy":
-        service.health_check = AsyncMock(return_value=health_ok_factory("kimi"))
-    else:
-        service.health_check = AsyncMock(
-            return_value=health_error_factory("kimi", "API key not configured")
-        )
-
-    return service
-
-
-# ---------------------------------------------------------------------------
-# MiniMax Service mock (direct API)
-# ---------------------------------------------------------------------------
-
-def make_mock_minimax_service(
-    response_content: str = "MiniMax test response.",
-    health_status: str = "healthy",
-    raise_on_call: Exception | None = None,
-) -> MagicMock:
-    """
-    Create a mock MiniMaxService instance.
-
-    Interface:
-    - chat_completion(messages, stream=False, ...) -> str
-    - chat_completion_non_stream(messages, ...) -> str
-    """
-    service = MagicMock()
-    service.api_key = "test-minimax-key"
-    service.base_url = "https://api.minimax.chat"
-    service.model = "MiniMax-M2.5"
-
-    if raise_on_call:
-        service.chat_completion = AsyncMock(side_effect=raise_on_call)
-        service.chat_completion_non_stream = AsyncMock(side_effect=raise_on_call)
-    else:
-        async def _minimax_chat_completion(messages, stream=False, **kwargs):
-            if stream:
-                async def _stream():
-                    for word in response_content.split():
-                        yield word + " "
-                return _stream()
-            return response_content
-
-        service.chat_completion = _minimax_chat_completion
-        service.chat_completion_non_stream = AsyncMock(return_value=response_content)
-
-    if health_status == "healthy":
-        service.health_check = AsyncMock(return_value=health_ok_factory("minimax"))
-    else:
-        service.health_check = AsyncMock(
-            return_value=health_error_factory("minimax", "API key not configured")
-        )
-
-    return service
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +115,7 @@ def make_mock_ollama_service(
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter Service mock (Kimi K2.5 fallback, with Redis cache)
+# OpenRouter Service mock (via SAKANAL gateway, with Redis cache)
 # ---------------------------------------------------------------------------
 
 def make_mock_openrouter_service(
@@ -226,7 +136,7 @@ def make_mock_openrouter_service(
     service = MagicMock()
     service.api_key = "test-openrouter-key"
     service.base_url = "https://openrouter.ai/api/v1"
-    service.model = "moonshotai/kimi-k2.5"
+    service.model = "deepseek/deepseek-v4-pro"
 
     # Cache simulation
     service.check_cache = MagicMock(
@@ -267,18 +177,6 @@ def make_mock_openrouter_service(
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mock_kimi_service():
-    """pytest fixture: mock KimiService with healthy default."""
-    return make_mock_kimi_service()
-
-
-@pytest.fixture
-def mock_minimax_service():
-    """pytest fixture: mock MiniMaxService with healthy default."""
-    return make_mock_minimax_service()
-
-
-@pytest.fixture
 def mock_ollama_service():
     """pytest fixture: mock OllamaService with healthy default."""
     return make_mock_ollama_service()
@@ -291,12 +189,9 @@ def mock_openrouter_service():
 
 
 @pytest.fixture
-def mock_all_llm_services(mock_kimi_service, mock_minimax_service,
-                           mock_ollama_service, mock_openrouter_service):
+def mock_all_llm_services(mock_ollama_service, mock_openrouter_service):
     """pytest fixture: all LLM services mocked, returned as a dict."""
     return {
-        "kimi": mock_kimi_service,
-        "minimax": mock_minimax_service,
         "ollama": mock_ollama_service,
         "openrouter": mock_openrouter_service,
     }
@@ -305,24 +200,6 @@ def mock_all_llm_services(mock_kimi_service, mock_minimax_service,
 # ---------------------------------------------------------------------------
 # Context manager patches for patching module-level service singletons
 # ---------------------------------------------------------------------------
-
-def patch_kimi_service(response_content: str = "Kimi test response.", **kwargs):
-    """
-    Context manager / decorator to patch the module-level kimi_service singleton.
-
-    Usage:
-        with patch_kimi_service("Hello from Kimi"):
-            result = await chat_service.chat(...)
-    """
-    mock = make_mock_kimi_service(response_content=response_content, **kwargs)
-    return patch("app.services.kimi_service.kimi_service", mock)
-
-
-def patch_minimax_service(response_content: str = "MiniMax test response.", **kwargs):
-    """Context manager to patch the module-level minimax_service singleton."""
-    mock = make_mock_minimax_service(response_content=response_content, **kwargs)
-    return patch("app.services.minimax_service.minimax_service", mock)
-
 
 def patch_ollama_service(response_content: str = "Ollama test response.", **kwargs):
     """Context manager to patch the module-level ollama_service singleton."""

@@ -54,18 +54,12 @@ def _make_chunk(bucket: str) -> dict:
 def _make_router(
     *,
     ollama_healthy: bool = True,
-    has_minimax: bool = True,
-    has_kimi: bool = True,
     has_openrouter: bool = True,
-    has_together: bool = False,
     has_pii_service: bool = False,
 ) -> LLMRouter:
     """Build an LLMRouter with injectable mock services."""
 
-    minimax_svc = MagicMock(api_key="mk-test") if has_minimax else None
-    kimi_svc = MagicMock(api_key="kimi-test") if has_kimi else None
     openrouter_svc = MagicMock() if has_openrouter else None
-    together_svc = MagicMock(api_key="together-test") if has_together else None
 
     ollama_svc = AsyncMock()
     ollama_svc.health_check = AsyncMock(
@@ -78,11 +72,8 @@ def _make_router(
         pii_svc.detect_pii = MagicMock(return_value=False)
 
     return LLMRouter(
-        minimax_service=minimax_svc,
-        kimi_service=kimi_svc,
         openrouter_service=openrouter_svc,
         ollama_service=ollama_svc,
-        together_service=together_svc,
         pii_detection_service=pii_svc,
     )
 
@@ -167,9 +158,9 @@ class TestPublicRouting:
         assert decision.reason == RoutingReason.GENERAL_CHAT
 
     @pytest.mark.asyncio
-    async def test_no_context_no_minimax_no_kimi_falls_back_to_openrouter(self):
-        """Without kimi or minimax, general chat falls back to OpenRouter."""
-        router = _make_router(has_kimi=False, has_minimax=False)
+    async def test_no_context_falls_back_to_openrouter(self):
+        """General chat routes to OpenRouter (single door via SAKANAL)."""
+        router = _make_router()
         decision = await router.select_provider(query="Hello!", context_chunks=[])
 
         assert decision.provider_name == "openrouter"

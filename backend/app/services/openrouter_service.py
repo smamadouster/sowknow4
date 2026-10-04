@@ -4,7 +4,7 @@ OpenRouter provides OpenAI-compatible API access to multiple LLMs.
 Primary model: deepseek/deepseek-v4-flash-0731 (cost-efficient FR/EN balance for family narrative).
 Tiered stack: simple=deepseek/deepseek-v4-flash-0731, standard=deepseek/deepseek-v4-flash-0731,
 complex=deepseek/deepseek-v4-pro.
-Model-level fallback per tier: qwen/qwen3.8-max — tried once when the primary
+Model-level fallback per tier: qwen/qwen3.8-max-0902 — tried once when the primary
 tier model fails (400/404 invalid model, 429 rate limit, or 5xx).
 
 CONTEXT CACHING:
@@ -37,21 +37,21 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://sakanal.gollamtech.com/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash-0731")
 
 # Tiered model configuration for cost/quality optimization
 OPENROUTER_TIER_MODELS = {
-    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "deepseek/deepseek-v4-pro"),
-    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "deepseek/deepseek-v4-flash-0731"),
+    "complex": os.getenv("OPENROUTER_TIER_COMPLEX", "anthropic/claude-sonnet-4"),
+    "standard": os.getenv("OPENROUTER_TIER_STANDARD", "deepseek/deepseek-v4-pro"),
     "simple": os.getenv("OPENROUTER_TIER_SIMPLE", "deepseek/deepseek-v4-flash-0731"),
 }
 # Model-level fallback per tier — tried once when the primary tier model fails
 # with 400/404 (invalid/deprecated model), 429 (rate limit), or 5xx (server error).
 OPENROUTER_TIER_FALLBACK_MODELS = {
-    "complex": os.getenv("OPENROUTER_TIER_FALLBACK_COMPLEX", "qwen/qwen3.8-max"),
-    "standard": os.getenv("OPENROUTER_TIER_FALLBACK_STANDARD", "qwen/qwen3.8-max"),
-    "simple": os.getenv("OPENROUTER_TIER_FALLBACK_SIMPLE", "qwen/qwen3.8-max"),
+    "complex": os.getenv("OPENROUTER_TIER_FALLBACK_COMPLEX", "qwen/qwen3.8-max-0902"),
+    "standard": os.getenv("OPENROUTER_TIER_FALLBACK_STANDARD", "qwen/qwen3.8-max-0902"),
+    "simple": os.getenv("OPENROUTER_TIER_FALLBACK_SIMPLE", "qwen/qwen3.8-max-0902"),
 }
 OPENROUTER_TIER_BUDGET_PCT = {
     "complex": 0.5,  # 50% of daily budget reserved for complex tasks
@@ -324,7 +324,7 @@ class OpenRouterService:
         return model
 
     def _fallback_model_for(self, tier: str) -> str | None:
-        """Return the model-level fallback for a tier (e.g. qwen3.8-max).
+        """Return the model-level fallback for a tier (e.g. qwen3.8-max-0902).
 
         Used as the escape hatch when the primary tier model fails with
         400/404/429/5xx. Returns None if unset or identical to the tier model.
@@ -695,7 +695,7 @@ class OpenRouterService:
                 pass
 
             # Model-level failover (2026-08-05): a single retry on the tier's
-            # fallback model (default qwen/qwen3.8-max) for 400/404 (invalid/
+            # fallback model (default qwen/qwen3.8-max-0902) for 400/404 (invalid/
             # deprecated model), 429 (per-model rate limit), or 5xx (server
             # error). The tenacity decorator cannot retry an async-generator
             # body, so this recursion is the real retry path. Yielding a raw

@@ -75,6 +75,10 @@ from app.services.sakanal_attribution import current_feature, current_request_id
 
 REDIS_URL = safe_redis_url()
 CACHE_TTL_SECONDS = 3600  # 1 hour TTL for cached responses
+#: TTL of the streaming replay cache — aligned on the SAKANAL governor's 60s
+#: zombie window. An identical STREAMING request inside the window is replayed
+#: locally instead of re-emitted (the governor would block it as zombie_loop).
+STREAM_REPLAY_TTL_SECONDS = 60
 CACHE_KEY_PREFIX = "sowknow:openrouter:cache:"
 
 # Context window limits (in tokens)
@@ -553,6 +557,26 @@ class OpenRouterService:
         model = _model_override or self.select_model_for_tier(tier)
         self._last_model = model
 
+        # --- Streaming replay (governor-grade dedupe) ---
+        # Non-streaming requests are already deduplicated by the 1h Redis cache
+        # above; streaming bypasses it by design. SAKANAL's governor blocks an
+        # identical request repeated within 60s (zombie_loop), so replay the
+        # completed stream locally instead of re-emitting it.
+        # PRIVACY: confidential queries are never replayed nor stored.
+        replay_key = None
+        if stream and not is_confidential:
+            replay_key = self._replay_key(model, truncated_messages, tier)
+            replay_redis = _get_redis_client()
+            if replay_redis:
+                try:
+                    replayed = await asyncio.to_thread(replay_redis.get, replay_key)
+                    if replayed and isinstance(replayed, str):
+                        logger.info("OpenRouter stream replay HIT (60s dedupe): %s", replay_key[:50])
+                        yield replayed
+                        return
+                except Exception as replay_err:
+                    logger.warning(f"Stream replay read error, proceeding with API call: {replay_err}")
+
         # --- Provider-aware dynamic throttling (blueprint §2.3 Tier C) ---
         from app.services.openrouter_throttle import openrouter_throttle
 
@@ -590,6 +614,7 @@ class OpenRouterService:
                     if cache_status:
                         logger.info(f"OpenRouter native cache {cache_status}: tier={tier}, model={model}, stream=True")
 
+                    replay_chunks: list[str] = []
                     async for line in response.aiter_lines():
                         if line.strip():
                             if line.startswith("data: "):
@@ -602,11 +627,26 @@ class OpenRouterService:
                                         delta = data["choices"][0].get("delta", {})
                                         content = delta.get("content", "")
                                         if content:
+                                            replay_chunks.append(content)
                                             yield content
                                 except json.JSONDecodeError:
                                     continue
                     # Record successful streaming request for throttle accounting
                     openrouter_throttle.record_request(model)
+
+                    # Store the completed stream for 60s replay (governor dedupe)
+                    if replay_key and replay_chunks:
+                        replay_redis = _get_redis_client()
+                        if replay_redis:
+                            try:
+                                await asyncio.to_thread(
+                                    replay_redis.setex,
+                                    replay_key,
+                                    STREAM_REPLAY_TTL_SECONDS,
+                                    "".join(replay_chunks),
+                                )
+                            except Exception as replay_err:
+                                logger.warning(f"Stream replay store error: {replay_err}")
             else:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
@@ -745,6 +785,16 @@ class OpenRouterService:
         except httpx.HTTPError as e:
             logger.error(f"OpenRouter connection error: {str(e)}")
             yield f"Error: {str(e)}"
+
+    @staticmethod
+    def _replay_key(model: str, messages: list[dict], tier: str) -> str:
+        """Stable key for the 60s streaming replay cache (governor dedupe)."""
+        blob = json.dumps(
+            {"model": model, "tier": tier, "messages": messages},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        return f"sowknow:openrouter:replay:{hashlib.sha256(blob.encode()).hexdigest()}"
 
     def invalidate_collection_cache(self, collection_id: str) -> int:
         """Invalidate all cached responses associated with a collection.

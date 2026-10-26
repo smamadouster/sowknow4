@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     name: Unit Tests
@@ -23,7 +26,7 @@ jobs:
         run: |
           pip install -r backend/requirements.txt
         env:
-          DATABASE_URL: sqlite+pysqlite:///:memory:
+          DATABASE_URL: "sqlite+pysqlite:///:memory:"
           REDIS_URL: redis://localhost:6379/0
           APP_ENV: test
 
@@ -31,7 +34,7 @@ jobs:
         run: |
           python3 -m pytest tests/unit/ -v --tb=short -q
         env:
-          DATABASE_URL: sqlite+pysqlite:///:memory:
+          DATABASE_URL: "sqlite+pysqlite:///:memory:"
           REDIS_URL: redis://localhost:6379/0
           APP_ENV: test
           JWT_SECRET: ci-test-jwt-secret-not-for-production
@@ -82,7 +85,7 @@ jobs:
         run: |
           python3 -m pytest tests/e2e/test_document_processing.py -v -m e2e --tb=short
         env:
-          DATABASE_URL: sqlite+pysqlite:///:memory:
+          DATABASE_URL: "sqlite+pysqlite:///:memory:"
           REDIS_URL: redis://localhost:6379/0
           APP_ENV: test
           JWT_SECRET: ci-test-jwt-secret-not-for-production
@@ -91,7 +94,7 @@ jobs:
         run: |
           python3 -m pytest tests/integration/ -v --tb=short
         env:
-          DATABASE_URL: sqlite+pysqlite:///:memory:
+          DATABASE_URL: "sqlite+pysqlite:///:memory:"
           REDIS_URL: redis://localhost:6379/0
           APP_ENV: test
           JWT_SECRET: ci-test-jwt-secret-not-for-production

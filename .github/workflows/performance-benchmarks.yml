@@ -9,6 +9,9 @@ on:
     # Run nightly at 03:00 UTC to detect performance regressions
     - cron: '0 3 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   benchmark:
     name: Run Performance & Benchmark Tests

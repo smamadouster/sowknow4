@@ -12,6 +12,9 @@ on:
       - 'docker-compose*.yml'
       - 'scripts/test_docker_compliance.sh'
 
+permissions:
+  contents: read
+
 jobs:
   compliance:
     runs-on: ubuntu-latest
